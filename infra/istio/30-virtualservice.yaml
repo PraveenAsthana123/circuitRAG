@@ -1,0 +1,75 @@
+---
+# VirtualService: external → api-gateway routing with retries + timeout.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: documind-vs
+  namespace: documind
+spec:
+  hosts:
+    - "documind.local"
+  gateways:
+    - documind-gateway
+  http:
+    # File uploads — no retry on 5xx (upload is non-idempotent).
+    - match:
+        - uri:
+            prefix: /api/v1/documents/upload
+      route:
+        - destination:
+            host: api-gateway
+            port:
+              number: 8080
+      timeout: 300s
+
+    # General API — aggressive retry on 503/5xx.
+    - match:
+        - uri:
+            prefix: /api/
+      route:
+        - destination:
+            host: api-gateway
+            port:
+              number: 8080
+      timeout: 60s
+      retries:
+        attempts: 2
+        perTryTimeout: 15s
+        retryOn: "5xx,reset,connect-failure,refused-stream"
+
+    # Frontend (Next.js SSR / static).
+    - route:
+        - destination:
+            host: frontend
+            port:
+              number: 3000
+      timeout: 30s
+
+---
+# Internal VS — canary for inference-svc (illustrative for Design Area 53).
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: inference-svc-canary
+  namespace: documind
+spec:
+  hosts:
+    - inference-svc
+  http:
+    - match:
+        - headers:
+            x-canary:
+              exact: "true"
+      route:
+        - destination:
+            host: inference-svc
+            subset: canary
+    - route:
+        - destination:
+            host: inference-svc
+            subset: stable
+          weight: 90
+        - destination:
+            host: inference-svc
+            subset: canary
+          weight: 10

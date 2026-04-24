@@ -1,0 +1,128 @@
+---
+# AuthorizationPolicy — each service only accepts calls from callers that
+# legitimately need to reach it (Design Area 3 — Trust Boundary).
+# Principle of least privilege at the mesh layer.
+#
+# Policy naming: `<caller-side>-to-<callee>` for readability.
+
+# ─── api-gateway ← frontend + ingress ────────────────────────────────────────
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: api-gateway-policy
+  namespace: documind
+spec:
+  selector:
+    matchLabels: { app: api-gateway }
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]   # ingress gateway
+    - from:
+        - source:
+            principals: ["cluster.local/ns/documind/sa/frontend"]
+
+---
+# ─── identity-svc ← only api-gateway ─────────────────────────────────────────
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: identity-svc-policy
+  namespace: documind
+spec:
+  selector:
+    matchLabels: { app: identity-svc }
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/documind/sa/api-gateway"]
+
+---
+# ─── ingestion-svc ← api-gateway + async workers (Kafka consumers) ───────────
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ingestion-svc-policy
+  namespace: documind
+spec:
+  selector:
+    matchLabels: { app: ingestion-svc }
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/documind/sa/api-gateway"
+              - "cluster.local/ns/documind/sa/ingestion-svc"  # internal saga
+
+---
+# ─── retrieval-svc ← inference-svc + evaluation-svc only (NEVER users) ──────
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: retrieval-svc-policy
+  namespace: documind
+spec:
+  selector:
+    matchLabels: { app: retrieval-svc }
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/documind/sa/inference-svc"
+              - "cluster.local/ns/documind/sa/evaluation-svc"
+
+---
+# ─── inference-svc ← api-gateway + evaluation-svc ───────────────────────────
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: inference-svc-policy
+  namespace: documind
+spec:
+  selector:
+    matchLabels: { app: inference-svc }
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/documind/sa/api-gateway"
+              - "cluster.local/ns/documind/sa/evaluation-svc"
+
+---
+# ─── governance-svc ← api-gateway only ──────────────────────────────────────
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: governance-svc-policy
+  namespace: documind
+spec:
+  selector:
+    matchLabels: { app: governance-svc }
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/documind/sa/api-gateway"]
+
+---
+# ─── finops-svc ← api-gateway + Kafka cost.events consumers ─────────────────
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: finops-svc-policy
+  namespace: documind
+spec:
+  selector:
+    matchLabels: { app: finops-svc }
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/documind/sa/api-gateway"
+              - "cluster.local/ns/documind/sa/inference-svc"   # cost events

@@ -1,0 +1,41 @@
+---
+# Shared ConfigMap — all non-secret env vars every service reads.
+# Secrets (passwords, JWT private key, encryption key) go in Secrets.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: documind-config
+  namespace: documind
+data:
+  DOCUMIND_ENV:            "production"
+  DOCUMIND_LOG_LEVEL:      "INFO"
+  DOCUMIND_LOG_JSON:       "true"
+  DOCUMIND_REGION:         "us-east-1"
+
+  # Internal service DNS (Kubernetes Services)
+  DOCUMIND_INGESTION_URL:    "http://ingestion-svc.documind.svc.cluster.local:8082"
+  DOCUMIND_RETRIEVAL_URL:    "http://retrieval-svc.documind.svc.cluster.local:8083"
+  DOCUMIND_INFERENCE_URL:    "http://inference-svc.documind.svc.cluster.local:8084"
+  DOCUMIND_EVALUATION_URL:   "http://evaluation-svc.documind.svc.cluster.local:8085"
+  DOCUMIND_GOVERNANCE_URL:   "http://governance-svc.documind.svc.cluster.local:8086"
+  DOCUMIND_FINOPS_URL:       "http://finops-svc.documind.svc.cluster.local:8087"
+
+  # Data stores
+  DOCUMIND_PG_HOST:          "postgresql.documind-data.svc.cluster.local"
+  DOCUMIND_PG_PORT:          "5432"
+  DOCUMIND_PG_DB:            "documind"
+  DOCUMIND_REDIS_URL:        "redis://redis.documind-data.svc.cluster.local:6379/0"
+  DOCUMIND_QDRANT_URL:       "http://qdrant.documind-data.svc.cluster.local:6333"
+  DOCUMIND_NEO4J_URI:        "bolt://neo4j.documind-data.svc.cluster.local:7687"
+  DOCUMIND_KAFKA_BOOTSTRAP:  "kafka.documind-data.svc.cluster.local:9092"
+  DOCUMIND_OLLAMA_URL:       "http://ollama.documind-data.svc.cluster.local:11434"
+  DOCUMIND_MINIO_ENDPOINT:   "minio.documind-data.svc.cluster.local:9000"
+
+  # Observability
+  DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.documind-observ.svc.cluster.local:4317"
+
+  # JWT
+  DOCUMIND_JWT_ISSUER:       "documind"
+  DOCUMIND_JWT_AUDIENCE:     "documind-services"
+  DOCUMIND_JWT_ACCESS_TTL:   "900"
+  DOCUMIND_JWT_REFRESH_TTL:  "604800"

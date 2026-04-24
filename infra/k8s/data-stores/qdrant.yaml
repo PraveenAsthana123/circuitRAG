@@ -1,0 +1,38 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: qdrant
+  namespace: documind-data
+spec:
+  serviceName: qdrant
+  replicas: 1   # bump + add cluster config in prod
+  selector: { matchLabels: { app: qdrant } }
+  template:
+    metadata: { labels: { app: qdrant } }
+    spec:
+      containers:
+        - name: qdrant
+          image: qdrant/qdrant:v1.11.0
+          ports:
+            - { name: http, containerPort: 6333 }
+            - { name: grpc, containerPort: 6334 }
+          volumeMounts: [{ name: data, mountPath: /qdrant/storage }]
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          resources: { requests: { cpu: "250m", memory: "512Mi" }, limits: { cpu: "2", memory: "4Gi" } }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 50Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: qdrant, namespace: documind-data }
+spec:
+  selector: { app: qdrant }
+  ports:
+    - { name: http, port: 6333, targetPort: http }
+    - { name: grpc, port: 6334, targetPort: grpc }

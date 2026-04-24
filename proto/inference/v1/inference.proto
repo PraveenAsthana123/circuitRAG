@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package documind.inference.v1;
+option go_package = "github.com/documind/proto/inference/v1;inferencev1";
+
+import "common/v1/common.proto";
+
+// Inference service — prompt construction, LLM orchestration, guardrails,
+// streaming, circuit breakers (including the CCB).
+// Design Area 25.
+
+service InferenceService {
+  rpc Health (documind.common.v1.HealthRequest) returns (documind.common.v1.HealthReply);
+
+  // Non-streaming ask — returns the complete answer with citations.
+  rpc Ask (AskRequest) returns (AskReply);
+
+  // Server-streaming ask — tokens stream back; CCB can interrupt mid-flight
+  // and the final chunk carries finish_reason.
+  rpc AskStream (AskRequest) returns (stream AskDelta);
+}
+
+message AskRequest {
+  documind.common.v1.RequestMeta meta = 1;
+  string query    = 2;
+  int32  top_k    = 3;
+  string model    = 4;      // override default tenant model
+  string strategy = 5;      // hybrid | vector | graph
+  bool   debug    = 6;
+}
+
+message Citation {
+  string chunk_id    = 1;
+  string document_id = 2;
+  int32  page_number = 3;
+  string snippet     = 4;
+}
+
+message AskReply {
+  string answer            = 1;
+  repeated Citation citations = 2;
+  string model             = 3;
+  string prompt_version    = 4;
+  int32  tokens_prompt     = 5;
+  int32  tokens_completion = 6;
+  float  confidence        = 7;
+  string correlation_id    = 8;
+  string finish_reason     = 9;   // complete | cognitive_interrupt | token_budget | error
+  map<string, string> debug = 10;
+}
+
+message AskDelta {
+  oneof payload {
+    string token    = 1;
+    AskReply final  = 2;  // sent as the last message
+  }
+}

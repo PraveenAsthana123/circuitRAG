@@ -1,0 +1,56 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retrieval-svc
+  namespace: documind
+  labels: { app: retrieval-svc, tier: data-plane }
+spec:
+  replicas: 3
+  strategy: { rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app: retrieval-svc } }
+  template:
+    metadata:
+      labels: { app: retrieval-svc, version: stable }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "8083"
+    spec:
+      serviceAccountName: retrieval-svc
+      securityContext: { runAsNonRoot: true, runAsUser: 10001 }
+      containers:
+        - name: retrieval
+          image: documind/retrieval-svc:latest
+          ports: [{ name: http, containerPort: 8083 }, { name: grpc, containerPort: 9093 }]
+          envFrom:
+            - configMapRef: { name: documind-config }
+            - secretRef:    { name: documind-secrets }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "2",    memory: "1Gi" }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata: { name: retrieval-svc, namespace: documind }
+spec:
+  selector: { app: retrieval-svc }
+  ports:
+    - { name: http, port: 8083, targetPort: http }
+    - { name: grpc, port: 9093, targetPort: grpc }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: retrieval-svc-hpa, namespace: documind }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: retrieval-svc }
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }

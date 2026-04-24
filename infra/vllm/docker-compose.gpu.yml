@@ -1,0 +1,100 @@
+# ============================================================================
+# DocuMind — GPU override with vLLM
+# ============================================================================
+# Compose override that REPLACES the Ollama service with a vLLM server on GPU.
+# Run with:
+#   docker compose -f docker-compose.yml -f infra/vllm/docker-compose.gpu.yml up -d
+#
+# Requirements on the host:
+#   - NVIDIA GPU with compute capability >= 7.0 (V100 / T4 / A10 / A100 / H100)
+#   - NVIDIA driver >= 535
+#   - nvidia-container-toolkit installed + `docker info | grep -i nvidia` shows it
+#
+# vLLM is an OpenAI-compatible inference server; when you point
+# DOCUMIND_OLLAMA_URL at it and set DOCUMIND_OLLAMA_LLM_MODEL to the
+# served name, the inference-svc does NOT need code changes. Same holds
+# for embeddings — swap the embedding model's served name to one vLLM is
+# hosting.
+#
+# Throughput vs Ollama: vLLM is typically 5-20x faster on the same GPU
+# thanks to PagedAttention + continuous batching. Downside: bigger image,
+# tighter CUDA requirements.
+# ============================================================================
+
+name: documind
+
+services:
+  ollama:
+    # Neutralize the stock Ollama container — we ship vLLM instead.
+    profiles: ["disabled"]
+
+  vllm:
+    image: vllm/vllm-openai:v0.6.2
+    container_name: documind-vllm
+    restart: unless-stopped
+    ipc: host                       # vLLM wants host IPC for NCCL
+    ports:
+      - "11434:8000"                # reuse the Ollama port so no env-var changes
+    command:
+      - --model
+      - meta-llama/Meta-Llama-3.1-8B-Instruct
+      - --served-model-name
+      - llama3.1:8b                 # matches DOCUMIND_OLLAMA_LLM_MODEL
+      - --dtype
+      - auto
+      - --max-model-len
+      - "8192"
+      - --gpu-memory-utilization
+      - "0.90"
+      - --tensor-parallel-size
+      - "1"                         # set to N GPUs for multi-GPU tensor parallelism
+    environment:
+      HF_TOKEN: "${HF_TOKEN:-}"     # gated models need a HuggingFace token
+    volumes:
+      - ./data/vllm-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s            # vLLM takes a while to load weights
+
+  # Optional: a SECOND vLLM instance for embeddings (e.g. BGE-M3).
+  vllm-embed:
+    image: vllm/vllm-openai:v0.6.2
+    container_name: documind-vllm-embed
+    restart: unless-stopped
+    ipc: host
+    ports:
+      - "11435:8000"
+    command:
+      - --model
+      - BAAI/bge-m3
+      - --served-model-name
+      - nomic-embed-text            # keeps compat with existing env var
+      - --task
+      - embedding
+      - --gpu-memory-utilization
+      - "0.25"
+    volumes:
+      - ./data/vllm-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s

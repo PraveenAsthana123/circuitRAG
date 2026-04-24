@@ -1,0 +1,47 @@
+---
+# Kiali configuration — points at the same Prometheus + Jaeger the rest of
+# the stack uses. When DocuMind is deployed to Kind + Istio, Kiali reads
+# mesh topology from the Istio control plane directly and produces a live
+# service-graph. In the docker-compose dev setup, it still shows the
+# non-mesh metrics + traces for quick visual debugging.
+
+server:
+  port: 20001
+  web_root: /kiali
+
+auth:
+  strategy: anonymous
+
+deployment:
+  accessible_namespaces: ["**"]
+  logger:
+    log_format: json
+    log_level: info
+
+external_services:
+  istio:
+    config_map_name: istio
+    istio_sidecar_injector_config_map_name: istio-sidecar-injector
+    istiod_deployment_name: istiod
+    root_namespace: istio-system
+  prometheus:
+    url: http://prometheus:9090
+  grafana:
+    enabled: true
+    in_cluster_url: http://grafana:3000
+    url: http://localhost:3001
+  tracing:
+    enabled: true
+    provider: jaeger
+    in_cluster_url: http://jaeger:16686
+    url: http://localhost:16686
+
+kiali_feature_flags:
+  disabled_features: []
+  validations:
+    ignore: []
+
+server_handler_config:
+  cors:
+    allowed_origins:
+      - "*"

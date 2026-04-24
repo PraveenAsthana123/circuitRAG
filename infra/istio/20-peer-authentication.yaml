@@ -1,0 +1,20 @@
+---
+# Enforce mTLS between every service (Design Area 3 — Trust Boundary).
+# Mode STRICT rejects plain-text traffic within the namespace.
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: documind
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: documind-data
+spec:
+  mtls:
+    mode: STRICT

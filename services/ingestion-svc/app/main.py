@@ -15,9 +15,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
+from documind_core.body_limit import BodyLimitMiddleware
 from documind_core.cache import Cache
 from documind_core.config import get_settings
 from documind_core.db_client import DbClient
+from documind_core.idempotency import IdempotencyStore
+from documind_core.idempotency_middleware import IdempotencyMiddleware
 from documind_core.logging_config import setup_logging
 from documind_core.middleware import (
     CorrelationIdMiddleware,
@@ -41,6 +44,7 @@ from app.embedding import OllamaEmbedder
 from app.parsers import ParserRegistry
 from app.repositories import ChunkRepo, DocumentRepo, Neo4jRepo, QdrantRepo, SagaRepo
 from app.routers import documents_router, health_router
+from app.saga import SagaRecoveryWorker
 from app.services import BlobService, IngestionService
 
 log = logging.getLogger(__name__)
@@ -122,6 +126,17 @@ def create_app() -> FastAPI:
         instrument_httpx()
         await qdrant_repo.ensure_collection()
         await neo4j_repo.ensure_constraints()
+
+        # Crash-recovery: compensate stale sagas from a previous run before
+        # accepting any new traffic. Runs once at startup; non-fatal on error.
+        try:
+            recovery = SagaRecoveryWorker(db=db)
+            n = await recovery.run_once()
+            if n:
+                log.warning("saga_recovery recovered=%d", n)
+        except Exception:
+            log.exception("saga_recovery_failed")
+
         app.state.ingestion_service = ingestion_service
         log.info("ingestion_service_ready model=%s dim=%d", embedder.model_name, embedder.dimension)
         try:
@@ -141,6 +156,21 @@ def create_app() -> FastAPI:
 
     # ----- Middleware (LIFO — last added runs first) ----------------------
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+    # Idempotency guard on write routes — duplicate X-Idempotency-Key
+    # returns the cached response. No-op on GETs.
+    app.add_middleware(
+        IdempotencyMiddleware,
+        store=IdempotencyStore(redis_client, ttl_seconds=86400),
+    )
+
+    # Body-size cap: 1MB default, 50MB on /upload.
+    app.add_middleware(
+        BodyLimitMiddleware,
+        max_bytes=1 * 1024 * 1024,
+        path_overrides={"/api/v1/documents/upload": settings.max_upload_mb * 1024 * 1024},
+    )
+
     app.add_middleware(
         RateLimitMiddleware,
         limiter=RateLimiter(redis_client),

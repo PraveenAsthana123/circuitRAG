@@ -1,0 +1,40 @@
+# Filebeat tails the JSON stdout of every docker container in the stack
+# and ships to Elasticsearch. Because every DocuMind service logs JSON via
+# documind_core.logging_config, Filebeat gets structured records out of the
+# box — correlation_id / tenant_id / service_name all become searchable
+# fields in Kibana.
+
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+      templates:
+        - config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/${data.container.id}/*.log
+              json.keys_under_root: true
+              json.add_error_key: true
+              json.message_key: message
+
+processors:
+  - add_docker_metadata: ~
+  - add_host_metadata: ~
+  - drop_fields:
+      fields: ["agent.ephemeral_id", "ecs.version", "agent.version", "host.os"]
+      ignore_missing: true
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "documind-%{+yyyy.MM.dd}"
+
+setup.template.name: "documind"
+setup.template.pattern: "documind-*"
+setup.template.enabled: true
+setup.ilm.enabled: false
+# Pre-create the data view on first connection so Kibana auto-shows it
+setup.dashboards.enabled: false
+
+logging.level: info
+logging.json: true
+logging.metrics.enabled: false

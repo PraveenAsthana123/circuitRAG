@@ -1,0 +1,48 @@
+---
+# Default-deny ingress and egress for the documind namespace.
+# Per-service NetworkPolicies (in infra/k8s/services/*.yaml) add back
+# the specific allowances each service needs. Default-deny is the
+# starting point for a zero-trust posture (Design Area 52 — Blast Radius).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: documind
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Everything in documind can talk to documind-data (the shared data plane).
+# Services declared above each have their own finer egress policy that
+# further narrows this allowance.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-data-plane-egress
+  namespace: documind
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { name: documind-data } }
+    - to:
+        - namespaceSelector: { matchLabels: { name: documind-observ } }
+    - to: []
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+---
+# Ingress gateway (Istio) → services in documind.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istio-ingress
+  namespace: documind
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { name: istio-system } }
+        - podSelector: {}   # intra-namespace

@@ -97,43 +97,9 @@ func CORS(allowed []string) func(http.Handler) http.Handler {
 	}
 }
 
-// JWTAuth is a stub — in production, this verifies the JWT against the
-// identity-svc's published public key. See docs/design-areas/22-identity.md.
-//
-// For the demo, we trust X-Tenant-ID + X-User-ID headers if present.
-func JWTAuth(_ string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Pass tenant + user through to downstream services
-			if t := r.Header.Get(TenantIDHeader); t != "" {
-				ctx := context.WithValue(r.Context(), CtxTenantID, t)
-				r = r.WithContext(ctx)
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-// RequireRole is a placeholder for RBAC enforcement.
-func RequireRole(_ ...string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// TODO: check JWT claims against required roles; 403 otherwise.
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-// RateLimit is a placeholder — the Python services implement full
-// sliding-window limiting; the gateway's version would talk to the same
-// Redis. See libs/py/documind_core/rate_limiter.py for the shape.
-func RateLimit(_ string, _ int, _ string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r)
-		})
-	}
-}
+// JWTAuth, RequireRole are implemented in jwt.go (RS256 + real verification).
+// RateLimit is implemented in ratelimit.go (Redis sliding window).
+// BodyLimit is implemented in bodylimit.go.
 
 func contains(list []string, s string) bool {
 	for _, x := range list {

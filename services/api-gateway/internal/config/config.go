@@ -7,33 +7,41 @@ import (
 )
 
 type Config struct {
-	HTTPPort         string
-	GRPCPort         string
-	RedisURL         string
-	JWTPublicKeyPath string
-	CORSOrigins      []string
-	UserLimitPerMin  int
-	AdminLimitPerMin int
+	HTTPPort          string
+	GRPCPort          string
+	RedisURL          string
+	JWTPublicKeyPath  string
+	JWTIssuer         string
+	JWTAudience       string
+	CORSOrigins       []string
+	UserLimitPerMin   int
+	AdminLimitPerMin  int
+	UploadLimitPerMin int
 
-	IngestionSvcURL  string
-	RetrievalSvcURL  string
-	InferenceSvcURL  string
-	GovernanceSvcURL string
+	IngestionSvcURL   string
+	RetrievalSvcURL   string
+	InferenceSvcURL   string
+	EvaluationSvcURL  string
+	GovernanceSvcURL  string
 }
 
 func Load() *Config {
 	return &Config{
-		HTTPPort:         env("API_GATEWAY_HTTP_PORT", "8080"),
-		GRPCPort:         env("API_GATEWAY_GRPC_PORT", "9090"),
-		RedisURL:         env("DOCUMIND_REDIS_URL", "redis://localhost:6379/0"),
-		JWTPublicKeyPath: env("DOCUMIND_JWT_PUBLIC_KEY_PATH", "./scripts/dev-keys/jwt-public.pem"),
-		CORSOrigins:      splitCSV(env("DOCUMIND_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")),
-		UserLimitPerMin:  envInt("DOCUMIND_RATE_LIMIT_API_PER_MIN", 100),
-		AdminLimitPerMin: envInt("DOCUMIND_RATE_LIMIT_ADMIN_PER_MIN", 50),
-		IngestionSvcURL:  env("DOCUMIND_INGESTION_URL", "http://localhost:8082"),
-		RetrievalSvcURL:  env("DOCUMIND_RETRIEVAL_URL", "http://localhost:8083"),
-		InferenceSvcURL:  env("DOCUMIND_INFERENCE_URL", "http://localhost:8084"),
-		GovernanceSvcURL: env("DOCUMIND_GOVERNANCE_URL", "http://localhost:8086"),
+		HTTPPort:          env("API_GATEWAY_HTTP_PORT", "8080"),
+		GRPCPort:          env("API_GATEWAY_GRPC_PORT", "9090"),
+		RedisURL:          env("DOCUMIND_REDIS_URL", "redis://localhost:6379/0"),
+		JWTPublicKeyPath:  env("DOCUMIND_JWT_PUBLIC_KEY_PATH", "./scripts/dev-keys/jwt-public.pem"),
+		JWTIssuer:         env("DOCUMIND_JWT_ISSUER", "documind-local"),
+		JWTAudience:       env("DOCUMIND_JWT_AUDIENCE", "documind-services"),
+		CORSOrigins:       splitCSV(env("DOCUMIND_CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")),
+		UserLimitPerMin:   envInt("DOCUMIND_RATE_LIMIT_API_PER_MIN", 100),
+		AdminLimitPerMin:  envInt("DOCUMIND_RATE_LIMIT_ADMIN_PER_MIN", 50),
+		UploadLimitPerMin: envInt("DOCUMIND_RATE_LIMIT_UPLOAD_PER_MIN", 10),
+		IngestionSvcURL:   env("DOCUMIND_INGESTION_URL", "http://localhost:8082"),
+		RetrievalSvcURL:   env("DOCUMIND_RETRIEVAL_URL", "http://localhost:8083"),
+		InferenceSvcURL:   env("DOCUMIND_INFERENCE_URL", "http://localhost:8084"),
+		EvaluationSvcURL:  env("DOCUMIND_EVALUATION_URL", "http://localhost:8085"),
+		GovernanceSvcURL:  env("DOCUMIND_GOVERNANCE_URL", "http://localhost:8086"),
 	}
 }
 

@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+// Common types shared across DocuMind services.
+// All tenant-scoped messages carry tenant_id on the wire so a misconfigured
+// call can't silently cross tenants.
+
+package documind.common.v1;
+option go_package = "github.com/documind/proto/common/v1;commonv1";
+
+// Standard request metadata every RPC embeds.
+message RequestMeta {
+  string correlation_id = 1;
+  string tenant_id      = 2;
+  string user_id        = 3;
+  repeated string roles = 4;
+  // Locale hint for error messages; empty = server default.
+  string locale         = 5;
+}
+
+// Consistent error envelope returned via gRPC status Details.
+message ErrorDetail {
+  string error_code     = 1;   // stable UPPER_SNAKE_CASE
+  string detail         = 2;   // human-readable
+  map<string, string> ctx = 3; // structured context (safe to log)
+  string correlation_id = 4;
+}
+
+// Pagination — use on every list RPC.
+message Pagination {
+  int32 offset = 1;
+  int32 limit  = 2;
+}
+
+message PaginationReply {
+  int32 total    = 1;
+  int32 offset   = 2;
+  int32 limit    = 3;
+  bool  has_more = 4;
+}
+
+// Health probe shared by every service.
+message HealthRequest {}
+message HealthReply {
+  string status  = 1;   // "ok" | "degraded"
+  string service = 2;
+  string version = 3;
+  map<string, string> checks = 4;  // dependency name → status
+}

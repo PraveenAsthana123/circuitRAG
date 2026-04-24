@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package documind.retrieval.v1;
+option go_package = "github.com/documind/proto/retrieval/v1;retrievalv1";
+
+import "common/v1/common.proto";
+
+// Retrieval service — hybrid vector + graph search, reranking, cache.
+// Design Area 24.
+
+service RetrievalService {
+  rpc Health  (documind.common.v1.HealthRequest) returns (documind.common.v1.HealthReply);
+  rpc Retrieve (RetrieveRequest) returns (RetrieveReply);
+}
+
+message RetrieveRequest {
+  documind.common.v1.RequestMeta meta = 1;
+  string query  = 2;
+  int32  top_k  = 3;
+  string strategy = 4;                        // hybrid | vector | graph
+  map<string, string> filters = 5;
+  repeated string include_sources = 6;        // vector, graph, metadata
+}
+
+message RetrievedChunk {
+  string chunk_id      = 1;
+  string document_id   = 2;
+  string text          = 3;
+  float  score         = 4;
+  string source        = 5;                   // vector | graph | metadata
+  int32  page_number   = 6;
+  map<string, string> metadata = 7;
+}
+
+message RetrieveReply {
+  repeated RetrievedChunk chunks = 1;
+  float  latency_ms  = 2;
+  string strategy    = 3;
+  bool   cached      = 4;
+  string breaker_state = 5;                   // closed | half_open | open
+}

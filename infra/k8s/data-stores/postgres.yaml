@@ -1,0 +1,44 @@
+---
+# PostgreSQL for documind-data. Production-grade deployment uses
+# CloudNativePG operator (https://cloudnative-pg.io) or similar — this
+# is a single-pod StatefulSet for Kind-local development.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgresql
+  namespace: documind-data
+spec:
+  serviceName: postgresql
+  replicas: 1
+  selector: { matchLabels: { app: postgresql } }
+  template:
+    metadata: { labels: { app: postgresql } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          args: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=256MB", "-c", "wal_level=replica"]
+          env:
+            - { name: POSTGRES_DB,       value: "documind" }
+            - { name: POSTGRES_USER,     value: "documind" }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: documind-data-secrets, key: pg-password } } }
+            - { name: PGDATA,            value: "/var/lib/postgresql/data/pgdata" }
+          ports: [{ name: pg, containerPort: 5432 }]
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "documind"] }
+            periodSeconds: 5
+          resources: { requests: { cpu: "250m", memory: "512Mi" }, limits: { cpu: "2", memory: "2Gi" } }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 20Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgresql, namespace: documind-data }
+spec:
+  selector: { app: postgresql }
+  ports: [{ name: pg, port: 5432, targetPort: pg }]

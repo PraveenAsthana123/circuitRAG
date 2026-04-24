@@ -1,0 +1,180 @@
+---
+# Remaining services — same shape, shorter because they're smaller.
+# Each has: Deployment + Service + HPA. NetworkPolicies live per-svc too
+# but for brevity are condensed into the namespace-default egress policy
+# at infra/k8s/base/03-netpol-default.yaml.
+
+# ============================================================================
+# identity-svc
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: identity-svc, namespace: documind, labels: { app: identity-svc, tier: control-plane } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: identity-svc } }
+  template:
+    metadata: { labels: { app: identity-svc, version: stable } }
+    spec:
+      serviceAccountName: identity-svc
+      containers:
+        - name: identity
+          image: documind/identity-svc:latest
+          ports: [{ name: http, containerPort: 8081 }, { name: grpc, containerPort: 9091 }]
+          envFrom:
+            - configMapRef: { name: documind-config }
+            - secretRef:    { name: documind-secrets }
+          resources: { requests: { cpu: "100m", memory: "128Mi" }, limits: { cpu: "500m", memory: "512Mi" } }
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 5 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: identity-svc, namespace: documind }
+spec:
+  selector: { app: identity-svc }
+  ports:
+    - { name: http, port: 8081, targetPort: http }
+    - { name: grpc, port: 9091, targetPort: grpc }
+---
+# ============================================================================
+# evaluation-svc
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: evaluation-svc, namespace: documind, labels: { app: evaluation-svc, tier: data-plane } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: evaluation-svc } }
+  template:
+    metadata: { labels: { app: evaluation-svc, version: stable } }
+    spec:
+      serviceAccountName: evaluation-svc
+      containers:
+        - name: evaluation
+          image: documind/evaluation-svc:latest
+          ports: [{ name: http, containerPort: 8085 }]
+          envFrom:
+            - configMapRef: { name: documind-config }
+            - secretRef:    { name: documind-secrets }
+          resources: { requests: { cpu: "200m", memory: "512Mi" }, limits: { cpu: "1", memory: "1Gi" } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: evaluation-svc, namespace: documind }
+spec:
+  selector: { app: evaluation-svc }
+  ports: [{ name: http, port: 8085, targetPort: http }]
+---
+# ============================================================================
+# governance-svc
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: governance-svc, namespace: documind, labels: { app: governance-svc, tier: control-plane } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: governance-svc } }
+  template:
+    metadata: { labels: { app: governance-svc, version: stable } }
+    spec:
+      serviceAccountName: governance-svc
+      containers:
+        - name: governance
+          image: documind/governance-svc:latest
+          ports: [{ name: http, containerPort: 8086 }]
+          envFrom:
+            - configMapRef: { name: documind-config }
+            - secretRef:    { name: documind-secrets }
+          resources: { requests: { cpu: "100m", memory: "128Mi" }, limits: { cpu: "500m", memory: "512Mi" } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: governance-svc, namespace: documind }
+spec:
+  selector: { app: governance-svc }
+  ports: [{ name: http, port: 8086, targetPort: http }]
+---
+# ============================================================================
+# finops-svc
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: finops-svc, namespace: documind, labels: { app: finops-svc, tier: control-plane } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: finops-svc } }
+  template:
+    metadata: { labels: { app: finops-svc, version: stable } }
+    spec:
+      serviceAccountName: finops-svc
+      containers:
+        - name: finops
+          image: documind/finops-svc:latest
+          ports: [{ name: http, containerPort: 8087 }]
+          envFrom:
+            - configMapRef: { name: documind-config }
+            - secretRef:    { name: documind-secrets }
+          resources: { requests: { cpu: "100m", memory: "128Mi" }, limits: { cpu: "500m", memory: "512Mi" } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: finops-svc, namespace: documind }
+spec:
+  selector: { app: finops-svc }
+  ports: [{ name: http, port: 8087, targetPort: http }]
+---
+# ============================================================================
+# observability-svc
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: observability-svc, namespace: documind, labels: { app: observability-svc, tier: management } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: observability-svc } }
+  template:
+    metadata: { labels: { app: observability-svc, version: stable } }
+    spec:
+      serviceAccountName: observability-svc
+      containers:
+        - name: observability
+          image: documind/observability-svc:latest
+          ports: [{ name: http, containerPort: 8088 }]
+          envFrom:
+            - configMapRef: { name: documind-config }
+          resources: { requests: { cpu: "100m", memory: "128Mi" }, limits: { cpu: "500m", memory: "512Mi" } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: observability-svc, namespace: documind }
+spec:
+  selector: { app: observability-svc }
+  ports: [{ name: http, port: 8088, targetPort: http }]
+---
+# ============================================================================
+# frontend (Next.js)
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: frontend, namespace: documind, labels: { app: frontend, tier: edge } }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend } }
+    spec:
+      serviceAccountName: frontend
+      containers:
+        - name: frontend
+          image: documind/frontend:latest
+          ports: [{ name: http, containerPort: 3000 }]
+          env:
+            - { name: NEXT_PUBLIC_API_BASE_URL, value: "https://documind.local" }
+          resources: { requests: { cpu: "100m", memory: "128Mi" }, limits: { cpu: "1", memory: "512Mi" } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: frontend, namespace: documind }
+spec:
+  selector: { app: frontend }
+  ports: [{ name: http, port: 3000, targetPort: http }]

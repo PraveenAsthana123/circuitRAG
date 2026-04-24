@@ -1,0 +1,122 @@
+# Prometheus alerting rules — AIops for DocuMind.
+#
+# Drop into prometheus.yml via `rule_files:` or mount as a ConfigMap in K8s.
+# Alerts fan out to observability-svc's AlertManager (not deployed here);
+# the observability-svc drives retrain triggers + HITL escalation.
+
+groups:
+  - name: documind-ai-quality
+    interval: 30s
+    rules:
+
+      # ── Retrieval quality drift ──────────────────────────────────────
+      - alert: RetrievalQualityDegraded
+        expr: avg_over_time(documind_retrieval_quality[10m]) < 0.35
+        for: 5m
+        labels: { severity: warning, team: ai }
+        annotations:
+          summary: "Retrieval quality breaker near open ({{ $value | printf \"%.2f\" }})"
+          description: |
+            Rolling avg top-score has been < 0.35 for 10 minutes.
+            Likely cause: corpus drift, embedding model issue, index rebuild needed.
+            Runbook: docs/runbooks/INCIDENT_RESPONSE.md § 2
+
+      - alert: RetrievalBreakerOpen
+        expr: sum(rate(documind_retrieval_quality_opens_total[5m])) > 0
+        for: 2m
+        labels: { severity: critical, team: ai }
+        annotations:
+          summary: "Retrieval quality breaker OPENED"
+          description: "The quality breaker opened — retrieval is serving garbage. Paging on-call."
+
+      # ── Cognitive Circuit Breaker (intrinsic interrupts) ─────────────
+      - alert: CCBInterruptRateHigh
+        expr: sum(rate(documind_ccb_interrupts_total[5m])) > 0.2
+        for: 10m
+        labels: { severity: warning, team: ai }
+        annotations:
+          summary: "Cognitive interrupts > 0.2/s for 10m"
+          description: |
+            The inference pipeline is aborting a notable fraction of generations.
+            Check: model regression, prompt version, retrieval quality.
+
+      - alert: CCBInterruptRateCritical
+        expr: sum(rate(documind_ccb_interrupts_total[5m])) > 1.0
+        for: 5m
+        labels: { severity: critical, team: ai }
+        annotations:
+          summary: "Cognitive interrupts > 1/s — users see fallbacks"
+          description: |
+            Look at documind_ccb_interrupts_total by signal label to find the
+            failing guard; consider rolling back the latest prompt / model.
+
+      # ── Agent loop / runaway ─────────────────────────────────────────
+      - alert: AgentLoopRateHigh
+        expr: sum(rate(documind_agent_stops_total{reason="loop_detected"}[5m])) > 0.05
+        for: 10m
+        labels: { severity: warning, team: ai }
+        annotations:
+          summary: "Agent loops detected > 0.05/s for 10m"
+          description: "Loop detection firing. Corpus may not cover the queries users are sending."
+
+      # ── Token budget / cost ──────────────────────────────────────────
+      - alert: TenantBudgetExceeded
+        expr: sum by (tenant) (rate(documind_token_breaker_rejects_total{reason="daily"}[15m])) > 0
+        for: 5m
+        labels: { severity: info, team: finops }
+        annotations:
+          summary: "Tenant {{ $labels.tenant }} hit daily token budget"
+          description: "Either the tenant is mis-calibrated or genuinely over-using."
+
+      # ── Observability breaker ────────────────────────────────────────
+      - alert: ObservabilityExportersDown
+        expr: sum(rate(documind_obs_breaker_skips_total[5m])) > 5
+        for: 5m
+        labels: { severity: warning, team: platform }
+        annotations:
+          summary: "Telemetry exports being skipped — collector / Jaeger / Loki unhealthy"
+          description: |
+            The observability breaker is open; metrics/traces are being dropped.
+            App is not affected (inverted polarity), but we're blind.
+
+      # ── Eval regression ──────────────────────────────────────────────
+      - alert: EvalFaithfulnessRegression
+        expr: |
+          (
+            avg_over_time(documind_eval_faithfulness[1h])
+            /
+            avg_over_time(documind_eval_faithfulness[24h] offset 7d)
+          ) < 0.95
+        for: 30m
+        labels: { severity: warning, team: ai }
+        annotations:
+          summary: "Answer faithfulness dropped > 5% vs baseline"
+          description: |
+            Trigger retrain / prompt review. See evaluation-svc
+            regression-gate output.
+
+      # ── Circuit breaker base metrics ─────────────────────────────────
+      - alert: CircuitBreakerOpen
+        expr: documind_circuit_breaker_state == 2
+        for: 3m
+        labels: { severity: critical, team: platform }
+        annotations:
+          summary: "Circuit breaker {{ $labels.name }} is OPEN"
+          description: "Dependency unhealthy for 3m. Auto-recovery after recovery_timeout."
+
+  - name: documind-slo
+    interval: 30s
+    rules:
+      - alert: QueryLatencySLOBreach
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="inference-svc"}[5m])) by (le)) > 3
+        for: 10m
+        labels: { severity: warning, team: ai }
+        annotations:
+          summary: "Inference p95 latency > 3s (SLO breach)"
+
+      - alert: ErrorRateSLOBreach
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.01
+        for: 10m
+        labels: { severity: critical, team: platform }
+        annotations:
+          summary: "5xx rate > 1% (SLO breach)"

@@ -1,0 +1,31 @@
+---
+# Ingress Gateway (Design Area 1 — System Boundary).
+# Terminates TLS at the mesh edge and hands traffic to the api-gateway pod.
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: documind-gateway
+  namespace: documind
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: documind-tls    # K8s Secret (TLS cert)
+      hosts:
+        - "documind.local"
+        - "*.documind.local"
+    # Plain HTTP listener — redirects to HTTPS.
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "documind.local"
+      tls:
+        httpsRedirect: true

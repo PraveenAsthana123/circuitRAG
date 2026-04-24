@@ -61,6 +61,8 @@ from .breakers import (
     ForbiddenPatternSignal,
     LogprobConfidenceSignal,
 )
+from .body_limit import BodyLimitMiddleware
+from .idempotency_middleware import IdempotencyMiddleware
 
 __all__ = [
     # Exceptions
@@ -95,4 +97,7 @@ __all__ = [
     "CitationDeadlineSignal",
     "ForbiddenPatternSignal",
     "LogprobConfidenceSignal",
+    # Safety middleware
+    "BodyLimitMiddleware",
+    "IdempotencyMiddleware",
 ]

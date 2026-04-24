@@ -1,0 +1,127 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: documind
+  labels: { app: api-gateway, tier: edge }
+spec:
+  replicas: 2
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: api-gateway }
+  template:
+    metadata:
+      labels: { app: api-gateway, version: stable }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "8080"
+        prometheus.io/path:   "/metrics"
+    spec:
+      serviceAccountName: api-gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector: { matchLabels: { app: api-gateway } }
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: gateway
+          image: documind/api-gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: documind-config }
+            - secretRef:    { name: documind-secrets, optional: true }
+          env:
+            - name: DOCUMIND_JWT_PUBLIC_KEY_PATH
+              value: /etc/documind/jwt/jwt-public.pem
+          volumeMounts:
+            - name: jwt, mountPath: /etc/documind/jwt, readOnly: true
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "1",    memory: "512Mi" }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+      volumes:
+        - name: jwt
+          secret:
+            secretName: documind-jwt
+            items:
+              - { key: jwt-public.pem, path: jwt-public.pem }
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: documind
+  labels: { app: api-gateway }
+spec:
+  selector: { app: api-gateway }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: documind
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+    - type: Resource
+      resource: { name: memory, target: { type: Utilization, averageUtilization: 75 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 300 }
+    scaleUp:   { stabilizationWindowSeconds: 0 }
+---
+# Egress allow-list — gateway can only reach internal services + redis.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-gateway-egress
+  namespace: documind
+spec:
+  podSelector:
+    matchLabels: { app: api-gateway }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app: ingestion-svc } }
+        - podSelector: { matchLabels: { app: retrieval-svc } }
+        - podSelector: { matchLabels: { app: inference-svc } }
+        - podSelector: { matchLabels: { app: evaluation-svc } }
+        - podSelector: { matchLabels: { app: governance-svc } }
+        - podSelector: { matchLabels: { app: identity-svc } }
+    - to:
+        - namespaceSelector: { matchLabels: { name: documind-data } }
+          podSelector: { matchLabels: { app: redis } }
+    - to: []   # DNS
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }

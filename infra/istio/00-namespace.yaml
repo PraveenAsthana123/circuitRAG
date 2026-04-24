@@ -1,0 +1,27 @@
+---
+# DocuMind namespaces (Design Area 6, 7, 8, 52).
+# Separating app, data, and observability limits blast radius — a bad
+# NetworkPolicy on `documind` can't disrupt the observability stack.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: documind
+  labels:
+    istio-injection: enabled
+    documind.io/plane: data
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: documind-data
+  labels:
+    istio-injection: enabled
+    documind.io/plane: data-stores
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: documind-observ
+  labels:
+    istio-injection: disabled   # observability sees ALL ingress traffic
+    documind.io/plane: management

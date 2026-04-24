@@ -1,0 +1,19 @@
+---
+# Telemetry API — wire tracing + access logs for Kiali / Jaeger.
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: default
+  namespace: documind
+spec:
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 100.0    # dev; drop to 1-5% in prod
+  accessLogging:
+    - providers:
+        - name: envoy
+      disabled: false
+  metrics:
+    - providers:
+        - name: prometheus

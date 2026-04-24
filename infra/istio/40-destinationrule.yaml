@@ -1,0 +1,77 @@
+---
+# DestinationRule — connection pools + outlier detection (Istio-level CB)
+# + subsets for canary (Design Areas 4, 49, 53).
+# This is the "infra-level" circuit breaker; application-level breakers
+# (libs/py/documind_core/breakers.py) are the second, quality-aware layer.
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: api-gateway-dr
+  namespace: documind
+spec:
+  host: api-gateway
+  trafficPolicy:
+    connectionPool:
+      tcp:  { maxConnections: 200 }
+      http: { http1MaxPendingRequests: 200, http2MaxRequests: 1000, maxRequestsPerConnection: 10 }
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 60s
+      maxEjectionPercent: 50
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: inference-svc-dr
+  namespace: documind
+spec:
+  host: inference-svc
+  trafficPolicy:
+    connectionPool:
+      tcp:  { maxConnections: 50 }
+      http: { http1MaxPendingRequests: 50, http2MaxRequests: 200 }
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 20s
+      baseEjectionTime: 90s
+      maxEjectionPercent: 50
+  subsets:
+    - name: stable
+      labels: { version: stable }
+    - name: canary
+      labels: { version: canary }
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: retrieval-svc-dr
+  namespace: documind
+spec:
+  host: retrieval-svc
+  trafficPolicy:
+    connectionPool:
+      tcp:  { maxConnections: 100 }
+      http: { http1MaxPendingRequests: 100, http2MaxRequests: 500 }
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 15s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ingestion-svc-dr
+  namespace: documind
+spec:
+  host: ingestion-svc
+  trafficPolicy:
+    connectionPool:
+      tcp:  { maxConnections: 50 }
+      http: { http1MaxPendingRequests: 50, http2MaxRequests: 200 }
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 60s
+      maxEjectionPercent: 50
