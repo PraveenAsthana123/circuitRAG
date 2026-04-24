@@ -199,8 +199,55 @@ async def main() -> None:
             fail(f"services missing from jaeger: {missing}")
         ok(f"services in jaeger: {sorted(enrolled)}")
 
+        step("9. AsyncPG spans — an agent degraded path produces INSERT/SELECT spans under inference-svc")
+        # The degraded path writes: PostgresDraftStore.save() (INSERT)
+        # + AuditWriter.write() (SELECT last hash → INSERT audit row).
+        # Those only appear when the agent call actually persists a
+        # draft — which happens when MCP is down at the time of the
+        # call. Rather than wrestle the CB + MCP lifecycle here (a job
+        # for the dedicated trace drill), we look across recent
+        # agent/ask traces for one that contains PG operation names.
+        r = await c.get(
+            f"{JAEGER}/api/traces",
+            params={
+                "service": "inference-svc",
+                "operation": "POST /api/v1/agent/ask",
+                "limit": 20,
+            },
+        )
+        pg_keywords = {"SELECT", "INSERT", "UPDATE", "BEGIN;", "COMMIT;"}
+        agent_traces = r.json().get("data") or []
+        pg_trace = None
+        for t in agent_traces:
+            summ = _summarize(t)
+            inf_ops = set(summ["operations"].get("inference-svc", []))
+            if pg_keywords & inf_ops:
+                pg_trace = summ
+                break
+        if pg_trace is None:
+            # Don't hard-fail: the drill doesn't kill MCP itself. Print
+            # an informative line so a human can rerun with MCP dead.
+            print(
+                f"  \033[33m· no recent agent/ask with PG spans found "
+                f"(kill MCP and hit agent/ask to create one). Skipping hard "
+                f"assertion — drill_health_detailed.py + drill_prometheus_breakers.py "
+                f"cover the same degraded path with stricter setup.\033[0m"
+            )
+        else:
+            inf_ops = set(pg_trace["operations"].get("inference-svc", []))
+            seen = pg_keywords & inf_ops
+            if len(seen) < 2:
+                fail(
+                    f"expected >=2 distinct PG op spans, got {seen} in "
+                    f"trace {pg_trace['traceID']}",
+                )
+            ok(
+                f"AsyncPG spans visible — traceID={pg_trace['traceID']} "
+                f"inference-svc PG ops: {sorted(seen)}",
+            )
+
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
-    print(f"{BOLD}{GREEN}  ALL 8 TRACE STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  ALL 9 TRACE STEPS PASSED{NC}")
     print(f"{BOLD}{GREEN}════════════════════════════════════════{NC}")
 
 

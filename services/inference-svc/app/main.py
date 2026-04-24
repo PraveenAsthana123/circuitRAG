@@ -18,6 +18,7 @@ from documind_core.middleware import (
     register_exception_handlers,
 )
 from documind_core.observability import (
+    instrument_asyncpg,
     instrument_fastapi,
     instrument_httpx,
     instrument_redis,
@@ -73,6 +74,10 @@ def create_app() -> FastAPI:
         app.state.obs_breaker = obs_breaker
         instrument_redis()
         instrument_httpx()
+        # PG queries get their own spans inside the trace tree —
+        # HITL draft save, audit row insert, draft lookup all become
+        # visible under /api/v1/agent/ask instead of invisible gaps.
+        instrument_asyncpg()
         app.state.rag_service = RagInferenceService(
             retrieval=retrieval,
             ollama=ollama,

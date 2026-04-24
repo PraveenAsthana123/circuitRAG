@@ -206,9 +206,34 @@ Trade-off: `mcp/server_hr.py` now has ~45 LoC of optional OTel setup.
 Kept in the `mcp/` package (no `documind_core` import) so the package
 stays consumable by any service that wants it.
 
+## Update: AsyncPG spans — DB queries now visible under inference-svc
+
+`instrument_asyncpg()` is now called from the inference-svc lifespan.
+The degraded path through `/api/v1/agent/ask` (MCP dead → draft
+persisted + audit row written) produces a 31-span trace with PG
+operations under `inference-svc`:
+
+```
+traceID=dba7babfebc56acd24f0c9a8959a1bf2  31 spans
+  inference-svc: BEGIN; / SELECT / INSERT / COMMIT; / EVALSHA /
+                 POST /api/v1/agent/ask + middleware
+  retrieval-svc: same 10 spans as before
+```
+
+Each SQL-level span carries `db.system=postgresql` and the full
+statement as `db.statement` — an operator searching Jaeger by
+`db.statement=INSERT INTO governance.action_drafts%` now gets every
+draft creation end-to-end with its parent request context.
+
+The drill's step 9 picks up any recent `agent/ask` trace that
+contains PG op names (`BEGIN;` / `COMMIT;` / `INSERT` / `SELECT`).
+If none found, it prints an informative hint rather than hard-failing
+— the trace drill doesn't own the CB + MCP lifecycle, so it doesn't
+guarantee the degraded path runs during its window.
+
 ## Remaining follow-ups
 
-_(MCP server-side span — done, see above.)_
+_(MCP server-side span, AsyncPG spans — both done, see above.)_
 - Activate `AsyncPGInstrumentor` in service lifespans so PG queries
   get spans (today DB calls are invisible in the trace tree).
 - Attach `tenant_id` and `correlation_id` as span attributes on the
