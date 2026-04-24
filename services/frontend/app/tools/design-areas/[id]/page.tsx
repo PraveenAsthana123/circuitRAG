@@ -1,10 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import CodeBlock from '../../../../components/CodeBlock';
+import { parseClassRef } from '../../../../lib/classref-parser';
 import {
   DESIGN_AREAS,
   STATUS_META,
   type DesignArea,
 } from '../../../../lib/design-areas';
+import { readRepoFile } from '../../../../lib/read-code';
 
 export async function generateStaticParams() {
   return DESIGN_AREAS.map((d) => ({ id: d.id }));
@@ -93,6 +96,18 @@ export default function DesignAreaDetail({ params }: Props) {
       <Section title="Comparison — with / without / alternatives">
         <ComparisonTable area={da} />
       </Section>
+
+      {(() => {
+        const paths = parseClassRef(da.classRef);
+        if (paths.length === 0) return null;
+        return (
+          <Section title="Real code">
+            {paths.map((p) => (
+              <CodeBlock key={p} path={p} code={readRepoFile(p, 250)} />
+            ))}
+          </Section>
+        );
+      })()}
 
       {neighbors.length > 0 && (
         <Section title={`Related in ${da.group}`}>

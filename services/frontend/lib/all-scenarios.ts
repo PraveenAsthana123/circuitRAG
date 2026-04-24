@@ -9,6 +9,12 @@ export type ScenarioRow = {
   problem: string;
   solution: string;
   example: string;
+  /** Optional richer fields — rendered when present. */
+  ipo?: { input: string; process: string; output: string };
+  pros?: string[];
+  cons?: string[];
+  challenges?: string[];
+  comparison?: { scenario: string; behavior: string }[];
 };
 
 export type ScenarioCategory = {
