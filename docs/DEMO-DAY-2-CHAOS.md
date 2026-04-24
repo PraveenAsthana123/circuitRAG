@@ -334,11 +334,29 @@ if current + cost > limit:          ← branch on stale count
 
 **Classic check-then-act race.** 150 concurrent workers all call `ZCARD=0` at the same moment, each one sees `0 + 1 ≤ 100`, each one allows itself through, then each one inserts. No mutual exclusion between the read and the reserve.
 
-### Fix pending (not shipped this drill)
+### Fix shipped — atomic Lua script + unique member
 
-Correct sliding-window limiters use a **Lua script** that does the ZREM + ZCARD + ZADD atomically in one Redis round-trip, with the count-vs-limit comparison happening on the server. Alternative: probabilistic token-bucket with `INCR` + TTL.
+Replaced the Python-side pipeline with a single Redis-server-executed Lua script that does ZREM + ZCARD + conditional ZADD in one atomic call. One extra sub-bug found during verification:
 
-For now: documented as a real production-blocking gap. At current rate-limiter implementation, a motivated user can burst 10× the configured limit before Redis state catches up.
+1. **First Lua attempt still failed** — 150 requests = 150 × 200, zcard=73.
+2. **Why:** concurrent requests arriving in the same millisecond all tried to `ZADD key <ms> <ms>:1` with the same member string. Redis ZADD is upsert-by-member, so they collapsed — only 73 distinct ms buckets hit.
+3. **Second fix:** pass a `uuid4().hex` as `ARGV[6]` so each call gets a unique member regardless of millisecond collisions.
+
+After:
+```
+=== tally ===
+    100 200
+     50 429
+
+=== Redis zcard (should be ≤ 100) ===
+100
+
+=== Retry-After on a 429 ===
+HTTP/1.1 429 Too Many Requests
+retry-after: 58
+```
+
+Exactly 100 allowed, exactly 50 rejected, ZCARD=100 (not 73, not 150), proper `Retry-After` header with seconds remaining in the window. Drill #8 closed.
 
 ### Gaps documented
 
@@ -376,6 +394,7 @@ For now: documented as a real production-blocking gap. At current rate-limiter i
 | 8 | `docker-compose.override.yml` | Kafka missing `user: "0:0"` → volume EACCES; `ports: !override` dropped 9094 EXTERNAL listener |
 | 9 | env contract | `DOCUMIND_KAFKA_BOOTSTRAP_SERVERS` doesn't bind — field is `kafka_bootstrap` so env is `DOCUMIND_KAFKA_BOOTSTRAP` |
 | 10 | env contract | ingestion-svc `DOCUMIND_REDIS_URL` missing → rate-limit state written to the **host** Redis, not our docker one (same class as drill #2 Ollama) |
-| 11 | `rate_limiter.py` | Sliding-window **check-then-act race**: 150 concurrent requests all read `ZCARD=0` before any `ZADD` — no 429s fired despite limit=100. Needs atomic Lua-script replacement. |
+| 11 | `rate_limiter.py` | Sliding-window **check-then-act race**: 150 concurrent requests all read `ZCARD=0` before any `ZADD` — no 429s fired despite limit=100. **FIXED:** atomic Lua script. |
+| 12 | `rate_limiter.py` Lua (caught on fix verification) | Same-millisecond concurrent requests collapsed onto the same `ZADD` member (`<ms>:1`) → only 73 of 150 stored. **FIXED:** pass `uuid4().hex` as member suffix. Now: 150 → 100 × 200 + 50 × 429, zcard=100 exactly. |
 
 Both would silently escape unit tests. Caught only by running the system + deliberately breaking it.

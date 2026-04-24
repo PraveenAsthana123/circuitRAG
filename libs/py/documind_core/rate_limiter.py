@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from dataclasses import dataclass
 
 import redis.asyncio as aioredis
@@ -64,8 +65,49 @@ class RateLimiter:
             )
     """
 
+    # -------------------------------------------------------------------
+    # Atomic sliding-window Lua script.
+    #
+    # Previous impl had a check-then-act race (caught in chaos drill #8):
+    # concurrent requests all read ZCARD before any ZADD, so 150 parallel
+    # requests under a limit of 100 all succeeded. This Lua script runs
+    # ENTIRELY on the Redis server in one round-trip, so the read + decide
+    # + reserve are a single serialized operation.
+    #
+    # KEYS[1] = rate-limit key
+    # ARGV[1] = now_ms            (current time in ms)
+    # ARGV[2] = window_start_ms   (cutoff for expiration)
+    # ARGV[3] = limit             (max allowed in window)
+    # ARGV[4] = cost              (units this request consumes)
+    # ARGV[5] = ttl_seconds       (key TTL for housekeeping)
+    #
+    # Returns: {allowed (0|1), current, oldest_score_ms_or_zero}
+    # -------------------------------------------------------------------
+    # ARGV[6] = request_id  (unique per call — prevents concurrent requests
+    #                       in the same millisecond from collapsing onto the
+    #                       same ZADD member. Caught in chaos drill #8 re-run.)
+    _CHECK_LUA = """
+    redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[2])
+    local current = tonumber(redis.call('ZCARD', KEYS[1]))
+    local limit = tonumber(ARGV[3])
+    local cost = tonumber(ARGV[4])
+    if current + cost > limit then
+      local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+      local oldest_score = 0
+      if oldest[2] then oldest_score = tonumber(oldest[2]) end
+      return {0, current, oldest_score}
+    end
+    for i = 1, cost do
+      redis.call('ZADD', KEYS[1], ARGV[1], ARGV[6] .. ':' .. tostring(i))
+    end
+    redis.call('EXPIRE', KEYS[1], tonumber(ARGV[5]))
+    return {1, current + cost, 0}
+    """
+
     def __init__(self, redis: aioredis.Redis) -> None:
         self._redis = redis
+        # Register the script once — EVALSHA is faster than EVAL on reuse.
+        self._check_script = redis.register_script(self._CHECK_LUA)
 
     async def check(
         self,
@@ -79,49 +121,41 @@ class RateLimiter:
         Reserve ``cost`` units from the bucket. Non-blocking — returns
         a :class:`LimitResult` you act on.
 
-        Implementation: sorted set where score = timestamp. Remove entries
-        older than the window, count remaining, and insert if under limit.
-        Pipelined into one Redis round-trip.
+        Implementation: atomic Lua script — ZREM + ZCARD + conditional
+        ZADD in one Redis round-trip. Fixed sliding-window TOCTOU race
+        caught in chaos drill #8 where 150 concurrent requests all
+        bypassed a limit of 100.
         """
         now_ms = int(time.time() * 1000)
         window_start = now_ms - window_seconds * 1000
+        # Unique member suffix — without this, concurrent requests within the
+        # same millisecond collapse onto the same ZADD member (Redis ZADD is
+        # upsert-by-member). Caught in chaos drill #8 re-run: zcard=73 after
+        # 150 concurrent requests hitting the same millisecond bucket.
+        request_id = uuid.uuid4().hex
 
         try:
-            pipe = self._redis.pipeline()
-            pipe.zremrangebyscore(key, 0, window_start)   # drop old
-            pipe.zcard(key)                                 # count current
-            pipe.expire(key, window_seconds + 1)            # housekeeping TTL
-            _, current, _ = await pipe.execute()
+            allowed, current, oldest_score = await self._check_script(
+                keys=[key],
+                args=[now_ms, window_start, limit, cost, window_seconds + 1, request_id],
+            )
         except (aioredis.ConnectionError, aioredis.TimeoutError, OSError) as exc:
             # Fail-open: if Redis is unreachable, allow the request. A rate
             # limiter that 5xxs every user during a cache outage is worse
             # than a rate limiter that temporarily can't enforce its limit.
-            # Log once per minute to avoid noise during sustained outage.
             log.warning("rate_limit_fail_open key=%s err=%s", key, exc)
             return LimitResult(allowed=True, remaining=limit, reset_in_seconds=0, limit=limit)
 
-        if current + cost > limit:
-            # Find oldest remaining entry to compute retry-after
-            oldest = await self._redis.zrange(key, 0, 0, withscores=True)
+        if not allowed:
             reset_in = window_seconds
-            if oldest:
-                oldest_ms = int(oldest[0][1])
-                reset_in = max(1, int((oldest_ms + window_seconds * 1000 - now_ms) / 1000))
-            log.info("rate_limited key=%s current=%d limit=%d", key, current, limit)
+            if oldest_score:
+                reset_in = max(1, int((int(oldest_score) + window_seconds * 1000 - now_ms) / 1000))
+            log.info("rate_limited key=%s current=%d limit=%d", key, int(current), limit)
             return LimitResult(allowed=False, remaining=0, reset_in_seconds=reset_in, limit=limit)
-
-        # Reserve by adding `cost` entries. Each distinct member guarantees
-        # sorted-set stores them; using now_ms + monotonic counter keeps
-        # members unique.
-        add_pipe = self._redis.pipeline()
-        for i in range(cost):
-            add_pipe.zadd(key, {f"{now_ms}:{i}": now_ms})
-        add_pipe.expire(key, window_seconds + 1)
-        await add_pipe.execute()
 
         return LimitResult(
             allowed=True,
-            remaining=limit - (current + cost),
+            remaining=max(0, limit - int(current)),
             reset_in_seconds=window_seconds,
             limit=limit,
         )
