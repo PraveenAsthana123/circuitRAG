@@ -5,8 +5,9 @@ from documind_core.exceptions import ValidationError
 from documind_core.schemas import HealthResponse
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.schemas import AskRequest, AskResponse
+from app.schemas import AgentAskRequest, AgentAskResponse, AskRequest, AskResponse
 from app.services import RagInferenceService
+from app.services.agent import AgentService
 
 router = APIRouter()
 
@@ -39,4 +40,28 @@ async def ask(
         correlation_id=correlation_id,
         request=body,
         include_debug=debug,
+    )
+
+
+def _agent_service(request: Request) -> AgentService:
+    svc = getattr(request.app.state, "agent_service", None)
+    if svc is None:
+        raise RuntimeError(
+            "agent_service disabled — set DOCUMIND_MCP_HR_URL to enable the agent path"
+        )
+    return svc
+
+
+@router.post("/api/v1/agent/ask", response_model=AgentAskResponse, tags=["agent"])
+async def agent_ask(
+    body: AgentAskRequest,
+    request: Request,
+    svc: AgentService = Depends(_agent_service),
+) -> AgentAskResponse:
+    tenant_id = getattr(request.state, "tenant_id", "") or ""
+    correlation_id = getattr(request.state, "correlation_id", "") or ""
+    if not tenant_id:
+        raise ValidationError("X-Tenant-ID header is required")
+    return await svc.ask(
+        tenant_id=tenant_id, correlation_id=correlation_id, request=body,
     )

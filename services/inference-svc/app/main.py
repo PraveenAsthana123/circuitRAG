@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -73,12 +74,32 @@ def create_app() -> FastAPI:
             max_new_tokens=settings.max_new_tokens,
             temperature=settings.temperature,
         )
+        # Agent service (RAG + MCP). Configured to skip MCP wiring if the
+        # URL is not set — services can run in "answer-only" mode without MCP.
+        from app.services.agent import AgentService
+        from mcp import MCPClient
+
+        mcp_url = os.getenv("DOCUMIND_MCP_HR_URL", "")
+        if mcp_url:
+            mcp_client = MCPClient(base_url=mcp_url)
+            app.state.mcp_client = mcp_client
+            app.state.agent_service = AgentService(
+                rag=app.state.rag_service, mcp=mcp_client,
+            )
+            log.info("agent_service_ready mcp_url=%s", mcp_url)
+        else:
+            app.state.mcp_client = None
+            app.state.agent_service = None
+            log.info("agent_service_disabled reason=no_mcp_url")
+
         log.info("inference_service_ready model=%s", ollama.model)
         try:
             yield
         finally:
             await retrieval.aclose()
             await ollama.aclose()
+            if app.state.mcp_client is not None:
+                await app.state.mcp_client.close()
             await redis_client.close()
 
     app = FastAPI(title="DocuMind — Inference Service", version="0.1.0", lifespan=lifespan)
