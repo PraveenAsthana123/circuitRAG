@@ -62,6 +62,8 @@ class RowResult:
     action: str
     status: str       # OK | BROKEN_HASH | BROKEN_CHAIN | MISSING_HASH
     detail: str = ""
+    expected_hash: str = ""   # what the verifier computed
+    stored_hash: str = ""     # what the row claimed
 
 
 def _dsn() -> str:
@@ -125,6 +127,8 @@ def _verify_rows(rows: list[asyncpg.Record]) -> list[RowResult]:
                 action=row["action"],
                 status="MISSING_HASH",
                 detail="entry_hash column is NULL or empty",
+                expected_hash="",
+                stored_hash="",
             ))
             last_hash_by_tenant[tenant] = stored_hash  # continue chain
             continue
@@ -140,6 +144,8 @@ def _verify_rows(rows: list[asyncpg.Record]) -> list[RowResult]:
                     f"previous_hash {stored_prev[:12] or '<empty>'}"
                     f" != expected {prev_expected[:12] or '<empty>'}"
                 ),
+                expected_hash=prev_expected,   # what the chain required
+                stored_hash=stored_prev,        # what the row carried
             ))
             last_hash_by_tenant[tenant] = stored_hash
             continue
@@ -167,6 +173,8 @@ def _verify_rows(rows: list[asyncpg.Record]) -> list[RowResult]:
                     f"entry_hash {stored_hash[:12]}..."
                     f" != recomputed {recomputed[:12]}..."
                 ),
+                expected_hash=recomputed,
+                stored_hash=stored_hash,
             ))
         else:
             results.append(RowResult(
@@ -237,13 +245,16 @@ async def _seal_breaks(
                 """
                 INSERT INTO governance.audit_log_breaks
                   (tenant_id, broken_row_id, broken_action, break_type,
-                   detail, verifier_host, verifier_run_id)
-                VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid)
+                   expected_hash, stored_hash, detail,
+                   verifier_host, verifier_run_id)
+                VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::uuid)
                 """,
                 r.tenant_id,
                 r.row_id,
                 r.action,
                 r.status,
+                r.expected_hash or None,
+                r.stored_hash or None,
                 r.detail,
                 host,
                 run_id,

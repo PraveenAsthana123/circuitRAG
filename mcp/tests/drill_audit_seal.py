@@ -130,18 +130,26 @@ def main() -> None:
         fail(f"expected 1 break row, got {breaks}")
     row = _psql(
         "SELECT break_type||'|'||broken_row_id::text||'|'||COALESCE(broken_action,'') "
+        "||'|'||COALESCE(expected_hash,'')||'|'||COALESCE(stored_hash,'') "
         f"FROM governance.audit_log_breaks WHERE tenant_id='{TENANT}'"
     )
-    break_type, row_id, action = row.split("|", 2)
+    break_type, row_id, action, expected_hash, stored_hash = row.split("|", 4)
     if break_type != "BROKEN_HASH":
         fail(f"wrong break_type: {break_type}")
     if row_id != target_id:
         fail(f"wrong broken_row_id: {row_id} != {target_id}")
     if action != "tampered.seal_drill":
         fail(f"wrong broken_action: {action!r}")
+    if not expected_hash or not stored_hash:
+        fail(
+            f"expected_hash / stored_hash not populated: "
+            f"expected={expected_hash!r} stored={stored_hash!r}"
+        )
+    if expected_hash == stored_hash:
+        fail(f"expected_hash == stored_hash would mean chain is fine: {expected_hash}")
     ok(
-        f"break_type={break_type} broken_row_id={row_id[:8]}... "
-        f"broken_action={action!r}"
+        f"break_type={break_type} row_id={row_id[:8]}... action={action!r} "
+        f"expected_hash={expected_hash[:12]}... stored_hash={stored_hash[:12]}..."
     )
 
     step("3. restore the tampered row; break row PERSISTS as evidence")
