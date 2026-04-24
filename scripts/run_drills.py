@@ -50,9 +50,16 @@ REPO = Path(__file__).resolve().parent.parent
 DRILL_DIR = REPO / "mcp" / "tests"
 PY_BIN = os.getenv("PYTHON_BIN", "/tmp/documind-venv/bin/python")
 
-DEFAULT_RESOURCES: frozenset[str] = frozenset({"mcp_hr", "inference", "pg"})
 RESOURCE_TAG_RE = re.compile(r"^#\s*RESOURCES\s*:\s*(.+)$", re.MULTILINE)
 RESULT_RE = re.compile(r"ALL\s+(\d+)\s+.*STEPS\s+PASSED")
+
+# Default (no tag): "touches everything with write-level exclusion."
+# Safe — untagged drills serialise against every other drill.
+DEFAULT_RESOURCES: frozenset[tuple[str, str]] = frozenset({
+    ("mcp_hr", "write"),
+    ("inference", "write"),
+    ("pg", "write"),
+})
 
 GREEN = "\033[32m"; RED = "\033[31m"; YELLOW = "\033[33m"; BOLD = "\033[1m"; NC = "\033[0m"
 
@@ -61,12 +68,33 @@ GREEN = "\033[32m"; RED = "\033[31m"; YELLOW = "\033[33m"; BOLD = "\033[1m"; NC 
 class Drill:
     name: str
     path: Path
-    resources: frozenset[str]
+    # Set of (resource_name, mode) pairs. mode ∈ {"read", "write"}.
+    # "read" drills sharing a resource can run concurrently; one
+    # "write" drill excludes all other holders of that resource.
+    resources: frozenset[tuple[str, str]]
     status: str = "pending"       # pending | running | passed | failed | skipped
     duration_s: float = 0.0
     steps_passed: int = 0
     exit_code: int | None = None
     tail: str = ""
+
+
+def _parse_resource_tokens(tokens: list[str]) -> frozenset[tuple[str, str]]:
+    """Turn a token list like ``['mcp_hr', 'inference:read']`` into
+    ``{('mcp_hr','write'), ('inference','read')}``. Bare tokens
+    default to write-level exclusion. ``:read`` modifier marks a
+    shared lock."""
+    out: set[tuple[str, str]] = set()
+    for t in tokens:
+        if ":" in t:
+            name, _, mode = t.partition(":")
+            mode = mode.strip().lower()
+            if mode not in ("read", "write"):
+                mode = "write"
+            out.add((name.strip(), mode))
+        else:
+            out.add((t.strip(), "write"))
+    return frozenset(out)
 
 
 def _discover(filter_terms: list[str]) -> list[Drill]:
@@ -81,9 +109,9 @@ def _discover(filter_terms: list[str]) -> list[Drill]:
             tokens = [t.strip() for t in m.group(1).split() if t.strip()]
             # "none" or "readonly" → empty set (parallel with everything)
             if tokens == ["none"] or tokens == ["readonly"]:
-                resources: frozenset[str] = frozenset()
+                resources: frozenset[tuple[str, str]] = frozenset()
             else:
-                resources = frozenset(tokens)
+                resources = _parse_resource_tokens(tokens)
         else:
             resources = DEFAULT_RESOURCES
         drills.append(Drill(name=name, path=path, resources=resources))
@@ -91,27 +119,59 @@ def _discover(filter_terms: list[str]) -> list[Drill]:
 
 
 class _ResourceTable:
-    """Per-resource busy flags; a drill acquires all its resources
-    atomically. Uses ``asyncio.Condition`` so a release reliably wakes
-    every waiter — an ``Event`` has a clear/set race where a third
-    acquire can clear the event between release and a waiter's wake-up,
-    leaving waiters parked forever."""
+    """Per-resource reader-count + writer-flag.
+
+    Semantics: a resource held in "read" mode by any drill permits
+    other "read" acquires on the same resource; a "write" acquire
+    needs the resource to have ZERO holders (no readers, no writer).
+    Classic read-write lock, per resource.
+
+    Uses ``asyncio.Condition`` + predicate-wait; an ``Event`` has a
+    clear/set race where a third acquire can clear the event between
+    a release and a waiter's wake-up, parking waiters forever. Hit
+    that bug first pass — the comment is the tombstone.
+    """
 
     def __init__(self) -> None:
-        self._busy: set[str] = set()
+        # resource_name → {"readers": int, "writer": bool}
+        self._state: dict[str, dict[str, int | bool]] = {}
         self._cond = asyncio.Condition()
 
-    async def acquire(self, resources: frozenset[str]) -> None:
-        async with self._cond:
-            # predicate-wait: wake, re-check, re-sleep if still conflicted
-            await self._cond.wait_for(
-                lambda: resources.isdisjoint(self._busy),
-            )
-            self._busy.update(resources)
+    def _compatible(self, resources: frozenset[tuple[str, str]]) -> bool:
+        for name, mode in resources:
+            s = self._state.get(name)
+            if s is None:
+                continue
+            if mode == "write":
+                # Need zero holders.
+                if s.get("writer") or (s.get("readers", 0) or 0) > 0:
+                    return False
+            else:  # read
+                # Need no writer; other readers are fine.
+                if s.get("writer"):
+                    return False
+        return True
 
-    async def release(self, resources: frozenset[str]) -> None:
+    async def acquire(self, resources: frozenset[tuple[str, str]]) -> None:
         async with self._cond:
-            self._busy.difference_update(resources)
+            await self._cond.wait_for(lambda: self._compatible(resources))
+            for name, mode in resources:
+                s = self._state.setdefault(name, {"readers": 0, "writer": False})
+                if mode == "write":
+                    s["writer"] = True
+                else:
+                    s["readers"] = (s.get("readers", 0) or 0) + 1
+
+    async def release(self, resources: frozenset[tuple[str, str]]) -> None:
+        async with self._cond:
+            for name, mode in resources:
+                s = self._state.get(name)
+                if not s:
+                    continue
+                if mode == "write":
+                    s["writer"] = False
+                else:
+                    s["readers"] = max(0, (s.get("readers", 0) or 0) - 1)
             self._cond.notify_all()
 
 
@@ -141,9 +201,14 @@ async def _run_one(
             t0 = time.monotonic()
             env = os.environ.copy()
             env["PYTHONPATH"] = str(REPO)
+            def _fmt(rs: frozenset[tuple[str, str]]) -> str:
+                if not rs:
+                    return "(none)"
+                return " ".join(
+                    n if m == "write" else f"{n}:read" for n, m in sorted(rs)
+                )
             print(
-                f"{YELLOW}▶ {drill.name}{NC} "
-                f"resources={sorted(drill.resources) or ['none']}",
+                f"{YELLOW}▶ {drill.name}{NC} resources={_fmt(drill.resources)}",
                 flush=True,
             )
             drill.exit_code, text = await asyncio.to_thread(
@@ -200,7 +265,13 @@ async def _run_all(
 def _list(drills: list[Drill]) -> None:
     print(f"{BOLD}Discovered drills:{NC}")
     for d in drills:
-        r = " ".join(sorted(d.resources)) or "(none — pure reads)"
+        if not d.resources:
+            r = "(none — pure reads)"
+        else:
+            r = " ".join(
+                n if m == "write" else f"{n}:read"
+                for n, m in sorted(d.resources)
+            )
         print(f"  {d.name:<40}  resources: {r}")
     print(f"\n{len(drills)} drills.")
 

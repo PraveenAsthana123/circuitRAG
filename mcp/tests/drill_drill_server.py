@@ -1,7 +1,13 @@
-# RESOURCES: mcp_drills
+# RESOURCES: mcp_drills mcp_hr:read
 """
 Drill: the mcp-server-drills server exposes drill.list + drill.run
 as real MCP tools.
+
+Resource note: exclusively uses mcp_drills (own server) but
+transitively reads mcp_hr because drill.run fires
+drill_tool_catalog_ttl which calls HR's /tools/list. Shared read
+is compatible with other readers of mcp_hr but excludes drills
+that RESTART HR.
 
 Meta: this drill is a drill for running drills. It proves the MCP
 wrapper works independently of the CLI runner.
