@@ -1,11 +1,14 @@
 import Link from 'next/link';
+import CodeBlock from '../../../components/CodeBlock';
 import DerivedRows from '../../../components/DerivedRows';
+import { parseClassRef } from '../../../lib/classref-parser';
 import {
   DESIGN_AREAS,
   GROUP_ORDER,
   STATUS_META,
   type DAStatus,
 } from '../../../lib/design-areas';
+import { readRepoFile } from '../../../lib/read-code';
 
 export const metadata = { title: '74 Design Features — DocuMind' };
 
@@ -89,6 +92,18 @@ export default function DesignAreasPage() {
                     <dl className="cb-card-dl da-row-derived">
                       <DerivedRows narr={{ name: da.name, problem: da.why, solution: da.how, example: da.risk, category: da.group }} />
                     </dl>
+                    {(() => {
+                      const paths = parseClassRef(da.classRef).slice(0, 2);
+                      if (paths.length === 0) return null;
+                      return (
+                        <div className="da-row-code">
+                          <div className="code-section-heading">Real code</div>
+                          {paths.map((p) => (
+                            <CodeBlock key={p} path={p} code={readRepoFile(p, 60)} />
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </article>
                 );
               })}

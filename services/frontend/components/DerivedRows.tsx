@@ -1,10 +1,11 @@
+import Mermaid from './Mermaid';
+
 /**
- * Shared renderer for the 6 derived one-topic-per-row sections.
- * Used on scenarios, database-scenarios, microservice-scenarios,
- * circuit-breakers-list, and the design-areas index.
- *
- * Accepts a minimal "narrative triple" — what-problem / pattern / example —
- * and derives IPO, pros, cons, challenges, comparison, interview.
+ * Shared renderer for all derived one-topic-per-row sections on the catalog
+ * pages. Accepts a minimal narrative triple and expands it into Flowchart,
+ * Sequence, Data Flow, Network Flow, IPO, Pros/Cons, Challenges, 5W, Edge
+ * cases, Limitations, Recommendations, Best practices, Comparison,
+ * Interview talking point.
  */
 
 export type Narrative = {
@@ -15,9 +16,100 @@ export type Narrative = {
   category?: string;
 };
 
+/** Sanitize a short label for safe use in mermaid node text. */
+function safe(s: string, maxLen = 60): string {
+  return s
+    .replace(/\.$/, '')
+    .replace(/[\n\r]/g, ' ')
+    .replace(/["`]/g, "'")
+    .replace(/[<>{}]/g, '')
+    .slice(0, maxLen);
+}
+
+function buildFlowchart(n: Narrative): string {
+  const name = safe(n.name, 40);
+  const problem = safe(n.problem, 80);
+  const solution = safe(n.solution, 80);
+  const example = safe(n.example, 80);
+  return `flowchart LR
+  t[Trigger: ${problem}] --> g{${name} applies?}
+  g -->|yes| a[Apply pattern: ${solution}]
+  g -->|no| b[Bypass / fallback path]
+  a --> o[Effect: ${example}]
+  b --> o`;
+}
+
+function buildSequence(n: Narrative): string {
+  const name = safe(n.name, 30);
+  const solution = safe(n.solution, 80);
+  const example = safe(n.example, 80);
+  return `sequenceDiagram
+  autonumber
+  participant C as Caller
+  participant P as ${name}
+  participant D as Dependency
+  C->>P: request (context + tenant)
+  P->>P: guard — is pattern applicable?
+  alt applicable
+    P->>D: ${solution}
+    D-->>P: result
+    P-->>C: response (shaped per contract)
+  else not applicable
+    P-->>C: fallback / error envelope
+  end
+  Note over P: Effect: ${example}`;
+}
+
+function buildDataFlow(n: Narrative): string {
+  const problem = safe(n.problem, 60);
+  const solution = safe(n.solution, 60);
+  const example = safe(n.example, 60);
+  return `flowchart LR
+  src([Input data: ${problem}]) --> proc[Process: ${solution}]
+  proc --> store[(Persist / emit event)]
+  proc --> out([Output: ${example}])
+  store -.audit.-> audit[(audit log)]
+  proc -.metrics + traces.-> obs[(OTel stack)]`;
+}
+
+function buildNetworkFlow(n: Narrative): string {
+  const name = safe(n.name, 30);
+  return `flowchart TB
+  subgraph edge [Edge]
+    lb[LB / NGINX]
+  end
+  subgraph gw [Gateway tier]
+    g[api-gateway]
+  end
+  subgraph mesh [Istio mesh]
+    s1[service owning ${name}]
+    s2[peer services]
+  end
+  subgraph data [Data tier]
+    pg[(Postgres)]
+    cache[(Redis)]
+    log[(ELK)]
+  end
+  client([client]) --> lb --> g
+  g -->|mTLS| s1
+  s1 <-->|mTLS| s2
+  s1 --> pg
+  s1 --> cache
+  s1 -.logs.-> log`;
+}
+
 export default function DerivedRows({ narr }: { narr: Narrative }) {
   return (
     <>
+      <dt>Flowchart</dt>
+      <dd><Mermaid chart={buildFlowchart(narr)} /></dd>
+      <dt>Sequence diagram</dt>
+      <dd><Mermaid chart={buildSequence(narr)} /></dd>
+      <dt>Data flow</dt>
+      <dd><Mermaid chart={buildDataFlow(narr)} /></dd>
+      <dt>Network flow</dt>
+      <dd><Mermaid chart={buildNetworkFlow(narr)} /></dd>
+
       <dt>Input</dt>
       <dd>Trigger: {narr.problem}</dd>
       <dt>Process</dt>

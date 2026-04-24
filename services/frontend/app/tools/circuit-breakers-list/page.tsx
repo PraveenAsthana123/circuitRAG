@@ -1,5 +1,7 @@
 import Link from 'next/link';
+import CodeBlock from '../../../components/CodeBlock';
 import DerivedRows from '../../../components/DerivedRows';
+import { readRepoFile } from '../../../lib/read-code';
 
 export const metadata = { title: 'Circuit Breakers — DocuMind' };
 
@@ -110,6 +112,17 @@ export default function CircuitBreakersList() {
               <dt>Code</dt>
               <dd><code>{b.codePath}</code></dd>
               <DerivedRows narr={{ name: b.name, problem: `Cascading failure when ${b.guards.toLowerCase()} misbehaves.`, solution: b.signals, example: `Implemented in ${b.codePath}.`, category: 'circuit breaker' }} />
+              {(() => {
+                // Extract first path from codePath (some entries use "path + note" format).
+                const m = b.codePath.match(/^([\w./\-]+\.py)/);
+                if (!m) return null;
+                return (
+                  <>
+                    <dt>Real code</dt>
+                    <dd><CodeBlock path={m[1]} code={readRepoFile(m[1], 80)} /></dd>
+                  </>
+                );
+              })()}
               <dt>Reference</dt>
               <dd>
                 <a href={b.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">

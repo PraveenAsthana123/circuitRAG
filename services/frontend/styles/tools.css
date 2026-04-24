@@ -745,6 +745,17 @@
   margin-bottom: var(--space-4);
 }
 
+/* Inline code section on catalog cards -------------------------------- */
+.da-row-code { margin-top: var(--space-4); }
+.code-section-heading {
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-2);
+}
+
 /* Tool Extras panel — one topic per row ----------------------------- */
 .tool-extras {
   margin-top: var(--space-6);
