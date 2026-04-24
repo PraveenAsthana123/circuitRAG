@@ -122,15 +122,25 @@ class HybridRetriever:
             latency_ms=latency_ms,
         )
 
-        # Cache
-        await self._cache.set_json(
-            key,
-            {
-                "chunks": [c.model_dump(mode="json") for c in chunks],
-                "strategy": request.strategy,
-            },
-            ttl=self._cache_ttl,
-        )
+        # Cache — BUT ONLY on non-degraded results. If every backend failed
+        # (len(ranked_lists) == 0) OR we got zero chunks back, skip the cache
+        # so a transient dependency outage doesn't poison retrieval for
+        # cache_ttl seconds. Found live via Phase-7 chaos drill on 2026-04-24.
+        backend_failed = len(ranked_lists) < len(coros)
+        if chunks and not backend_failed:
+            await self._cache.set_json(
+                key,
+                {
+                    "chunks": [c.model_dump(mode="json") for c in chunks],
+                    "strategy": request.strategy,
+                },
+                ttl=self._cache_ttl,
+            )
+        else:
+            log.info(
+                "retrieval_skip_cache chunks=%d backends_ok=%d/%d reason=degraded",
+                len(chunks), len(ranked_lists), len(coros),
+            )
 
         log.info(
             "retrieval_complete tenant=%s strategy=%s n=%d latency_ms=%.1f top_score=%.3f breaker=%s",
