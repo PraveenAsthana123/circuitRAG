@@ -69,3 +69,39 @@ class AgentAskResponse(AskResponse):
         default="answer",
         description="answer | action | action_declined",
     )
+
+
+# ---------------------------------------------------------------------------
+# HITL admin API — list + resolve persisted MCP drafts
+# ---------------------------------------------------------------------------
+class DraftSummary(BaseModel):
+    """One row from ``governance.action_drafts`` (pending or recent)."""
+
+    draft_id: str = Field(description='Human-visible token, e.g. "DRAFT-AB12CD34EF"')
+    tool: str
+    arguments: dict[str, Any]
+    tenant_id: str | None = None
+    correlation_id: str | None = None
+    reason: str = Field(description='Why the original call degraded: "cb_open" | "ConnectError" | "http_5xx"')
+    status: str = Field(description="pending | replayed | rejected")
+    created_at: float = Field(description="Unix epoch seconds")
+    replayed_at: float | None = None
+    replay_result: dict[str, Any] | None = None
+
+
+class DraftListResponse(BaseModel):
+    drafts: list[DraftSummary]
+    tenant_id: str | None = None
+    status_filter: str
+
+
+class DraftResolveResponse(BaseModel):
+    """Outcome of a replay attempt. Mirrors :class:`AgentAction`."""
+
+    draft_id: str
+    ok: bool
+    result: dict[str, Any] | None = None
+    error: dict[str, Any] | None = None
+    degraded: bool = Field(default=False, description="True if MCP is still down and the replay persisted a NEW draft")
+    new_draft_id: str | None = Field(default=None, description="Populated if the replay itself degraded")
+    idempotent_replay: bool = Field(default=False)

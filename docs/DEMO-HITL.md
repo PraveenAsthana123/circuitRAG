@@ -136,11 +136,11 @@ golden demo's pending row — exactly what the two scripts produced.
 
 ## Remaining follow-ups
 
-| Follow-up | Why |
+| Follow-up | Status |
 | --- | --- |
-| Admin API: `GET /api/v1/drafts?status=pending` + `POST /api/v1/drafts/{id}/resolve` | gives ops + governance teams a UI-ready replay path |
-| Scheduled replay worker | auto-retries pending drafts with exponential backoff after MCP recovery |
-| Audit log for every draft transition | paste into `governance.audit_log`; who/when/why persisted/replayed/rejected |
-| JWT scope check before `resolve_draft` | only role `hr:write` can resolve an `hr.*` draft |
+| Admin API: `GET /api/v1/drafts?status=pending` + `POST /api/v1/drafts/{id}/resolve` | ✅ closed — see [DEMO-ADMIN-API.md](DEMO-ADMIN-API.md) |
+| Scheduled replay worker | open — auto-retries pending drafts with exponential backoff after MCP recovery |
+| Audit log for every draft transition | open — paste into `governance.audit_log`; who/when/why persisted/replayed/rejected |
+| JWT scope check before `resolve_draft` | open — only role `hr:write` can resolve an `hr.*` draft |
 
-Each is a focused commit.
+Each remaining gap is a focused commit.
