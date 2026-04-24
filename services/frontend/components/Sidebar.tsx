@@ -14,6 +14,8 @@ const LINKS = [
   { href: '/tools/microservice-scenarios', label: '↳ Microservice Scenarios' },
   { href: '/tools/methodologies', label: '↳ Methodologies (TDD/BDD/…)' },
   { href: '/tools/code-governance', label: '↳ Code Governance' },
+  { href: '/tools/database-scenarios', label: '↳ Database Scenarios' },
+  { href: '/tools/scenarios', label: '↳ All Scenarios Catalog' },
   { href: '/admin', label: 'Admin' },
 ];
 

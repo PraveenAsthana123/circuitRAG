@@ -55,6 +55,16 @@ export default function ToolsIndex() {
             Standards, review, audit, debuggability — with per-design-area checklists.
           </span>
         </Link>
+        <Link href="/tools/database-scenarios" className="sysdesign-cta">
+          <span className="sysdesign-cta-title">💾 Database Scenarios</span>
+          <span className="sysdesign-cta-sub">Relational, vector, graph, cache, event-log, historical, blob, ORM.</span>
+        </Link>
+        <Link href="/tools/scenarios" className="sysdesign-cta">
+          <span className="sysdesign-cta-title">📚 All Scenarios Catalog</span>
+          <span className="sysdesign-cta-sub">
+            ~100 scenarios: chunking, embedding, retrieval, eval, PII, auth, Istio, CB, LB, CDN — one scroll.
+          </span>
+        </Link>
       </div>
       {CATEGORY_ORDER.map((cat) => {
         const tools = TOOLS.filter((t) => t.category === cat.key);
