@@ -1,0 +1,46 @@
+# Ingestion Service — Python 3.11+
+# Shared foundation (installed editable from the repo root)
+-e ../../libs/py
+
+# API
+fastapi>=0.115,<0.116
+uvicorn[standard]>=0.30,<0.33
+python-multipart>=0.0.10,<0.1        # file uploads
+
+# Data stores
+qdrant-client>=1.11,<2               # vector DB
+neo4j>=5.23,<6                       # graph DB
+redis>=5.0,<6                        # cache / idempotency / rate limit
+asyncpg>=0.29,<0.30                  # postgres
+
+# Object store
+minio>=7.2,<8                        # raw blob storage
+
+# Document parsing
+pypdf>=4.3,<5                        # PDF
+python-docx>=1.1,<2                  # DOCX
+beautifulsoup4>=4.12,<5              # HTML
+lxml>=5.3,<6                         # BS4 parser backend
+markdown>=3.7,<4                     # MD → HTML
+python-magic>=0.4,<0.5               # MIME sniffing
+
+# Text processing / chunking
+tiktoken>=0.8,<1                     # OpenAI-compatible tokenizer
+regex>=2024.9                        # multi-lingual regex (stdlib re can't)
+
+# HTTP client (for Ollama)
+httpx>=0.27,<0.28
+
+# Kafka
+aiokafka>=0.11,<1
+
+# Observability
+opentelemetry-sdk>=1.27,<2
+opentelemetry-instrumentation-fastapi>=0.48b0,<1
+prometheus-client>=0.20,<1
+
+# Dev / test
+pytest>=8
+pytest-asyncio>=0.23
+pytest-cov>=5
+httpx[http2]>=0.27

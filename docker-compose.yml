@@ -1,0 +1,271 @@
+# ============================================================================
+# DocuMind — Data-store + Ollama stack for local development
+# ============================================================================
+# Philosophy: this file runs ONLY the infrastructure tier. Application services
+# are run natively (go run / uvicorn / npm run dev) so you get fast rebuilds,
+# debuggers, and logs directly. This matches spec §6.3 "Dev Fallback".
+#
+# For full K8s + Istio deployment, see infra/kind/ and infra/k8s/.
+# ============================================================================
+
+name: documind
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────────
+  # PostgreSQL — primary relational store (schema-per-service, RLS enabled)
+  # ──────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: documind-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DOCUMIND_PG_USER:-documind}
+      POSTGRES_PASSWORD: ${DOCUMIND_PG_PASSWORD:-documind}
+      POSTGRES_DB: ${DOCUMIND_PG_DB:-documind}
+      # WAL mode + extra logging for dev
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DOCUMIND_PG_USER:-documind} -d ${DOCUMIND_PG_DB:-documind}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "log_statement=none"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Qdrant — vector DB
+  # ──────────────────────────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.11.0
+    container_name: documind-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # HTTP
+      - "6334:6334"   # gRPC
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__API_KEY: ${DOCUMIND_QDRANT_API_KEY:-}
+      QDRANT__LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q -O- http://localhost:6333/readyz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Neo4j — knowledge graph
+  # ──────────────────────────────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5.21-community
+    container_name: documind-neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"   # HTTP browser
+      - "7687:7687"   # Bolt
+    environment:
+      NEO4J_AUTH: "${DOCUMIND_NEO4J_USER:-neo4j}/${DOCUMIND_NEO4J_PASSWORD:-documind}"
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_initial__size: "512m"
+      NEO4J_dbms_memory_heap_max__size: "1G"
+      NEO4J_server_config_strict__validation_enabled: "false"
+    volumes:
+      - ./data/neo4j/data:/data
+      - ./data/neo4j/logs:/logs
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "${DOCUMIND_NEO4J_USER:-neo4j}", "-p", "${DOCUMIND_NEO4J_PASSWORD:-documind}", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Redis — cache, sessions, rate-limit counters
+  # ──────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    container_name: documind-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    command:
+      - "redis-server"
+      - "--appendonly"
+      - "yes"
+      - "--maxmemory"
+      - "512mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Kafka + Zookeeper — event backbone
+  # ──────────────────────────────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: documind-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - ./data/zookeeper/data:/var/lib/zookeeper/data
+      - ./data/zookeeper/log:/var/lib/zookeeper/log
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: documind-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9094:9094"   # external listener
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - ./data/kafka:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────────────────────────────────────────────────────────────
+  # MinIO — S3-compatible blob store for raw documents
+  # ──────────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    container_name: documind-minio
+    restart: unless-stopped
+    command: ["server", "--console-address", ":9001", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${DOCUMIND_MINIO_ACCESS_KEY:-documind}
+      MINIO_ROOT_PASSWORD: ${DOCUMIND_MINIO_SECRET_KEY:-documind-secret}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Admin UI
+    volumes:
+      - ./data/minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Ollama — local LLM + embedding server
+  # ──────────────────────────────────────────────────────────────────────
+  # On a machine with an NVIDIA GPU, uncomment the "deploy" block for ~10x speed.
+  ollama:
+    image: ollama/ollama:0.3.12
+    container_name: documind-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────────────────────────────────────────────────────────────
+  # OpenTelemetry Collector — receives traces/metrics/logs from every service
+  # ──────────────────────────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    container_name: documind-otel
+    restart: unless-stopped
+    command: ["--config=/etc/otel-config.yaml"]
+    volumes:
+      - ./infra/observability/otel-config.yaml:/etc/otel-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "9464:9464"   # Prometheus scrape
+    depends_on:
+      - jaeger
+      - prometheus
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Prometheus + Grafana + Jaeger (observability stack)
+  # ──────────────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: documind-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./data/prometheus:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: documind-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: documind
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./infra/observability/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: documind-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # UI
+      - "14250:14250"  # collector gRPC (internal)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+volumes: {}
+networks:
+  default:
+    name: documind

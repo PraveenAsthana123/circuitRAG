@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "query.lifecycle.v1",
+  "description": "CloudEvents envelope for query/answer-lifecycle events.",
+  "type": "object",
+  "required": ["id", "source", "type", "specversion", "time", "tenantid", "data"],
+  "properties": {
+    "id":            { "type": "string", "format": "uuid" },
+    "source":        { "type": "string" },
+    "type":          { "type": "string",
+                       "enum": ["query.received.v1", "query.retrieved.v1",
+                                "query.generated.v1", "query.delivered.v1",
+                                "query.flagged.v1"] },
+    "specversion":   { "type": "string", "const": "1.0" },
+    "time":          { "type": "string", "format": "date-time" },
+    "tenantid":      { "type": "string", "format": "uuid" },
+    "correlationid": { "type": "string" },
+    "data": {
+      "type": "object",
+      "properties": {
+        "query_id":         { "type": "string", "format": "uuid" },
+        "query":            { "type": "string" },
+        "retrieved_chunks": { "type": "integer", "minimum": 0 },
+        "prompt_version":   { "type": "string" },
+        "model":            { "type": "string" },
+        "tokens_prompt":    { "type": "integer", "minimum": 0 },
+        "tokens_completion":{ "type": "integer", "minimum": 0 },
+        "confidence":       { "type": "number", "minimum": 0, "maximum": 1 },
+        "latency_ms":       { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

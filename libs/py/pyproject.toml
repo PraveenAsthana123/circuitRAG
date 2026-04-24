@@ -1,0 +1,58 @@
+[project]
+name = "documind_core"
+version = "0.1.0"
+description = "Shared Python foundation for DocuMind services: config, exceptions, logging, middleware, observability, circuit breaker, rate limiter, RLS helpers, Kafka client, DB client."
+requires-python = ">=3.11"
+readme = "README.md"
+
+# Pin versions for reproducibility; each service still gets to override.
+dependencies = [
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.4,<3",
+    "structlog>=24.4,<25",
+    "httpx>=0.27,<0.28",
+    "redis>=5.0,<6",
+    "asyncpg>=0.29,<0.30",
+    "cryptography>=43,<44",
+    "opentelemetry-api>=1.27,<2",
+    "opentelemetry-sdk>=1.27,<2",
+    "opentelemetry-exporter-otlp>=1.27,<2",
+    "opentelemetry-instrumentation-fastapi>=0.48b0,<1",
+    "opentelemetry-instrumentation-asyncpg>=0.48b0,<1",
+    "opentelemetry-instrumentation-redis>=0.48b0,<1",
+    "opentelemetry-instrumentation-httpx>=0.48b0,<1",
+    "prometheus-client>=0.20,<1",
+    "aiokafka>=0.11,<1",
+    "jsonschema>=4.23,<5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "black>=24",
+    "mypy>=1.11",
+]
+
+[tool.setuptools]
+packages = ["documind_core"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "S", "B", "A", "C4", "SIM"]
+ignore = ["S101"]  # asserts are fine in tests
+
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

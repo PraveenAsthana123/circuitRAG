@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cost.events.v1",
+  "description": "CloudEvents envelope for per-request token usage.",
+  "type": "object",
+  "required": ["id", "source", "type", "time", "tenantid", "data"],
+  "properties": {
+    "id":            { "type": "string", "format": "uuid" },
+    "source":        { "type": "string" },
+    "type":          { "type": "string",
+                       "enum": ["cost.usage_recorded.v1",
+                                "cost.budget_warning.v1",
+                                "cost.budget_exceeded.v1"] },
+    "specversion":   { "type": "string", "const": "1.0" },
+    "time":          { "type": "string", "format": "date-time" },
+    "tenantid":      { "type": "string", "format": "uuid" },
+    "correlationid": { "type": "string" },
+    "data": {
+      "type": "object",
+      "required": ["tokens_prompt", "tokens_completion", "model"],
+      "properties": {
+        "tokens_prompt":      { "type": "integer", "minimum": 0 },
+        "tokens_completion":  { "type": "integer", "minimum": 0 },
+        "model":              { "type": "string" },
+        "shadow_cost_usd":    { "type": "number", "minimum": 0 },
+        "budget_percent":     { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

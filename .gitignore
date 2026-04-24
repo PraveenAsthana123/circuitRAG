@@ -1,0 +1,108 @@
+# ==========================================
+# DocuMind .gitignore
+# ==========================================
+# Block every secret-bearing / generated / local-only artifact before
+# git history is ever written. This file is the FIRST line of defence
+# against accidental credential leakage.
+
+# --- Secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+.encryption.key
+credentials.*
+secrets.*
+service-account*.json
+kaggle.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+*.egg-info/
+*.egg
+.tox/
+.nox/
+
+# --- Go ---
+# Binaries
+/services/api-gateway/api-gateway
+/services/identity-svc/identity-svc
+/services/governance-svc/governance-svc
+/services/finops-svc/finops-svc
+/services/observability-svc/observability-svc
+*.exe
+*.test
+*.prof
+go.sum.bak
+
+# --- Node / Frontend ---
+node_modules/
+dist/
+.vite/
+.next/
+.turbo/
+.eslintcache
+*.log
+
+# --- IDE / Editor ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- Docker / Data / Logs ---
+# All data volumes live under data/ locally
+data/postgres/
+data/qdrant/
+data/neo4j/
+data/redis/
+data/kafka/
+data/zookeeper/
+data/ollama/
+data/minio/
+logs/
+*.log
+
+# --- Generated protobuf/grpc ---
+*_pb2.py
+*_pb2_grpc.py
+*.pb.go
+*_grpc.pb.go
+
+# --- Coverage / Test reports ---
+coverage.out
+coverage.html
+.pytest_cache/
+test-results/
+
+# --- OS ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Temporary ---
+*.tmp
+*.bak
+*.old
+.remember/tmp/

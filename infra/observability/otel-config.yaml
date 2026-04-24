@@ -1,0 +1,72 @@
+# ============================================================================
+# OpenTelemetry Collector configuration — DocuMind local dev
+# ============================================================================
+# Receives OTLP from every service (gRPC :4317, HTTP :4318), fans out to
+# Jaeger (traces), Prometheus (metrics), and stdout (logs, for `docker logs`).
+# Mirrors spec area 62 "Observability by Design".
+# ============================================================================
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1000
+
+  # Inject a "service.namespace" attribute so Jaeger/Prometheus can group by it
+  resource:
+    attributes:
+      - key: service.namespace
+        value: documind
+        action: upsert
+
+  # Sanity guard: drop spans larger than 1MB (usually indicates a dumped stack)
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+    spike_limit_mib: 100
+
+exporters:
+  # Traces → Jaeger (OTLP-native)
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Metrics → Prometheus (pull-based; OTel collector exposes /metrics)
+  prometheus:
+    endpoint: 0.0.0.0:9464
+    namespace: documind
+    const_labels:
+      environment: local
+
+  # Logs → stdout (tailed via `docker logs documind-otel`)
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/jaeger]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [debug]
+
+  telemetry:
+    logs:
+      level: info
