@@ -40,6 +40,8 @@ from typing import Any
 
 import httpx
 
+from .drafts import DraftRecord, DraftStore, InMemoryDraftStore
+
 log = logging.getLogger(__name__)
 
 _SCHEMA_PATH = Path(__file__).parent / "schema" / "tool_schema.json"
@@ -100,12 +102,6 @@ class _MCPBreaker:
 
 
 # ---------------------------------------------------------------------------
-# In-memory draft store — replace with governance.hitl_queue in prod.
-# ---------------------------------------------------------------------------
-_DRAFTS: dict[str, dict[str, Any]] = {}
-
-
-# ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
 class MCPClient:
@@ -116,6 +112,7 @@ class MCPClient:
         timeout_s: float = 5.0,
         failure_threshold: int = 3,
         recovery_timeout: float = 30.0,
+        draft_store: DraftStore | None = None,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._client = httpx.AsyncClient(timeout=timeout_s)
@@ -125,6 +122,10 @@ class MCPClient:
             recovery_timeout=recovery_timeout,
         )
         self._tools_cache: list[dict[str, Any]] | None = None
+        # DraftStore is duck-typed; defaults to in-memory for tests and
+        # environments without a database. Production services pass a
+        # PostgresDraftStore from their lifespan.
+        self._drafts: DraftStore = draft_store or InMemoryDraftStore()
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -163,7 +164,7 @@ class MCPClient:
 
         # CB check
         if not self._breaker.allow():
-            return self._persist_draft(name, arguments, tenant_id, cid, reason="cb_open")
+            return await self._persist_draft(name, arguments, tenant_id, cid, reason="cb_open")
 
         payload = {"name": name, "arguments": arguments}
         if tenant_id:
@@ -179,7 +180,7 @@ class MCPClient:
             )
             if r.status_code >= 500:
                 self._breaker.record_failure()
-                return self._persist_draft(name, arguments, tenant_id, cid, reason=f"http_{r.status_code}")
+                return await self._persist_draft(name, arguments, tenant_id, cid, reason=f"http_{r.status_code}")
             data = r.json()
             self._breaker.record_success()
             if data.get("ok"):
@@ -191,11 +192,11 @@ class MCPClient:
             return ToolResult(ok=False, error=data.get("error"))
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
             self._breaker.record_failure()
-            return self._persist_draft(
+            return await self._persist_draft(
                 name, arguments, tenant_id, cid, reason=f"{type(exc).__name__}"
             )
 
-    def _persist_draft(
+    async def _persist_draft(
         self,
         name: str,
         arguments: dict[str, Any],
@@ -205,25 +206,73 @@ class MCPClient:
         reason: str,
     ) -> ToolResult:
         draft_id = f"DRAFT-{uuid.uuid4().hex[:10].upper()}"
-        _DRAFTS[draft_id] = {
-            "tool": name,
-            "arguments": arguments,
-            "tenant_id": tenant_id,
-            "correlation_id": correlation_id,
-            "reason": reason,
-            "persisted_at": time.time(),
-        }
+        record = DraftRecord(
+            draft_id=draft_id,
+            tool=name,
+            arguments=arguments,
+            tenant_id=tenant_id,
+            correlation_id=correlation_id,
+            reason=reason,
+        )
+        try:
+            await self._drafts.save(record)
+        except Exception as exc:  # noqa: BLE001 — persistence must not shadow the degradation signal
+            log.error(
+                "mcp_draft_persist_failed draft_id=%s tool=%s err=%s — returning degraded anyway",
+                draft_id, name, exc,
+            )
         log.warning(
             "mcp_draft_persisted draft_id=%s tool=%s reason=%s corr=%s",
             draft_id, name, reason, correlation_id,
         )
         return ToolResult(ok=False, degraded=True, draft_id=draft_id)
 
+    async def resolve_draft(
+        self,
+        draft_id: str,
+        *,
+        tenant_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> ToolResult:
+        """
+        Replay a previously-persisted draft once the MCP server is back.
+
+        Fetches the draft, re-invokes :meth:`call_tool` with the original
+        args (preserving correlation_id), and on success marks the draft
+        ``replayed`` with the result stored in ``replay_result``.
+        If the replay itself fails, the *new* degraded response is
+        returned; the original draft stays ``pending``.
+
+        ``tenant_id`` is required for RLS-enforced backends (Postgres).
+        """
+        record = await self._drafts.get(draft_id, tenant_id)
+        if record is None:
+            return ToolResult(ok=False, error={"code": "DRAFT_NOT_FOUND", "draft_id": draft_id})
+        if record.status != "pending":
+            return ToolResult(
+                ok=False,
+                error={"code": "DRAFT_NOT_PENDING", "status": record.status},
+            )
+        result = await self.call_tool(
+            record.tool,
+            record.arguments,
+            tenant_id=record.tenant_id,
+            correlation_id=record.correlation_id,
+            idempotency_key=idempotency_key or draft_id,  # deterministic replay
+        )
+        if result.ok and result.data is not None:
+            await self._drafts.mark_replayed(draft_id, result.data, record.tenant_id)
+        return result
+
+    async def list_pending_drafts(
+        self, tenant_id: str | None = None
+    ) -> list[DraftRecord]:
+        return await self._drafts.list_pending(tenant_id)
+
     @property
     def cb_state(self) -> str:
         return self._breaker.state
 
-    @staticmethod
-    def drafts() -> dict[str, dict[str, Any]]:
-        """Inspection helper — return the in-memory draft store."""
-        return _DRAFTS
+    @property
+    def draft_store(self) -> DraftStore:
+        return self._drafts

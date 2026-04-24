@@ -77,16 +77,38 @@ def create_app() -> FastAPI:
         # Agent service (RAG + MCP). Configured to skip MCP wiring if the
         # URL is not set — services can run in "answer-only" mode without MCP.
         from app.services.agent import AgentService
-        from mcp import MCPClient
+        from documind_core.db_client import DbClient
+        from mcp import MCPClient, PostgresDraftStore
+
+        # Postgres pool for durable draft persistence (governance.action_drafts).
+        # We keep it optional: if PG is unreachable at boot, the MCPClient
+        # falls back to an in-memory draft store so the service still starts.
+        app.state.db_client = None
+        draft_store = None
+        try:
+            db_client = DbClient(dsn=settings.postgres_dsn)
+            await db_client.connect()
+            app.state.db_client = db_client
+            draft_store = PostgresDraftStore(db_client)
+            log.info("draft_store_ready backend=postgres")
+        except Exception as exc:  # noqa: BLE001 — PG optional; log + continue
+            log.warning(
+                "draft_store_fallback_inmemory reason=%s — drafts will not survive restart",
+                exc,
+            )
 
         mcp_url = os.getenv("DOCUMIND_MCP_HR_URL", "")
         if mcp_url:
-            mcp_client = MCPClient(base_url=mcp_url)
+            mcp_client = MCPClient(base_url=mcp_url, draft_store=draft_store)
             app.state.mcp_client = mcp_client
             app.state.agent_service = AgentService(
                 rag=app.state.rag_service, mcp=mcp_client,
             )
-            log.info("agent_service_ready mcp_url=%s", mcp_url)
+            log.info(
+                "agent_service_ready mcp_url=%s draft_store=%s",
+                mcp_url,
+                "postgres" if draft_store else "in_memory",
+            )
         else:
             app.state.mcp_client = None
             app.state.agent_service = None
@@ -100,6 +122,8 @@ def create_app() -> FastAPI:
             await ollama.aclose()
             if app.state.mcp_client is not None:
                 await app.state.mcp_client.close()
+            if app.state.db_client is not None:
+                await app.state.db_client.close()
             await redis_client.close()
 
     app = FastAPI(title="DocuMind — Inference Service", version="0.1.0", lifespan=lifespan)

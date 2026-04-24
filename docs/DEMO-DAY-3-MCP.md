@@ -94,16 +94,16 @@ PYTHONPATH=. python mcp/tests/drill_e2e.py
 
 ## What's NOT in this first cut (honest gaps)
 
-| Gap | Next |
+| Gap | Status |
 | --- | --- |
-| JWT scope enforcement (`required_scopes`) in server | add middleware that reads JWT from Authorization header |
-| Tool-argument JSON Schema validation in server | load `schema/` at boot + jsonschema.validate each call |
-| Audit log persisted to `governance.audit_log` | replace in-memory `_DRAFTS` + add `audit_row` writer |
-| Stdio/SSE transport (canonical MCP) | swap FastAPI for `mcp-sdk` when the Python SDK stabilizes |
-| More servers (itsm, finance) | same pattern — 1 file per backend |
-| Integration into inference-svc agent flow | route agent actions through `MCPClient.call_tool` |
+| Integration into inference-svc agent flow | ✅ closed — commit `0625265` (new `/api/v1/agent/ask`) |
+| Durable draft persistence (was in-memory `_DRAFTS`) | ✅ closed — `governance.action_drafts` + `PostgresDraftStore`, see [DEMO-HITL.md](DEMO-HITL.md) |
+| JWT scope enforcement (`required_scopes`) in server | open — add middleware that reads JWT from Authorization header |
+| Tool-argument JSON Schema validation in server | open — load `schema/` at boot + jsonschema.validate each call |
+| Stdio/SSE transport (canonical MCP) | open — swap FastAPI for `mcp-sdk` when the Python SDK stabilizes |
+| More servers (itsm, finance) | open — same pattern, 1 file per backend |
 
-Each gap is a follow-up commit. The scaffold + contract + CB + idempotency are done.
+Each remaining gap is a follow-up commit. The scaffold + contract + CB + idempotency + agent integration + durable drafts are done.
 
 ## Bug scoreboard — still 7 fixed, 5 documented
 

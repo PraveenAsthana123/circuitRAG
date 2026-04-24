@@ -97,16 +97,16 @@ async def main() -> int:
         assert bad.cb_state == "open", f"expected OPEN, got {bad.cb_state}"
 
         # 6 — CB OPEN → draft persisted; no HTTP call happens
-        before_drafts = len(MCPClient.drafts())
+        before = await bad.list_pending_drafts()
         r = await bad.call_tool(
             "hr.leave_request",
             {"employee_id": "E999", "days": 2, "reason": "post-open"},
             tenant_id="acme",
         )
-        after_drafts = len(MCPClient.drafts())
+        after = await bad.list_pending_drafts()
         assert r.degraded and r.draft_id is not None, f"expected degraded+draft: {r}"
-        assert after_drafts == before_drafts + 1, f"draft not persisted"
-        print(f"[6] cb=OPEN → draft persisted id={r.draft_id} drafts_total={after_drafts}")
+        assert len(after) == len(before) + 1, "draft not persisted"
+        print(f"[6] cb=OPEN → draft persisted id={r.draft_id} drafts_total={len(after)}")
 
         # 7 — recovery
         print("[7] waiting recovery_timeout (5s) for HALF_OPEN probe...")
