@@ -42,6 +42,7 @@ from mcp.server_common import (
     build_auth,
     enforce_scope as _enforce_scope_common,
     handle_tool_call,
+    mount_metrics_endpoint,
     setup_server_otel,
 )
 
@@ -50,6 +51,7 @@ log = logging.getLogger("mcp.server_hr")
 
 app = FastAPI(title="DocuMind MCP — HR server")
 setup_server_otel(app, service_name="mcp-server-hr")
+mount_metrics_endpoint(app)
 
 _AUTH_REQUIRED, _VERIFIER = build_auth()
 

@@ -31,6 +31,7 @@ from mcp.server_common import (
     build_auth,
     enforce_scope as _enforce_scope_common,
     handle_tool_call,
+    mount_metrics_endpoint,
     setup_server_otel,
 )
 
@@ -39,6 +40,7 @@ log = logging.getLogger("mcp.server_itsm")
 
 app = FastAPI(title="DocuMind MCP — ITSM server")
 setup_server_otel(app, service_name="mcp-server-itsm")
+mount_metrics_endpoint(app)
 
 _AUTH_REQUIRED, _VERIFIER = build_auth()
 

@@ -45,6 +45,7 @@ from mcp.server_common import (
     build_auth,
     enforce_scope as _enforce_scope_common,
     handle_tool_call,
+    mount_metrics_endpoint,
     setup_server_otel,
 )
 
@@ -53,6 +54,7 @@ log = logging.getLogger("mcp.server_drills")
 
 app = FastAPI(title="DocuMind MCP — drill runner")
 setup_server_otel(app, service_name="mcp-server-drills")
+mount_metrics_endpoint(app)
 
 REPO = Path(__file__).resolve().parent.parent
 DRILL_DIR = REPO / "mcp" / "tests"

@@ -44,10 +44,61 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 log = logging.getLogger("mcp.server_common")
+
+
+# ---------------------------------------------------------------------------
+# Optional Prometheus — we expose per-tool call counters via /metrics.
+# Guarded by try/except so mcp/ stays consumable without prometheus_client
+# installed.
+# ---------------------------------------------------------------------------
+try:
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST,
+        Counter as _PromCounter,
+        generate_latest,
+    )
+    _PROM_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _PROM_AVAILABLE = False
+
+
+if _PROM_AVAILABLE:
+    _TOOL_CALLS = _PromCounter(
+        "documind_mcp_tool_calls_total",
+        "Count of MCP /tools/call invocations by outcome",
+        labelnames=["namespace", "tool", "outcome"],
+    )
+
+
+def _record_tool_call(*, namespace: str, tool: str, outcome: str) -> None:
+    """Called by handle_tool_call once per invocation.
+
+    outcome ∈ {"ok", "degraded", "replay", "error"}. Replay is the
+    idempotent-cache hit path — distinct from "ok" because it's
+    free from an infra cost perspective and useful to know about
+    separately.
+    """
+    if _PROM_AVAILABLE:
+        _TOOL_CALLS.labels(namespace=namespace, tool=tool, outcome=outcome).inc()
+
+
+def mount_metrics_endpoint(app: FastAPI) -> None:
+    """Mount a minimal GET /metrics on the app. Returns the default
+    prometheus_client registry in its text exposition format.
+    No-op when prometheus_client isn't installed."""
+    if not _PROM_AVAILABLE:
+        return
+
+    @app.get("/metrics", include_in_schema=False)
+    async def _metrics() -> Response:
+        return Response(
+            content=generate_latest(),
+            media_type=CONTENT_TYPE_LATEST,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -344,9 +395,26 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
             )
             if OTEL_AVAILABLE and sp is not None:
                 sp.set_attribute("mcp.idempotent_replay", True)
+            _record_tool_call(
+                namespace=service_label, tool=req.name, outcome="replay",
+            )
             return {**cached, "idempotent_replay": True}
 
-        return await dispatch(req, idempotency_key, cid)
+        try:
+            response = await dispatch(req, idempotency_key, cid)
+        except HTTPException as exc:
+            # 4xx from dispatch (e.g. 404 tool_not_found inside dispatch) —
+            # surface as "error" since a 5xx-shaped outcome isn't what
+            # happened. Upstream HTTPException raised from enforce_scope
+            # already incremented nothing because we never got here.
+            _record_tool_call(
+                namespace=service_label, tool=req.name,
+                outcome=f"http_{exc.status_code}",
+            )
+            raise
+        outcome = "ok" if response.get("ok") else "error"
+        _record_tool_call(namespace=service_label, tool=req.name, outcome=outcome)
+        return response
 
 
 __all__ = [
@@ -359,5 +427,6 @@ __all__ = [
     "enforce_scope",
     "get_tracer",
     "handle_tool_call",
+    "mount_metrics_endpoint",
     "setup_server_otel",
 ]
