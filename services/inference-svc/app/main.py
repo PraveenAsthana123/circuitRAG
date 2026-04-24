@@ -123,10 +123,38 @@ def create_app() -> FastAPI:
             app.state.agent_service = None
             log.info("agent_service_disabled reason=no_mcp_url")
 
+        # Draft replay worker — autonomous counterpart to the admin API.
+        # Opt-in via env; requires a tenant list because the runtime role
+        # is NOBYPASSRLS (can't enumerate tenants itself).
+        app.state.draft_replay_worker = None
+        if (
+            app.state.mcp_client is not None
+            and os.getenv("DOCUMIND_REPLAY_WORKER_ENABLED", "false").lower() == "true"
+        ):
+            from app.workers.draft_replay import DraftReplayWorker
+
+            tenants_csv = os.getenv("DOCUMIND_REPLAY_WORKER_TENANTS", "").strip()
+            tenants = [t.strip() for t in tenants_csv.split(",") if t.strip()]
+            if tenants:
+                worker = DraftReplayWorker(
+                    mcp_client=app.state.mcp_client,
+                    tenant_ids=tenants,
+                    interval_s=int(os.getenv("DOCUMIND_REPLAY_WORKER_INTERVAL_S", "20")),
+                    per_draft_backoff_s=int(os.getenv("DOCUMIND_REPLAY_WORKER_BACKOFF_S", "60")),
+                )
+                await worker.start()
+                app.state.draft_replay_worker = worker
+            else:
+                log.warning(
+                    "draft_replay_worker_disabled reason=no_tenants — set DOCUMIND_REPLAY_WORKER_TENANTS",
+                )
+
         log.info("inference_service_ready model=%s", ollama.model)
         try:
             yield
         finally:
+            if app.state.draft_replay_worker is not None:
+                await app.state.draft_replay_worker.stop()
             await retrieval.aclose()
             await ollama.aclose()
             if app.state.mcp_client is not None:
