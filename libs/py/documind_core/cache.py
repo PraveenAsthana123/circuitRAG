@@ -40,7 +40,14 @@ class Cache:
         return "tenant:" + tenant_id + ":" + ":".join(parts)
 
     async def get_json(self, key: str) -> Any | None:
-        raw = await self._redis.get(key)
+        # Fail-open on Redis connection errors: treat as a cache miss so
+        # the caller falls through to the source. A dead cache must not
+        # 5xx the user. Caught during chaos drill #5 (kill Redis).
+        try:
+            raw = await self._redis.get(key)
+        except (aioredis.ConnectionError, aioredis.TimeoutError, OSError) as exc:
+            log.warning("cache_get_fail_open key=%s err=%s", key, exc)
+            return None
         if raw is None:
             return None
         try:
@@ -51,7 +58,11 @@ class Cache:
 
     async def set_json(self, key: str, value: Any, *, ttl: int | None = None) -> None:
         payload = json.dumps(value, separators=(",", ":"), default=str)
-        await self._redis.setex(key, ttl or self._default_ttl, payload)
+        try:
+            await self._redis.setex(key, ttl or self._default_ttl, payload)
+        except (aioredis.ConnectionError, aioredis.TimeoutError, OSError) as exc:
+            # Fail-open on write too — silently drop the cache write.
+            log.warning("cache_set_fail_open key=%s err=%s", key, exc)
 
     async def delete(self, *keys: str) -> int:
         if not keys:

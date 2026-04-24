@@ -86,11 +86,19 @@ class RateLimiter:
         now_ms = int(time.time() * 1000)
         window_start = now_ms - window_seconds * 1000
 
-        pipe = self._redis.pipeline()
-        pipe.zremrangebyscore(key, 0, window_start)   # drop old
-        pipe.zcard(key)                                 # count current
-        pipe.expire(key, window_seconds + 1)            # housekeeping TTL
-        _, current, _ = await pipe.execute()
+        try:
+            pipe = self._redis.pipeline()
+            pipe.zremrangebyscore(key, 0, window_start)   # drop old
+            pipe.zcard(key)                                 # count current
+            pipe.expire(key, window_seconds + 1)            # housekeeping TTL
+            _, current, _ = await pipe.execute()
+        except (aioredis.ConnectionError, aioredis.TimeoutError, OSError) as exc:
+            # Fail-open: if Redis is unreachable, allow the request. A rate
+            # limiter that 5xxs every user during a cache outage is worse
+            # than a rate limiter that temporarily can't enforce its limit.
+            # Log once per minute to avoid noise during sustained outage.
+            log.warning("rate_limit_fail_open key=%s err=%s", key, exc)
+            return LimitResult(allowed=True, remaining=limit, reset_in_seconds=0, limit=limit)
 
         if current + cost > limit:
             # Find oldest remaining entry to compute retry-after

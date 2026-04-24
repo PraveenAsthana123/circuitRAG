@@ -10,7 +10,7 @@ Real failure simulation. Every drill captures user-visible behaviour, circuit-br
 | 2 | Unreachable Ollama | ✅ | (surfaced host/docker config-drift issue) |
 | 3 | Slow Qdrant (Istio inject) | pending | — |
 | 4 | Kill Neo4j | ✅ | graph-search NER short-circuit (lowercase queries skip Neo4j entirely) |
-| 5 | Kill Redis | pending | — |
+| 5 | Kill Redis | ✅ | cache + rate-limiter 5xx'd every request; fix: fail-open on Redis errors |
 | 6 | Kill Kafka | pending | — |
 | 7 | Kill MCP server | blocked — MCP doesn't exist yet | — |
 | 8 | Traffic spike 10k RPS | pending | — |
@@ -152,6 +152,70 @@ The recovery query ("What is Travel Policy reimbursement **after recovery**?") s
 
 ---
 
+## Drill #5 — Kill Redis
+
+### Before the fix
+
+```
+$ docker compose kill redis
+$ for i in 1..5; do curl ... /api/v1/ask ; done
+call 1-5:  502 EXTERNAL_SERVICE_ERROR  [502 0.013s]   ← EVERY request 5xx'd
+```
+
+**Real bug found.** Redis-backed **rate-limiter + cache were not wrapped in exception handling**, so a Redis outage raised `redis.exceptions.ConnectionError` all the way up through the middleware stack → 500 → 502 envelope. Phase-7 §chaos explicitly says "Kill Redis → cache miss path; no 5xx" — we had 5xx on every call.
+
+### Fix shipped — fail-open on Redis errors
+
+`libs/py/documind_core/rate_limiter.py::check`:
+```python
+try:
+    ... pipe.execute() ...
+except (aioredis.ConnectionError, aioredis.TimeoutError, OSError) as exc:
+    # Fail-open: a rate limiter that 5xxs every user during a cache
+    # outage is worse than one that temporarily can't enforce its limit.
+    log.warning("rate_limit_fail_open key=%s err=%s", key, exc)
+    return LimitResult(allowed=True, remaining=limit, reset_in_seconds=0, limit=limit)
+```
+
+`libs/py/documind_core/cache.py::get_json` and `::set_json`:
+```python
+try:
+    raw = await self._redis.get(key)
+except (aioredis.ConnectionError, aioredis.TimeoutError, OSError) as exc:
+    log.warning("cache_get_fail_open key=%s err=%s", key, exc)
+    return None   # treat as cache miss
+```
+
+Writes silently drop. Reads fall through to source.
+
+### After the fix — proof
+
+Redis still dead, 3 fresh queries:
+```
+call 1:  cites=1 $500 per day [Source: ae303815...  [200 1.00s]
+call 2:  cites=1 $500 per day [Source: ae303815...  [200 0.91s]
+call 3:  cites=1 $500 per day [Source: ae303815...  [200 0.90s]
+```
+
+Log evidence — three silent degradations per call:
+```
+cache_get_fail_open  key=tenant:...:retr:... err=Error 111 connecting to localhost:56379
+retrieval_complete   n=1 latency_ms=31 top_score=0.016 breaker=closed
+cache_set_fail_open  key=tenant:...:retr:... err=...
+rate_limit_fail_open key=tenant:...:rl:api err=...
+```
+
+### Recovery
+
+`docker compose up -d redis` → next `/ask` returns full answer in 0.97s. No cached result from pre-outage (because degraded results skipped cache per Drill-1 fix).
+
+### Gaps remaining
+
+1. **No Redis-specific CB.** Every request during the outage pays the connection-refused time (~0.9s per call vs 0.07s for fast-fail rejection). A breaker would tip to OPEN after N consecutive failures and skip the Redis call entirely for `recovery_timeout`. Currently the fail-open path retries every time. Not critical but measurable under sustained outage.
+2. **Fail-open rate-limiter has security implications.** During a Redis outage, bursty tenants are unthrottled. For production, consider a local per-process fallback counter (bloom filter or sliding window in memory) as a second line.
+
+---
+
 ## What the drills have now proved
 
 | Phase-7 claim | Drill | Proof |
@@ -164,6 +228,7 @@ The recovery query ("What is Travel Policy reimbursement **after recovery**?") s
 | "Cache does not poison on degraded result" | #1 | ✅ after the fix |
 | "Graph backend optional — vector-only when Neo4j down" | #4 | ✅ `backends_ok=1/2` log + cited answer returned |
 | "RAG declines with no-answer when retrieval is off-topic (no hallucination)" | #4 recovery | ✅ "I don't have enough information…" |
+| "Cache + rate-limit layers are non-blocking — Redis outage does not 5xx users" | #5 | ✅ after the fix |
 
 ## Bugs caught across 2 drills
 
@@ -173,5 +238,7 @@ The recovery query ("What is Travel Policy reimbursement **after recovery**?") s
 | 2 | (env contract) | Service dependency URL ambiguous when host + container both listen on same port — tests can fake-green |
 | 3 | `graph_searcher.py` | Entity-extraction regex requires capitalized words → lowercase queries silently skip graph entirely |
 | 4 | (missing) | No per-backend CB on Neo4j — every query during outage pays the bolt-driver default connect timeout |
+| 5 | `rate_limiter.py` | Rate-limiter raised `ConnectionError` on Redis outage → 5xx'd every user |
+| 6 | `cache.py` | `get_json` + `set_json` raised on Redis outage → same 5xx cascade |
 
 Both would silently escape unit tests. Caught only by running the system + deliberately breaking it.
