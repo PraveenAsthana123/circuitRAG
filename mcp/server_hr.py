@@ -212,8 +212,14 @@ async def tools_call(
         if _OTEL_AVAILABLE and _sp is not None:
             _sp.set_attribute("mcp.tool.name", req.name)
             if req.tenant_id:
-                _sp.set_attribute("mcp.tenant_id", req.tenant_id)
-            _sp.set_attribute("mcp.correlation_id", cid)
+                # Unified with inference-svc / retrieval-svc so a
+                # single Jaeger tag filter (documind.tenant_id=<uuid>)
+                # returns every span for that tenant regardless of
+                # which service the span came from.
+                _sp.set_attribute("documind.tenant_id", req.tenant_id)
+                _sp.set_attribute("mcp.tenant_id", req.tenant_id)  # back-compat
+            _sp.set_attribute("documind.correlation_id", cid)
+            _sp.set_attribute("mcp.correlation_id", cid)  # back-compat
             _sp.set_attribute(
                 "mcp.idempotency_key_present", idempotency_key is not None,
             )

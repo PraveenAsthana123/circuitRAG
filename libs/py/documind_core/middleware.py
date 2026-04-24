@@ -147,6 +147,57 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class SpanAttributeMiddleware(BaseHTTPMiddleware):
+    """
+    Tag the current OTel server span with DocuMind-specific attributes
+    (tenant_id, correlation_id, user_id) so Jaeger searches can filter
+    by any of them.
+
+    Runs *after* every other middleware populates ``request.state`` —
+    specifically after ``JWTAuthMiddleware`` potentially overrides
+    ``tenant_id`` with the JWT's claim-tenant. Wire this middleware
+    FIRST in the stack (``add_middleware`` earliest call) so it ends
+    up innermost and sees the authoritative values.
+
+    No-op when the OTel SDK isn't installed — imports are guarded so
+    services without tracing wired keep booting.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        super().__init__(app)
+        try:
+            from opentelemetry import trace
+            self._get_span = trace.get_current_span
+        except ImportError:  # pragma: no cover
+            self._get_span = None
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if self._get_span is not None:
+            span = self._get_span()
+            # INVALID_SPAN is the default no-op span if tracing isn't
+            # active; it silently drops set_attribute calls.
+            tenant_id = getattr(request.state, "tenant_id", "")
+            if tenant_id:
+                span.set_attribute("documind.tenant_id", tenant_id)
+            correlation_id = getattr(request.state, "correlation_id", "")
+            if correlation_id:
+                span.set_attribute("documind.correlation_id", correlation_id)
+            user_id = getattr(request.state, "user_id", "")
+            if user_id:
+                span.set_attribute("documind.user_id", user_id)
+            roles = getattr(request.state, "roles", None)
+            if roles:
+                # Space-separated to stay Jaeger-friendly (tag value
+                # string, not an array — Jaeger 1.60 still struggles
+                # with multi-value tags in the UI filter).
+                span.set_attribute("documind.roles", " ".join(sorted(set(roles))))
+        return await call_next(request)
+
+
 # ---------------------------------------------------------------------------
 # 4. Rate limit
 # ---------------------------------------------------------------------------

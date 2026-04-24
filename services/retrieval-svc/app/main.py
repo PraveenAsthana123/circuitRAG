@@ -13,6 +13,7 @@ from documind_core.middleware import (
     CorrelationIdMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
+    SpanAttributeMiddleware,
     TenantContextMiddleware,
     register_exception_handlers,
 )
@@ -91,6 +92,9 @@ def create_app() -> FastAPI:
             await redis_client.close()
 
     app = FastAPI(title="DocuMind — Retrieval Service", version="0.1.0", lifespan=lifespan)
+    # Innermost middleware — runs last on the request, tags the server
+    # span with documind.tenant_id etc. so Jaeger filters by tenant work.
+    app.add_middleware(SpanAttributeMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(
         RateLimitMiddleware,

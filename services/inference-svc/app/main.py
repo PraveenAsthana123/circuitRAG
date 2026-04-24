@@ -14,6 +14,7 @@ from documind_core.middleware import (
     CorrelationIdMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
+    SpanAttributeMiddleware,
     TenantContextMiddleware,
     register_exception_handlers,
 )
@@ -203,6 +204,14 @@ def create_app() -> FastAPI:
     # whether the scope check is load-bearing).
     auth_required = os.getenv("DOCUMIND_AUTH_REQUIRED", "false").lower() == "true"
     app.state.auth_required = auth_required
+    # SpanAttributeMiddleware is added FIRST so it sits INNERMOST in the
+    # Starlette chain and runs LAST on each request — by which time every
+    # upstream middleware (CorrelationId, TenantContext, JWTAuth) has
+    # populated request.state with authoritative values. Attributes like
+    # documind.tenant_id then appear on the server span that Jaeger uses
+    # as the trace root, so tag-filter searches by tenant work.
+    app.add_middleware(SpanAttributeMiddleware)
+
     try:
         verifier = JWTVerifier(
             public_key_path=settings.jwt_public_key_path,
