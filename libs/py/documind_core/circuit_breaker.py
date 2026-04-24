@@ -95,6 +95,11 @@ if _METRICS_ENABLED:
         "Calls rejected because circuit was open",
         labelnames=["name"],
     )
+    _cb_transitions = Counter(
+        "documind_circuit_breaker_transitions_total",
+        "Breaker state transitions (labelled from→to)",
+        labelnames=["name", "from_state", "to_state"],
+    )
 
 
 # Canonical state→numeric mapping used by the shared Gauge.
@@ -102,6 +107,11 @@ if _METRICS_ENABLED:
 # ObservabilityCircuitBreaker) so a dashboard treats all breakers
 # as the same time series regardless of where they live.
 _STATE_NUMERIC = {"closed": 0, "half_open": 1, "open": 2}
+
+# Per-name last-seen state so record_breaker_state can spot
+# transitions and increment the transitions counter exactly once
+# per real change (not once per poll).
+_last_state: dict[str, str] = {}
 
 
 def record_breaker_state(name: str, state: str) -> None:
@@ -113,6 +123,11 @@ def record_breaker_state(name: str, state: str) -> None:
     it isn't, the call is a silent no-op so a misreported state can't
     crash whatever is polling.
 
+    Also increments ``documind_circuit_breaker_transitions_total`` on
+    every real state change (no-op when the state is unchanged since
+    the last poll — pollers call this every N seconds, we don't want
+    one "cycle" of polls to inflate the transition count).
+
     Typical caller: a background poller in a service lifespan that
     reads ``mcp_client.cb_state`` every N seconds and pushes it here.
     """
@@ -122,6 +137,12 @@ def record_breaker_state(name: str, state: str) -> None:
     if value is None:
         return
     _cb_state.labels(name=name).set(value)
+    prev = _last_state.get(name)
+    if prev is not None and prev != state:
+        _cb_transitions.labels(
+            name=name, from_state=prev, to_state=state,
+        ).inc()
+    _last_state[name] = state
 
 
 class CircuitBreaker:
@@ -265,10 +286,11 @@ class CircuitBreaker:
         self._set_metric_state()
 
     def _set_metric_state(self) -> None:
-        if not _METRICS_ENABLED:
-            return
-        mapping = {State.CLOSED: 0, State.HALF_OPEN: 1, State.OPEN: 2}
-        _cb_state.labels(name=self.name).set(mapping[self._state])
+        # Delegate to the shared helper so the transition counter
+        # increments for THIS breaker's transitions too — keeps the
+        # gauge and the counter in lockstep regardless of which kind
+        # of breaker is reporting.
+        record_breaker_state(self.name, self._state.value)
 
     def _bump_failures(self) -> None:
         if _METRICS_ENABLED:
