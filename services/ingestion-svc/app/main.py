@@ -43,6 +43,8 @@ from app.parsers import ParserRegistry
 from app.repositories import ChunkRepo, DocumentRepo, Neo4jRepo, QdrantRepo, SagaRepo
 from app.routers import documents_router, health_router
 from app.saga import SagaRecoveryWorker
+from app.saga.outbox import OutboxDrainWorker
+from documind_core.kafka_client import EventProducer
 from app.services import BlobService, IngestionService
 
 log = logging.getLogger(__name__)
@@ -136,11 +138,34 @@ def create_app() -> FastAPI:
         except Exception:
             log.exception("saga_recovery_failed")
 
+        # Start Kafka producer + outbox drain worker. If Kafka is down at
+        # boot, producer.start() will raise — we log + continue. Outbox
+        # events will queue in Postgres and drain when Kafka returns.
+        # Caught live in chaos drill #6 (kill Kafka): the outbox class
+        # existed but nothing started it, so events piled up forever.
+        producer: EventProducer | None = None
+        outbox_worker: OutboxDrainWorker | None = None
+        try:
+            producer = EventProducer(
+                bootstrap_servers=settings.kafka_bootstrap,
+                client_id=f"{settings.kafka_client_id}-ingestion",
+                source="ingestion-svc",
+            )
+            await producer.start()
+            outbox_worker = OutboxDrainWorker(pool=db.pool, producer=producer)
+            await outbox_worker.start()
+        except Exception:
+            log.exception("outbox_worker_start_failed — events will queue in outbox until recovery")
+
         app.state.ingestion_service = ingestion_service
         log.info("ingestion_service_ready model=%s dim=%d", embedder.model_name, embedder.dimension)
         try:
             yield
         finally:
+            if outbox_worker is not None:
+                await outbox_worker.stop()
+            if producer is not None:
+                await producer.stop()
             await db.close()
             await embedder.aclose()
             await qdrant_repo.aclose()

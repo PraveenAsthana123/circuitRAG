@@ -11,7 +11,7 @@ Real failure simulation. Every drill captures user-visible behaviour, circuit-br
 | 3 | Slow Qdrant (Istio inject) | pending | — |
 | 4 | Kill Neo4j | ✅ | graph-search NER short-circuit (lowercase queries skip Neo4j entirely) |
 | 5 | Kill Redis | ✅ | cache + rate-limiter 5xx'd every request; fix: fail-open on Redis errors |
-| 6 | Kill Kafka | pending | — |
+| 6 | Kill Kafka (it was already down) | ✅ | outbox relay never started; Kafka external listener mapping missing; env var name mismatch |
 | 7 | Kill MCP server | blocked — MCP doesn't exist yet | — |
 | 8 | Traffic spike 10k RPS | pending | — |
 
@@ -216,6 +216,78 @@ rate_limit_fail_open key=tenant:...:rl:api err=...
 
 ---
 
+---
+
+## Drill #6 — Kafka outage (discovered, not staged)
+
+### The unexpected finding
+
+`docker ps --filter name=documind-kafka` — **empty**. Kafka had been down the entire session. The stack had been running uploads + `/ask` queries **without Kafka at all**, and nothing had noticed.
+
+That's the real finding: the user path never touches Kafka synchronously. Ingestion runs inline (`run_saga_inline=True`). Outbox writes the event to Postgres and that commit happens in the same transaction as the domain write. The Kafka relay is a separate background job that was supposed to drain `ingestion.outbox → Kafka` but **was never started**.
+
+### Outbox state during the outage
+
+After 2 uploads (Kafka absent the entire time):
+```
+total: 3 UNPUBLISHED: 3 PUBLISHED: 0
+  5d9d1dfd QUEUED attempts=0 type=document.indexed.v1
+  859cff0d QUEUED attempts=0 type=document.indexed.v1
+  1b9fc6de QUEUED attempts=0 type=document.indexed.v1
+```
+
+Classic outbox pattern: domain write + event row commit together in Postgres, regardless of Kafka state. **No event was lost.**
+
+### Three real bugs found
+
+**Bug 1 — relay worker never started.** `services/ingestion-svc/app/saga/outbox.py::OutboxDrainWorker` class existed with a `start()` method, but `services/ingestion-svc/app/main.py::lifespan` never called it. Events queued forever.
+
+Fix: wire `EventProducer.start()` + `OutboxDrainWorker(pool=db.pool, producer=producer).start()` into the lifespan, with graceful failure if Kafka is unreachable at boot.
+
+**Bug 2 — Kafka volume permission.** `docker-compose.override.yml` was missing `user: "0:0"` on kafka — same class as ES/Grafana/Zookeeper earlier. Without it: `FAILED: /var/lib/kafka/data is writable`.
+
+**Bug 3 — listener mapping lost by override.** Our override's `ports: !override - "59092:9092"` **replaced** the entire ports list, dropping the 9094 EXTERNAL listener. Without 9094 exposed to the host, the external client was redirected to `INTERNAL://kafka:9092` (unresolvable from outside) — classic "Cannot send request to node which is not ready" error.
+
+Fix: include both mappings in the override:
+```yaml
+kafka:
+  user: "0:0"
+  ports: !override
+    - "59092:9092"
+    - "9094:9094"
+```
+
+**Plus** env var name mismatch: `DOCUMIND_KAFKA_BOOTSTRAP_SERVERS` doesn't bind to the `kafka_bootstrap` Pydantic field — has to be `DOCUMIND_KAFKA_BOOTSTRAP`.
+
+### Recovery — outbox drained in one sweep
+
+After Kafka up + ingestion restarted with relay wired:
+
+```
+kafka_producer_started bootstrap=localhost:9094 source=ingestion-svc
+outbox_drain_started interval_s=1.0 batch=100
+```
+
+Outbox state after drain loop:
+```
+total: 3 UNPUBLISHED: 0 PUBLISHED: 3
+  5d9d1dfd PUBLISHED attempts=1 2026-04-24 17:54:39
+  859cff0d PUBLISHED attempts=1 2026-04-24 17:54:39
+  1b9fc6de PUBLISHED attempts=1 2026-04-24 17:54:39
+```
+
+**Zero event loss across a multi-hour Kafka outage.** All three events published on first sweep, `attempts=1`.
+
+### What this drill actually proved
+
+- ✅ **Outbox pattern works end-to-end** (domain + event atomic in PG; relay drains on recovery)
+- ✅ **Ingestion resilient to Kafka outage** (writes succeed, events queue, `/ask` unaffected)
+- ✅ **Zero event loss** — all queued events published when Kafka returned
+- ❌ **Relay was never wired into service lifespan** — silent config bug; fixed this drill
+- ❌ **Override config dropped Kafka external listener** — config-drift fixed this drill
+
+---
+
 ## What the drills have now proved
 
 | Phase-7 claim | Drill | Proof |
@@ -229,6 +301,7 @@ rate_limit_fail_open key=tenant:...:rl:api err=...
 | "Graph backend optional — vector-only when Neo4j down" | #4 | ✅ `backends_ok=1/2` log + cited answer returned |
 | "RAG declines with no-answer when retrieval is off-topic (no hallucination)" | #4 recovery | ✅ "I don't have enough information…" |
 | "Cache + rate-limit layers are non-blocking — Redis outage does not 5xx users" | #5 | ✅ after the fix |
+| "Outbox pattern: events never lost across Kafka outage; relay drains on recovery" | #6 | ✅ 3 events queued → all PUBLISHED after Kafka + relay came up |
 
 ## Bugs caught across 2 drills
 
@@ -240,5 +313,8 @@ rate_limit_fail_open key=tenant:...:rl:api err=...
 | 4 | (missing) | No per-backend CB on Neo4j — every query during outage pays the bolt-driver default connect timeout |
 | 5 | `rate_limiter.py` | Rate-limiter raised `ConnectionError` on Redis outage → 5xx'd every user |
 | 6 | `cache.py` | `get_json` + `set_json` raised on Redis outage → same 5xx cascade |
+| 7 | `ingestion-svc/main.py` | `OutboxDrainWorker` existed but was never started in lifespan — events queued forever |
+| 8 | `docker-compose.override.yml` | Kafka missing `user: "0:0"` → volume EACCES; `ports: !override` dropped 9094 EXTERNAL listener |
+| 9 | env contract | `DOCUMIND_KAFKA_BOOTSTRAP_SERVERS` doesn't bind — field is `kafka_bootstrap` so env is `DOCUMIND_KAFKA_BOOTSTRAP` |
 
 Both would silently escape unit tests. Caught only by running the system + deliberately breaking it.

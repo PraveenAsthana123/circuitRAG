@@ -18,8 +18,14 @@ services:
       - "56379:6379"
 
   kafka:
+    user: "0:0"
+    # Keep BOTH listener mappings — 9092 internal listener (for in-cluster
+    # clients, maps to host 59092 for visibility) AND 9094 external listener
+    # (host-machine clients connect here). Advertised listeners in base
+    # compose still say "localhost:9094" so external = localhost:9094.
     ports: !override
       - "59092:9092"
+      - "9094:9094"
 
   minio:
     ports: !override
@@ -48,6 +54,7 @@ services:
     user: "0:0"
   zookeeper:
     user: "0:0"
+
   elasticsearch:
     user: "0:0"
   filebeat:
