@@ -166,12 +166,13 @@ execution they shouldn't have.
 
 ## Remaining follow-ups
 
-- **Error envelope shape mismatch** — when MCP returns 4xx with
-  `{"detail": {"code": "INSUFFICIENT_SCOPE", ...}}`, `MCPClient` reads
-  `data.get("error")` which returns None. The client currently loses
-  the structured detail; it should map `detail` → `error` on 4xx.
-  Small bug — `ok=false` is set correctly so the visible behaviour is
-  right; just the diagnostic string is lost.
+- **Error envelope shape mismatch** — ✅ closed by the follow-up
+  commit that added `_normalise_error` and `drill_client_error_envelope.py`.
+  MCP's 4xx now arrives at callers as
+  `ToolResult(ok=False, error={'code': ..., 'http_status': ..., ...})`
+  with the full `required`/`have`/`tool`/`name` detail preserved. 4xx
+  still leaves the circuit breaker CLOSED (correctly distinguishes
+  "server said no" from "server is unreachable").
 - **Agent-level scope gate** — today an `hr:read`-only user can still
   hit `/api/v1/agent/ask` and have the agent *attempt* an action,
   getting a late 403 from MCP. A cleaner UX pre-checks at the agent

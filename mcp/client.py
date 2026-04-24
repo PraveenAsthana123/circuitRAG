@@ -47,6 +47,40 @@ log = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).parent / "schema" / "tool_schema.json"
 
 
+def _normalise_error(data: Any, status_code: int) -> dict[str, Any]:
+    """
+    Map a 4xx response body into the ``ToolResult.error`` envelope.
+
+    * ``{"error": {...}}`` — our own protocol: return the error dict as-is.
+    * ``{"detail": {...}}`` — FastAPI HTTPException: lift ``detail`` into
+      ``error``, add ``http_status`` for unambiguous operator logs.
+    * ``{"detail": "<string>"}`` — wrap in a code/message dict so
+      callers always see a structured shape.
+    * Anything else — store the raw body under ``error.body``.
+    """
+    if isinstance(data, dict):
+        if data.get("error") is not None:
+            err = dict(data["error"])
+            err.setdefault("http_status", status_code)
+            return err
+        detail = data.get("detail")
+        if isinstance(detail, dict):
+            err = dict(detail)
+            err.setdefault("http_status", status_code)
+            return err
+        if isinstance(detail, str):
+            return {
+                "code": "HTTP_" + str(status_code),
+                "message": detail,
+                "http_status": status_code,
+            }
+    return {
+        "code": "HTTP_" + str(status_code),
+        "http_status": status_code,
+        "body": data,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Result envelope
 # ---------------------------------------------------------------------------
@@ -196,14 +230,27 @@ class MCPClient:
             if r.status_code >= 500:
                 self._breaker.record_failure()
                 return await self._persist_draft(name, arguments, tenant_id, cid, reason=f"http_{r.status_code}")
+
+            # Client-side error (400-499): server is healthy and responding,
+            # so record_success() from the breaker's perspective (MCP is
+            # reachable), but surface the structured reason to the caller.
+            # FastAPI wraps HTTPException bodies as ``{"detail": <payload>}``;
+            # our tool protocol uses ``{"ok": ..., "error": ...}``. Normalise
+            # both so ``ToolResult.error`` is always populated on 4xx.
             data = r.json()
             self._breaker.record_success()
+            if r.status_code >= 400:
+                return ToolResult(
+                    ok=False,
+                    error=_normalise_error(data, r.status_code),
+                )
             if data.get("ok"):
                 return ToolResult(
                     ok=True,
                     data=data.get("result"),
                     idempotent_replay=bool(data.get("idempotent_replay")),
                 )
+            # 2xx with ok=false — legit business rejection from the server.
             return ToolResult(ok=False, error=data.get("error"))
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
             self._breaker.record_failure()
