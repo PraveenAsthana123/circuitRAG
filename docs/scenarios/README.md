@@ -21,6 +21,8 @@ and see green/red without asking the author.
 | 10 | LDAP / SSO (OIDC · SAML · SCIM · JWT claims) | [phase-10-ldap-sso.md](phase-10-ldap-sso.md) | ✅ Full — sequence diagram · JWT schema · 10 security scenarios |
 | 11 | RBAC + ABAC (role + attribute + policy engine) | [phase-11-rbac-abac.md](phase-11-rbac-abac.md) | ✅ Full — 8 RBAC + 10 ABAC scenarios · combined flow · failure matrix |
 | 12 | Guardrails + Secure AI (5 layers · attack/defense matrix) | [phase-12-guardrails-secure-ai.md](phase-12-guardrails-secure-ai.md) | ✅ Full — input/retrieval/prompt/output/action guards · 10 attack vectors |
+| 15 | **Master Blueprint + Golden Vertical Slice** | [phase-15-master-blueprint.md](phase-15-master-blueprint.md) | ✅ Full — master flow diagram · 10-step demo script · failure drills · current execution state |
+| 21 | Embeddings (types · models · versioning · benchmarking) | [phase-21-embeddings.md](phase-21-embeddings.md) | ✅ Full — BGE-m3 default · critical checks · failure matrix |
 | 20 | Chunking (types + config + TDD/BDD/MDD/output-first + checklist) | [phase-20-chunking.md](phase-20-chunking.md) | ✅ Full — hierarchical default · engineering-methodology layer · validation checklist |
 | 22 | Tokens (budget + estimation + optimization + metrics) | [phase-22-tokens.md](phase-22-tokens.md) | ✅ Full — allocation % · failure matrix · 9 optimization strategies |
 | 23 | Capacity Planning (QPS + cost + storage + load tests) | [phase-23-capacity.md](phase-23-capacity.md) | ✅ Full — component targets · token-driven capacity · load-test contracts |
