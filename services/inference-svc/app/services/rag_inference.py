@@ -182,6 +182,7 @@ class RagInferenceService:
         # Wrap the result in the same shape ollama.generate would return,
         # so downstream code stays identical regardless of CCB path.
         from dataclasses import dataclass as _dc
+
         @_dc
         class _GenResult:
             text: str

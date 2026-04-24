@@ -227,6 +227,9 @@ if _OTEL_AVAILABLE:
 else:
     # Stubs so callers don't crash if opentelemetry isn't installed.
     class _BreakerGuardedSpanExporter:  # type: ignore[no-redef]
-        def __init__(self, *_a, **_k): pass
+        def __init__(self, *_a, **_k):
+            pass
+
     class _BreakerGuardedMetricExporter:  # type: ignore[no-redef]
-        def __init__(self, *_a, **_k): pass
+        def __init__(self, *_a, **_k):
+            pass
