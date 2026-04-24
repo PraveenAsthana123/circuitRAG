@@ -28,6 +28,15 @@ from documind_core.breakers import (
     RepetitionSignal,
     TokenCircuitBreaker,
 )
+from documind_core.ai_governance import (
+    AIExplainer,
+    AdversarialInputFilter,
+    Explanation,
+    InterpretabilityTrace,
+    PIIScanner,
+    PromptInjectionDetector,
+    ResponsibleAIChecker,
+)
 
 from app.schemas import AskRequest, AskResponse, Citation
 
@@ -71,6 +80,12 @@ class RagInferenceService:
         self._default_daily = default_daily_token_budget
         self._default_monthly = default_monthly_token_budget
 
+        # AI-governance primitives. Cheap, instantiated once, reused per-request.
+        self._injection_detector = PromptInjectionDetector()
+        self._adversarial = AdversarialInputFilter(max_chars=10_000)
+        self._pii = PIIScanner()
+        self._responsible = ResponsibleAIChecker()
+
     # ------------------------------------------------------------------
     # Factory: build the CCB signal set for this tenant
     # ------------------------------------------------------------------
@@ -109,15 +124,33 @@ class RagInferenceService:
         request: AskRequest,
         include_debug: bool = False,
     ) -> AskResponse:
+        trace = InterpretabilityTrace()
+
+        # -1. Adversarial input heuristics — reject early for length / DoS /
+        #     non-printable / URL-burst patterns.
+        with trace.step("adversarial_filter") as st:
+            st.input(f"query[{len(request.query)}c]")
+            self._adversarial.inspect_or_raise(request.query)
+            st.output("clean")
+
+        # -0.5. Prompt-injection scan on the user's query.
+        with trace.step("injection_scan") as st:
+            st.input(f"query[{len(request.query)}c]")
+            findings = self._injection_detector.scan_or_raise(request.query)
+            st.output(f"{len(findings)} suspicious finding(s)")
+            st.meta(findings=[f.pattern_id for f in findings])
+
         # 0. Token budget pre-flight — reject BEFORE we spend on retrieval.
-        # Rough estimate: user query + retrieval context + completion budget.
         estimated = len(request.query.split()) * 2 + 2000 + self._max_new_tokens
-        await self._token_breaker.check_or_raise(
-            tenant_id=tenant_id,
-            estimated_tokens=estimated,
-            daily_budget=self._default_daily,
-            monthly_budget=self._default_monthly,
-        )
+        with trace.step("token_budget") as st:
+            st.input(f"estimated_tokens={estimated}")
+            await self._token_breaker.check_or_raise(
+                tenant_id=tenant_id,
+                estimated_tokens=estimated,
+                daily_budget=self._default_daily,
+                monthly_budget=self._default_monthly,
+            )
+            st.output("within_budget")
 
         # 1. Retrieve
         chunks = await self._retrieval.retrieve(
@@ -228,6 +261,30 @@ class RagInferenceService:
             tenant_id, guard.passed, guard.confidence, gen.tokens_prompt, gen.tokens_completion,
         )
 
+        # PII scan + responsibility lens run on the FINAL answer.
+        pii_findings = self._pii.scan(gen.text)
+        fairness_signals = self._responsible.check(
+            question=request.query,
+            answer=gen.text,
+            has_citations=bool(returned_citations),
+        )
+
+        # Packaged explanation (powers the UI's "Why this answer" panel
+        # and the HITL reviewer pane).
+        explanation: Explanation = AIExplainer.build(
+            question=request.query,
+            answer=gen.text,
+            retrieval_strategy=request.strategy,
+            retrieved_chunks=chunks,
+            prompt_version=self._default_prompt,
+            model=gen.model,
+            tokens_prompt=gen.tokens_prompt,
+            tokens_completion=gen.tokens_completion,
+            confidence=guard.confidence,
+            guardrail_violations=guard.violations,
+            cognitive_breaker_snapshot=ccb_snapshot or ccb.snapshot(),
+        )
+
         debug: dict[str, Any] | None = None
         if include_debug:
             debug = {
@@ -238,6 +295,16 @@ class RagInferenceService:
                 "guardrail_violations": guard.violations,
                 "guardrail_details": guard.details,
                 "cognitive_breaker": ccb_snapshot or ccb.snapshot(),
+                # New AI-governance sections
+                "explanation": explanation.to_dict(),
+                "interpretability_trace": trace.to_dict(),
+                "pii_findings": [
+                    {"kind": f.kind, "excerpt": f.excerpt} for f in pii_findings
+                ],
+                "fairness_signals": [
+                    {"name": s.name, "score": s.score, "message": s.message}
+                    for s in fairness_signals
+                ],
             }
 
         return AskResponse(

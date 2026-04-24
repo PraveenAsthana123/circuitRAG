@@ -63,6 +63,21 @@ from .breakers import (
 )
 from .body_limit import BodyLimitMiddleware
 from .idempotency_middleware import IdempotencyMiddleware
+from .ai_governance import (
+    PromptInjectionDetector,
+    InjectionVerdict,
+    InjectionFinding,
+    AdversarialInputFilter,
+    PIIScanner,
+    PIIFinding,
+    AIExplainer,
+    Explanation,
+    ChunkAttribution,
+    InterpretabilityTrace,
+    ReasoningStep,
+    ResponsibleAIChecker,
+    FairnessSignal,
+)
 
 __all__ = [
     # Exceptions
@@ -100,4 +115,19 @@ __all__ = [
     # Safety middleware
     "BodyLimitMiddleware",
     "IdempotencyMiddleware",
+    # AI governance — debuggability, explainability, responsibility,
+    # secure-AI, interpretability
+    "PromptInjectionDetector",
+    "InjectionVerdict",
+    "InjectionFinding",
+    "AdversarialInputFilter",
+    "PIIScanner",
+    "PIIFinding",
+    "AIExplainer",
+    "Explanation",
+    "ChunkAttribution",
+    "InterpretabilityTrace",
+    "ReasoningStep",
+    "ResponsibleAIChecker",
+    "FairnessSignal",
 ]

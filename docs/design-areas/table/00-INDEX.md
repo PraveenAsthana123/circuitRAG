@@ -23,6 +23,7 @@ Every area has a full table covering: **components, technical details, implement
 | [`04-contracts-retrieval-cache.md`](04-contracts-retrieval-cache.md) | 30–42 | API/event/prompt/output contracts, retrieval schema, knowledge + embedding + index lifecycles, cache architecture |
 | [`05-capacity-resilience-release.md`](05-capacity-resilience-release.md) | 43–55 | Capacity, queues, backpressure, DB/vector/graph strategies, HA/DR/multi-region, blast radius, release/rollback isolation, feature flags |
 | [`06-policy-eval-observability.md`](06-policy-eval-observability.md) | 56–67 | Policy-as-code, HITL, feedback, offline/online eval, regression gate, observability/audit/SLO by design, design-for-change/debuggability, socio-technical |
+| [`07-ai-governance-extras.md`](07-ai-governance-extras.md) | E2–E7 | AI-specific debuggability, explainability, responsibility, secure-AI, portability, interpretability |
 
 ## Status snapshot (all 67 + CCB extra)
 
@@ -96,10 +97,16 @@ Every area has a full table covering: **components, technical details, implement
 | 66 | Design-for-Debuggability | ✅ | `?debug=true`, correlation IDs across logs/traces, CCB snapshot, circuit breaker metrics |
 | 67 | Socio-Technical | ✅ | `docs/runbooks/*` + per-service ownership documented |
 | E1 | Cognitive Circuit Breaker | ✅ | `libs/py/documind_core/breakers.py` (new design area) |
+| E2 | Debuggability (AI-specific) | ✅ | `InterpretabilityTrace`, `?debug=true`, CB snapshot |
+| E3 | Explainability (XAI) | ✅ | `libs/py/documind_core/ai_governance.py::AIExplainer` |
+| E4 | Responsibility (RAI) | ✅ | `ai_governance.py::ResponsibleAIChecker` (hot-path); bias benchmarks in eval-svc |
+| E5 | Secure AI | ✅ | `ai_governance.py::PromptInjectionDetector` + `AdversarialInputFilter` + `PIIScanner` |
+| E6 | Portability | ✅ | interface-based design across the repo; vLLM/Ollama drop-in compat; cloud-agnostic K8s manifests |
+| E7 | Interpretability (business-step) | ✅ | `ai_governance.py::InterpretabilityTrace` |
 
 ### Counts
 
-- **✅ Implemented:** 42 / 67 (+CCB extra = 43)
+- **✅ Implemented:** 49 / 67 + 7 extras (CCB + E2–E7) = **49 core + 7 extras**
 - **🟡 Partial:** 17 / 67
 - **❌ Designed only:** 8 / 67
 
