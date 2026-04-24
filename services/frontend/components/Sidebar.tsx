@@ -3,37 +3,62 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const LINKS = [
-  { href: '/upload', label: 'Upload' },
-  { href: '/documents', label: 'Documents' },
-  { href: '/ask', label: 'Ask' },
-  { href: '/tools', label: 'Tools' },
-  { href: '/tools/system-design', label: '↳ System Design' },
-  { href: '/tools/design-areas', label: '↳ 74 Design Features' },
-  { href: '/tools/circuit-breakers-list', label: '↳ Circuit Breakers' },
-  { href: '/tools/microservice-scenarios', label: '↳ Microservice Scenarios' },
-  { href: '/tools/methodologies', label: '↳ Methodologies (TDD/BDD/…)' },
-  { href: '/tools/code-governance', label: '↳ Code Governance' },
-  { href: '/tools/database-scenarios', label: '↳ Database Scenarios' },
-  { href: '/tools/scenarios', label: '↳ All Scenarios Catalog' },
-  { href: '/admin', label: 'Admin' },
+type Entry = { href: string; label: string };
+type Group = { heading?: string; items: Entry[] };
+
+const GROUPS: Group[] = [
+  {
+    items: [
+      { href: '/upload', label: 'Upload' },
+      { href: '/documents', label: 'Documents' },
+      { href: '/ask', label: 'Ask' },
+    ],
+  },
+  {
+    heading: 'Tools',
+    items: [
+      { href: '/tools', label: 'Tool index' },
+      { href: '/tools/system-design', label: 'System Design' },
+      { href: '/tools/design-areas', label: '74 Design Features' },
+      { href: '/tools/scenarios', label: 'All Scenarios Catalog' },
+    ],
+  },
+  {
+    heading: 'Catalogs',
+    items: [
+      { href: '/tools/circuit-breakers-list', label: 'Circuit Breakers' },
+      { href: '/tools/microservice-scenarios', label: 'Microservice Scenarios' },
+      { href: '/tools/database-scenarios', label: 'Database Scenarios' },
+      { href: '/tools/methodologies', label: 'Methodologies' },
+      { href: '/tools/code-governance', label: 'Code Governance' },
+    ],
+  },
+  {
+    items: [{ href: '/admin', label: 'Admin' }],
+  },
 ];
 
-/** Left-menu nav. The active link gets the accent border. */
+/** Left-menu nav. Grouped so the 10+ links are scannable. */
 export default function Sidebar() {
   const pathname = usePathname();
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(href + '/');
   return (
-    <ul className="sidebar-nav">
-      {LINKS.map((link) => {
-        const active = pathname === link.href || pathname.startsWith(link.href + '/');
-        return (
-          <li key={link.href}>
-            <Link href={link.href} className={active ? 'active' : ''}>
-              {link.label}
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
+    <nav className="sidebar-nav">
+      {GROUPS.map((g, gi) => (
+        <div key={gi} className="sidebar-group">
+          {g.heading && <div className="sidebar-heading">{g.heading}</div>}
+          <ul>
+            {g.items.map((link) => (
+              <li key={link.href}>
+                <Link href={link.href} className={isActive(link.href) ? 'active' : ''}>
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </nav>
   );
 }

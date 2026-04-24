@@ -284,8 +284,8 @@
 
 /* System Design overview + CTA --------------------------------------- */
 .tools-overviews {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
   margin-bottom: var(--space-8);
 }
@@ -416,6 +416,8 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
+  table-layout: fixed;
+  word-break: break-word;
 }
 .design-areas-table th,
 .design-areas-table td {
@@ -456,10 +458,11 @@
 .status-designed    { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
 
 /* Circuit-breakers list + methodologies + scenarios (shared) --------- */
+/* Single-column layout — one card per row, full width. */
 .cb-grid,
 .method-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
 }
 .cb-card,
@@ -565,11 +568,20 @@
 }
 .da-row-actions { display: flex; align-items: center; gap: var(--space-3); }
 .da-row-detaillink { color: var(--accent-primary); font-weight: var(--font-weight-medium); font-size: var(--font-size-sm); }
+/* One topic per row — stacked, not gridded. */
 .da-row-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
+.da-row-field {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.da-row-field:last-child { border-bottom: 0; padding-bottom: 0; }
 .da-row-field dt {
   font-size: var(--font-size-sm);
   text-transform: uppercase;
@@ -580,7 +592,6 @@
 }
 .da-row-field dd { color: var(--text-primary); line-height: 1.5; }
 .da-row-risk dd { color: #991b1b; }
-.da-row-classref { grid-column: 1 / -1; }
 .da-row-classref code {
   background: var(--bg-muted);
   padding: 2px 6px;
@@ -861,7 +872,8 @@
 .code-block-pre {
   margin: 0;
   border-radius: 0;
-  max-height: 600px;
+  max-height: none;          /* show full file — no silent cutoff */
+  overflow: auto;
 }
 
 /* Tool-card weblink on index --------------------------------------- */

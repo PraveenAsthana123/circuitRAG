@@ -80,7 +80,17 @@ a:hover { text-decoration: underline; }
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
 }
-.sidebar-nav { list-style: none; }
+.sidebar-nav { list-style: none; display: flex; flex-direction: column; gap: var(--space-3); }
+.sidebar-group { list-style: none; }
+.sidebar-group ul { list-style: none; }
+.sidebar-heading {
+  padding: var(--space-2) var(--space-6) var(--space-1);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-semibold);
+  color: rgba(255, 255, 255, 0.45);
+}
 .sidebar-nav li a {
   display: block;
   padding: var(--space-3) var(--space-6);
