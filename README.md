@@ -116,7 +116,7 @@ documind/
 │   ├── governance-svc/ # Go  — policy-as-code (CEL), HITL queue, audit log, feature flags
 │   ├── finops-svc/     # Go  — token count, cost attribution, budgets
 │   ├── observability-svc/ # Go — Prom aggregation, SLO tracking, alerts
-│   └── frontend/       # React + Vite + vanilla CSS
+│   └── frontend/       # Next.js 14 (App Router) + vanilla CSS
 ├── infra/
 │   ├── kind/           # Kind cluster config
 │   ├── istio/          # Service mesh manifests (VirtualService, DestinationRule, AuthorizationPolicy …)

@@ -1,8 +1,8 @@
 /* ===========================================================================
-   DocuMind - CSS variables
-   ---------------------------------------------------------------------------
-   Single source of truth for colors, spacing, typography, z-index. Components
-   reference these, never hardcoded values. Makes theming a 15-line change.
+   DocuMind - Design tokens
+   Single source of truth for color, spacing, typography, z-index.
+   Imported once from app/layout.tsx. Components reference these names only;
+   never hardcode pixel values or hex in JSX.
    =========================================================================== */
 
 :root {
@@ -11,7 +11,7 @@
   --topbar-height: 56px;
   --content-max-width: 1200px;
 
-  /* Background palette --------------------------------------------------- */
+  /* Background palette - WHITE content by policy (global CLAUDE.md 22) --- */
   --bg-page: #ffffff;
   --bg-card: #ffffff;
   --bg-muted: #f6f7fb;
@@ -26,7 +26,7 @@
   --text-inverse: #ffffff;
 
   /* Accent palette ------------------------------------------------------- */
-  --accent-primary: #4f46e5;        /* indigo */
+  --accent-primary: #4f46e5;
   --accent-primary-hover: #4338ca;
   --accent-success: #16a34a;
   --accent-warning: #d97706;
@@ -71,7 +71,7 @@
   --shadow-md: 0 4px 8px rgba(16, 24, 40, 0.08);
   --shadow-lg: 0 12px 24px rgba(16, 24, 40, 0.1);
 
-  /* Z-index scale -------------------------------------------------------- */
+  /* Z-index -------------------------------------------------------------- */
   --z-sidebar: 10;
   --z-topbar: 20;
   --z-modal: 100;

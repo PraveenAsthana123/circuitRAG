@@ -1,6 +1,6 @@
 @import './variables.css';
 
-/* ---------- Reset ---------- */
+/* Reset ---------------------------------------------------------------- */
 *,
 *::before,
 *::after {
@@ -10,8 +10,7 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
   background: var(--bg-page);
   color: var(--text-primary);
@@ -33,7 +32,7 @@ a {
 }
 a:hover { text-decoration: underline; }
 
-/* ---------- Layout shell ---------- */
+/* App shell: LEFT MENU + RIGHT CONTENT, WHITE bg (CLAUDE.md 22) -------- */
 
 .app-shell {
   display: grid;
@@ -75,6 +74,11 @@ a:hover { text-decoration: underline; }
   overflow-y: auto;
   z-index: var(--z-sidebar);
 }
+.sidebar-brand {
+  padding: 0 var(--space-6) var(--space-5);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+}
 .sidebar-nav { list-style: none; }
 .sidebar-nav li a {
   display: block;
@@ -102,7 +106,7 @@ a:hover { text-decoration: underline; }
   margin: 0 auto;
 }
 
-/* ---------- Components ---------- */
+/* Components ---------------------------------------------------------- */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
@@ -210,4 +214,20 @@ a:hover { text-decoration: underline; }
   font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-semibold);
   margin-bottom: var(--space-6);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2);
+  font-weight: var(--font-weight-medium);
+}
+.table td {
+  padding: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
 }

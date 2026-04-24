@@ -127,8 +127,11 @@ run-finops: ## Run FinOps service (Go)
 run-observability: ## Run observability service (Go)
 	cd services/observability-svc && go run ./cmd
 
-.PHONY: run-frontend
-run-frontend: ## Run frontend dev server (Vite)
+.PHONY: run-frontend install-frontend
+install-frontend: ## Install frontend dependencies
+	cd services/frontend && (command -v pnpm >/dev/null && pnpm i) || (cd services/frontend && npm install)
+
+run-frontend: ## Run frontend dev server (Next.js)
 	cd services/frontend && npm run dev
 
 # ----------------------------------------------------------------------------

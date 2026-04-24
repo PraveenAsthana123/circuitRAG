@@ -1,18 +1,20 @@
+'use client';
+
 import { useRef, useState } from 'react';
-import { api } from '../services/api';
+import { api, ApiError, type UploadResponse } from '@/lib/api';
 
 export default function UploadPage() {
-  const fileRef = useRef(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [result, setResult] = useState<UploadResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [sync, setSync] = useState(false);
 
-  async function handleUpload(e) {
+  async function handleUpload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setResult(null);
-    const file = fileRef.current.files?.[0];
+    const file = fileRef.current?.files?.[0];
     if (!file) {
       setError('Pick a file first.');
       return;
@@ -22,7 +24,7 @@ export default function UploadPage() {
       const res = await api.uploadDocument(file, { sync });
       setResult(res);
     } catch (err) {
-      setError(err.message || String(err));
+      setError(err instanceof ApiError ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -41,18 +43,37 @@ export default function UploadPage() {
           </div>
         )}
         <form onSubmit={handleUpload}>
-          <input type="file" ref={fileRef} accept=".pdf,.docx,.txt,.md,.html" className="input" />
+          <input
+            type="file"
+            ref={fileRef}
+            accept=".pdf,.docx,.txt,.md,.html"
+            className="input"
+          />
           <label style={{ display: 'block', marginTop: 12, fontSize: 'var(--font-size-sm)' }}>
-            <input type="checkbox" checked={sync} onChange={(e) => setSync(e.target.checked)} /> Run inline (wait for indexing to complete)
+            <input type="checkbox" checked={sync} onChange={(e) => setSync(e.target.checked)} />{' '}
+            Run inline (wait for indexing to complete)
           </label>
           <button type="submit" className="btn btn-primary" style={{ marginTop: 16 }} disabled={busy}>
-            {busy ? <><span className="spinner" /> Uploading...</> : 'Upload'}
+            {busy ? (
+              <>
+                <span className="spinner" /> Uploading...
+              </>
+            ) : (
+              'Upload'
+            )}
           </button>
         </form>
       </div>
-      <div className="card" style={{ marginTop: 24, fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
+      <div
+        className="card"
+        style={{
+          marginTop: 24,
+          fontSize: 'var(--font-size-sm)',
+          color: 'var(--text-secondary)',
+        }}
+      >
         <div>Supported: PDF, DOCX, TXT, Markdown, HTML. Max 50 MB.</div>
-        <div>Sync mode blocks until indexing is complete — useful for demos.</div>
+        <div>Sync mode blocks until indexing is complete - useful for demos.</div>
       </div>
     </>
   );
