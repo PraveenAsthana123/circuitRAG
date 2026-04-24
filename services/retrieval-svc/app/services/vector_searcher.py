@@ -33,15 +33,17 @@ class VectorSearcher:
         for k, v in (extra_filters or {}).items():
             conditions.append(FieldCondition(key=k, match=MatchValue(value=v)))
 
-        results = await self._client.search(
+        # Qdrant client ≥ 1.12 removed `.search()` in favor of `.query_points()`.
+        # `response.points` contains the hits (same shape as the old ScoredPoint list).
+        response = await self._client.query_points(
             collection_name=self._collection,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=Filter(must=conditions),
             limit=top_k,
             with_payload=True,
         )
         hits: list[dict[str, Any]] = []
-        for r in results:
+        for r in response.points:
             payload = r.payload or {}
             hits.append({
                 "chunk_id": payload.get("chunk_id"),
