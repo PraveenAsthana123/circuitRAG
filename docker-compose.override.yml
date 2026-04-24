@@ -1,0 +1,51 @@
+# Dev-machine override — resolves port conflicts + volume perms on shared hosts.
+# docker-compose.override.yml is auto-merged with docker-compose.yml.
+#
+# Uses !override tag to REPLACE the base ports list (default behavior is merge,
+# which doubles up bindings and keeps the conflicting defaults).
+#
+# Port map (non-defaults chosen to avoid common host occupants):
+#   postgres 55432 · redis 56379 · kafka 59092 · minio 59000/59001
+#   ollama 51134 · nginx disabled for dev (needs TLS cert setup)
+
+services:
+  postgres:
+    ports: !override
+      - "55432:5432"
+
+  redis:
+    ports: !override
+      - "56379:6379"
+
+  kafka:
+    ports: !override
+      - "59092:9092"
+
+  minio:
+    ports: !override
+      - "59000:9000"
+      - "59001:9001"
+
+  ollama:
+    ports: !override
+      - "51134:11434"
+
+  # Disable nginx for dev — base image expects /etc/nginx/tls/server.crt.
+  # Generate a self-signed cert or run the frontend + gateway directly for now.
+  nginx:
+    profiles: ["disabled"]
+
+  # Volume-permission fix: default containers run as non-root user and bind
+  # mounts are owned by the host user, causing EACCES on first boot.
+  grafana:
+    user: "0:0"
+  prometheus:
+    user: "0:0"
+  zookeeper:
+    user: "0:0"
+  elasticsearch:
+    user: "0:0"
+  filebeat:
+    user: "0:0"
+  kibana:
+    user: "0:0"
