@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import DerivedRows from '../../../components/DerivedRows';
 
 export const metadata = { title: 'Database Scenarios — DocuMind' };
 
@@ -289,6 +290,7 @@ export default function DatabaseScenarios() {
                     <dd>{s.documindExample}</dd>
                     <dt>Tradeoffs</dt>
                     <dd>{s.tradeoffs}</dd>
+                    <DerivedRows narr={{ name: s.pattern, problem: s.problem, solution: s.solution, example: s.documindExample, category: s.category }} />
                     <dt>Reference</dt>
                     <dd>
                       <a href={s.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">

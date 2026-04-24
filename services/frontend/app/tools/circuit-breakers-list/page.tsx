@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import DerivedRows from '../../../components/DerivedRows';
 
 export const metadata = { title: 'Circuit Breakers — DocuMind' };
 
@@ -108,6 +109,7 @@ export default function CircuitBreakersList() {
               <dd>{b.signals}</dd>
               <dt>Code</dt>
               <dd><code>{b.codePath}</code></dd>
+              <DerivedRows narr={{ name: b.name, problem: `Cascading failure when ${b.guards.toLowerCase()} misbehaves.`, solution: b.signals, example: `Implemented in ${b.codePath}.`, category: 'circuit breaker' }} />
               <dt>Reference</dt>
               <dd>
                 <a href={b.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">

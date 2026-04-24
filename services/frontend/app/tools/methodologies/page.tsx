@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import DerivedRows from '../../../components/DerivedRows';
 
 export const metadata = { title: 'Design Methodologies — DocuMind' };
 
@@ -120,6 +121,7 @@ export default function MethodologiesPage() {
               <dd>{m.scenario}</dd>
               <dt>When to pick it</dt>
               <dd>{m.whenToUse}</dd>
+              <DerivedRows narr={{ name: m.name, problem: `Situations where ${m.whenToUse.toLowerCase()}`, solution: m.tagline, example: m.scenario, category: 'methodology' }} />
               <dt>Reference</dt>
               <dd>
                 <a href={m.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">

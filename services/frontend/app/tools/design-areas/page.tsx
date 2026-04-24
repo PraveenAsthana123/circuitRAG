@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import DerivedRows from '../../../components/DerivedRows';
 import {
   DESIGN_AREAS,
   GROUP_ORDER,
@@ -84,6 +85,9 @@ export default function DesignAreasPage() {
                         <dt>Code</dt>
                         <dd><code>{da.classRef}</code></dd>
                       </div>
+                    </dl>
+                    <dl className="cb-card-dl da-row-derived">
+                      <DerivedRows narr={{ name: da.name, problem: da.why, solution: da.how, example: da.risk, category: da.group }} />
                     </dl>
                   </article>
                 );
