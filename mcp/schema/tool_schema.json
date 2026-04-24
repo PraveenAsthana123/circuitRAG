@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://documind.ai/schemas/mcp/tool.v1.json",
+  "title": "DocuMind MCP Tool Contract (v1)",
+  "description": "Every MCP tool exposed to agents MUST conform. The client validates tool_list responses and tool_call args against this schema.",
+  "type": "object",
+  "definitions": {
+    "tool": {
+      "type": "object",
+      "required": ["name", "description", "input_schema", "output_schema", "side_effects"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+          "description": "Namespaced name, e.g. 'hr.leave_request'. Must not collide across servers."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "description": "One-sentence description shown to the agent planner."
+        },
+        "input_schema": {
+          "type": "object",
+          "description": "JSON Schema for the tool's arguments."
+        },
+        "output_schema": {
+          "type": "object",
+          "description": "JSON Schema for the tool's return value."
+        },
+        "side_effects": {
+          "type": "string",
+          "enum": ["read", "write", "destructive"],
+          "description": "read = pure lookup; write = create/update; destructive = delete/refund."
+        },
+        "required_scopes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": [],
+          "description": "User's JWT scopes must include these to invoke."
+        },
+        "idempotent": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, safe to retry with the same Idempotency-Key."
+        }
+      }
+    },
+    "tool_list_response": {
+      "type": "object",
+      "required": ["tools"],
+      "properties": {
+        "tools": {"type": "array", "items": {"$ref": "#/definitions/tool"}}
+      }
+    },
+    "tool_call_request": {
+      "type": "object",
+      "required": ["name", "arguments"],
+      "properties": {
+        "name": {"type": "string"},
+        "arguments": {"type": "object"},
+        "idempotency_key": {"type": "string"},
+        "correlation_id": {"type": "string"},
+        "tenant_id": {"type": "string"}
+      }
+    },
+    "tool_call_response": {
+      "type": "object",
+      "required": ["ok"],
+      "properties": {
+        "ok": {"type": "boolean"},
+        "result": {"type": "object"},
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "string"},
+            "message": {"type": "string"}
+          }
+        },
+        "idempotent_replay": {"type": "boolean", "default": false}
+      }
+    }
+  }
+}
