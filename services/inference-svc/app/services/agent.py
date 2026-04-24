@@ -138,6 +138,7 @@ class AgentService:
         auth_token: str | None = None,
         roles: list[str] | None = None,
         auth_required: bool = False,
+        idempotency_key: str | None = None,
     ) -> AgentAskResponse:
         # 1. Always ground the answer via RAG first.
         rag_req = AskRequest(
@@ -228,12 +229,17 @@ class AgentService:
             "agent_invoking_tool tool=%s tenant=%s corr=%s",
             intent.tool, tenant_id, correlation_id,
         )
+        # Forward the caller-supplied idempotency key (if any) so MCP's
+        # cache dedupes retries end-to-end. Without this, the MCPClient
+        # would generate a fresh uuid4 key on every call — making a
+        # client-retry on network hiccups create two tickets.
         result: ToolResult = await self._mcp.call_tool(
             intent.tool,
             intent.arguments,
             tenant_id=tenant_id,
             correlation_id=correlation_id,
             auth_token=auth_token,
+            idempotency_key=idempotency_key,
         )
         action = AgentAction(
             tool=intent.tool,

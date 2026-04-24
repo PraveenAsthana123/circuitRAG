@@ -134,6 +134,13 @@ async def agent_ask(
     auth_token = getattr(request.state, "raw_token", "") or None
     roles = list(getattr(request.state, "roles", []) or [])
     auth_required = bool(getattr(request.app.state, "auth_required", False))
+    # Idempotency-Key — when a client retries (network hiccups mid-flight)
+    # the same key lets MCP replay its cached response instead of
+    # executing a second tool call. Case-insensitive lookup because HTTP.
+    idempotency_key = (
+        request.headers.get("Idempotency-Key")
+        or request.headers.get("X-Idempotency-Key")
+    )
     return await svc.ask(
         tenant_id=tenant_id,
         correlation_id=correlation_id,
@@ -141,6 +148,7 @@ async def agent_ask(
         auth_token=auth_token,
         roles=roles,
         auth_required=auth_required,
+        idempotency_key=idempotency_key,
     )
 
 
