@@ -230,35 +230,71 @@ async def list_drafts(
 async def resolve_draft(
     draft_id: str,
     request: Request,
-    client = Depends(_mcp_client),
 ) -> DraftResolveResponse:
     tenant_id = getattr(request.state, "tenant_id", "") or ""
     if not tenant_id:
         raise ValidationError("X-Tenant-ID header is required")
+
+    # Multi-namespace: pick the MCP client by the draft's tool prefix,
+    # not by a hardcoded default. A pending itsm.incident_open draft
+    # must be replayed against the ITSM server, not HR.
+    clients: dict = getattr(request.app.state, "mcp_clients", None) or {}
+    if not clients:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "AGENT_DISABLED",
+                "message": "no MCP clients configured",
+            },
+        )
 
     # Two-phase scope check to avoid info leaks:
     #   (a) authenticate first — so an unauthenticated caller can't
     #       enumerate draft_ids by observing 404 vs 401 responses;
     #   (b) load the draft, derive the required role from the tool
     #       namespace, enforce *that* specific role.
-    # When auth is disabled entirely, phase (a) is a no-op and phase
-    # (b) short-circuits. Enable ``DOCUMIND_AUTH_REQUIRED`` to gate.
     auth_required = getattr(request.app.state, "auth_required", False)
     if auth_required:
         # (a) must be authenticated — 401 before any draft lookup.
         require_roles()(request)
-        # (b) load + check tool-derived role.
-        record = await client.get_draft(draft_id, tenant_id=tenant_id)
-        if record is None:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "DRAFT_NOT_FOUND", "draft_id": draft_id},
-            )
+
+    # Fetch the draft via ANY client — the PostgresDraftStore is
+    # shared, so any client's get_draft sees every tenant's row.
+    lookup_client = next(iter(clients.values()))
+    record = await lookup_client.get_draft(draft_id, tenant_id=tenant_id)
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "DRAFT_NOT_FOUND", "draft_id": draft_id},
+        )
+
+    if auth_required:
+        # (b) now we know the tool, check its required role.
         role = required_role_for_tool(record.tool)
         require_roles(role)(request)
 
+    # Route to the client for this draft's namespace. Without this,
+    # an itsm.* draft resolves against hr's client and gets 404 for a
+    # non-existent tool — the bug this commit closes.
+    namespace = record.tool.split(".", 1)[0] if "." in record.tool else record.tool
+    target = clients.get(namespace)
+    if target is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "NO_SERVER_FOR_NAMESPACE",
+                "namespace": namespace,
+                "tool": record.tool,
+                "message": (
+                    "No MCP server configured for this namespace in this "
+                    "deployment. The draft remains pending and can be "
+                    "resolved once DOCUMIND_MCP_<NS>_URL is set."
+                ),
+            },
+        )
+
     auth_token = getattr(request.state, "raw_token", "") or None
-    result = await client.resolve_draft(
+    result = await target.resolve_draft(
         draft_id, tenant_id=tenant_id, auth_token=auth_token,
     )
     # Error envelope from DraftStore: DRAFT_NOT_FOUND | DRAFT_NOT_PENDING
