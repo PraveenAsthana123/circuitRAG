@@ -42,10 +42,20 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
+from mcp.server_common import (
+    NoopCM as _NoopCM,
+    OTEL_AVAILABLE as _OTEL_AVAILABLE,
+    build_auth,
+    enforce_scope as _enforce_scope_common,
+    get_tracer,
+    setup_server_otel,
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_drills")
 
 app = FastAPI(title="DocuMind MCP — drill runner")
+setup_server_otel(app, service_name="mcp-server-drills")
 
 REPO = Path(__file__).resolve().parent.parent
 DRILL_DIR = REPO / "mcp" / "tests"
@@ -55,126 +65,11 @@ RESOURCE_TAG_RE = re.compile(r"^#\s*RESOURCES\s*:\s*(.+)$", re.MULTILINE)
 RESULT_RE = re.compile(r"ALL\s+(\d+)\s+.*STEPS\s+PASSED")
 DEFAULT_RESOURCES = ["mcp_hr", "inference", "pg"]
 
-
-# ---------------------------------------------------------------------------
-# Optional OTel (same pattern as server_hr / server_itsm)
-# ---------------------------------------------------------------------------
-try:
-    from opentelemetry import trace as _otel_trace
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    _OTEL_AVAILABLE = True
-except ImportError:
-    _OTEL_AVAILABLE = False
-
-
-def _setup_otel() -> None:
-    if not _OTEL_AVAILABLE:
-        return
-    endpoint = os.getenv(
-        "DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317",
-    )
-    resource = Resource.create({
-        "service.name": "mcp-server-drills",
-        "service.namespace": "documind",
-        "deployment.environment": os.getenv("DOCUMIND_ENV", "development"),
-    })
-    provider = TracerProvider(resource=resource)
-    provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True)),
-    )
-    _otel_trace.set_tracer_provider(provider)
-    FastAPIInstrumentor.instrument_app(app)
-    log.info("mcp_server_drills_otel_initialized endpoint=%s", endpoint)
-
-
-_setup_otel()
-
-
-# ---------------------------------------------------------------------------
-# Optional JWT (same scaffolding as server_hr / server_itsm)
-# ---------------------------------------------------------------------------
-try:
-    import jwt as _pyjwt
-    _JWT_AVAILABLE = True
-except ImportError:
-    _JWT_AVAILABLE = False
-
-
-class _TokenVerifier:
-    def __init__(self, *, public_key_path: str, issuer: str, audience: str) -> None:
-        self._pub = Path(public_key_path).read_bytes()
-        self._iss = issuer
-        self._aud = audience
-
-    def verify(self, raw: str) -> dict[str, Any]:
-        claims = _pyjwt.decode(
-            raw, self._pub,
-            algorithms=["RS256"],
-            issuer=self._iss,
-            audience=self._aud,
-            options={"require": ["exp", "iat", "iss", "aud"]},
-        )
-        if claims.get("kind") != "access":
-            raise _pyjwt.InvalidTokenError(f"wrong token kind: {claims.get('kind')!r}")
-        return claims
-
-
-_AUTH_REQUIRED = os.getenv("MCP_AUTH_REQUIRED", "false").lower() == "true"
-_VERIFIER: _TokenVerifier | None = None
-if _AUTH_REQUIRED:
-    if not _JWT_AVAILABLE:
-        raise RuntimeError("MCP_AUTH_REQUIRED=true but PyJWT not installed")
-    _VERIFIER = _TokenVerifier(
-        public_key_path=os.getenv(
-            "MCP_JWT_PUBLIC_KEY_PATH",
-            os.getenv(
-                "DOCUMIND_JWT_PUBLIC_KEY_PATH",
-                "./scripts/dev-keys/jwt-public.pem",
-            ),
-        ),
-        issuer=os.getenv("DOCUMIND_JWT_ISSUER", "documind-local"),
-        audience=os.getenv("DOCUMIND_JWT_AUDIENCE", "documind-services"),
-    )
-    log.info("mcp_drills_auth_required=true issuer=%s", _VERIFIER._iss)
+_AUTH_REQUIRED, _VERIFIER = build_auth()
 
 
 def _enforce_scope(authorization: str | None, tool: dict[str, Any]) -> dict[str, Any]:
-    if _VERIFIER is None:
-        return {}
-    if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "NOT_AUTHENTICATED", "message": "Bearer token required"},
-        )
-    parts = authorization.split(None, 1)
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "NOT_AUTHENTICATED", "message": "malformed Authorization header"},
-        )
-    try:
-        claims = _VERIFIER.verify(parts[1].strip())
-    except _pyjwt.InvalidTokenError as exc:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "INVALID_TOKEN", "message": str(exc)},
-        ) from exc
-    required = set(tool.get("required_scopes") or [])
-    if required and required.isdisjoint(set(claims.get("roles") or [])):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "INSUFFICIENT_SCOPE",
-                "required": sorted(required),
-                "have": sorted(claims.get("roles") or []),
-                "tool": tool.get("name"),
-            },
-        )
-    return claims
+    return _enforce_scope_common(_VERIFIER, authorization, tool)
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +249,7 @@ async def tools_call(
             )
         _enforce_scope(authorization, tool)
 
-    tracer = _otel_trace.get_tracer(__name__) if _OTEL_AVAILABLE else None
+    tracer = get_tracer(__name__)
     span_cm = (
         tracer.start_as_current_span(f"mcp.tool:{req.name}")
         if tracer is not None
@@ -399,11 +294,6 @@ async def tools_call(
         except Exception as exc:
             log.exception("mcp_drills_tool_failed name=%s", req.name)
             return {"ok": False, "error": {"code": "internal_error", "message": str(exc)}}
-
-
-class _NoopCM:
-    def __enter__(self): return None
-    def __exit__(self, *a): return False
 
 
 if __name__ == "__main__":

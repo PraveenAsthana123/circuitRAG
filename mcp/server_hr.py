@@ -39,165 +39,27 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
+from mcp.server_common import (
+    NoopCM as _NoopCM,
+    OTEL_AVAILABLE as _OTEL_AVAILABLE,
+    build_auth,
+    enforce_scope as _enforce_scope_common,
+    get_tracer,
+    setup_server_otel,
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_hr")
 
 app = FastAPI(title="DocuMind MCP — HR server")
+setup_server_otel(app, service_name="mcp-server-hr")
 
-
-# ---------------------------------------------------------------------------
-# Optional JWT scope enforcement (defence-in-depth).
-#
-# Turned on with MCP_AUTH_REQUIRED=true. Reads the same RS256 public key
-# the rest of the stack validates against (MCP_JWT_PUBLIC_KEY_PATH or
-# DOCUMIND_JWT_PUBLIC_KEY_PATH) and, on each /tools/call, verifies the
-# caller's token and checks that their `roles` claim covers the tool's
-# declared ``required_scopes``.
-#
-# Off by default so existing drills + dev work without a token. When on,
-# the caller-forwarded JWT from inference-svc provides identity and scope.
-# ---------------------------------------------------------------------------
-try:
-    import jwt as _pyjwt
-    _JWT_AVAILABLE = True
-except ImportError:
-    _JWT_AVAILABLE = False
-
-
-class _TokenVerifier:
-    def __init__(self, *, public_key_path: str, issuer: str, audience: str) -> None:
-        from pathlib import Path
-        self._pub = Path(public_key_path).read_bytes()
-        self._iss = issuer
-        self._aud = audience
-
-    def verify(self, raw: str) -> dict[str, Any]:
-        claims = _pyjwt.decode(
-            raw,
-            self._pub,
-            algorithms=["RS256"],
-            issuer=self._iss,
-            audience=self._aud,
-            options={"require": ["exp", "iat", "iss", "aud"]},
-        )
-        if claims.get("kind") != "access":
-            raise _pyjwt.InvalidTokenError(
-                f"wrong token kind: {claims.get('kind')!r}",
-            )
-        return claims
-
-
-_AUTH_REQUIRED = os.getenv("MCP_AUTH_REQUIRED", "false").lower() == "true"
-_VERIFIER: _TokenVerifier | None = None
-if _AUTH_REQUIRED:
-    if not _JWT_AVAILABLE:
-        raise RuntimeError(
-            "MCP_AUTH_REQUIRED=true but PyJWT is not installed",
-        )
-    _VERIFIER = _TokenVerifier(
-        public_key_path=os.getenv(
-            "MCP_JWT_PUBLIC_KEY_PATH",
-            os.getenv(
-                "DOCUMIND_JWT_PUBLIC_KEY_PATH",
-                "./scripts/dev-keys/jwt-public.pem",
-            ),
-        ),
-        issuer=os.getenv("DOCUMIND_JWT_ISSUER", "documind-local"),
-        audience=os.getenv("DOCUMIND_JWT_AUDIENCE", "documind-services"),
-    )
-    log.info(
-        "mcp_auth_required=true verifier_ready issuer=%s audience=%s",
-        _VERIFIER._iss, _VERIFIER._aud,
-    )
+_AUTH_REQUIRED, _VERIFIER = build_auth()
 
 
 def _enforce_scope(authorization: str | None, tool: dict[str, Any]) -> dict[str, Any]:
-    """
-    Validate the caller's JWT and intersect roles with the tool's
-    required_scopes. Returns the claims dict on success.
-    Raises HTTPException(401|403) on any failure.
-    """
-    if _VERIFIER is None:
-        # MCP_AUTH_REQUIRED=false — skip, return empty claims
-        return {}
-    if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "NOT_AUTHENTICATED", "message": "Bearer token required"},
-        )
-    parts = authorization.split(None, 1)
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "NOT_AUTHENTICATED", "message": "malformed Authorization header"},
-        )
-    try:
-        claims = _VERIFIER.verify(parts[1].strip())
-    except _pyjwt.InvalidTokenError as exc:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "INVALID_TOKEN", "message": str(exc)},
-        ) from exc
-    required = set(tool.get("required_scopes") or [])
-    if not required:
-        return claims
-    have = set(claims.get("roles") or [])
-    if required.isdisjoint(have):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "INSUFFICIENT_SCOPE",
-                "required": sorted(required),
-                "have": sorted(have),
-                "tool": tool.get("name"),
-            },
-        )
-    return claims
-
-
-# ---------------------------------------------------------------------------
-# OTel — optional. When the SDK + OTLP exporter are present, emit traces
-# so the MCP server-side span shows up in the inference-svc → MCP trace
-# tree. Kept local to mcp/ (no documind_core import) so this package
-# stays consumable by any service that wants it.
-# ---------------------------------------------------------------------------
-try:
-    from opentelemetry import trace as _otel_trace
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-        OTLPSpanExporter,
-    )
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    _OTEL_AVAILABLE = True
-except ImportError:
-    _OTEL_AVAILABLE = False
-
-
-def _setup_otel() -> None:
-    """Wire OTel once per process. Silent no-op if SDK isn't installed."""
-    if not _OTEL_AVAILABLE:
-        log.info("mcp_server_otel_skipped reason=sdk_missing")
-        return
-    endpoint = os.getenv(
-        "DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317",
-    )
-    resource = Resource.create({
-        "service.name": "mcp-server-hr",
-        "service.namespace": "documind",
-        "deployment.environment": os.getenv("DOCUMIND_ENV", "development"),
-    })
-    provider = TracerProvider(resource=resource)
-    provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True)),
-    )
-    _otel_trace.set_tracer_provider(provider)
-    FastAPIInstrumentor.instrument_app(app)
-    log.info("mcp_server_otel_initialized endpoint=%s service=mcp-server-hr", endpoint)
-
-
-_setup_otel()
+    """Thin local alias — the real logic lives in server_common."""
+    return _enforce_scope_common(_VERIFIER, authorization, tool)
 
 
 # ---------------------------------------------------------------------------
@@ -325,9 +187,7 @@ async def tools_call(
     # trace to a specific tool invocation regardless of which generic
     # POST /tools/call hosted it. FastAPIInstrumentor already gave us
     # the HTTP-level server span; this is a business-level child.
-    _tracer = (
-        _otel_trace.get_tracer(__name__) if _OTEL_AVAILABLE else None
-    )
+    _tracer = get_tracer(__name__)
     _span_cm = (
         _tracer.start_as_current_span(f"mcp.tool:{req.name}")
         if _tracer is not None
@@ -358,11 +218,6 @@ async def tools_call(
                 _sp.set_attribute("mcp.idempotent_replay", True)
             return {**cached, "idempotent_replay": True}
         return await _dispatch(req, idempotency_key, cid)
-
-
-class _NoopCM:
-    def __enter__(self): return None
-    def __exit__(self, *a): return False
 
 
 async def _dispatch(
