@@ -45,7 +45,23 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "S", "B", "A", "C4", "SIM"]
-ignore = ["S101"]  # asserts are fine in tests
+# Keep in sync with /pyproject.toml — ruff picks the nearest config,
+# so duplicating is unavoidable until we move to a single root config.
+ignore = [
+    "S101",    # asserts are fine
+    "S311",    # random is fine for non-crypto
+    "B008",    # FastAPI Depends() in defaults is idiomatic
+    "E501",    # line length handled by black
+    "SIM105",  # try/except/pass is faster than contextlib.suppress in hot paths
+    "SIM108",  # ternary vs if/else is a readability judgement
+    "SIM117",  # nested `with` can be clearer than a 120-char combined line
+    "N818",    # CognitiveInterrupt is control-flow, not an error
+    "A002",    # `type` param mirrors the CloudEvents envelope field
+    "C416",    # dict-comp vs dict() is stylistic
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "E501"]
 
 [tool.black]
 line-length = 120

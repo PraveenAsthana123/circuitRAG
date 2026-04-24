@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pytest
+
 from documind_core.breakers import (
     AgentLoopCircuitBreaker,
     AgentStopReason,
