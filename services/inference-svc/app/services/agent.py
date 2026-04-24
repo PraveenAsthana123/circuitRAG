@@ -88,6 +88,36 @@ class AgentService:
         self._rag = rag
         self._mcp = mcp
 
+    async def _tool_required_scopes(self, tool_name: str) -> list[str]:
+        """
+        Look up the authoritative ``required_scopes`` list for a tool
+        from the MCP server's own catalog. Falls back to the
+        ``<namespace>:write`` convention when the catalog is unreachable.
+
+        Fallback semantics are conservative — we'd rather over-deny a
+        read-only tool than under-deny a write tool. When MCP recovers,
+        the next call uses the real catalog.
+        """
+        try:
+            tools = await self._mcp.list_tools()
+        except Exception as exc:  # noqa: BLE001 — MCP down is a valid state
+            log.warning(
+                "agent_tool_catalog_unreachable tool=%s err=%s — falling back to convention",
+                tool_name, exc,
+            )
+            return [required_role_for_tool(tool_name)]
+        tool = next((t for t in tools if t.get("name") == tool_name), None)
+        if tool is None:
+            # Unknown tool — fallback to convention so we at least gate
+            # the call at *some* scope before MCP's 404.
+            return [required_role_for_tool(tool_name)]
+        scopes = tool.get("required_scopes") or []
+        if not scopes:
+            # Tool explicitly declares no required scopes — allow any
+            # authenticated caller. Unusual but legal.
+            return []
+        return list(scopes)
+
     async def ask(
         self,
         *,
@@ -132,20 +162,27 @@ class AgentService:
         # answer plus a structured denial; we don't waste the MCP call
         # OR expose tool invocation attempts to audit as "failed" when
         # the policy already forbade them.
+        #
+        # Required scopes come from MCPClient.list_tools() — the MCP
+        # server's own tool catalog, which is the source of truth. If
+        # that call fails (MCP unreachable, CB open), we fall back to
+        # the ``<namespace>:write`` convention. Conservative: the
+        # fallback may over-deny a read-only tool, but never under-denies
+        # a write tool.
         if auth_required:
-            required = required_role_for_tool(intent.tool)
+            required_scopes = await self._tool_required_scopes(intent.tool)
             have = set(roles or [])
-            if required not in have:
+            if required_scopes and set(required_scopes).isdisjoint(have):
                 log.info(
                     "agent_action_denied_scope tool=%s required=%s have=%s corr=%s",
-                    intent.tool, required, sorted(have), correlation_id,
+                    intent.tool, sorted(required_scopes), sorted(have), correlation_id,
                 )
                 denied = AgentAction(
                     tool=intent.tool,
                     ok=False,
                     error={
                         "code": "INSUFFICIENT_SCOPE",
-                        "required": [required],
+                        "required": sorted(required_scopes),
                         "have": sorted(have),
                         "tool": intent.tool,
                     },
