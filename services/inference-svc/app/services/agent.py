@@ -93,6 +93,7 @@ class AgentService:
         tenant_id: str,
         correlation_id: str,
         request: AgentAskRequest,
+        auth_token: str | None = None,
     ) -> AgentAskResponse:
         # 1. Always ground the answer via RAG first.
         rag_req = AskRequest(
@@ -132,6 +133,7 @@ class AgentService:
             intent.arguments,
             tenant_id=tenant_id,
             correlation_id=correlation_id,
+            auth_token=auth_token,
         )
         action = AgentAction(
             tool=intent.tool,

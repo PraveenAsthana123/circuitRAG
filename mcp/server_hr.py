@@ -46,6 +46,116 @@ app = FastAPI(title="DocuMind MCP — HR server")
 
 
 # ---------------------------------------------------------------------------
+# Optional JWT scope enforcement (defence-in-depth).
+#
+# Turned on with MCP_AUTH_REQUIRED=true. Reads the same RS256 public key
+# the rest of the stack validates against (MCP_JWT_PUBLIC_KEY_PATH or
+# DOCUMIND_JWT_PUBLIC_KEY_PATH) and, on each /tools/call, verifies the
+# caller's token and checks that their `roles` claim covers the tool's
+# declared ``required_scopes``.
+#
+# Off by default so existing drills + dev work without a token. When on,
+# the caller-forwarded JWT from inference-svc provides identity and scope.
+# ---------------------------------------------------------------------------
+try:
+    import jwt as _pyjwt
+    _JWT_AVAILABLE = True
+except ImportError:
+    _JWT_AVAILABLE = False
+
+
+class _TokenVerifier:
+    def __init__(self, *, public_key_path: str, issuer: str, audience: str) -> None:
+        from pathlib import Path
+        self._pub = Path(public_key_path).read_bytes()
+        self._iss = issuer
+        self._aud = audience
+
+    def verify(self, raw: str) -> dict[str, Any]:
+        claims = _pyjwt.decode(
+            raw,
+            self._pub,
+            algorithms=["RS256"],
+            issuer=self._iss,
+            audience=self._aud,
+            options={"require": ["exp", "iat", "iss", "aud"]},
+        )
+        if claims.get("kind") != "access":
+            raise _pyjwt.InvalidTokenError(
+                f"wrong token kind: {claims.get('kind')!r}",
+            )
+        return claims
+
+
+_AUTH_REQUIRED = os.getenv("MCP_AUTH_REQUIRED", "false").lower() == "true"
+_VERIFIER: _TokenVerifier | None = None
+if _AUTH_REQUIRED:
+    if not _JWT_AVAILABLE:
+        raise RuntimeError(
+            "MCP_AUTH_REQUIRED=true but PyJWT is not installed",
+        )
+    _VERIFIER = _TokenVerifier(
+        public_key_path=os.getenv(
+            "MCP_JWT_PUBLIC_KEY_PATH",
+            os.getenv(
+                "DOCUMIND_JWT_PUBLIC_KEY_PATH",
+                "./scripts/dev-keys/jwt-public.pem",
+            ),
+        ),
+        issuer=os.getenv("DOCUMIND_JWT_ISSUER", "documind-local"),
+        audience=os.getenv("DOCUMIND_JWT_AUDIENCE", "documind-services"),
+    )
+    log.info(
+        "mcp_auth_required=true verifier_ready issuer=%s audience=%s",
+        _VERIFIER._iss, _VERIFIER._aud,
+    )
+
+
+def _enforce_scope(authorization: str | None, tool: dict[str, Any]) -> dict[str, Any]:
+    """
+    Validate the caller's JWT and intersect roles with the tool's
+    required_scopes. Returns the claims dict on success.
+    Raises HTTPException(401|403) on any failure.
+    """
+    if _VERIFIER is None:
+        # MCP_AUTH_REQUIRED=false — skip, return empty claims
+        return {}
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "NOT_AUTHENTICATED", "message": "Bearer token required"},
+        )
+    parts = authorization.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "NOT_AUTHENTICATED", "message": "malformed Authorization header"},
+        )
+    try:
+        claims = _VERIFIER.verify(parts[1].strip())
+    except _pyjwt.InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "INVALID_TOKEN", "message": str(exc)},
+        ) from exc
+    required = set(tool.get("required_scopes") or [])
+    if not required:
+        return claims
+    have = set(claims.get("roles") or [])
+    if required.isdisjoint(have):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "INSUFFICIENT_SCOPE",
+                "required": sorted(required),
+                "have": sorted(have),
+                "tool": tool.get("name"),
+            },
+        )
+    return claims
+
+
+# ---------------------------------------------------------------------------
 # OTel — optional. When the SDK + OTLP exporter are present, emit traces
 # so the MCP server-side span shows up in the inference-svc → MCP trace
 # tree. Kept local to mcp/ (no documind_core import) so this package
@@ -188,12 +298,28 @@ async def tools_list() -> dict[str, Any]:
 async def tools_call(
     req: ToolCallRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> dict[str, Any]:
     cid = req.correlation_id or str(uuid.uuid4())
     log.info(
-        "mcp_tool_called name=%s tenant=%s corr=%s idempotency=%s",
+        "mcp_tool_called name=%s tenant=%s corr=%s idempotency=%s auth=%s",
         req.name, req.tenant_id, cid, idempotency_key,
+        "yes" if authorization else "no",
     )
+
+    # Defence-in-depth scope check BEFORE the idempotency cache check,
+    # so a replay still requires the caller to prove they're allowed to
+    # see the cached result. (Without this, a leaked idempotency_key
+    # would be a replay primitive.)
+    if _AUTH_REQUIRED:
+        tool = next((t for t in TOOLS if t["name"] == req.name), None)
+        if tool is None:
+            # Authenticate first (so unknown-name probes get 401 from
+            # unauthenticated callers, 404 from authenticated ones —
+            # same info-leak logic as the admin API).
+            _enforce_scope(authorization, {"name": req.name, "required_scopes": []})
+            raise HTTPException(status_code=404, detail={"code": "tool_not_found", "name": req.name})
+        _enforce_scope(authorization, tool)
 
     # Child span named after the tool itself — so Jaeger can filter a
     # trace to a specific tool invocation regardless of which generic

@@ -140,6 +140,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         request.state.roles = []
         request.state.auth_user_id = ""
         request.state.token_present = False
+        request.state.raw_token = ""  # forwarded to downstream services
 
         raw = _extract_bearer(request)
         if not raw:
@@ -171,6 +172,12 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         request.state.auth_user_id = claims.get("sub", "")
         request.state.user_id = request.state.auth_user_id
         request.state.roles = list(claims.get("roles") or [])
+        # Keep the raw token so a downstream-call layer (agent → MCP) can
+        # forward the caller's identity to an internal service that also
+        # verifies. Without this, every internal hop would need its own
+        # service-account credential; with it, scope enforcement can be
+        # defence-in-depth at each hop with the same JWT.
+        request.state.raw_token = raw
         return await call_next(request)
 
 

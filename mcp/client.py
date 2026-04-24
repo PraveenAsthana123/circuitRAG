@@ -159,10 +159,16 @@ class MCPClient:
         tenant_id: str | None = None,
         correlation_id: str | None = None,
         idempotency_key: str | None = None,
+        auth_token: str | None = None,
     ) -> ToolResult:
         """
         Call a tool. On CB OPEN or any HTTP failure: persist a draft,
         return ``degraded=True``.
+
+        ``auth_token`` is forwarded as ``Authorization: Bearer ...`` so
+        the MCP server can enforce per-tool scopes defence-in-depth.
+        If not supplied, no Authorization header is sent (fine when MCP
+        runs with MCP_AUTH_REQUIRED=false).
         """
         key = idempotency_key or uuid.uuid4().hex
         cid = correlation_id or uuid.uuid4().hex
@@ -177,11 +183,15 @@ class MCPClient:
         if correlation_id:
             payload["correlation_id"] = cid
 
+        headers = {"Idempotency-Key": key, "X-Correlation-Id": cid}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+
         try:
             r = await self._client.post(
                 f"{self._base}/tools/call",
                 json=payload,
-                headers={"Idempotency-Key": key, "X-Correlation-Id": cid},
+                headers=headers,
             )
             if r.status_code >= 500:
                 self._breaker.record_failure()
@@ -251,6 +261,7 @@ class MCPClient:
         *,
         tenant_id: str | None = None,
         idempotency_key: str | None = None,
+        auth_token: str | None = None,
     ) -> ToolResult:
         """
         Replay a previously-persisted draft once the MCP server is back.
@@ -277,6 +288,7 @@ class MCPClient:
             tenant_id=record.tenant_id,
             correlation_id=record.correlation_id,
             idempotency_key=idempotency_key or draft_id,  # deterministic replay
+            auth_token=auth_token,
         )
         if result.ok and result.data is not None:
             await self._drafts.mark_replayed(draft_id, result.data, record.tenant_id)

@@ -127,8 +127,14 @@ async def agent_ask(
     correlation_id = getattr(request.state, "correlation_id", "") or ""
     if not tenant_id:
         raise ValidationError("X-Tenant-ID header is required")
+    # Forward the caller's verified JWT to MCP so the server can
+    # enforce per-tool scopes defence-in-depth.
+    auth_token = getattr(request.state, "raw_token", "") or None
     return await svc.ask(
-        tenant_id=tenant_id, correlation_id=correlation_id, request=body,
+        tenant_id=tenant_id,
+        correlation_id=correlation_id,
+        request=body,
+        auth_token=auth_token,
     )
 
 
@@ -227,7 +233,10 @@ async def resolve_draft(
         role = required_role_for_tool(record.tool)
         require_roles(role)(request)
 
-    result = await client.resolve_draft(draft_id, tenant_id=tenant_id)
+    auth_token = getattr(request.state, "raw_token", "") or None
+    result = await client.resolve_draft(
+        draft_id, tenant_id=tenant_id, auth_token=auth_token,
+    )
     # Error envelope from DraftStore: DRAFT_NOT_FOUND | DRAFT_NOT_PENDING
     if not result.ok and result.error and result.error.get("code") == "DRAFT_NOT_FOUND":
         raise HTTPException(status_code=404, detail=result.error)
