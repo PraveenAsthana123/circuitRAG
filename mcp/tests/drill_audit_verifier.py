@@ -1,3 +1,4 @@
+# RESOURCES: pg
 """
 Drill: audit_verify.py detects tampering in governance.audit_log.
 
