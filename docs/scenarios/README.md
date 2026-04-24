@@ -17,6 +17,10 @@ and see green/red without asking the author.
 | 6 | MCP + Agentic (13 agent + 14 MCP scenarios + trust boundary) | [phase-06-mcp-agentic.md](phase-06-mcp-agentic.md) | ✅ Full — **zero code yet, biggest gap** |
 | 7 | Observability · Audit · SLO · Chaos | [phase-07-observability.md](phase-07-observability.md) | ✅ Full — metrics + SLO catalog + 9 chaos drills |
 | 8 | Governance · FinOps · Evaluation | [phase-08-governance-finops-eval.md](phase-08-governance-finops-eval.md) | Stub — exit criteria only |
+| 9 | PII Protection (detect · tag · redact · audit) | [phase-09-pii-protection.md](phase-09-pii-protection.md) | ✅ Full — 8 scenarios · flow diagram · CEL policy · 6 test cases |
+| 10 | LDAP / SSO (OIDC · SAML · SCIM · JWT claims) | [phase-10-ldap-sso.md](phase-10-ldap-sso.md) | ✅ Full — sequence diagram · JWT schema · 10 security scenarios |
+| 11 | RBAC + ABAC (role + attribute + policy engine) | [phase-11-rbac-abac.md](phase-11-rbac-abac.md) | ✅ Full — 8 RBAC + 10 ABAC scenarios · combined flow · failure matrix |
+| 12 | Guardrails + Secure AI (5 layers · attack/defense matrix) | [phase-12-guardrails-secure-ai.md](phase-12-guardrails-secure-ai.md) | ✅ Full — input/retrieval/prompt/output/action guards · 10 attack vectors |
 
 ## How to read a phase doc
 
