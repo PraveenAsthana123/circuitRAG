@@ -30,6 +30,11 @@ services:
     ports: !override
       - "51134:11434"
 
+  qdrant:
+    # Dev: shared dev API key. Service + client both use it.
+    environment:
+      QDRANT__SERVICE__API_KEY: "dev-qdrant-key"
+
   # Disable nginx for dev — base image expects /etc/nginx/tls/server.crt.
   # Generate a self-signed cert or run the frontend + gateway directly for now.
   nginx:

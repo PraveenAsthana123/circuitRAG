@@ -200,6 +200,10 @@ if _OTEL_AVAILABLE:
         def _preferred_temporality(self):  # noqa: ANN201 — OTel typing
             return self._inner._preferred_temporality  # type: ignore[attr-defined]
 
+        @property
+        def _preferred_aggregation(self):  # noqa: ANN201 — OTel 1.27+ expects this
+            return self._inner._preferred_aggregation  # type: ignore[attr-defined]
+
         def export(self, metrics_data, timeout_millis=10_000, **kwargs):  # noqa: ANN001
             if not self._breaker.allow_export():
                 return MetricExportResult.SUCCESS
