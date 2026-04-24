@@ -1,0 +1,55 @@
+{
+  "ask_trace": {
+    "traceID": "009e5033bb0b83a7023a143201d61278",
+    "total_spans": 18,
+    "services": {
+      "retrieval-svc": 10,
+      "inference-svc": 8
+    },
+    "operations": {
+      "retrieval-svc": [
+        "EVALSHA",
+        "GET",
+        "POST",
+        "POST /api/v1/retrieve",
+        "POST /api/v1/retrieve http receive",
+        "POST /api/v1/retrieve http send",
+        "SETEX"
+      ],
+      "inference-svc": [
+        "EVALSHA",
+        "POST",
+        "POST /api/v1/ask",
+        "POST /api/v1/ask http receive",
+        "POST /api/v1/ask http send"
+      ]
+    }
+  },
+  "agent_trace": {
+    "traceID": "d0a5101e6d6868a0ef1b587eb1d7f7e3",
+    "total_spans": 20,
+    "services": {
+      "inference-svc": 10,
+      "retrieval-svc": 10
+    },
+    "operations": {
+      "inference-svc": [
+        "EVALSHA",
+        "POST",
+        "POST /api/v1/agent/ask",
+        "POST /api/v1/agent/ask http receive",
+        "POST /api/v1/agent/ask http send"
+      ],
+      "retrieval-svc": [
+        "EVALSHA",
+        "GET",
+        "POST",
+        "POST /api/v1/retrieve",
+        "POST /api/v1/retrieve http receive",
+        "POST /api/v1/retrieve http send",
+        "SETEX"
+      ]
+    }
+  },
+  "jaeger_ui_tip": "http://127.0.0.1:16686/trace/009e5033bb0b83a7023a143201d61278"
+}
