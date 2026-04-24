@@ -115,29 +115,43 @@ def create_app() -> FastAPI:
                 exc,
             )
 
-        mcp_url = os.getenv("DOCUMIND_MCP_HR_URL", "")
-        if mcp_url:
-            mcp_client = MCPClient(
-                base_url=mcp_url,
-                draft_store=draft_store,
-                audit_log=audit_log,
+        # Multi-MCP support — every env var that ends in _URL gets its own
+        # client, keyed by the namespace between "DOCUMIND_MCP_" and "_URL"
+        # (lowercased). The hr client stays the legacy default; add itsm
+        # (or future namespaces) simply by setting DOCUMIND_MCP_<NS>_URL.
+        mcp_spec = [
+            ("hr", os.getenv("DOCUMIND_MCP_HR_URL", "")),
+            ("itsm", os.getenv("DOCUMIND_MCP_ITSM_URL", "")),
+        ]
+        clients: dict[str, MCPClient] = {}
+        for namespace, url in mcp_spec:
+            if not url:
+                continue
+            clients[namespace] = MCPClient(
+                base_url=url, draft_store=draft_store, audit_log=audit_log,
             )
-            app.state.mcp_client = mcp_client
+        if clients:
+            # Preserve the single-client `mcp_client` state slot for the
+            # detailed-health + breaker-metrics paths that only know how to
+            # poll one CB today. Expose the full registry via `mcp_clients`.
+            app.state.mcp_client = clients.get("hr") or next(iter(clients.values()))
+            app.state.mcp_clients = clients
             app.state.agent_service = AgentService(
                 rag=app.state.rag_service,
-                mcp=mcp_client,
+                mcp=clients,
                 audit_log=audit_log,  # agent.scope_denied rows
             )
             log.info(
-                "agent_service_ready mcp_url=%s draft_store=%s audit=%s",
-                mcp_url,
+                "agent_service_ready namespaces=%s draft_store=%s audit=%s",
+                sorted(clients.keys()),
                 "postgres" if draft_store else "in_memory",
                 "on" if audit_log else "off",
             )
         else:
             app.state.mcp_client = None
+            app.state.mcp_clients = {}
             app.state.agent_service = None
-            log.info("agent_service_disabled reason=no_mcp_url")
+            log.info("agent_service_disabled reason=no_mcp_urls")
 
         # Breaker metrics exporter — bridges non-CircuitBreaker breakers
         # (MCP client, OTel OCB) into the shared documind_circuit_breaker_state
@@ -190,8 +204,8 @@ def create_app() -> FastAPI:
                 await app.state.breaker_metrics_exporter.stop()
             await retrieval.aclose()
             await ollama.aclose()
-            if app.state.mcp_client is not None:
-                await app.state.mcp_client.close()
+            for c in (app.state.mcp_clients or {}).values():
+                await c.close()
             if app.state.db_client is not None:
                 await app.state.db_client.close()
             await redis_client.close()

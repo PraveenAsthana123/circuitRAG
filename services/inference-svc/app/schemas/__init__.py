@@ -67,7 +67,10 @@ class AgentAskResponse(AskResponse):
     )
     intent: str = Field(
         default="answer",
-        description="answer | action | action_declined | action_denied_scope",
+        description=(
+            "answer | action | action_declined | action_denied_scope | "
+            "action_unavailable"
+        ),
     )
 
 

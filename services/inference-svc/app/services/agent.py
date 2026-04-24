@@ -50,6 +50,10 @@ _POLICY_PATTERN = re.compile(
     r"\b(lookup|look up|show|fetch|get)\b.*\b(leave|travel|expense)\s+policy\b",
     re.IGNORECASE,
 )
+_INCIDENT_OPEN_PATTERN = re.compile(
+    r"\b(open|file|create|raise|log)\b.*\b(incident|ticket|issue)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -76,6 +80,25 @@ def _detect_intent(query: str, employee_id: str | None) -> DetectedIntent | None
             tool="hr.policy_lookup",
             arguments={"policy_name": m.group(2).lower()},
         )
+    m = _INCIDENT_OPEN_PATTERN.search(query)
+    if m:
+        # Infer priority from common phrasing; default normal.
+        priority = "normal"
+        if re.search(r"\b(urgent|critical|p0|p1)\b", query, re.IGNORECASE):
+            priority = "critical"
+        elif re.search(r"\b(high|important)\b", query, re.IGNORECASE):
+            priority = "high"
+        elif re.search(r"\b(low|minor)\b", query, re.IGNORECASE):
+            priority = "low"
+        return DetectedIntent(
+            tool="itsm.incident_open",
+            arguments={
+                "title": query[:120],
+                "description": query[:1000],
+                "priority": priority,
+                "reporter_employee_id": employee_id or "",
+            },
+        )
     return None
 
 
@@ -89,28 +112,45 @@ class AgentService:
         self,
         *,
         rag: RagInferenceService,
-        mcp: MCPClient,
+        mcp: MCPClient | dict[str, MCPClient],
         audit_log: Any = None,
     ) -> None:
         self._rag = rag
-        self._mcp = mcp
+        # Back-compat: accept a single MCPClient (wrap into {"hr": client})
+        # OR a namespace→client dict for multi-server deployments. The
+        # agent routes by ``intent.tool.split(".")[0]`` so every
+        # enrolled namespace gets its own client with its own CB +
+        # draft store + audit log context.
+        if isinstance(mcp, MCPClient):
+            self._clients: dict[str, MCPClient] = {"hr": mcp}
+        else:
+            self._clients = dict(mcp)
         # Optional AuditLog (documind_core.audit.AuditWriter).
         # When wired, agent-level scope denials produce
         # governance.audit_log rows so ops can see rejected attempts.
         self._audit = audit_log
 
+    def _client_for(self, tool_name: str) -> MCPClient | None:
+        """Route by namespace prefix: 'hr.leave_request' → self._clients['hr']."""
+        namespace = tool_name.split(".", 1)[0] if "." in tool_name else tool_name
+        return self._clients.get(namespace)
+
     async def _tool_required_scopes(self, tool_name: str) -> list[str]:
         """
         Look up the authoritative ``required_scopes`` list for a tool
-        from the MCP server's own catalog. Falls back to the
-        ``<namespace>:write`` convention when the catalog is unreachable.
+        from ITS OWN MCP server's catalog (picked by namespace).
+        Falls back to the ``<namespace>:write`` convention when the
+        catalog is unreachable OR no client is registered for this
+        namespace.
 
         Fallback semantics are conservative — we'd rather over-deny a
-        read-only tool than under-deny a write tool. When MCP recovers,
-        the next call uses the real catalog.
+        read-only tool than under-deny a write tool.
         """
+        client = self._client_for(tool_name)
+        if client is None:
+            return [required_role_for_tool(tool_name)]
         try:
-            tools = await self._mcp.list_tools()
+            tools = await client.list_tools()
         except Exception as exc:  # noqa: BLE001 — MCP down is a valid state
             log.warning(
                 "agent_tool_catalog_unreachable tool=%s err=%s — falling back to convention",
@@ -119,13 +159,9 @@ class AgentService:
             return [required_role_for_tool(tool_name)]
         tool = next((t for t in tools if t.get("name") == tool_name), None)
         if tool is None:
-            # Unknown tool — fallback to convention so we at least gate
-            # the call at *some* scope before MCP's 404.
             return [required_role_for_tool(tool_name)]
         scopes = tool.get("required_scopes") or []
         if not scopes:
-            # Tool explicitly declares no required scopes — allow any
-            # authenticated caller. Unusual but legal.
             return []
         return list(scopes)
 
@@ -224,7 +260,29 @@ class AgentService:
                     intent="action_denied_scope",
                 )
 
-        # 3. Invoke MCP
+        # 3. Invoke MCP — route by namespace
+        client = self._client_for(intent.tool)
+        if client is None:
+            log.warning(
+                "agent_no_client_for_namespace tool=%s corr=%s",
+                intent.tool, correlation_id,
+            )
+            unavailable = AgentAction(
+                tool=intent.tool,
+                ok=False,
+                error={
+                    "code": "NO_SERVER_FOR_NAMESPACE",
+                    "namespace": intent.tool.split(".", 1)[0],
+                    "tool": intent.tool,
+                    "message": "No MCP server configured for this namespace in this deployment",
+                },
+            )
+            return AgentAskResponse(
+                **base.model_dump(),
+                action=unavailable,
+                intent="action_unavailable",
+            )
+
         log.info(
             "agent_invoking_tool tool=%s tenant=%s corr=%s",
             intent.tool, tenant_id, correlation_id,
@@ -233,7 +291,7 @@ class AgentService:
         # cache dedupes retries end-to-end. Without this, the MCPClient
         # would generate a fresh uuid4 key on every call — making a
         # client-retry on network hiccups create two tickets.
-        result: ToolResult = await self._mcp.call_tool(
+        result: ToolResult = await client.call_tool(
             intent.tool,
             intent.arguments,
             tenant_id=tenant_id,
