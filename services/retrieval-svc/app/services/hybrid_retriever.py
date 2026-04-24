@@ -19,6 +19,7 @@ import logging
 import time
 
 from documind_core.cache import Cache
+from documind_core.breakers import RetrievalCircuitBreaker
 
 from app.schemas import RetrievedChunk, RetrieveRequest, RetrieveResponse
 
@@ -42,6 +43,7 @@ class HybridRetriever:
         vector_top_k: int = 20,
         graph_top_k: int = 10,
         cache_ttl: int = 300,
+        quality_breaker: RetrievalCircuitBreaker | None = None,
     ) -> None:
         self._embedder = embedder
         self._vector = vector
@@ -51,6 +53,16 @@ class HybridRetriever:
         self._vector_top_k = vector_top_k
         self._graph_top_k = graph_top_k
         self._cache_ttl = cache_ttl
+        # Quality-aware breaker: opens when rolling top-score falls below
+        # threshold even though the HTTP calls succeeded. Without this, a
+        # corpus that has nothing relevant would feed garbage into the LLM.
+        self._quality_breaker = quality_breaker or RetrievalCircuitBreaker(
+            "retrieval-quality",
+            failure_threshold=5,
+            recovery_timeout=60.0,
+            min_quality=0.35,
+            quality_window=20,
+        )
 
     @staticmethod
     def _cache_key(tenant_id: str, req: RetrieveRequest) -> str:
@@ -98,6 +110,18 @@ class HybridRetriever:
         fused = fused[:request.top_k]
         chunks = [RetrievedChunk(**h) for h in fused]
 
+        latency_ms = (time.monotonic() - start) * 1000
+
+        # Record a quality sample so the breaker can notice a corpus trend.
+        # We DO NOT block on the current query — one bad query is fine. The
+        # breaker opens only when quality degrades across a rolling window.
+        top_score = float(chunks[0].score) if chunks else 0.0
+        self._quality_breaker.record_quality(
+            top_score=top_score,
+            n_results=len(chunks),
+            latency_ms=latency_ms,
+        )
+
         # Cache
         await self._cache.set_json(
             key,
@@ -108,10 +132,10 @@ class HybridRetriever:
             ttl=self._cache_ttl,
         )
 
-        latency_ms = (time.monotonic() - start) * 1000
         log.info(
-            "retrieval_complete tenant=%s strategy=%s n=%d latency_ms=%.1f",
+            "retrieval_complete tenant=%s strategy=%s n=%d latency_ms=%.1f top_score=%.3f breaker=%s",
             tenant_id, request.strategy, len(chunks), latency_ms,
+            top_score, self._quality_breaker.state.value,
         )
         return RetrieveResponse(
             chunks=chunks,

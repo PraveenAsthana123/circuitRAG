@@ -99,3 +99,21 @@ circuit breaker + rate limiting + feature flags live in `libs/py`.
 
 Documented in spec + `docs/runbooks/`. Code can't encode Conway's law —
 team structure does.
+
+---
+
+## Specialized Circuit Breakers (5 classes, shared lib)
+
+Production-grade additions beyond the base `CircuitBreaker`. All live in
+[`libs/py/documind_core/breakers.py`](../../libs/py/documind_core/breakers.py).
+
+| # | Breaker | Polarity | Granularity | Opens when... | Wired in |
+|---|---|---|---|---|---|
+| 1 | `RetrievalCircuitBreaker` | forward | per-process | quality degrades (avg top_score drops or > 50% empty results) | `retrieval-svc/app/services/hybrid_retriever.py` |
+| 2 | `TokenCircuitBreaker` | forward (pre-flight) | per-tenant | daily / monthly budget exceeded OR request > per-request cap | `inference-svc/app/services/rag_inference.py` |
+| 3 | `AgentLoopCircuitBreaker` | forward | **per agent run** | max_steps / total_timeout / loop detected / tool budget exceeded | `inference-svc/app/agents/multi_hop_agent.py` |
+| 4 | `ObservabilityCircuitBreaker` | **inverted** (OPEN = skip export) | per-exporter | N consecutive OTLP export failures | `libs/py/documind_core/observability.py` |
+| 5 | `CognitiveCircuitBreaker` (CCB) | forward (intrinsic) | **per-request** | any signal returns BLOCK mid-generation | `inference-svc/app/services/rag_inference.py` streaming loop |
+
+See [`CCB-cognitive-circuit-breaker.md`](CCB-cognitive-circuit-breaker.md) for
+the intrinsic-reliability design and the full signal catalogue.

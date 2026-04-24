@@ -42,8 +42,28 @@ from .exceptions import (
     RateLimitedError,
     PolicyViolationError,
 )
+from .circuit_breaker import CircuitBreaker, State
+from .breakers import (
+    RetrievalCircuitBreaker,
+    TokenCircuitBreaker,
+    TokenCheck,
+    TokenBreakerDecision,
+    AgentLoopCircuitBreaker,
+    AgentStopReason,
+    ObservabilityCircuitBreaker,
+    CognitiveCircuitBreaker,
+    CognitiveDecision,
+    CognitiveReading,
+    CognitiveSignal,
+    CognitiveInterrupt,
+    RepetitionSignal,
+    CitationDeadlineSignal,
+    ForbiddenPatternSignal,
+    LogprobConfidenceSignal,
+)
 
 __all__ = [
+    # Exceptions
     "AppError",
     "NotFoundError",
     "ValidationError",
@@ -54,4 +74,25 @@ __all__ = [
     "TenantIsolationError",
     "RateLimitedError",
     "PolicyViolationError",
+    # Base breaker
+    "CircuitBreaker",
+    "State",
+    # Specialized breakers
+    "RetrievalCircuitBreaker",
+    "TokenCircuitBreaker",
+    "TokenCheck",
+    "TokenBreakerDecision",
+    "AgentLoopCircuitBreaker",
+    "AgentStopReason",
+    "ObservabilityCircuitBreaker",
+    # Cognitive
+    "CognitiveCircuitBreaker",
+    "CognitiveDecision",
+    "CognitiveReading",
+    "CognitiveSignal",
+    "CognitiveInterrupt",
+    "RepetitionSignal",
+    "CitationDeadlineSignal",
+    "ForbiddenPatternSignal",
+    "LogprobConfidenceSignal",
 ]
