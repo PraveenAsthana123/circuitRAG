@@ -52,6 +52,16 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 
+def _cb_state(client: Any) -> str | None:
+    """Read the MCP client's breaker state if exposed, else None."""
+    state = getattr(client, "cb_state", None)
+    if state is None:
+        return None
+    # Support both string and Enum-like state objects.
+    value = getattr(state, "value", None)
+    return value if value is not None else str(state)
+
+
 class DraftReplayWorker:
     def __init__(
         self,
@@ -60,11 +70,20 @@ class DraftReplayWorker:
         tenant_ids: list[str],
         interval_s: int = 20,
         per_draft_backoff_s: int = 60,
+        skip_when_cb_open: bool = True,
     ) -> None:
         self._mcp = mcp_client
         self._tenants = list(tenant_ids)
         self._interval = max(1, interval_s)
         self._backoff = max(1, per_draft_backoff_s)
+        # When True, the sweep bails out IMMEDIATELY if the MCP client's
+        # circuit breaker reports OPEN — no PG reads, no HTTP attempts.
+        # This is a finer-grained gate than degraded_bailout, which only
+        # fires AFTER the first resolve attempt of a cycle gets a
+        # degraded response. Polling cb_state first lets the worker skip
+        # even the list_pending_drafts call, which keeps PG load flat
+        # during downstream outages.
+        self._skip_when_cb_open = skip_when_cb_open
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         self._last_attempt: dict[str, float] = {}
@@ -73,6 +92,7 @@ class DraftReplayWorker:
             "cycles": 0,
             "replayed": 0,
             "skipped_backoff": 0,
+            "cb_wait_skips": 0,
             "degraded_bailouts": 0,
             "errors": 0,
         }
@@ -116,6 +136,17 @@ class DraftReplayWorker:
 
     async def _sweep(self) -> None:
         self.stats["cycles"] += 1
+        # CB fast-path: when the MCP client's breaker is OPEN we know
+        # every resolve call will fast-fail. Skip the cycle before we
+        # even touch Postgres. The CB itself will HALF_OPEN-probe on
+        # its own schedule; the worker re-joins on the next cycle
+        # whose probe succeeds.
+        if self._skip_when_cb_open and _cb_state(self._mcp) == "open":
+            self.stats["cb_wait_skips"] += 1
+            log.info(
+                "draft_replay_cb_wait cb_state=open — skipping cycle",
+            )
+            return
         now = time.monotonic()
         for tenant in self._tenants:
             try:

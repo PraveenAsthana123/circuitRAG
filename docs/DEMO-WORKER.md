@@ -111,10 +111,30 @@ Run it: `PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_worker.py`
 | --- | --- |
 | No pending drafts | cycles++, no work |
 | MCP up, drafts pending, resolve succeeds | `replayed++`, PG row → status=replayed |
+| **MCP CB is OPEN (skip_when_cb_open=True)** | `cb_wait_skips++`, sweep returns before touching PG |
 | MCP down, first resolve returns `degraded=true` | `degraded_bailouts++`, skip rest of cycle |
 | MCP timeout / exception during `resolve_draft` | `errors++`, log, continue |
 | Draft attempted within backoff window | `skipped_backoff++` |
 | `list_pending_drafts` fails (e.g. PG blip) | `errors++`, skip that tenant this cycle |
+
+### CB fast-path vs degraded bailout
+
+Two similar-sounding bailout mechanisms, different jobs:
+
+- **`cb_wait_skips`** (new): the CB is visibly OPEN when the sweep
+  starts. Worker returns *immediately* — no list_pending, no resolve,
+  zero PG load. Pure "the downstream is dead, do nothing."
+- **`degraded_bailouts`**: the CB was CLOSED at sweep start, we listed
+  pending drafts and tried the *first* one, which came back
+  `degraded=true`. So MCP went down between the list and the first
+  call — we bail out of the rest of this cycle but already hit PG
+  once for the list. The CB will flip to OPEN on the next call and
+  the *next* cycle hits the fast-path.
+
+During a prolonged outage: first cycle fires one PG list + one HTTP
+retry + degraded_bailout; subsequent cycles are pure cb_wait_skips
+(zero PG, zero HTTP) until the CB's recovery_timeout expires and the
+probe succeeds.
 
 `worker.stats` is a plain dict — any future metrics layer can scrape
 it; current exposure is logs only.
