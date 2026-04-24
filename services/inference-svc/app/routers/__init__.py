@@ -1,6 +1,7 @@
 """Inference HTTP routes."""
 from __future__ import annotations
 
+from documind_core.auth import require_roles, required_role_for_tool
 from documind_core.exceptions import ValidationError
 from documind_core.schemas import HealthResponse
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -148,6 +149,28 @@ async def resolve_draft(
     tenant_id = getattr(request.state, "tenant_id", "") or ""
     if not tenant_id:
         raise ValidationError("X-Tenant-ID header is required")
+
+    # Two-phase scope check to avoid info leaks:
+    #   (a) authenticate first — so an unauthenticated caller can't
+    #       enumerate draft_ids by observing 404 vs 401 responses;
+    #   (b) load the draft, derive the required role from the tool
+    #       namespace, enforce *that* specific role.
+    # When auth is disabled entirely, phase (a) is a no-op and phase
+    # (b) short-circuits. Enable ``DOCUMIND_AUTH_REQUIRED`` to gate.
+    auth_required = getattr(request.app.state, "auth_required", False)
+    if auth_required:
+        # (a) must be authenticated — 401 before any draft lookup.
+        require_roles()(request)
+        # (b) load + check tool-derived role.
+        record = await client.get_draft(draft_id, tenant_id=tenant_id)
+        if record is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "DRAFT_NOT_FOUND", "draft_id": draft_id},
+            )
+        role = required_role_for_tool(record.tool)
+        require_roles(role)(request)
+
     result = await client.resolve_draft(draft_id, tenant_id=tenant_id)
     # Error envelope from DraftStore: DRAFT_NOT_FOUND | DRAFT_NOT_PENDING
     if not result.ok and result.error and result.error.get("code") == "DRAFT_NOT_FOUND":

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 import redis.asyncio as aioredis
 from documind_core.config import get_settings
 from documind_core.logging_config import setup_logging
+from documind_core.auth import JWTAuthMiddleware, JWTVerifier
 from documind_core.middleware import (
     CorrelationIdMiddleware,
     RateLimitMiddleware,
@@ -164,6 +165,33 @@ def create_app() -> FastAPI:
             await redis_client.close()
 
     app = FastAPI(title="DocuMind — Inference Service", version="0.1.0", lifespan=lifespan)
+
+    # JWT auth — opt-in via DOCUMIND_AUTH_REQUIRED. Even when "off" we
+    # still parse tokens so endpoints that inspect roles work for
+    # authenticated callers; it's the ``require_roles`` dep that does
+    # the rejecting. Stash ``auth_required`` on app.state so routes can
+    # branch on deployment posture (admin endpoints use this to decide
+    # whether the scope check is load-bearing).
+    auth_required = os.getenv("DOCUMIND_AUTH_REQUIRED", "false").lower() == "true"
+    app.state.auth_required = auth_required
+    try:
+        verifier = JWTVerifier(
+            public_key_path=settings.jwt_public_key_path,
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+        )
+        app.add_middleware(
+            JWTAuthMiddleware, verifier=verifier, auth_required=auth_required,
+        )
+        log.info(
+            "jwt_auth_ready required=%s key=%s issuer=%s",
+            auth_required, settings.jwt_public_key_path, settings.jwt_issuer,
+        )
+    except FileNotFoundError as exc:
+        if auth_required:
+            raise  # can't enforce without the key — loud failure on boot
+        log.warning("jwt_auth_disabled reason=%s — auth_required=false so continuing", exc)
+
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(
         RateLimitMiddleware,

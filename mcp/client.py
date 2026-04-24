@@ -300,6 +300,16 @@ class MCPClient:
     ) -> list[DraftRecord]:
         return await self._drafts.list_pending(tenant_id)
 
+    async def get_draft(
+        self, draft_id: str, tenant_id: str | None = None
+    ) -> DraftRecord | None:
+        """
+        Fetch a draft without replaying it. Useful for callers that need
+        the tool name (to enforce a tool-derived scope) before deciding
+        whether the user is allowed to resolve.
+        """
+        return await self._drafts.get(draft_id, tenant_id)
+
     @property
     def cb_state(self) -> str:
         return self._breaker.state
