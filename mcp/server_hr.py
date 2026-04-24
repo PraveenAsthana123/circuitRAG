@@ -38,12 +38,10 @@ from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 from mcp.server_common import (
-    NoopCM as _NoopCM,
-    OTEL_AVAILABLE as _OTEL_AVAILABLE,
     ToolCallRequest,
     build_auth,
     enforce_scope as _enforce_scope_common,
-    get_tracer,
+    handle_tool_call,
     setup_server_otel,
 )
 
@@ -154,62 +152,19 @@ async def tools_call(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> dict[str, Any]:
-    cid = req.correlation_id or str(uuid.uuid4())
-    log.info(
-        "mcp_tool_called name=%s tenant=%s corr=%s idempotency=%s auth=%s",
-        req.name, req.tenant_id, cid, idempotency_key,
-        "yes" if authorization else "no",
+    return await handle_tool_call(
+        req=req,
+        tools=TOOLS,
+        idempotency_key=idempotency_key,
+        authorization=authorization,
+        auth_required=_AUTH_REQUIRED,
+        verifier=_VERIFIER,
+        idempotency_cache=state.idempotency,
+        dispatch=_dispatch,
+        tracer_module=__name__,
+        logger=log,
+        service_label="mcp_hr",
     )
-
-    # Defence-in-depth scope check BEFORE the idempotency cache check,
-    # so a replay still requires the caller to prove they're allowed to
-    # see the cached result. (Without this, a leaked idempotency_key
-    # would be a replay primitive.)
-    if _AUTH_REQUIRED:
-        tool = next((t for t in TOOLS if t["name"] == req.name), None)
-        if tool is None:
-            # Authenticate first (so unknown-name probes get 401 from
-            # unauthenticated callers, 404 from authenticated ones —
-            # same info-leak logic as the admin API).
-            _enforce_scope(authorization, {"name": req.name, "required_scopes": []})
-            raise HTTPException(status_code=404, detail={"code": "tool_not_found", "name": req.name})
-        _enforce_scope(authorization, tool)
-
-    # Child span named after the tool itself — so Jaeger can filter a
-    # trace to a specific tool invocation regardless of which generic
-    # POST /tools/call hosted it. FastAPIInstrumentor already gave us
-    # the HTTP-level server span; this is a business-level child.
-    _tracer = get_tracer(__name__)
-    _span_cm = (
-        _tracer.start_as_current_span(f"mcp.tool:{req.name}")
-        if _tracer is not None
-        else _NoopCM()
-    )
-
-    with _span_cm as _sp:
-        if _OTEL_AVAILABLE and _sp is not None:
-            _sp.set_attribute("mcp.tool.name", req.name)
-            if req.tenant_id:
-                # Unified with inference-svc / retrieval-svc so a
-                # single Jaeger tag filter (documind.tenant_id=<uuid>)
-                # returns every span for that tenant regardless of
-                # which service the span came from.
-                _sp.set_attribute("documind.tenant_id", req.tenant_id)
-                _sp.set_attribute("mcp.tenant_id", req.tenant_id)  # back-compat
-            _sp.set_attribute("documind.correlation_id", cid)
-            _sp.set_attribute("mcp.correlation_id", cid)  # back-compat
-            _sp.set_attribute(
-                "mcp.idempotency_key_present", idempotency_key is not None,
-            )
-
-        # Idempotency replay
-        if idempotency_key and idempotency_key in state.idempotency:
-            cached = state.idempotency[idempotency_key]
-            log.info("mcp_idempotent_replay key=%s", idempotency_key)
-            if _OTEL_AVAILABLE and _sp is not None:
-                _sp.set_attribute("mcp.idempotent_replay", True)
-            return {**cached, "idempotent_replay": True}
-        return await _dispatch(req, idempotency_key, cid)
 
 
 async def _dispatch(

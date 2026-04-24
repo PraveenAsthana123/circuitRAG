@@ -41,12 +41,10 @@ from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 from mcp.server_common import (
-    NoopCM as _NoopCM,
-    OTEL_AVAILABLE as _OTEL_AVAILABLE,
     ToolCallRequest,
     build_auth,
     enforce_scope as _enforce_scope_common,
-    get_tracer,
+    handle_tool_call,
     setup_server_otel,
 )
 
@@ -228,67 +226,53 @@ async def tools_call(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> dict[str, Any]:
-    cid = req.correlation_id or str(uuid.uuid4())
-    log.info(
-        "mcp_drills_tool_called name=%s corr=%s auth=%s",
-        req.name, cid, "yes" if authorization else "no",
+    return await handle_tool_call(
+        req=req,
+        tools=TOOLS,
+        idempotency_key=idempotency_key,
+        authorization=authorization,
+        auth_required=_AUTH_REQUIRED,
+        verifier=_VERIFIER,
+        idempotency_cache=_IDEMPOTENCY,
+        dispatch=_dispatch,
+        tracer_module=__name__,
+        logger=log,
+        service_label="mcp_drills",
     )
 
-    if _AUTH_REQUIRED:
-        tool = next((t for t in TOOLS if t["name"] == req.name), None)
-        if tool is None:
-            _enforce_scope(authorization, {"name": req.name, "required_scopes": []})
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "tool_not_found", "name": req.name},
-            )
-        _enforce_scope(authorization, tool)
 
-    tracer = get_tracer(__name__)
-    span_cm = (
-        tracer.start_as_current_span(f"mcp.tool:{req.name}")
-        if tracer is not None
-        else _NoopCM()
-    )
-    with span_cm as sp:
-        if _OTEL_AVAILABLE and sp is not None:
-            sp.set_attribute("mcp.tool.name", req.name)
-            sp.set_attribute("documind.correlation_id", cid)
-
-        if idempotency_key and idempotency_key in _IDEMPOTENCY:
-            cached = _IDEMPOTENCY[idempotency_key]
-            return {**cached, "idempotent_replay": True}
-
-        tool = next((t for t in TOOLS if t["name"] == req.name), None)
-        if tool is None:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "tool_not_found", "name": req.name},
-            )
-
-        try:
-            if req.name == "drill.list":
-                result = {"drills": _discover_drills()}
-            elif req.name == "drill.run":
-                name = req.arguments.get("name")
-                if not name:
-                    return {"ok": False, "error": {"code": "missing_arg", "arg": "name"}}
-                timeout_s = int(req.arguments.get("timeout_s", DEFAULT_TIMEOUT_S))
-                if _OTEL_AVAILABLE and sp is not None:
-                    sp.set_attribute("drill.name", name)
-                    sp.set_attribute("drill.timeout_s", timeout_s)
-                result = _run_drill(name, timeout_s)
-            else:  # pragma: no cover
-                raise HTTPException(status_code=501, detail={"code": "not_implemented"})
-            response = {"ok": True, "result": result}
-            if idempotency_key:
-                _IDEMPOTENCY[idempotency_key] = response
-            return response
-        except HTTPException:
-            raise
-        except Exception as exc:
-            log.exception("mcp_drills_tool_failed name=%s", req.name)
-            return {"ok": False, "error": {"code": "internal_error", "message": str(exc)}}
+async def _dispatch(
+    req: ToolCallRequest,
+    idempotency_key: str | None,
+    cid: str,
+) -> dict[str, Any]:
+    """Extracted so handle_tool_call can wrap it with span + idempotency."""
+    tool = next((t for t in TOOLS if t["name"] == req.name), None)
+    if tool is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "tool_not_found", "name": req.name},
+        )
+    try:
+        if req.name == "drill.list":
+            result = {"drills": _discover_drills()}
+        elif req.name == "drill.run":
+            name = req.arguments.get("name")
+            if not name:
+                return {"ok": False, "error": {"code": "missing_arg", "arg": "name"}}
+            timeout_s = int(req.arguments.get("timeout_s", DEFAULT_TIMEOUT_S))
+            result = _run_drill(name, timeout_s)
+        else:  # pragma: no cover
+            raise HTTPException(status_code=501, detail={"code": "not_implemented"})
+        response = {"ok": True, "result": result}
+        if idempotency_key:
+            _IDEMPOTENCY[idempotency_key] = response
+        return response
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("mcp_drills_tool_failed name=%s", req.name)
+        return {"ok": False, "error": {"code": "internal_error", "message": str(exc)}}
 
 
 if __name__ == "__main__":

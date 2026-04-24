@@ -27,12 +27,10 @@ from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 from mcp.server_common import (
-    NoopCM as _NoopCM,
-    OTEL_AVAILABLE as _OTEL_AVAILABLE,
     ToolCallRequest,
     build_auth,
     enforce_scope as _enforce_scope_common,
-    get_tracer,
+    handle_tool_call,
     setup_server_otel,
 )
 
@@ -139,47 +137,19 @@ async def tools_call(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> dict[str, Any]:
-    cid = req.correlation_id or str(uuid.uuid4())
-    log.info(
-        "mcp_itsm_tool_called name=%s tenant=%s corr=%s auth=%s",
-        req.name, req.tenant_id, cid, "yes" if authorization else "no",
+    return await handle_tool_call(
+        req=req,
+        tools=TOOLS,
+        idempotency_key=idempotency_key,
+        authorization=authorization,
+        auth_required=_AUTH_REQUIRED,
+        verifier=_VERIFIER,
+        idempotency_cache=state.idempotency,
+        dispatch=_dispatch,
+        tracer_module=__name__,
+        logger=log,
+        service_label="mcp_itsm",
     )
-
-    # Scope before cache (leaked key ≠ replay primitive)
-    if _AUTH_REQUIRED:
-        tool = next((t for t in TOOLS if t["name"] == req.name), None)
-        if tool is None:
-            _enforce_scope(authorization, {"name": req.name, "required_scopes": []})
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "tool_not_found", "name": req.name},
-            )
-        _enforce_scope(authorization, tool)
-
-    tracer = get_tracer(__name__)
-    span_cm = (
-        tracer.start_as_current_span(f"mcp.tool:{req.name}")
-        if tracer is not None
-        else _NoopCM()
-    )
-
-    with span_cm as sp:
-        if _OTEL_AVAILABLE and sp is not None:
-            sp.set_attribute("mcp.tool.name", req.name)
-            if req.tenant_id:
-                sp.set_attribute("documind.tenant_id", req.tenant_id)
-                sp.set_attribute("mcp.tenant_id", req.tenant_id)
-            sp.set_attribute("documind.correlation_id", cid)
-            sp.set_attribute("mcp.correlation_id", cid)
-            sp.set_attribute("mcp.idempotency_key_present", idempotency_key is not None)
-
-        if idempotency_key and idempotency_key in state.idempotency:
-            cached = state.idempotency[idempotency_key]
-            log.info("mcp_itsm_idempotent_replay key=%s", idempotency_key)
-            if _OTEL_AVAILABLE and sp is not None:
-                sp.set_attribute("mcp.idempotent_replay", True)
-            return {**cached, "idempotent_replay": True}
-        return await _dispatch(req, idempotency_key, cid)
 
 
 async def _dispatch(

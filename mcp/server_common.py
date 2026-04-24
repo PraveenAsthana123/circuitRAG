@@ -273,6 +273,82 @@ class NoopCM:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Canonical /tools/call handler — extracts the wrap-logic identical
+# across every MCP server. A server provides its tool catalog, its
+# idempotency cache dict, and a dispatch coroutine; this function
+# handles correlation_id synthesis, scope check (before-cache to
+# prevent leaked-idempotency-key replay), OTel span with standard
+# attributes, and idempotency cache lookup/return.
+# ---------------------------------------------------------------------------
+async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
+    *,
+    req: "ToolCallRequest",
+    tools: list[dict[str, Any]],
+    idempotency_key: str | None,
+    authorization: str | None,
+    auth_required: bool,
+    verifier: TokenVerifier | None,
+    idempotency_cache: dict[str, dict[str, Any]],
+    dispatch,  # noqa: ANN001 — async callable(req, idempotency_key, cid) -> dict
+    tracer_module: str,
+    logger: logging.Logger,
+    service_label: str,
+) -> dict[str, Any]:
+    import uuid as _uuid
+
+    cid = req.correlation_id or str(_uuid.uuid4())
+    logger.info(
+        "%s_tool_called name=%s tenant=%s corr=%s idempotency=%s auth=%s",
+        service_label, req.name, req.tenant_id, cid, idempotency_key,
+        "yes" if authorization else "no",
+    )
+
+    # Scope BEFORE cache — prevents leaked-idempotency-key replays
+    # from bypassing scope enforcement.
+    if auth_required:
+        tool = next((t for t in tools if t["name"] == req.name), None)
+        if tool is None:
+            # Authenticate first so unknown-name probes get 401 from
+            # unauthenticated callers, 404 from authenticated ones.
+            enforce_scope(verifier, authorization, {"name": req.name, "required_scopes": []})
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "tool_not_found", "name": req.name},
+            )
+        enforce_scope(verifier, authorization, tool)
+
+    tracer = get_tracer(tracer_module)
+    span_cm = (
+        tracer.start_as_current_span(f"mcp.tool:{req.name}")
+        if tracer is not None
+        else NoopCM()
+    )
+
+    with span_cm as sp:
+        if OTEL_AVAILABLE and sp is not None:
+            sp.set_attribute("mcp.tool.name", req.name)
+            if req.tenant_id:
+                sp.set_attribute("documind.tenant_id", req.tenant_id)
+                sp.set_attribute("mcp.tenant_id", req.tenant_id)
+            sp.set_attribute("documind.correlation_id", cid)
+            sp.set_attribute("mcp.correlation_id", cid)
+            sp.set_attribute(
+                "mcp.idempotency_key_present", idempotency_key is not None,
+            )
+
+        if idempotency_key and idempotency_key in idempotency_cache:
+            cached = idempotency_cache[idempotency_key]
+            logger.info(
+                "%s_idempotent_replay key=%s", service_label, idempotency_key,
+            )
+            if OTEL_AVAILABLE and sp is not None:
+                sp.set_attribute("mcp.idempotent_replay", True)
+            return {**cached, "idempotent_replay": True}
+
+        return await dispatch(req, idempotency_key, cid)
+
+
 __all__ = [
     "OTEL_AVAILABLE",
     "JWT_AVAILABLE",
@@ -282,5 +358,6 @@ __all__ = [
     "build_auth",
     "enforce_scope",
     "get_tracer",
+    "handle_tool_call",
     "setup_server_otel",
 ]
