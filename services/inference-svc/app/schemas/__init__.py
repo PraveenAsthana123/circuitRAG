@@ -105,3 +105,37 @@ class DraftResolveResponse(BaseModel):
     degraded: bool = Field(default=False, description="True if MCP is still down and the replay persisted a NEW draft")
     new_draft_id: str | None = Field(default=None, description="Populated if the replay itself degraded")
     idempotent_replay: bool = Field(default=False)
+
+
+# ---------------------------------------------------------------------------
+# Detailed health — exposes internal breaker + readiness state to operators
+# ---------------------------------------------------------------------------
+class BreakerState(BaseModel):
+    """A single circuit breaker's external state."""
+
+    name: str = Field(description="Stable identifier, e.g. 'mcp_hr'")
+    state: str = Field(description="closed | open | half_open")
+    failures: int | None = Field(
+        default=None,
+        description="Current failure counter (None if the breaker doesn't expose it)",
+    )
+
+
+class HealthDetailedResponse(BaseModel):
+    """
+    Operator-facing health report. Returns 200 when the service is
+    reachable; fields expose degradation (e.g. mcp_hr=open) without
+    changing the HTTP status. Callers decide what to alert on.
+    """
+
+    service: str
+    uptime_s: float
+    observed_at: str = Field(description="ISO 8601 timestamp at sample time")
+    breakers: list[BreakerState] = Field(default_factory=list)
+    readiness: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Lifecycle-bound flags: draft_store, audit_log, auth, "
+            "agent_service — each 'on' | 'off' | a backend name."
+        ),
+    )

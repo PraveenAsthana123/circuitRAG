@@ -21,6 +21,7 @@ from documind_core.observability import (
     instrument_fastapi,
     instrument_httpx,
     instrument_redis,
+    obs_breaker,
     setup_observability,
 )
 from documind_core.rate_limiter import RateLimiter
@@ -64,6 +65,12 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        import time as _time
+
+        app.state.started_at_monotonic = _time.monotonic()
+        # Expose the module-level observability breaker so the /detailed
+        # health endpoint can report its state without another log scrape.
+        app.state.obs_breaker = obs_breaker
         instrument_redis()
         instrument_httpx()
         app.state.rag_service = RagInferenceService(

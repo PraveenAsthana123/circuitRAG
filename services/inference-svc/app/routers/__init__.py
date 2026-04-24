@@ -11,9 +11,11 @@ from app.schemas import (
     AgentAskResponse,
     AskRequest,
     AskResponse,
+    BreakerState,
     DraftListResponse,
     DraftResolveResponse,
     DraftSummary,
+    HealthDetailedResponse,
 )
 from app.services import RagInferenceService
 from app.services.agent import AgentService
@@ -24,6 +26,60 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, tags=["health"])
 async def health() -> HealthResponse:
     return HealthResponse(status="ok", service="inference-svc")
+
+
+@router.get(
+    "/api/v1/health/detailed",
+    response_model=HealthDetailedResponse,
+    tags=["health"],
+    summary="Operator-facing detail: breaker states + readiness flags",
+)
+async def health_detailed(request: Request) -> HealthDetailedResponse:
+    import time
+    from datetime import UTC, datetime
+
+    state = request.app.state
+    started_at = getattr(state, "started_at_monotonic", None)
+    uptime = (time.monotonic() - started_at) if started_at is not None else 0.0
+
+    breakers: list[BreakerState] = []
+    mcp = getattr(state, "mcp_client", None)
+    if mcp is not None:
+        failures = None
+        inner = getattr(mcp, "_breaker", None)
+        if inner is not None:
+            failures = getattr(inner, "_failures", None)
+        breakers.append(
+            BreakerState(name="mcp_hr", state=mcp.cb_state, failures=failures),
+        )
+    # Observability CB lives inside the OTel exporter wrapper; exposed
+    # on app.state when the lifespan hands us the reference (opt-in so
+    # services that don't use setup_observability don't explode here).
+    ocb = getattr(state, "obs_breaker", None)
+    if ocb is not None:
+        breakers.append(BreakerState(name=ocb.name, state=ocb.state.value))
+
+    readiness = {
+        "draft_store": (
+            "postgres" if getattr(state, "db_client", None) is not None else "in_memory"
+        ),
+        "audit_log": "on" if getattr(state, "db_client", None) is not None else "off",
+        "auth": "required" if getattr(state, "auth_required", False) else "optional",
+        "agent_service": (
+            "on" if getattr(state, "agent_service", None) is not None else "off"
+        ),
+        "draft_replay_worker": (
+            "on" if getattr(state, "draft_replay_worker", None) is not None else "off"
+        ),
+    }
+
+    return HealthDetailedResponse(
+        service="inference-svc",
+        uptime_s=round(uptime, 3),
+        observed_at=datetime.now(UTC).isoformat(),
+        breakers=breakers,
+        readiness=readiness,
+    )
 
 
 def _service(request: Request) -> RagInferenceService:
