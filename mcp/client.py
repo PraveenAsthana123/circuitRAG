@@ -148,6 +148,7 @@ class MCPClient:
         recovery_timeout: float = 30.0,
         draft_store: DraftStore | None = None,
         audit_log: Any = None,
+        tools_cache_ttl_s: float = 60.0,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._client = httpx.AsyncClient(timeout=timeout_s)
@@ -156,7 +157,19 @@ class MCPClient:
             failure_threshold=failure_threshold,
             recovery_timeout=recovery_timeout,
         )
+        # Bounded cache — without a TTL, a change to the MCP server's
+        # tool catalog (new tool, updated required_scopes) silently
+        # goes unpicked-up until the agent restarts, which means the
+        # scope-pre-check enforces stale policy. 60s default is a
+        # reasonable window for a governance surface that doesn't
+        # change under load; tighten via ctor for tests.
         self._tools_cache: list[dict[str, Any]] | None = None
+        self._tools_cache_fetched_at: float = 0.0
+        self._tools_cache_ttl_s = max(0.0, tools_cache_ttl_s)
+        # Observable: how many times we ACTUALLY hit the server for
+        # the tools list. Tests assert this doesn't increment on
+        # cache hits, and DOES increment after TTL expiry.
+        self._tools_fetch_count: int = 0
         # DraftStore is duck-typed; defaults to in-memory for tests and
         # environments without a database. Production services pass a
         # PostgresDraftStore from their lifespan.
@@ -170,20 +183,47 @@ class MCPClient:
         await self._client.aclose()
 
     async def list_tools(self) -> list[dict[str, Any]]:
-        if self._tools_cache is not None:
+        if (
+            self._tools_cache is not None
+            and time.monotonic() - self._tools_cache_fetched_at
+            < self._tools_cache_ttl_s
+        ):
             return self._tools_cache
         if not self._breaker.allow():
+            # If the CB is open and we have a stale cache, return it
+            # anyway — over-permissive-vs-stale is a trade-off, and
+            # serving stale tool metadata beats failing every
+            # /list_tools call during an outage. The worst case is the
+            # agent pre-checks against a scope that no longer exists;
+            # the MCP server would still reject at the enforcement
+            # layer once it recovered.
+            if self._tools_cache is not None:
+                log.warning(
+                    "mcp_list_tools_stale cb=open serving age=%.1fs url=%s",
+                    time.monotonic() - self._tools_cache_fetched_at,
+                    self._base,
+                )
+                return self._tools_cache
             log.warning("mcp_list_tools_rejected cb=open url=%s", self._base)
             return []
         try:
             r = await self._client.get(f"{self._base}/tools/list")
             r.raise_for_status()
             self._tools_cache = r.json()["tools"]
+            self._tools_cache_fetched_at = time.monotonic()
+            self._tools_fetch_count += 1
             self._breaker.record_success()
             return self._tools_cache
         except (httpx.HTTPError, KeyError):
             self._breaker.record_failure()
             raise
+
+    @property
+    def tools_fetch_count(self) -> int:
+        """How many times we've actually round-tripped to /tools/list.
+        Cache hits do NOT increment this; cache miss or TTL expiry do.
+        """
+        return self._tools_fetch_count
 
     async def call_tool(
         self,
