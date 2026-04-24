@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID
 
 from documind_core.db_client import DbClient
@@ -35,9 +36,20 @@ class SagaRecoveryWorker:
         *,
         db: DbClient,
         max_run_age: timedelta = timedelta(minutes=15),
+        chunk_repo: Any = None,
+        qdrant_repo: Any = None,
+        neo4j_repo: Any = None,
+        blob_service: Any = None,
     ) -> None:
         self._db = db
         self._max_age = max_run_age
+        # When provided, recovery runs REAL per-step compensations. When
+        # None (e.g. in unit tests or migration contexts), we fall back
+        # to the minimal "mark failed" path. Production wiring passes all.
+        self._chunk_repo = chunk_repo
+        self._qdrant_repo = qdrant_repo
+        self._neo4j_repo = neo4j_repo
+        self._blob_service = blob_service
 
     async def run_once(self) -> int:
         """Find + compensate all stale running sagas. Returns count compensated."""
@@ -73,30 +85,76 @@ class SagaRecoveryWorker:
         return recovered
 
     async def _compensate(self, conn, row) -> None:  # noqa: ANN001
+        """Real per-step compensations in reverse order of completion.
+
+        Step numbering matches DocumentIngestionSaga:
+          5 = INDEX, 4 = GRAPH, 3 = EMBED, 2 = CHUNK, 1 = PARSE.
+
+        We run compensations for steps <= completed_steps in REVERSE order.
+        Any single compensation error is logged but does NOT block the
+        rest — the goal is to drain the recovery queue as fully as
+        possible; fully-stuck sagas stay in 'failed' with a composite
+        error message for operators.
         """
-        Minimal compensation — mark the saga 'failed'. Full per-step
-        compensation (delete Qdrant points, clean Neo4j nodes) is performed
-        by DocumentIngestionSaga.run_compensations which needs the full
-        object graph. This worker handles the lightweight case of ensuring
-        the row moves out of 'running' and the document is flagged failed;
-        the expensive side-effects are reconciled by a nightly cleanup job
-        (separate, not shipped in this session).
-        """
+        saga_id = row["id"]
+        tenant_id = str(row["tenant_id"])
+        document_id: UUID = row["subject_id"]
+        completed: int = row["completed_steps"]
+        errors: list[str] = []
+
         log.warning(
-            "saga_recovery_compensating id=%s subject=%s completed_steps=%d",
-            row["id"], row["subject_id"], row["completed_steps"],
+            "saga_recovery_compensating id=%s subject=%s completed=%d",
+            saga_id, document_id, completed,
         )
+
+        if completed >= 5 and self._qdrant_repo is not None:
+            try:
+                await self._qdrant_repo.delete_document(
+                    tenant_id=tenant_id, document_id=document_id,
+                )
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"qdrant:{type(e).__name__}")
+
+        if completed >= 4 and self._neo4j_repo is not None:
+            try:
+                await self._neo4j_repo.delete_document(
+                    tenant_id=tenant_id, document_id=document_id,
+                )
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"neo4j:{type(e).__name__}")
+
+        if completed >= 2 and self._chunk_repo is not None:
+            try:
+                await self._chunk_repo.delete_by_document(
+                    tenant_id=tenant_id, document_id=document_id,
+                )
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"chunks:{type(e).__name__}")
+
+        if completed >= 1 and self._blob_service is not None:
+            try:
+                doc = await conn.fetchrow(
+                    "SELECT blob_uri FROM ingestion.documents WHERE id = $1",
+                    document_id,
+                )
+                if doc and doc["blob_uri"]:
+                    self._blob_service.delete(uri=doc["blob_uri"])
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"blob:{type(e).__name__}")
+
+        err_msg = (
+            "recovered_by_startup_worker"
+            + (f"; compensation_errors={'|'.join(errors)}" if errors else "")
+        )[:2000]
+
         await conn.execute(
             """
             UPDATE ingestion.sagas
-            SET state = 'failed',
-                error = 'recovered_by_startup_worker',
-                updated_at = NOW()
-            WHERE id = $1 AND state = 'running'
+            SET state = 'failed', error = $1, updated_at = NOW()
+            WHERE id = $2 AND state = 'running'
             """,
-            row["id"],
+            err_msg, saga_id,
         )
-        # Mark the document failed so readers filter it out.
         await conn.execute(
             """
             UPDATE ingestion.documents
@@ -105,5 +163,5 @@ class SagaRecoveryWorker:
                 updated_at = NOW()
             WHERE id = $1 AND state NOT IN ('active', 'archived')
             """,
-            row["subject_id"],
+            document_id,
         )

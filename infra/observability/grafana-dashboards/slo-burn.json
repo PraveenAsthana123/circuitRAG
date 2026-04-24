@@ -1,0 +1,67 @@
+{
+  "title": "DocuMind — SLO Burn Rate",
+  "uid": "documind-slo-burn",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-30d", "to": "now" },
+  "tags": ["documind", "slo"],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Availability (30d)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "1 - sum(rate(http_requests_total{status=~\"5..\"}[30d])) / sum(rate(http_requests_total[30d]))", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Error budget remaining",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "(1 - 0.995) - (sum(rate(http_requests_total{status=~\"5..\"}[30d])) / sum(rate(http_requests_total[30d])))", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Burn rate (1h window)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "(sum(rate(http_requests_total{status=~\"5..\"}[1h])) / sum(rate(http_requests_total[1h]))) / (1 - 0.995)", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Burn rate (6h window)",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "(sum(rate(http_requests_total{status=~\"5..\"}[6h])) / sum(rate(http_requests_total[6h]))) / (1 - 0.995)", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Retrieval precision@5 (eval SLO: > 0.80)",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "avg_over_time(documind_eval_precision_at_5[24h])", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Answer faithfulness (eval SLO: > 0.90)",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "avg_over_time(documind_eval_faithfulness[24h])", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 latency (SLO: < 3s)",
+      "gridPos": { "x": 0, "y": 11, "w": 24, "h": 7 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket[5m])))", "refId": "A", "legendFormat": "{{job}}" }
+      ]
+    }
+  ]
+}

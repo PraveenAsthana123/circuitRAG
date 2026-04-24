@@ -1,0 +1,23 @@
+# Exclude from all docker build contexts
+.git
+.gitignore
+.github
+.claude
+.cursor
+.islstudio
+.vibecheck
+.remember
+.sixth
+docs/
+data/
+**/node_modules
+**/.next
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+**/venv
+*.md
+!README.md

@@ -1,0 +1,51 @@
+# Pre-commit hooks per global CLAUDE.md §9.2
+# Install:  pip install pre-commit && pre-commit install
+# Run all:  pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^(libs/py|services/(ingestion|retrieval|inference|evaluation)-svc/app|scripts)/
+      - id: ruff-format
+        files: ^(libs/py|services/(ingestion|retrieval|inference|evaluation)-svc/app|scripts)/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        files: ^libs/py/documind_core/
+        additional_dependencies: [pydantic, pydantic-settings, structlog]
+        args: [--ignore-missing-imports]
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        exclude: ^(docs/|\.env\.template$)
+
+  - repo: https://github.com/dnaeon/pre-commit-gofmt
+    rev: v1.0.0
+    hooks:
+      - id: gofmt
+        files: \.go$
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.61.0
+    hooks:
+      - id: golangci-lint
+        files: \.go$

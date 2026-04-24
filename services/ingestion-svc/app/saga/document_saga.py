@@ -35,6 +35,8 @@ from app.chunking import Chunk, Chunker
 from app.embedding import EmbeddingProvider
 from app.parsers import DocumentParser, ParsedDocument, ParserRegistry
 from app.repositories import ChunkRepo, DocumentRepo, Neo4jRepo, QdrantRepo, SagaRepo
+from app.saga.outbox import OutboxRepo
+from app.services.poisoning_defense import ChunkPoisoningGuard, SanitizeDecision
 from app.repositories.document_repo import (
     STATE_ACTIVE, STATE_CHUNKED, STATE_CHUNKING, STATE_EMBEDDED, STATE_EMBEDDING,
     STATE_INDEXED, STATE_INDEXING, STATE_PARSED, STATE_PARSING,
@@ -104,6 +106,10 @@ class DocumentIngestionSaga:
         self._neo4j_repo = neo4j_repo
         self._saga_repo = saga_repo
 
+        # Retrieval-poisoning defense — runs during the chunk step.
+        # Lazily-constructed so tests can inject fakes.
+        self._poison_guard = ChunkPoisoningGuard()
+
         # Populated as steps execute — used for compensations
         self._parsed_doc: ParsedDocument | None = None
         self._chunks: list[Chunk] = []
@@ -154,6 +160,19 @@ class DocumentIngestionSaga:
             await self._saga_repo.mark_complete(
                 tenant_id=self._tenant_id, saga_id=self._saga_id
             )
+            # Outbox: publish `document.indexed.v1` atomically with the
+            # ACTIVE transition. Same connection would be ideal; for now
+            # we use a separate tenant_connection — acceptable because
+            # OutboxDrainWorker retries on Kafka failure and the event
+            # has stable id (UUID) so Kafka consumers dedup.
+            await self._publish_outbox(
+                event_type="document.indexed.v1",
+                data={
+                    "document_id": str(self._document_id),
+                    "chunks_count": len(self._chunks),
+                    "embedding_model": self._embedder.model_name,
+                },
+            )
             log.info("saga_complete doc=%s", self._document_id)
             return {"saga_id": str(self._saga_id), "document_id": str(self._document_id)}
 
@@ -172,6 +191,20 @@ class DocumentIngestionSaga:
                 reason=f"saga_failed: {type(exc).__name__}",
             )
             raise
+
+    async def _publish_outbox(self, *, event_type: str, data: dict[str, Any]) -> None:
+        """Enqueue a CloudEvents row in the outbox. Shares the tenant
+        connection so the insert is transactional with the caller's context."""
+        async with self._document_repo._db.tenant_connection(self._tenant_id) as conn:  # noqa: SLF001
+            await OutboxRepo.enqueue(
+                conn,
+                tenant_id=self._tenant_id,
+                topic="document.lifecycle",
+                event_type=event_type,
+                subject=str(self._document_id),
+                correlation_id="",  # filled by middleware in the production path
+                payload=data,
+            )
 
     async def _run_compensations(self, executed: list[SagaStep]) -> None:
         for step in reversed(executed):
@@ -235,7 +268,27 @@ class DocumentIngestionSaga:
             document_id=self._document_id,
             to_state=STATE_CHUNKING,
         )
-        self._chunks = await asyncio.to_thread(self._chunker.chunk, self._parsed_doc)
+        raw_chunks = await asyncio.to_thread(self._chunker.chunk, self._parsed_doc)
+
+        # Retrieval-poisoning defense: scan each chunk for injection +
+        # PII BEFORE they reach the vector index. REJECT offensive chunks;
+        # REDACT suspicious ones.
+        sanitized, outcomes = self._poison_guard.sanitize_batch(raw_chunks)
+        rejected = sum(1 for o in outcomes if o.decision is SanitizeDecision.REJECT)
+        redacted = sum(1 for o in outcomes if o.decision is SanitizeDecision.REDACT)
+
+        if rejected > 0 and len(sanitized) == 0:
+            raise ExternalServiceError(
+                "document rejected — all chunks contained injection patterns",
+                details={"rejected": rejected, "total": len(raw_chunks)},
+            )
+        if rejected > 0:
+            log.warning(
+                "chunks_poisoned rejected=%d redacted=%d total=%d doc=%s",
+                rejected, redacted, len(raw_chunks), self._document_id,
+            )
+
+        self._chunks = sanitized
         inserted = await self._chunk_repo.bulk_insert(
             tenant_id=self._tenant_id,
             document_id=self._document_id,

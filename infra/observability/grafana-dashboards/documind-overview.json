@@ -1,0 +1,93 @@
+{
+  "title": "DocuMind — Service Overview",
+  "uid": "documind-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "tags": ["documind"],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Request rate (RPS)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total[1m]))", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Error rate (5xx)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "p95 latency (s) — inference-svc",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"inference-svc\"}[5m])))", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Retrieval quality (rolling avg)",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "avg(documind_retrieval_quality)", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Circuit breaker state — 0=closed, 1=half-open, 2=open",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "documind_circuit_breaker_state", "refId": "A", "legendFormat": "{{name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cognitive breaker interrupts (per signal)",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "sum by (signal) (rate(documind_ccb_interrupts_total[5m]))", "refId": "A", "legendFormat": "{{signal}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Token budget rejections by reason",
+      "gridPos": { "x": 0, "y": 11, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "sum by (reason) (rate(documind_token_breaker_rejects_total[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Agent stops by reason",
+      "gridPos": { "x": 12, "y": 11, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "sum by (reason) (rate(documind_agent_stops_total[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingestion chunk decisions (poisoning guard)",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "sum(rate(documind_ingest_chunk_allow_total[5m]))", "refId": "A", "legendFormat": "allow" },
+        { "expr": "sum(rate(documind_ingest_chunk_redact_total[5m]))", "refId": "B", "legendFormat": "redact" },
+        { "expr": "sum(rate(documind_ingest_chunk_reject_total[5m]))", "refId": "C", "legendFormat": "reject" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Observability breaker skips (higher = telemetry backend struggling)",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "sum by (name) (rate(documind_obs_breaker_skips_total[5m]))", "refId": "A" }
+      ]
+    }
+  ]
+}

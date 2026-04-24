@@ -1,0 +1,21 @@
+# Code ownership — each service has a primary owner (team assumption).
+# In a one-person repo, everything goes to @PraveenAsthana123. Replace
+# handles with real teams when the org grows.
+
+*                                       @PraveenAsthana123
+
+libs/py/                                @PraveenAsthana123
+services/ingestion-svc/                 @PraveenAsthana123
+services/retrieval-svc/                 @PraveenAsthana123
+services/inference-svc/                 @PraveenAsthana123
+services/evaluation-svc/                @PraveenAsthana123
+services/api-gateway/                   @PraveenAsthana123
+services/identity-svc/                  @PraveenAsthana123
+services/governance-svc/                @PraveenAsthana123
+services/finops-svc/                    @PraveenAsthana123
+services/observability-svc/             @PraveenAsthana123
+services/frontend/                      @PraveenAsthana123
+
+infra/                                  @PraveenAsthana123
+.github/                                @PraveenAsthana123
+docs/                                   @PraveenAsthana123

@@ -104,10 +104,14 @@ Every area has a full table covering: **components, technical details, implement
 | E6 | Portability | ✅ | interface-based design across the repo; vLLM/Ollama drop-in compat; cloud-agnostic K8s manifests |
 | E7 | Interpretability (business-step) | ✅ | `ai_governance.py::InterpretabilityTrace` |
 
-### Counts
+### Counts (honest post-remediation — 2026-04-23)
 
-- **✅ Implemented:** 49 / 67 + 7 extras (CCB + E2–E7) = **49 core + 7 extras**
-- **🟡 Partial:** 17 / 67
-- **❌ Designed only:** 8 / 67
+See [`AUDIT-2026-04-23.md`](../../AUDIT-2026-04-23.md) for the narrative explaining the gap between earlier inflated claims and reality. After the remediation pass (outbox, JWT issuer, poisoning defense, re-embed worker, recovery-worker compensations, prompt DB registry, Dockerfiles, CI, pre-commit, integration tests):
+
+- **✅ Implemented (class + tests + unit-run green, no live infra needed):** 31 / 67 + 7 extras
+- **🟡 Partial (structure + primitives; wiring needs live infra to fully verify):** 24 / 67
+- **❌ Designed only (spec + table, no code yet):** 12 / 67
+
+**Tier of honesty:** "implemented" here means the class exists, has unit tests, and compiles/parses. It does NOT mean the whole system has been smoke-tested end-to-end against live Postgres/Qdrant/Neo4j/Kafka/Ollama — that requires `docker compose up` which has not been executed in this session.
 
 The detailed per-area tables live in the 6 group files above.

@@ -1,0 +1,62 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = [
+    "**/migrations/",
+    "proto/",
+    ".venv",
+    "data/",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "S",    # bandit (security)
+]
+ignore = [
+    "S101",   # asserts are fine in tests
+    "S311",   # pseudo-random is fine outside crypto
+    "B008",   # FastAPI `Depends()` in defaults is idiomatic
+    "E501",   # let black handle line length
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "E501"]
+"scripts/**" = ["S603", "S607"]   # subprocess in scripts is expected
+
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false   # still onboarding
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["libs/py/tests"]
+python_files = ["test_*.py"]
+addopts = "-ra -q"
+
+[tool.coverage.run]
+source = ["libs/py/documind_core"]
+omit = ["**/tests/**", "**/__init__.py"]
+
+[tool.coverage.report]
+fail_under = 60
+show_missing = true
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "data"]
