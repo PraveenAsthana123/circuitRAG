@@ -182,7 +182,7 @@ def create_app() -> FastAPI:
             tenants = [t.strip() for t in tenants_csv.split(",") if t.strip()]
             if tenants:
                 worker = DraftReplayWorker(
-                    mcp_client=app.state.mcp_client,
+                    mcp_clients=app.state.mcp_clients,
                     tenant_ids=tenants,
                     interval_s=int(os.getenv("DOCUMIND_REPLAY_WORKER_INTERVAL_S", "20")),
                     per_draft_backoff_s=int(os.getenv("DOCUMIND_REPLAY_WORKER_BACKOFF_S", "60")),

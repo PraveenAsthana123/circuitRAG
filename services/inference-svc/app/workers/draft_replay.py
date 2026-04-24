@@ -66,23 +66,32 @@ class DraftReplayWorker:
     def __init__(
         self,
         *,
-        mcp_client: Any,
+        mcp_client: Any = None,
+        mcp_clients: dict[str, Any] | None = None,
         tenant_ids: list[str],
         interval_s: int = 20,
         per_draft_backoff_s: int = 60,
         skip_when_cb_open: bool = True,
     ) -> None:
-        self._mcp = mcp_client
+        # mcp_clients (preferred) is a namespace→client dict so the
+        # worker can route each draft to the server that owns its
+        # tool. mcp_client (single) is kept for back-compat and
+        # auto-wrapped as {"hr": client}.
+        if mcp_clients is None:
+            mcp_clients = {"hr": mcp_client} if mcp_client is not None else {}
+        self._clients: dict[str, Any] = {k: v for k, v in mcp_clients.items() if v is not None}
+        if not self._clients:
+            raise ValueError(
+                "DraftReplayWorker needs at least one MCPClient; "
+                "pass mcp_clients={namespace: client} or mcp_client=single."
+            )
         self._tenants = list(tenant_ids)
         self._interval = max(1, interval_s)
         self._backoff = max(1, per_draft_backoff_s)
-        # When True, the sweep bails out IMMEDIATELY if the MCP client's
-        # circuit breaker reports OPEN — no PG reads, no HTTP attempts.
-        # This is a finer-grained gate than degraded_bailout, which only
-        # fires AFTER the first resolve attempt of a cycle gets a
-        # degraded response. Polling cb_state first lets the worker skip
-        # even the list_pending_drafts call, which keeps PG load flat
-        # during downstream outages.
+        # When True, a draft's sweep-attempt is skipped if its target
+        # client's CB is OPEN — per-namespace gate. Without this, a
+        # cycle with both hr (closed) and itsm (open) would sleep the
+        # whole cycle instead of making progress on hr drafts.
         self._skip_when_cb_open = skip_when_cb_open
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
@@ -92,10 +101,15 @@ class DraftReplayWorker:
             "cycles": 0,
             "replayed": 0,
             "skipped_backoff": 0,
-            "cb_wait_skips": 0,
-            "degraded_bailouts": 0,
+            "cb_wait_skips": 0,       # per-draft, not per-cycle anymore
+            "degraded_bailouts": 0,   # per-namespace, not per-cycle
+            "no_server_skips": 0,     # draft has no client for its namespace
             "errors": 0,
         }
+
+    def _client_for(self, tool: str) -> Any:
+        namespace = tool.split(".", 1)[0] if "." in tool else tool
+        return self._clients.get(namespace)
 
     async def start(self) -> None:
         if self._task is not None:
@@ -136,21 +150,20 @@ class DraftReplayWorker:
 
     async def _sweep(self) -> None:
         self.stats["cycles"] += 1
-        # CB fast-path: when the MCP client's breaker is OPEN we know
-        # every resolve call will fast-fail. Skip the cycle before we
-        # even touch Postgres. The CB itself will HALF_OPEN-probe on
-        # its own schedule; the worker re-joins on the next cycle
-        # whose probe succeeds.
-        if self._skip_when_cb_open and _cb_state(self._mcp) == "open":
-            self.stats["cb_wait_skips"] += 1
-            log.info(
-                "draft_replay_cb_wait cb_state=open — skipping cycle",
-            )
-            return
         now = time.monotonic()
+        # list_pending_drafts works through any client because the
+        # PostgresDraftStore is shared across clients. Use the first
+        # one arbitrarily as the reader; routing happens per-draft.
+        reader = next(iter(self._clients.values()))
+        # Track per-namespace bailout: if one namespace's client is
+        # degraded, stop processing THAT namespace's drafts this cycle
+        # but keep processing others. A global bail-out across all
+        # namespaces would lose independence on MCP outages.
+        bailed: set[str] = set()
+
         for tenant in self._tenants:
             try:
-                drafts = await self._mcp.list_pending_drafts(tenant)
+                drafts = await reader.list_pending_drafts(tenant)
             except Exception as exc:  # noqa: BLE001
                 self.stats["errors"] += 1
                 log.error("draft_replay_list_failed tenant=%s err=%s", tenant, exc)
@@ -161,40 +174,71 @@ class DraftReplayWorker:
                 "draft_replay_sweep tenant=%s pending=%d", tenant, len(drafts),
             )
             for draft in drafts:
+                namespace = (
+                    draft.tool.split(".", 1)[0] if "." in draft.tool else draft.tool
+                )
+                if namespace in bailed:
+                    # Already decided to skip this namespace this cycle
+                    continue
+
+                client = self._client_for(draft.tool)
+                if client is None:
+                    self.stats["no_server_skips"] += 1
+                    log.info(
+                        "draft_replay_no_server draft_id=%s namespace=%s — leaving pending",
+                        draft.draft_id, namespace,
+                    )
+                    continue
+
+                # Per-draft CB fast-path keyed by THIS draft's target
+                # client. A draft targeting a closed-CB namespace runs
+                # even when another namespace's CB is open.
+                if self._skip_when_cb_open and _cb_state(client) == "open":
+                    self.stats["cb_wait_skips"] += 1
+                    log.info(
+                        "draft_replay_cb_wait draft_id=%s namespace=%s cb=open",
+                        draft.draft_id, namespace,
+                    )
+                    continue
+
                 last = self._last_attempt.get(draft.draft_id, 0.0)
                 if now - last < self._backoff:
                     self.stats["skipped_backoff"] += 1
                     continue
                 self._last_attempt[draft.draft_id] = now
                 try:
-                    result = await self._mcp.resolve_draft(
+                    result = await client.resolve_draft(
                         draft.draft_id, tenant_id=tenant,
                     )
                 except Exception as exc:  # noqa: BLE001
                     self.stats["errors"] += 1
                     log.error(
-                        "draft_replay_call_failed draft_id=%s err=%s",
-                        draft.draft_id, exc,
+                        "draft_replay_call_failed draft_id=%s namespace=%s err=%s",
+                        draft.draft_id, namespace, exc,
                     )
                     continue
                 if result.ok:
                     self.stats["replayed"] += 1
-                    ticket = (result.data or {}).get("ticket_id")
+                    ticket = (result.data or {}).get("ticket_id") or (
+                        result.data or {}
+                    ).get("incident_id")
                     log.info(
-                        "draft_replayed_by_worker draft_id=%s tenant=%s ticket=%s",
-                        draft.draft_id, tenant, ticket,
+                        "draft_replayed_by_worker draft_id=%s tenant=%s namespace=%s ticket=%s",
+                        draft.draft_id, tenant, namespace, ticket,
                     )
                 elif result.degraded:
-                    # MCP still down — bail for this cycle; the loop sleeps
-                    # and the CB eventually reopens the happy path.
+                    # Namespace-scoped bailout: skip remaining drafts
+                    # for THIS namespace this cycle. Other namespaces
+                    # keep being processed in the outer loop.
                     self.stats["degraded_bailouts"] += 1
+                    bailed.add(namespace)
                     log.info(
-                        "draft_replay_mcp_still_down draft_id=%s — skipping rest of cycle",
-                        draft.draft_id,
+                        "draft_replay_namespace_down draft_id=%s namespace=%s "
+                        "— skipping rest of this namespace's drafts this cycle",
+                        draft.draft_id, namespace,
                     )
-                    return
                 else:
                     log.warning(
-                        "draft_replay_failed draft_id=%s err=%s",
-                        draft.draft_id, result.error,
+                        "draft_replay_failed draft_id=%s namespace=%s err=%s",
+                        draft.draft_id, namespace, result.error,
                     )
