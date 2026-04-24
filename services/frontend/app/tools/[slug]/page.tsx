@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import CodeBlock from '../../../components/CodeBlock';
+import ToolExtrasPanel from '../../../components/ToolExtrasPanel';
 import ToolTabs from '../../../components/ToolTabs';
 import { readRepoFile } from '../../../lib/read-code';
 import { TOOL_CODE_REFS } from '../../../lib/tool-code-refs';
+import { TOOL_EXTRAS } from '../../../lib/tool-extras';
 import { TOOLS, getToolBySlug, type Tool } from '../../../lib/tools';
 
 export async function generateStaticParams() {
@@ -53,6 +55,8 @@ export default function ToolDetail({ params }: Props) {
       </header>
 
       <ToolTabs tool={tool} />
+
+      {TOOL_EXTRAS[tool.slug] && <ToolExtrasPanel extras={TOOL_EXTRAS[tool.slug]} />}
 
       {(TOOL_CODE_REFS[tool.slug] ?? []).length > 0 && (
         <section className="tool-code-section">

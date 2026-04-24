@@ -706,6 +706,48 @@
   .da-ipo-arrow { display: none; }
 }
 
+/* Tool Extras panel — one topic per row ----------------------------- */
+.tool-extras {
+  margin-top: var(--space-6);
+  padding: var(--space-6);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.tool-extras-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: var(--space-4);
+}
+.tool-extras-row {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.tool-extras-row:last-child { border-bottom: 0; }
+.tool-extras-row-title {
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: var(--font-weight-semibold);
+  padding-top: var(--space-1);
+}
+.tool-extras-row-body {
+  color: var(--text-primary);
+  line-height: 1.55;
+}
+.tool-extras-row-body > *:first-child { margin-top: 0; }
+.tool-extras-row-body > *:last-child { margin-bottom: 0; }
+@media (max-width: 720px) {
+  .tool-extras-row { grid-template-columns: 1fr; }
+  .tool-extras-row-title { padding-top: 0; }
+}
+
 /* Code governance lists ---------------------------------------------- */
 .cg-checklist,
 .cg-evidence {
