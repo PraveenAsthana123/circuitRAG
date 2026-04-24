@@ -9,7 +9,7 @@ Real failure simulation. Every drill captures user-visible behaviour, circuit-br
 | 1 | Kill Qdrant | ✅ | cache-poisoning-on-failure |
 | 2 | Unreachable Ollama | ✅ | (surfaced host/docker config-drift issue) |
 | 3 | Slow Qdrant (Istio inject) | pending | — |
-| 4 | Kill Neo4j | pending | — |
+| 4 | Kill Neo4j | ✅ | graph-search NER short-circuit (lowercase queries skip Neo4j entirely) |
 | 5 | Kill Redis | pending | — |
 | 6 | Kill Kafka | pending | — |
 | 7 | Kill MCP server | blocked — MCP doesn't exist yet | — |
@@ -107,6 +107,51 @@ No hang. No crash. No 5xx without envelope. The CB infrastructure worked exactly
 
 ---
 
+---
+
+## Drill #4 — Kill Neo4j
+
+### Baseline
+`/ask` → 200 with cited answer in 0.96s (hybrid vector + graph).
+
+### Outage (`docker compose kill neo4j`)
+
+First attempts (lowercase queries) passed through retrieval without any graph-failure log. That's suspicious — so investigate.
+
+**Finding:** `GraphSearcher._extract_entities` uses a regex requiring capitalized words to detect entity candidates. If the query has no capitalized words, it returns `[]` and the graph search **short-circuits before ever calling Neo4j**. That's why the vector-only fallback was invisible: the graph path never fired.
+
+This is a real behaviour gap worth documenting — it means lowercase queries are effectively vector-only even when Neo4j is healthy, missing the graph-augmented retrieval benefit.
+
+### Re-run with a capitalized query
+
+```bash
+$ curl ... -d '{"query":"What is Travel Policy reimbursement?"}'
+{"answer":"...Source: ae303815..., Page 1", "citations":1}   [200 1.53s]
+```
+
+Retrieval log — the full expected degradation pattern:
+
+```
+retrieval_backend_failed err=Couldn't connect to localhost:7687    ← Neo4j down, exception caught
+retrieval_skip_cache chunks=1 backends_ok=1/2 reason=degraded       ← Drill-1 fix kicks in
+retrieval_complete n=1 latency_ms=50.7 top_score=0.642 breaker=closed
+```
+
+**User got the cited answer anyway.** Vector leg succeeded alone; graph exception was caught; degraded result was NOT cached.
+
+### Recovery
+
+`docker compose up -d neo4j` → after ~10s ready → next call hits both backends (`backends_ok=2/2` implicit by absence of `retrieval_skip_cache`), latency 1.85s (graph path warmup).
+
+The recovery query ("What is Travel Policy reimbursement **after recovery**?") scored lower (0.016) and the model correctly returned **"I don't have enough information in the provided documents"** — the expected no-answer behaviour instead of hallucinating. RAG guardrails working as designed.
+
+### Gaps found
+
+1. **Graph search skipped on lowercase queries.** Fix: always run graph search OR improve entity extraction (real NER, not capitalization regex). Phase 4 §Retrieval lists "entity extraction quality is the critical quality lever" — this confirms it.
+2. No Neo4j-specific CB. The exception is caught generically via `asyncio.gather(return_exceptions=True)`. A dedicated Graph CB would give per-backend metrics + fast-fail after sustained failures. Currently every query under a Neo4j outage attempts the connection (costing the bolt-driver default timeout).
+
+---
+
 ## What the drills have now proved
 
 | Phase-7 claim | Drill | Proof |
@@ -117,6 +162,8 @@ No hang. No crash. No 5xx without envelope. The CB infrastructure worked exactly
 | "User never sees a 5xx crash" | both | ✅ every response structured |
 | "Recovery is automatic on dependency return" | both | ✅ first post-recovery call < 1s |
 | "Cache does not poison on degraded result" | #1 | ✅ after the fix |
+| "Graph backend optional — vector-only when Neo4j down" | #4 | ✅ `backends_ok=1/2` log + cited answer returned |
+| "RAG declines with no-answer when retrieval is off-topic (no hallucination)" | #4 recovery | ✅ "I don't have enough information…" |
 
 ## Bugs caught across 2 drills
 
@@ -124,5 +171,7 @@ No hang. No crash. No 5xx without envelope. The CB infrastructure worked exactly
 | --- | --- | --- |
 | 1 | `hybrid_retriever.py` | Cache poisoning on backend failure |
 | 2 | (env contract) | Service dependency URL ambiguous when host + container both listen on same port — tests can fake-green |
+| 3 | `graph_searcher.py` | Entity-extraction regex requires capitalized words → lowercase queries silently skip graph entirely |
+| 4 | (missing) | No per-backend CB on Neo4j — every query during outage pays the bolt-driver default connect timeout |
 
 Both would silently escape unit tests. Caught only by running the system + deliberately breaking it.
