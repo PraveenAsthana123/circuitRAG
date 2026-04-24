@@ -13,7 +13,7 @@ Real failure simulation. Every drill captures user-visible behaviour, circuit-br
 | 5 | Kill Redis | ✅ | cache + rate-limiter 5xx'd every request; fix: fail-open on Redis errors |
 | 6 | Kill Kafka (it was already down) | ✅ | outbox relay never started; Kafka external listener mapping missing; env var name mismatch |
 | 7 | Kill MCP server | blocked — MCP doesn't exist yet | — |
-| 8 | Traffic spike 10k RPS | pending | — |
+| 8 | Burst traffic 150 concurrent | ✅ | ingestion missing DOCUMIND_REDIS_URL → host/container Redis split; rate-limiter sliding-window TOCTOU race |
 
 ---
 
@@ -288,6 +288,65 @@ total: 3 UNPUBLISHED: 0 PUBLISHED: 3
 
 ---
 
+---
+
+## Drill #8 — Burst traffic (150 concurrent)
+
+Fired 150 concurrent GET `/api/v1/documents?limit=1` requests with `X-Tenant-Id` against ingestion-svc. Rate limit configured at `100/min/tenant`.
+
+### Finding 1 — ingestion was using the wrong Redis
+
+Before the test, `documind-redis redis-cli KEYS '*rl*'` → **empty**. But `redis-cli KEYS '*rl*'` (default 6379, the **host** daemon) → had the rate-limit keys. Same class of host/container config-drift as drill #2 Ollama.
+
+Root cause: `/tmp/start-ingestion-env.sh` exported `DOCUMIND_REDIS_HOST=localhost DOCUMIND_REDIS_PORT=56379` but settings only bind the composite `DOCUMIND_REDIS_URL`. Without it, default `redis://localhost:6379/0` → the host-level Redis daemon.
+
+Fix: add `export DOCUMIND_REDIS_URL=redis://localhost:56379/0` to the env script (same fix as drill #1 retrieval-svc).
+
+### Finding 2 — rate-limiter TOCTOU race
+
+After the fix, 150 concurrent requests all returned **200** (not a single 429), but:
+
+```
+$ docker exec documind-redis redis-cli KEYS '*rl*'
+tenant:137e2ae5-09bc-44b3-b77f-cecb3ac3fe1a:rl:api
+$ docker exec documind-redis redis-cli ZCARD "tenant:...:rl:api"
+70
+```
+
+70 entries in the sliding window. So:
+- 70 requests fully committed to Redis
+- The other 80 either raced ahead of any ZADD, OR the pipeline partially dropped them
+- **Not one request saw `current+cost > limit` — because all 150 concurrent `ZCARD` calls returned the same low number**
+
+The implementation in `rate_limiter.py::check`:
+
+```python
+pipe.zremrangebyscore(key, 0, window_start)
+pipe.zcard(key)                    ← read count
+pipe.expire(key, window_seconds+1)
+_, current, _ = await pipe.execute()
+
+if current + cost > limit:          ← branch on stale count
+    return blocked
+
+# ... later: ZADD to reserve
+```
+
+**Classic check-then-act race.** 150 concurrent workers all call `ZCARD=0` at the same moment, each one sees `0 + 1 ≤ 100`, each one allows itself through, then each one inserts. No mutual exclusion between the read and the reserve.
+
+### Fix pending (not shipped this drill)
+
+Correct sliding-window limiters use a **Lua script** that does the ZREM + ZCARD + ZADD atomically in one Redis round-trip, with the count-vs-limit comparison happening on the server. Alternative: probabilistic token-bucket with `INCR` + TTL.
+
+For now: documented as a real production-blocking gap. At current rate-limiter implementation, a motivated user can burst 10× the configured limit before Redis state catches up.
+
+### Gaps documented
+
+- **Bug 10**: ingestion-svc `DOCUMIND_REDIS_URL` missing from env script → rate-limit + cache state split between host/container Redis
+- **Bug 11**: `rate_limiter.check` has check-then-act race; concurrent bursts bypass the limit. Needs Lua-atomic replacement.
+
+---
+
 ## What the drills have now proved
 
 | Phase-7 claim | Drill | Proof |
@@ -316,5 +375,7 @@ total: 3 UNPUBLISHED: 0 PUBLISHED: 3
 | 7 | `ingestion-svc/main.py` | `OutboxDrainWorker` existed but was never started in lifespan — events queued forever |
 | 8 | `docker-compose.override.yml` | Kafka missing `user: "0:0"` → volume EACCES; `ports: !override` dropped 9094 EXTERNAL listener |
 | 9 | env contract | `DOCUMIND_KAFKA_BOOTSTRAP_SERVERS` doesn't bind — field is `kafka_bootstrap` so env is `DOCUMIND_KAFKA_BOOTSTRAP` |
+| 10 | env contract | ingestion-svc `DOCUMIND_REDIS_URL` missing → rate-limit state written to the **host** Redis, not our docker one (same class as drill #2 Ollama) |
+| 11 | `rate_limiter.py` | Sliding-window **check-then-act race**: 150 concurrent requests all read `ZCARD=0` before any `ZADD` — no 429s fired despite limit=100. Needs atomic Lua-script replacement. |
 
 Both would silently escape unit tests. Caught only by running the system + deliberately breaking it.
