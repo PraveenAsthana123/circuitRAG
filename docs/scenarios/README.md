@@ -1,21 +1,22 @@
 # DocuMind — Scenario Execution Specs
 
 Executable specs per topic group. Each phase doc has scenarios with concrete
-verification commands (curl / kubectl / psql / pytest) so anyone can run
-them and see green/red without asking the author.
+verification commands (curl / kubectl / psql / pytest) so anyone can run them
+and see green/red without asking the author.
 
 ## Phase index
 
 | Phase | Topic group | Doc | Status |
 | --- | --- | --- | --- |
-| 1 | Edge, Traffic, Security — API Gateway / CDN / LB / mTLS / Istio | [phase-01-edge-traffic-security.md](phase-01-edge-traffic-security.md) | **Drafted** — verification commands included |
-| 2 | Microservices — saga / outbox / CQRS / idempotency / bulkhead | [phase-02-microservices.md](phase-02-microservices.md) | Stub |
-| 3 | Circuit Breakers — generic + 5 specialized + CCB | [phase-03-circuit-breakers.md](phase-03-circuit-breakers.md) | Stub |
-| 4 | RAG core — chunking / embeddings / retrieval / inference / cache / eval | [phase-04-rag-core.md](phase-04-rag-core.md) | Stub |
-| 5 | Databases — Postgres / Qdrant / Neo4j / Redis / Kafka / MinIO | [phase-05-databases.md](phase-05-databases.md) | Stub |
-| 6 | MCP + Agentic — agent flows + tool invocation | [phase-06-mcp-agentic.md](phase-06-mcp-agentic.md) | Stub |
-| 7 | Observability — logs / traces / metrics / SLOs / chaos | [phase-07-observability.md](phase-07-observability.md) | Stub |
-| 8 | Governance + FinOps + Evaluation | [phase-08-governance-finops-eval.md](phase-08-governance-finops-eval.md) | Stub |
+| 1 | Edge · Traffic · Security (API Gateway · CDN · LB · mTLS · Istio) | [phase-01-edge-traffic-security.md](phase-01-edge-traffic-security.md) | ✅ Full — 47 scenarios with verification commands |
+| 2a | Microservices · Service catalog + APIs | [phase-02-microservices.md](phase-02-microservices.md) | ✅ Full — service table, API list, anti-patterns |
+| 2b | Kafka · Event architecture (topic catalog + schema + DLQ) | [phase-02-kafka-event-architecture.md](phase-02-kafka-event-architecture.md) | ✅ Full — 17 topics + envelope + partition strategy |
+| 3 | Circuit Breakers (generic + 5 specialized + CCB + fallback matrix) | [phase-03-circuit-breakers.md](phase-03-circuit-breakers.md) | ✅ Full — layered design, config table, 8 chaos drills |
+| 4 | RAG Core (chunking · embeddings · retrieval · inference · cache · eval) | [phase-04-rag-core.md](phase-04-rag-core.md) | ✅ Full — 3 flow diagrams, quality metrics, pitfalls |
+| 5 | Databases (PG · Qdrant · Neo4j · Redis · Kafka · MinIO + failure matrix) | [phase-05-databases.md](phase-05-databases.md) | ✅ Full — per-store scenarios + fallbacks |
+| 6 | MCP + Agentic (13 agent + 14 MCP scenarios + trust boundary) | [phase-06-mcp-agentic.md](phase-06-mcp-agentic.md) | ✅ Full — **zero code yet, biggest gap** |
+| 7 | Observability · Audit · SLO · Chaos | [phase-07-observability.md](phase-07-observability.md) | ✅ Full — metrics + SLO catalog + 9 chaos drills |
+| 8 | Governance · FinOps · Evaluation | [phase-08-governance-finops-eval.md](phase-08-governance-finops-eval.md) | Stub — exit criteria only |
 
 ## How to read a phase doc
 
@@ -30,3 +31,13 @@ Every scenario follows this shape:
 - **Fix / Fallback** — what happens when broken
 
 If a scenario doesn't have a verification command, it's not shipped.
+
+## Execution order — what to build next
+
+1. **Day 1.5** — start the Python services as processes; verify POST `/documents` → saga → POST `/ask` → cited answer. Closes the end-to-end claim.
+2. **Phase 3 §11 exit criteria** — implement `@with_resilience` decorator; wrap every external call site. Closes the "CB not integrated" gap.
+3. **Phase 7 §7 chaos drills** — run 9 drills against the running stack; capture Grafana screenshots + trace links.
+4. **Phase 6 §8 exit criteria** — build `mcp/client.py` + one `mcp/server_*.py` end-to-end. Closes the "MCP aspirational" gap.
+5. **Phase 4 §6 exit criteria** — commit the golden dataset + wire `make eval`. Closes the "no eval pipeline" gap.
+
+Everything else depends on these five.
