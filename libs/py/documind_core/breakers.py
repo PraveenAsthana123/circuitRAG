@@ -392,6 +392,27 @@ if _METRICS:
         "Total agent steps executed",
         labelnames=["agent"],
     )
+    # Action-level denials at the agent layer. Grafana alert target for
+    # scope-probing detection: a tenant suddenly producing dozens of
+    # `reason="scope"` denials in a 5-min window is a positive signal
+    # of an attacker probing privilege escalation.
+    _agent_denials = Counter(
+        "documind_agent_denials_total",
+        "Agent-level action denials (pre-MCP)",
+        labelnames=["reason", "tool"],
+    )
+
+
+def record_agent_denial(reason: str, tool: str) -> None:
+    """
+    External helper so agent code doesn't have to know about the
+    prometheus_client import guard.
+
+    ``reason``: e.g. ``"scope"`` | ``"allow_actions_false"``.
+    ``tool``:   the tool name that was attempted, e.g. ``hr.leave_request``.
+    """
+    if _METRICS:
+        _agent_denials.labels(reason=reason, tool=tool).inc()
 
 
 class AgentLoopCircuitBreaker:

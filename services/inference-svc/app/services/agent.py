@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from documind_core.auth import required_role_for_tool
+from documind_core.breakers import record_agent_denial
 from mcp import MCPClient
 from mcp.client import ToolResult
 
@@ -162,6 +163,7 @@ class AgentService:
                 "agent_action_declined tool=%s reason=allow_actions_false corr=%s",
                 intent.tool, correlation_id,
             )
+            record_agent_denial(reason="allow_actions_false", tool=intent.tool)
             return AgentAskResponse(
                 **base.model_dump(), action=None, intent="action_declined",
             )
@@ -187,6 +189,7 @@ class AgentService:
                     "agent_action_denied_scope tool=%s required=%s have=%s corr=%s",
                     intent.tool, sorted(required_scopes), sorted(have), correlation_id,
                 )
+                record_agent_denial(reason="scope", tool=intent.tool)
                 # Audit the rejection — invisible denials are the kind
                 # of thing governance reviews ask for after an
                 # incident. Hash-chained onto the existing per-tenant
