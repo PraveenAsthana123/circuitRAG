@@ -38,7 +38,9 @@ import argparse
 import asyncio
 import json
 import os
+import socket
 import sys
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -211,14 +213,61 @@ def _print_text(results: list[RowResult], summary: dict[str, dict[str, int]]) ->
         )
 
 
+async def _seal_breaks(
+    conn: asyncpg.Connection,
+    results: list[RowResult],
+    run_id: str,
+) -> int:
+    """Write one governance.audit_log_breaks row per non-OK result.
+    Returns number of rows inserted. Idempotent by run_id + broken_row_id
+    — same run, same broken row → unique-constraint-like behavior
+    implemented here in Python since we don't want ON CONFLICT noise.
+    """
+    inserts = 0
+    host = socket.gethostname()
+    for r in results:
+        if r.status == "OK":
+            continue
+        async with conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.current_tenant', $1, true)",
+                r.tenant_id,
+            )
+            await conn.execute(
+                """
+                INSERT INTO governance.audit_log_breaks
+                  (tenant_id, broken_row_id, broken_action, break_type,
+                   detail, verifier_host, verifier_run_id)
+                VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid)
+                """,
+                r.tenant_id,
+                r.row_id,
+                r.action,
+                r.status,
+                r.detail,
+                host,
+                run_id,
+            )
+            inserts += 1
+    return inserts
+
+
 async def main_async(args: argparse.Namespace) -> int:
     conn = await asyncpg.connect(dsn=_dsn())
     try:
         rows = await _fetch_rows(conn, args.tenant, args.since)
+        results = _verify_rows(rows)
+        if args.seal:
+            run_id = args.run_id or str(uuid.uuid4())
+            n = await _seal_breaks(conn, results, run_id)
+            if n > 0:
+                print(
+                    f"sealed {n} break record(s) into "
+                    f"governance.audit_log_breaks with verifier_run_id={run_id}"
+                )
     finally:
         await conn.close()
 
-    results = _verify_rows(rows)
     summary = _summarize(results)
 
     if args.json:
@@ -260,6 +309,21 @@ def main() -> int:
         "--verbose",
         action="store_true",
         help="Include OK rows in JSON output (default: issues only)",
+    )
+    p.add_argument(
+        "--seal",
+        action="store_true",
+        help=(
+            "Write forensic rows to governance.audit_log_breaks for any "
+            "non-OK verification result. Idempotent run-scoped via --run-id."
+        ),
+    )
+    p.add_argument(
+        "--run-id",
+        help=(
+            "Explicit UUID to tag this verify run in audit_log_breaks. "
+            "Default: a fresh UUID per invocation."
+        ),
     )
     args = p.parse_args()
     return asyncio.run(main_async(args))
