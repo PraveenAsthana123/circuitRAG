@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from documind_core.db_client import DbClient
 from documind_core.exceptions import ValidationError
 
 from app.chunking import Chunker
@@ -54,6 +55,7 @@ class IngestionService:
         qdrant_repo: QdrantRepo,
         neo4j_repo: Neo4jRepo,
         blob_service: BlobService,
+        db: DbClient,
     ) -> None:
         self._settings = settings
         self._parsers = parsers
@@ -65,6 +67,7 @@ class IngestionService:
         self._qdrant_repo = qdrant_repo
         self._neo4j_repo = neo4j_repo
         self._blob_service = blob_service
+        self._db = db
 
     # ------------------------------------------------------------------
     # Validation
@@ -140,6 +143,7 @@ class IngestionService:
             qdrant_repo=self._qdrant_repo,
             neo4j_repo=self._neo4j_repo,
             saga_repo=self._saga_repo,
+            db=self._db,
         )
 
         if run_saga_inline:

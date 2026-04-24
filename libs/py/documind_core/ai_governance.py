@@ -23,7 +23,7 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from .exceptions import PolicyViolationError, ValidationError
@@ -35,7 +35,7 @@ log = logging.getLogger(__name__)
 # 1. PromptInjectionDetector — SECURE AI (input side)
 # ============================================================================
 
-class InjectionVerdict(str, Enum):
+class InjectionVerdict(StrEnum):
     CLEAN = "clean"
     SUSPICIOUS = "suspicious"   # log + flag, let through
     BLOCK = "block"             # refuse the request
@@ -52,10 +52,20 @@ class InjectionFinding:
 # with the verdict it triggers — SUSPICIOUS for ambiguous phrases,
 # BLOCK for unambiguous jailbreak attempts.
 _INJECTION_RULES: list[tuple[str, re.Pattern[str], InjectionVerdict]] = [
+    # Tight "ignore previous instructions" family. The VERB must be
+    # followed by a DETERMINER ("all", "any", "the", ...) AND by a
+    # JAILBREAK OBJECT ("instructions", "prompt", "rules", "policy",
+    # "messages"). This excludes benign technical prose like "override
+    # the method" or "don't forget to pack an umbrella" — words not
+    # accompanied by a jailbreak object.
     ("ignore_previous",
      re.compile(
-         r"\b(ignore|disregard|forget|override)(?:\s+\w+){0,4}\s+"
-         r"(instructions?|prompts?|rules?|messages?|context|previous|above|prior)\b",
+         r"\b(ignore|disregard)\s+"
+         r"(all|any|every|the|my|your|those|these|previous|above|prior|"
+         r"prompt|prompts|system|current)"
+         r"(?:\s+\w+){0,3}\s+"
+         r"(instructions?|prompts?|rules?|rulesets?|"
+         r"polic(?:y|ies)|messages?)\b",
          re.I,
      ),
      InjectionVerdict.BLOCK),
@@ -521,7 +531,7 @@ class InterpretabilityTrace:
         self._next_id = 0
         self._start_ms: dict[int, float] = {}
 
-    def step(self, name: str) -> "_StepContext":
+    def step(self, name: str) -> _StepContext:
         self._next_id += 1
         return _StepContext(self, self._next_id, name)
 
@@ -569,7 +579,7 @@ class _StepContext:
     def meta(self, **kv: Any) -> None:
         self._metadata.update(kv)
 
-    def __enter__(self) -> "_StepContext":
+    def __enter__(self) -> _StepContext:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

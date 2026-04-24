@@ -9,9 +9,8 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
-
 from documind_core.exceptions import ValidationError
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 
 from app.schemas import ChunkView, DocumentDetail, DocumentList, DocumentSummary, UploadResponse
 from app.services import IngestionService

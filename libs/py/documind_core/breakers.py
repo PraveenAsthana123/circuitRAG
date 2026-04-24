@@ -35,10 +35,9 @@ import asyncio
 import logging
 import time
 from collections import deque
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Generic, TypeVar
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import TypeVar
 
 try:
     from prometheus_client import Counter, Gauge
@@ -49,10 +48,8 @@ except ImportError:  # pragma: no cover
 from .circuit_breaker import CircuitBreaker, State
 from .exceptions import (
     AppError,
-    CircuitOpenError,
     ExternalServiceError,
     PolicyViolationError,
-    RateLimitedError,
 )
 
 log = logging.getLogger(__name__)
@@ -160,9 +157,10 @@ class RetrievalCircuitBreaker(CircuitBreaker):
         # Too many empty results also counts as degraded
         empty = sum(1 for s in self._samples if s.n_results < self._min_results)
 
-        if avg < self._min_quality or empty > len(self._samples) // 2:
-            # Open the breaker due to quality, not failure count
-            if self._state is not State.OPEN:
+        if (
+            (avg < self._min_quality or empty > len(self._samples) // 2)
+            and self._state is not State.OPEN
+        ):
                 log.warning(
                     "retrieval_quality_breach name=%s avg_top_score=%.3f threshold=%.3f empty=%d/%d",
                     self.name, avg, self._min_quality, empty, len(self._samples),
@@ -177,7 +175,7 @@ class RetrievalCircuitBreaker(CircuitBreaker):
 # 2. TokenCircuitBreaker
 # ============================================================================
 
-class TokenBreakerDecision(str, Enum):
+class TokenBreakerDecision(StrEnum):
     ALLOW = "allow"
     WARN = "warn"            # approaching limit; proceed but log
     REJECT_DAILY = "reject_daily"
@@ -368,7 +366,7 @@ class TokenCircuitBreaker:
 # 3. AgentLoopCircuitBreaker
 # ============================================================================
 
-class AgentStopReason(str, Enum):
+class AgentStopReason(StrEnum):
     NONE = "none"
     MAX_STEPS = "max_steps"
     TIMEOUT = "timeout"
@@ -669,7 +667,7 @@ class ObservabilityCircuitBreaker:
 #   offline evaluation. CCB is runtime; the others are lifecycle.
 
 
-class CognitiveDecision(str, Enum):
+class CognitiveDecision(StrEnum):
     CONTINUE = "continue"
     WARN = "warn"
     BLOCK = "block"
@@ -722,14 +720,18 @@ class RepetitionSignal(CognitiveSignal):
     def evaluate(self, partial_output: str, token_count: int) -> CognitiveReading:
         if len(partial_output) < self._n * 4:
             return CognitiveReading(CognitiveDecision.CONTINUE, 1.0, "too-short", self.name)
-        # cheap approximation: count the last n-gram in the tail
-        tail = partial_output[-self._n * 8:]
-        tail_clean = " ".join(tail.split())
-        words = tail_clean.split()
+        # Take the last n-gram and count how often it appears in the WHOLE
+        # partial output. Using only the tail window (as an earlier version
+        # did) misses long repetition streams: 6 repeats of "the foo bar"
+        # at ngram=3 produced a tail with only 2 matches, so max_repeats=2
+        # never triggered. The whole-output scan is still cheap — it's a
+        # byte-level substring count on a partial stream, not a regex.
+        full_clean = " ".join(partial_output.split())
+        words = full_clean.split()
         if len(words) < self._n * 2:
             return CognitiveReading(CognitiveDecision.CONTINUE, 1.0, "ok", self.name)
         window = " ".join(words[-self._n:])
-        count = tail_clean.count(window)
+        count = full_clean.count(window)
         if count > self._max:
             return CognitiveReading(
                 CognitiveDecision.BLOCK,

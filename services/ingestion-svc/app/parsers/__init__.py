@@ -19,12 +19,12 @@ Learning notes
 from __future__ import annotations
 
 from .base import DocumentParser, ParsedDocument, ParsedPage
-from .pdf_parser import PdfParser
 from .docx_parser import DocxParser
 from .html_parser import HtmlParser
-from .text_parser import TextParser
 from .markdown_parser import MarkdownParser
+from .pdf_parser import PdfParser
 from .registry import ParserRegistry
+from .text_parser import TextParser
 
 __all__ = [
     "DocumentParser",

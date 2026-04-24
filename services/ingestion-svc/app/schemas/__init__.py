@@ -1,8 +1,8 @@
 from .document import (
+    ChunkView,
     DocumentDetail,
     DocumentList,
     DocumentSummary,
-    ChunkView,
     UploadResponse,
 )
 

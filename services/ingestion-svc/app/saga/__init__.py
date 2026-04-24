@@ -1,4 +1,4 @@
-from .document_saga import DocumentIngestionSaga, SagaStep, CompensationError
+from .document_saga import CompensationError, DocumentIngestionSaga, SagaStep
 from .outbox import OutboxDrainWorker, OutboxRepo
 from .recovery import SagaRecoveryWorker
 

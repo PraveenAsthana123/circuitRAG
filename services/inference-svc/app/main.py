@@ -2,14 +2,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 import redis.asyncio as aioredis
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
-
 from documind_core.config import get_settings
 from documind_core.logging_config import setup_logging
 from documind_core.middleware import (
@@ -26,6 +22,9 @@ from documind_core.observability import (
     setup_observability,
 )
 from documind_core.rate_limiter import RateLimiter
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.core.config import InferenceSettings
 from app.routers import router

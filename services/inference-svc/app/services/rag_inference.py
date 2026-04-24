@@ -18,25 +18,25 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from documind_core.exceptions import ExternalServiceError
-from documind_core.breakers import (
-    CognitiveCircuitBreaker,
-    CognitiveInterrupt,
-    CitationDeadlineSignal,
-    ForbiddenPatternSignal,
-    LogprobConfidenceSignal,
-    RepetitionSignal,
-    TokenCircuitBreaker,
-)
 from documind_core.ai_governance import (
-    AIExplainer,
     AdversarialInputFilter,
+    AIExplainer,
     Explanation,
     InterpretabilityTrace,
     PIIScanner,
     PromptInjectionDetector,
     ResponsibleAIChecker,
 )
+from documind_core.breakers import (
+    CitationDeadlineSignal,
+    CognitiveCircuitBreaker,
+    CognitiveInterrupt,
+    ForbiddenPatternSignal,
+    LogprobConfidenceSignal,
+    RepetitionSignal,
+    TokenCircuitBreaker,
+)
+from documind_core.exceptions import ExternalServiceError
 
 from app.schemas import AskRequest, AskResponse, Citation
 

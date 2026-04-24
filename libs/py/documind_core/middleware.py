@@ -34,7 +34,7 @@ from starlette.types import ASGIApp
 
 from .exceptions import AppError, RateLimitedError
 from .logging_config import bind_request_context, clear_request_context
-from .rate_limiter import RateLimiter, tenant_key, ip_key
+from .rate_limiter import RateLimiter, ip_key, tenant_key
 
 log = logging.getLogger(__name__)
 

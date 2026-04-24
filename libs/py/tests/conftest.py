@@ -1,22 +1,17 @@
-"""pytest config — enables async test functions and wires service paths."""
+"""pytest config for documind_core unit tests.
+
+These tests exercise ONLY the shared library — no service code. Service-
+specific tests live under ``services/<svc>/tests/`` with their own
+conftest that sets up that service's path.
+"""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+import asyncio
 
-# Make every service's `app` package importable without an install step.
-# Tests can then `from app.services.X import Y` for the service they target.
-REPO = Path(__file__).resolve().parents[3]
-for svc in ("ingestion-svc", "retrieval-svc", "inference-svc", "evaluation-svc"):
-    path = REPO / "services" / svc
-    if path.is_dir() and str(path) not in sys.path:
-        sys.path.insert(0, str(path))
-
-import pytest  # noqa: E402
+import pytest
 
 
 def pytest_collection_modifyitems(config, items):
-    import asyncio
     for item in items:
         if "asyncio" in item.keywords:
             continue

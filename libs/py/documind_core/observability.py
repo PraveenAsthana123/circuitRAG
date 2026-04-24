@@ -154,8 +154,8 @@ def instrument_redis() -> None:
 # ---------------------------------------------------------------------------
 
 if _OTEL_AVAILABLE:
-    from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
     from opentelemetry.sdk.metrics.export import MetricExporter, MetricExportResult
+    from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
     class _BreakerGuardedSpanExporter(SpanExporter):
         """Wraps an OTLPSpanExporter; silently skips when breaker is open."""

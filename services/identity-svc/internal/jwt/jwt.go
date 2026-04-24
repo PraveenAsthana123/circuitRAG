@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -159,8 +160,46 @@ func (i *Issuer) Revoke(ctx context.Context, jti string, expiresAt time.Time) er
 	return i.denylist.Deny(ctx, jti, ttl)
 }
 
-// NoopDenylist is a dev-mode fallback. DO NOT ship to prod.
-type NoopDenylist struct{}
+// RevokeRaw: convenience that parses the token to extract jti + exp and
+// then revokes. Most callers have the raw token, not a pre-parsed Claims.
+// Uses ParseUnverified so expired tokens can still be denied (paranoid —
+// a replayed expired token would already fail Verify, but if the clock is
+// skewed or the deny-list is about to be cleared, it's belt + braces).
+func (i *Issuer) RevokeRaw(ctx context.Context, raw string) error {
+	claims := &Claims{}
+	tok, _, err := jwt.NewParser(
+		jwt.WithValidMethods([]string{"RS256"}),
+	).ParseUnverified(raw, claims)
+	if err != nil || tok == nil {
+		return fmt.Errorf("parse token: %w", err)
+	}
+	if claims.ID == "" || claims.ExpiresAt == nil {
+		return errors.New("token missing jti or exp")
+	}
+	return i.Revoke(ctx, claims.ID, claims.ExpiresAt.Time)
+}
 
-func (NoopDenylist) IsDenied(context.Context, string) (bool, error)           { return false, nil }
-func (NoopDenylist) Deny(context.Context, string, time.Duration) error        { return nil }
+// NoopDenylist is a DEV-ONLY fallback. It silently allows EVERY jti.
+// If this is in your production constructor chain, JWT revocation is a
+// silent no-op — compromised tokens remain valid until natural expiry.
+// Wire a real Denylist (Redis, DB, KV) in any non-dev environment.
+type NoopDenylist struct {
+	warned sync.Once
+}
+
+func (*NoopDenylist) IsDenied(context.Context, string) (bool, error) {
+	return false, nil
+}
+
+func (n *NoopDenylist) Deny(_ context.Context, jti string, ttl time.Duration) error {
+	// Loud once-per-process on first use so the footgun surfaces in logs
+	// even if operator never reads the package docs.
+	n.warned.Do(func() {
+		fmt.Fprintf(os.Stderr,
+			"[WARN] DocuMind identity: NoopDenylist in use — JWT revocation is a silent no-op. "+
+				"Wire a Redis-backed Denylist before production.\n")
+	})
+	_ = jti
+	_ = ttl
+	return nil
+}

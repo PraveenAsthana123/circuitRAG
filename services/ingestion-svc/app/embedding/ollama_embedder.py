@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 
 import httpx
-
 from documind_core.circuit_breaker import CircuitBreaker
 from documind_core.exceptions import ExternalServiceError
 

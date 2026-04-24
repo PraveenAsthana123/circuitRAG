@@ -1,9 +1,8 @@
 """Health check endpoint — liveness + readiness (Design Area 49)."""
 from __future__ import annotations
 
-from fastapi import APIRouter
-
 from documind_core.schemas import HealthResponse
+from fastapi import APIRouter
 
 router = APIRouter(tags=["health"])
 

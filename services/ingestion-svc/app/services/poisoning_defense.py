@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 try:
     from prometheus_client import Counter
@@ -40,7 +40,7 @@ from app.chunking import Chunk
 log = logging.getLogger(__name__)
 
 
-class SanitizeDecision(str, Enum):
+class SanitizeDecision(StrEnum):
     ALLOW = "allow"
     REDACT = "redact"
     REJECT = "reject"

@@ -18,7 +18,7 @@ Metrics included
 * :class:`AnswerRelevance` — generation: does the answer address the
   question? Computed by cosine similarity of embeddings.
 """
-from .retrieval import MRR, NDCG, PrecisionAtK, Recall
 from .generation import AnswerRelevance, Faithfulness
+from .retrieval import MRR, NDCG, PrecisionAtK, Recall
 
 __all__ = ["PrecisionAtK", "Recall", "MRR", "NDCG", "Faithfulness", "AnswerRelevance"]

@@ -18,8 +18,8 @@ import hashlib
 import logging
 import time
 
-from documind_core.cache import Cache
 from documind_core.breakers import RetrievalCircuitBreaker
+from documind_core.cache import Cache
 
 from app.schemas import RetrievedChunk, RetrieveRequest, RetrieveResponse
 

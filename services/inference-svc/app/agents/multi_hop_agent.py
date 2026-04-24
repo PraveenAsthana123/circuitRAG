@@ -31,7 +31,7 @@ from documind_core.breakers import (
     TokenCircuitBreaker,
 )
 
-from app.services import PromptBuilder, RetrievalClient, OllamaClient
+from app.services import OllamaClient, PromptBuilder, RetrievalClient
 
 log = logging.getLogger(__name__)
 

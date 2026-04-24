@@ -7,16 +7,11 @@ the service's dependency graph.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 import redis.asyncio as aioredis
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
-
 from documind_core.body_limit import BodyLimitMiddleware
-from documind_core.cache import Cache
 from documind_core.config import get_settings
 from documind_core.db_client import DbClient
 from documind_core.idempotency import IdempotencyStore
@@ -37,6 +32,9 @@ from documind_core.observability import (
     setup_observability,
 )
 from documind_core.rate_limiter import RateLimiter
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.chunking import RecursiveChunker
 from app.core.config import IngestionSettings
@@ -115,6 +113,7 @@ def create_app() -> FastAPI:
         qdrant_repo=qdrant_repo,
         neo4j_repo=neo4j_repo,
         blob_service=blob_service,
+        db=db,
     )
 
     # ----- Lifespan --------------------------------------------------------

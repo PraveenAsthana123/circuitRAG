@@ -21,19 +21,30 @@ import asyncio
 import json
 import logging
 import uuid as uuidlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 import asyncpg
-
 from documind_core.kafka_client import EventProducer
 
 log = logging.getLogger(__name__)
 
 
 class OutboxRepo:
-    """Enqueue into the outbox from within a saga transaction."""
+    """
+    Enqueue into the outbox.
+
+    **Atomicity contract.** ``enqueue`` accepts a caller-supplied
+    ``asyncpg.Connection`` that the caller ALREADY has under a
+    transaction. The INSERT runs on that connection, so it commits with
+    the caller's own commit — the outbox row and the domain row live or
+    die together. Nothing in this module opens its own connection.
+
+    If the caller hasn't started a transaction yet, they should call this
+    from inside ``conn.transaction():`` or (easier) from inside
+    ``DbClient.tenant_connection``'s implicit txn.
+    """
 
     @staticmethod
     async def enqueue(
@@ -147,7 +158,7 @@ class OutboxDrainWorker:
                         "UPDATE ingestion.outbox "
                         "SET published_at = $1, attempts = attempts + 1 "
                         "WHERE id = $2",
-                        datetime.now(timezone.utc), row["id"],
+                        datetime.now(UTC), row["id"],
                     )
                 except Exception as exc:  # noqa: BLE001
                     await conn.execute(

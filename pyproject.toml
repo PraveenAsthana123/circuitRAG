@@ -23,10 +23,16 @@ select = [
     "S",    # bandit (security)
 ]
 ignore = [
-    "S101",   # asserts are fine in tests
-    "S311",   # pseudo-random is fine outside crypto
-    "B008",   # FastAPI `Depends()` in defaults is idiomatic
-    "E501",   # let black handle line length
+    "S101",
+    "S311",
+    "B008",
+    "E501",
+    "SIM105",  # try/except/pass is faster than contextlib.suppress in hot paths
+    "SIM108",  # ternary vs if/else is a readability judgement
+    "SIM117",  # nested `with` can be clearer than a 120-char combined line
+    "N818",    # CognitiveInterrupt is control-flow, not an error
+    "A002",    # `type` param mirrors the CloudEvents envelope field
+    "C416",    # dict-comp vs dict() is stylistic
 ]
 
 [tool.ruff.lint.per-file-ignores]

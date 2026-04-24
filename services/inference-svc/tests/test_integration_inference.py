@@ -29,11 +29,15 @@ async def test_rag_inference_happy_path():
     from app.services.prompt_builder import PromptBuilder
     from app.services.rag_inference import RagInferenceService
 
+    # Use real UUIDs — Citation schema validates as UUID, so "c1"/"d1"
+    # placeholders (as the earlier draft had) fail Pydantic parsing.
+    chunk_uuid = "c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0"
+    doc_uuid = "d0d0d0d0-d0d0-d0d0-d0d0-d0d0d0d0d0d0"
     fake_retrieval = AsyncMock()
     fake_retrieval.retrieve.return_value = [
         {
-            "chunk_id": "c1",
-            "document_id": "d1",
+            "chunk_id": chunk_uuid,
+            "document_id": doc_uuid,
             "text": "Clause 3 covers indemnification.",
             "score": 0.82,
             "source": "vector",

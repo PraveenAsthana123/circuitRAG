@@ -13,11 +13,10 @@ the repository layer.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from documind_core.db_client import DbClient, Repository
+from documind_core.db_client import Repository
 from documind_core.exceptions import NotFoundError, ValidationError
 
 log = logging.getLogger(__name__)
@@ -106,16 +105,20 @@ class DocumentRepo(Repository):
             where += " AND state = $1"
             params.append(state)
 
+        # `where` is a trusted fixed string ("WHERE TRUE" or
+        # "WHERE TRUE AND state = $1"). Values go through parameterized
+        # placeholders. S608 false positive acknowledged.
         async with self._db.tenant_connection(tenant_id) as conn:
             total = await conn.fetchval(
-                f"SELECT COUNT(*) FROM ingestion.documents {where}", *params
+                f"SELECT COUNT(*) FROM ingestion.documents {where}",  # noqa: S608
+                *params,
             )
             rows = await conn.fetch(
                 f"""
                 SELECT * FROM ingestion.documents {where}
                 ORDER BY created_at DESC
                 OFFSET ${len(params) + 1} LIMIT ${len(params) + 2}
-                """,
+                """,  # noqa: S608
                 *params, offset, limit,
             )
         return [dict(r) for r in rows], int(total)
@@ -197,14 +200,32 @@ class DocumentRepo(Repository):
             raise NotFoundError(f"Document {document_id} not found")
         log.info("document_deleted id=%s", document_id)
 
+    # Narrow allowlist of columns `touch()` is permitted to update.
+    # Anything outside this set is refused — prevents SQL injection via
+    # caller-supplied dict keys.
+    _TOUCHABLE_COLUMNS: frozenset[str] = frozenset({
+        "title", "page_count", "chunk_count",
+    })
+
     async def touch(self, *, tenant_id: str, document_id: UUID, updates: dict[str, Any]) -> None:
-        """Update non-state fields (page_count, chunk_count, etc.)."""
+        """Update non-state fields (page_count, chunk_count, etc.).
+
+        Column names validated against ``_TOUCHABLE_COLUMNS`` allowlist —
+        protects against SQL-injection vectors via user-controlled keys.
+        """
         if not updates:
             return
+        unknown = set(updates) - self._TOUCHABLE_COLUMNS
+        if unknown:
+            raise ValidationError(
+                f"columns not in touch() allowlist: {sorted(unknown)}",
+                details={"allowed": sorted(self._TOUCHABLE_COLUMNS)},
+            )
         set_clause = ", ".join(f"{k} = ${i + 2}" for i, k in enumerate(updates))
         params = [document_id, *updates.values()]
         async with self._db.tenant_connection(tenant_id) as conn:
             await conn.execute(
-                f"UPDATE ingestion.documents SET {set_clause}, updated_at = NOW() WHERE id = $1",
+                f"UPDATE ingestion.documents SET {set_clause}, "  # noqa: S608 (allowlisted)
+                f"updated_at = NOW() WHERE id = $1",
                 *params,
             )

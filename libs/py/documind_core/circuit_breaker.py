@@ -50,7 +50,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from enum import Enum
+from enum import StrEnum
 from typing import TypeVar
 
 try:
@@ -65,7 +65,7 @@ T = TypeVar("T")
 log = logging.getLogger(__name__)
 
 
-class State(str, Enum):
+class State(StrEnum):
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"

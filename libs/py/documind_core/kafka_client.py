@@ -19,7 +19,7 @@ import json
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -103,7 +103,7 @@ class EventProducer:
             "source": self._source,
             "type": type,
             "specversion": "1.0",
-            "time": datetime.now(timezone.utc).isoformat(),
+            "time": datetime.now(UTC).isoformat(),
             "datacontenttype": "application/json",
             "tenantid": tenant_id,
             "correlationid": correlation_id,

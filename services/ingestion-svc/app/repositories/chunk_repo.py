@@ -6,7 +6,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from documind_core.db_client import DbClient, Repository
+from documind_core.db_client import Repository
 
 from app.chunking import Chunk
 
@@ -82,3 +82,33 @@ class ChunkRepo(Repository):
         count = int(result.rsplit(" ", 1)[-1]) if result else 0
         log.info("chunks_deleted document=%s n=%d", document_id, count)
         return count
+
+    async def stamp_embedding_model(
+        self,
+        *,
+        tenant_id: str,
+        chunk_ids: list[UUID],
+        model: str,
+    ) -> None:
+        """Mark the given chunks as embedded under ``model``. Called from
+        the saga's embed step so the re-embed worker's predicate
+        ``metadata->>'embedding_model' <> $current`` correctly skips
+        just-embedded chunks. Without this stamp, the re-embed worker
+        would re-pick the same chunks on its next poll (Bug #3)."""
+        if not chunk_ids:
+            return
+        async with self._db.tenant_connection(tenant_id) as conn:
+            await conn.execute(
+                """
+                UPDATE ingestion.chunks
+                SET metadata = COALESCE(metadata, '{}'::jsonb)
+                               || jsonb_build_object(
+                                    'embedding_model', $1::text,
+                                    'embedding_stamped_at', NOW()::text
+                                  ),
+                    updated_at = NOW()
+                WHERE id = ANY($2::uuid[])
+                """,
+                model, chunk_ids,
+            )
+        log.info("chunks_embedding_stamped count=%d model=%s", len(chunk_ids), model)

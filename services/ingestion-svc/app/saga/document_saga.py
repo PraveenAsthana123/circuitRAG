@@ -27,20 +27,28 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
+from documind_core.db_client import DbClient
 from documind_core.exceptions import AppError, ExternalServiceError
 
 from app.chunking import Chunk, Chunker
 from app.embedding import EmbeddingProvider
 from app.parsers import DocumentParser, ParsedDocument, ParserRegistry
 from app.repositories import ChunkRepo, DocumentRepo, Neo4jRepo, QdrantRepo, SagaRepo
+from app.repositories.document_repo import (
+    STATE_ACTIVE,
+    STATE_CHUNKED,
+    STATE_CHUNKING,
+    STATE_EMBEDDED,
+    STATE_EMBEDDING,
+    STATE_INDEXED,
+    STATE_INDEXING,
+    STATE_PARSED,
+    STATE_PARSING,
+)
 from app.saga.outbox import OutboxRepo
 from app.services.poisoning_defense import ChunkPoisoningGuard, SanitizeDecision
-from app.repositories.document_repo import (
-    STATE_ACTIVE, STATE_CHUNKED, STATE_CHUNKING, STATE_EMBEDDED, STATE_EMBEDDING,
-    STATE_INDEXED, STATE_INDEXING, STATE_PARSED, STATE_PARSING,
-)
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +98,7 @@ class DocumentIngestionSaga:
         qdrant_repo: QdrantRepo,
         neo4j_repo: Neo4jRepo,
         saga_repo: SagaRepo,
+        db: DbClient,
     ) -> None:
         self._tenant_id = tenant_id
         self._document_id = document_id
@@ -105,6 +114,11 @@ class DocumentIngestionSaga:
         self._qdrant_repo = qdrant_repo
         self._neo4j_repo = neo4j_repo
         self._saga_repo = saga_repo
+        # Direct DB handle — previously reached into document_repo._db
+        # (private). Taking db as a constructor arg is cleaner AND lets
+        # _publish_outbox accept a caller-supplied connection so the
+        # outbox insert is ATOMIC with the saga's domain transaction.
+        self._db = db
 
         # Retrieval-poisoning defense — runs during the chunk step.
         # Lazily-constructed so tests can inject fakes.
@@ -150,28 +164,40 @@ class DocumentIngestionSaga:
                 )
                 executed.append(step)
 
-            # All steps succeeded — promote to ACTIVE
-            await self._document_repo.transition_state(
-                tenant_id=self._tenant_id,
-                document_id=self._document_id,
-                to_state=STATE_ACTIVE,
-                expected_from=STATE_INDEXED,
-            )
+            # All steps succeeded. Transition INDEXED→ACTIVE and enqueue
+            # the `document.indexed.v1` outbox row in ONE transaction so
+            # the state change + the Kafka-publish-intent commit together.
+            async with self._db.tenant_connection(self._tenant_id) as conn:
+                # Guard: state must still be INDEXED (no concurrent flip).
+                row = await conn.fetchrow(
+                    "SELECT state, version FROM ingestion.documents "
+                    "WHERE id = $1",
+                    self._document_id,
+                )
+                if row is None or row["state"] != STATE_INDEXED:
+                    raise ExternalServiceError(
+                        "unexpected state at final transition",
+                        details={"state": row["state"] if row else None},
+                    )
+                await conn.execute(
+                    """
+                    UPDATE ingestion.documents
+                    SET state = $1, version = version + 1, updated_at = NOW()
+                    WHERE id = $2 AND version = $3
+                    """,
+                    STATE_ACTIVE, self._document_id, row["version"],
+                )
+                await self._publish_outbox(
+                    conn,
+                    event_type="document.indexed.v1",
+                    data={
+                        "document_id": str(self._document_id),
+                        "chunks_count": len(self._chunks),
+                        "embedding_model": self._embedder.model_name,
+                    },
+                )
             await self._saga_repo.mark_complete(
                 tenant_id=self._tenant_id, saga_id=self._saga_id
-            )
-            # Outbox: publish `document.indexed.v1` atomically with the
-            # ACTIVE transition. Same connection would be ideal; for now
-            # we use a separate tenant_connection — acceptable because
-            # OutboxDrainWorker retries on Kafka failure and the event
-            # has stable id (UUID) so Kafka consumers dedup.
-            await self._publish_outbox(
-                event_type="document.indexed.v1",
-                data={
-                    "document_id": str(self._document_id),
-                    "chunks_count": len(self._chunks),
-                    "embedding_model": self._embedder.model_name,
-                },
             )
             log.info("saga_complete doc=%s", self._document_id)
             return {"saga_id": str(self._saga_id), "document_id": str(self._document_id)}
@@ -192,19 +218,26 @@ class DocumentIngestionSaga:
             )
             raise
 
-    async def _publish_outbox(self, *, event_type: str, data: dict[str, Any]) -> None:
-        """Enqueue a CloudEvents row in the outbox. Shares the tenant
-        connection so the insert is transactional with the caller's context."""
-        async with self._document_repo._db.tenant_connection(self._tenant_id) as conn:  # noqa: SLF001
-            await OutboxRepo.enqueue(
-                conn,
-                tenant_id=self._tenant_id,
-                topic="document.lifecycle",
-                event_type=event_type,
-                subject=str(self._document_id),
-                correlation_id="",  # filled by middleware in the production path
-                payload=data,
-            )
+    async def _publish_outbox(
+        self,
+        conn: asyncpg.Connection,  # noqa: F821
+        *,
+        event_type: str,
+        data: dict[str, Any],
+    ) -> None:
+        """Enqueue a CloudEvents row in the outbox ON THE CALLER'S
+        CONNECTION so the INSERT commits or rolls back with whatever
+        domain writes the caller is doing. NEVER open a separate
+        connection here — that would break the atomicity guarantee."""
+        await OutboxRepo.enqueue(
+            conn,
+            tenant_id=self._tenant_id,
+            topic="document.lifecycle",
+            event_type=event_type,
+            subject=str(self._document_id),
+            correlation_id="",
+            payload=data,
+        )
 
     async def _run_compensations(self, executed: list[SagaStep]) -> None:
         for step in reversed(executed):
@@ -327,6 +360,16 @@ class DocumentIngestionSaga:
             batch = self._chunks[start:start + batch_size]
             vecs = await self._embedder.embed_many([c.text for c in batch])
             self._vectors.extend(vecs)
+
+        # Stamp `embedding_model` on every chunk NOW so the re-embed
+        # worker doesn't re-pick these up on its next pass. Without this
+        # the chunk metadata stays NULL for embedding_model and the
+        # worker keeps trying to re-embed the same chunks (Bug #3).
+        await self._chunk_repo.stamp_embedding_model(
+            tenant_id=self._tenant_id,
+            chunk_ids=self._chunk_ids,
+            model=self._embedder.model_name,
+        )
 
         await self._document_repo.transition_state(
             tenant_id=self._tenant_id,

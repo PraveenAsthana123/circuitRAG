@@ -18,7 +18,7 @@ import asyncio
 import logging
 from typing import Any
 
-from documind_core.db_client import DbClient, Repository
+from documind_core.db_client import Repository
 
 from .prompt_builder import PROMPT_TEMPLATES, PromptTemplate
 

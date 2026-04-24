@@ -12,7 +12,6 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 import httpx
-
 from documind_core.circuit_breaker import CircuitBreaker
 from documind_core.exceptions import ExternalServiceError
 

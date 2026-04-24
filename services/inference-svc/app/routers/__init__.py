@@ -1,10 +1,9 @@
 """Inference HTTP routes."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request
-
 from documind_core.exceptions import ValidationError
 from documind_core.schemas import HealthResponse
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.schemas import AskRequest, AskResponse
 from app.services import RagInferenceService

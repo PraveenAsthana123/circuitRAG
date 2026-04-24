@@ -1,16 +1,12 @@
 """Unit tests for the 5 specialized circuit breakers."""
 from __future__ import annotations
 
-import asyncio
-
 import pytest
-
 from documind_core.breakers import (
     AgentLoopCircuitBreaker,
     AgentStopReason,
     CitationDeadlineSignal,
     CognitiveCircuitBreaker,
-    CognitiveDecision,
     CognitiveInterrupt,
     ForbiddenPatternSignal,
     ObservabilityCircuitBreaker,
@@ -21,7 +17,6 @@ from documind_core.breakers import (
 )
 from documind_core.circuit_breaker import State
 from documind_core.exceptions import PolicyViolationError
-
 
 # --------------------------------------------------------------------------
 # 1. RetrievalCircuitBreaker — quality awareness

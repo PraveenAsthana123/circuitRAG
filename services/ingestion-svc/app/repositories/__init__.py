@@ -12,11 +12,11 @@ Each repo:
 * Surfaces domain errors (``NotFoundError``, ``DataError``) — never raises
   raw driver exceptions to callers.
 """
-from .document_repo import DocumentRepo
 from .chunk_repo import ChunkRepo
-from .saga_repo import SagaRepo
-from .qdrant_repo import QdrantRepo
+from .document_repo import DocumentRepo
 from .neo4j_repo import Neo4jRepo
+from .qdrant_repo import QdrantRepo
+from .saga_repo import SagaRepo
 
 __all__ = [
     "DocumentRepo",

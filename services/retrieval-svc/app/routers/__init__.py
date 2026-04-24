@@ -1,10 +1,9 @@
 """Retrieval HTTP routes."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
-
 from documind_core.exceptions import ValidationError
 from documind_core.schemas import HealthResponse
+from fastapi import APIRouter, Depends, Request
 
 from app.schemas import RetrieveRequest, RetrieveResponse
 from app.services import HybridRetriever

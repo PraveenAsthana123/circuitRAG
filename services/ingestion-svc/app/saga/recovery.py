@@ -21,7 +21,7 @@ will run compensations; others skip.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -53,7 +53,7 @@ class SagaRecoveryWorker:
 
     async def run_once(self) -> int:
         """Find + compensate all stale running sagas. Returns count compensated."""
-        cutoff = datetime.now(timezone.utc) - self._max_age
+        cutoff = datetime.now(UTC) - self._max_age
         recovered = 0
         async with self._db.admin_connection() as conn:
             rows = await conn.fetch(

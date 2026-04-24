@@ -13,11 +13,8 @@ spec Areas 26 / 59 / 60 / 61.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
-
-from fastapi import FastAPI
-from pydantic import BaseModel
 
 from documind_core.config import BaseServiceSettings, get_settings
 from documind_core.logging_config import setup_logging
@@ -29,6 +26,8 @@ from documind_core.middleware import (
 )
 from documind_core.observability import instrument_fastapi, setup_observability
 from documind_core.schemas import HealthResponse
+from fastapi import FastAPI
+from pydantic import BaseModel
 
 from app.metrics import MRR, NDCG, AnswerRelevance, Faithfulness, PrecisionAtK, Recall
 

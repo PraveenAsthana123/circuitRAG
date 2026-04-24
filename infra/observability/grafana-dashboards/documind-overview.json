@@ -2,91 +2,92 @@
   "title": "DocuMind — Service Overview",
   "uid": "documind-overview",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "tags": ["documind"],
+  "_comment": "Only references Prometheus metrics actually emitted by libs/py/documind_core (circuit_breaker.py, breakers.py) and services/ingestion-svc (poisoning_defense.py). Generic HTTP metrics (http_requests_total, http_request_duration_seconds_*) come from auto-instrumentation; they appear only when OTel FastAPI instrumentation is active and produces them.",
   "panels": [
     {
-      "type": "stat",
-      "title": "Request rate (RPS)",
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "sum(rate(http_requests_total[1m]))", "refId": "A" }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Error rate (5xx)",
-      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))", "refId": "A" }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "p95 latency (s) — inference-svc",
-      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"inference-svc\"}[5m])))", "refId": "A" }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Retrieval quality (rolling avg)",
-      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
-      "targets": [
-        { "expr": "avg(documind_retrieval_quality)", "refId": "A" }
-      ]
-    },
-    {
       "type": "timeseries",
-      "title": "Circuit breaker state — 0=closed, 1=half-open, 2=open",
-      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 7 },
+      "title": "Circuit breaker state (0=closed, 1=half-open, 2=open)",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 7 },
       "targets": [
         { "expr": "documind_circuit_breaker_state", "refId": "A", "legendFormat": "{{name}}" }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Cognitive breaker interrupts (per signal)",
-      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 7 },
+      "title": "Circuit breaker failures (rate)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "sum by (name) (rate(documind_circuit_breaker_failures_total[5m]))", "refId": "A", "legendFormat": "{{name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Retrieval quality — rolling top-score avg",
+      "gridPos": { "x": 0, "y": 7, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "documind_retrieval_quality", "refId": "A", "legendFormat": "{{name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Retrieval quality breaker opens (15m rate)",
+      "gridPos": { "x": 12, "y": 7, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "rate(documind_retrieval_quality_opens_total[15m])", "refId": "A", "legendFormat": "{{name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cognitive breaker interrupts (by signal)",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 7 },
       "targets": [
         { "expr": "sum by (signal) (rate(documind_ccb_interrupts_total[5m]))", "refId": "A", "legendFormat": "{{signal}}" }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Token budget rejections by reason",
-      "gridPos": { "x": 0, "y": 11, "w": 12, "h": 7 },
+      "title": "Cognitive breaker warnings (by signal)",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 7 },
       "targets": [
-        { "expr": "sum by (reason) (rate(documind_token_breaker_rejects_total[5m]))", "refId": "A" }
+        { "expr": "sum by (signal) (rate(documind_ccb_warns_total[5m]))", "refId": "A", "legendFormat": "{{signal}}" }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Agent stops by reason",
-      "gridPos": { "x": 12, "y": 11, "w": 12, "h": 7 },
+      "title": "Token breaker rejects (by reason)",
+      "gridPos": { "x": 0, "y": 21, "w": 12, "h": 7 },
       "targets": [
-        { "expr": "sum by (reason) (rate(documind_agent_stops_total[5m]))", "refId": "A" }
+        { "expr": "sum by (reason) (rate(documind_token_breaker_rejects_total[5m]))", "refId": "A", "legendFormat": "{{reason}}" }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Ingestion chunk decisions (poisoning guard)",
-      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 7 },
+      "title": "Agent stops (by reason)",
+      "gridPos": { "x": 12, "y": 21, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "sum by (reason) (rate(documind_agent_stops_total[5m]))", "refId": "A", "legendFormat": "{{reason}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingestion chunk decisions (allow / redact / reject)",
+      "gridPos": { "x": 0, "y": 28, "w": 12, "h": 7 },
       "targets": [
         { "expr": "sum(rate(documind_ingest_chunk_allow_total[5m]))", "refId": "A", "legendFormat": "allow" },
-        { "expr": "sum(rate(documind_ingest_chunk_redact_total[5m]))", "refId": "B", "legendFormat": "redact" },
-        { "expr": "sum(rate(documind_ingest_chunk_reject_total[5m]))", "refId": "C", "legendFormat": "reject" }
+        { "expr": "sum by (reason) (rate(documind_ingest_chunk_redact_total[5m]))", "refId": "B", "legendFormat": "redact[{{reason}}]" },
+        { "expr": "sum by (reason) (rate(documind_ingest_chunk_reject_total[5m]))", "refId": "C", "legendFormat": "reject[{{reason}}]" }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Observability breaker skips (higher = telemetry backend struggling)",
-      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 7 },
+      "title": "Observability breaker skipped exports (by exporter)",
+      "gridPos": { "x": 12, "y": 28, "w": 12, "h": 7 },
       "targets": [
-        { "expr": "sum by (name) (rate(documind_obs_breaker_skips_total[5m]))", "refId": "A" }
+        { "expr": "sum by (name) (rate(documind_obs_breaker_skips_total[5m]))", "refId": "A", "legendFormat": "{{name}}" }
       ]
     }
   ]

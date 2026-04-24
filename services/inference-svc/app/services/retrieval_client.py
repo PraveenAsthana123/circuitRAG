@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-
 from documind_core.circuit_breaker import CircuitBreaker
 from documind_core.exceptions import ExternalServiceError
 

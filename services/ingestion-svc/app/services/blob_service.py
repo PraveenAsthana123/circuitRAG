@@ -13,10 +13,9 @@ import io
 import logging
 from uuid import UUID
 
+from documind_core.exceptions import DataError
 from minio import Minio
 from minio.error import S3Error
-
-from documind_core.exceptions import DataError
 
 log = logging.getLogger(__name__)
 

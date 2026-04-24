@@ -1,13 +1,8 @@
 """Tests for the retrieval-poisoning guard."""
 from __future__ import annotations
 
-import pytest
-
 from app.chunking import Chunk
-from app.services.poisoning_defense import (
-    ChunkPoisoningGuard,
-    SanitizeDecision,
-)
+from app.services.poisoning_defense import ChunkPoisoningGuard, SanitizeDecision
 
 
 def _chunk(text: str, idx: int = 0) -> Chunk:
@@ -51,8 +46,36 @@ def test_batch_filters_rejected_and_flags_redacted():
         _chunk("email foo@bar.com", 2),
     ]
     sanitized, outcomes = guard.sanitize_batch(chunks)
-    assert len(sanitized) == 2     # second one rejected
+    assert len(sanitized) == 2  # second one rejected
     assert outcomes[0].decision is SanitizeDecision.ALLOW
     assert outcomes[1].decision is SanitizeDecision.REJECT
     assert outcomes[2].decision is SanitizeDecision.REDACT
     assert sanitized[1].metadata.get("sanitized") is True
+
+
+# --- False-positive regression tests (Bug #2 fix) ---
+
+
+def test_does_not_reject_legitimate_technical_use_of_override():
+    guard = ChunkPoisoningGuard()
+    out = guard.sanitize(_chunk(
+        "The subclass should override the method to customize behavior."
+    ))
+    assert out.decision is SanitizeDecision.ALLOW, \
+        "legitimate 'override' must not match injection"
+
+
+def test_does_not_reject_documentation_referencing_previous_section():
+    guard = ChunkPoisoningGuard()
+    out = guard.sanitize(_chunk(
+        "As the previous section explained, config takes precedence over defaults."
+    ))
+    assert out.decision is SanitizeDecision.ALLOW
+
+
+def test_does_not_reject_forget_as_verb_in_prose():
+    guard = ChunkPoisoningGuard()
+    out = guard.sanitize(_chunk(
+        "Don't forget to pack an umbrella if rain is forecast."
+    ))
+    assert out.decision is SanitizeDecision.ALLOW
