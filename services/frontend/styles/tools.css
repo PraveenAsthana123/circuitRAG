@@ -227,8 +227,8 @@
   color: var(--text-primary);
 }
 .md-pre {
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #0a2540;
+  color: #dbeafe;
   padding: var(--space-4);
   border-radius: var(--radius-md);
   overflow-x: auto;
@@ -274,6 +274,101 @@
 .tool-related-one-line {
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+}
+
+/* System Design overview + CTA --------------------------------------- */
+.sysdesign-cta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-8);
+  background: linear-gradient(135deg, #1e3a8a, #1e40af);
+  color: var(--text-inverse);
+  border-radius: var(--radius-lg);
+  border: 1px solid #1e40af;
+  box-shadow: var(--shadow-md);
+  text-decoration: none;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.sysdesign-cta:hover {
+  text-decoration: none;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+}
+.sysdesign-cta-title {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-lg);
+}
+.sysdesign-cta-sub {
+  font-size: var(--font-size-sm);
+  opacity: 0.9;
+}
+
+.sysdesign-page { max-width: 1100px; }
+.sysdesign-header { margin-bottom: var(--space-8); }
+.sysdesign-sub {
+  color: var(--text-secondary);
+  max-width: 780px;
+  margin-bottom: var(--space-3);
+  line-height: 1.55;
+}
+.sysdesign-sub code {
+  background: var(--bg-muted);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+.sysdesign-back {
+  font-size: var(--font-size-sm);
+  color: var(--accent-primary);
+}
+
+.sysdesign-tool {
+  padding: var(--space-5);
+  margin-bottom: var(--space-6);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--accent-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  scroll-margin-top: var(--space-6);
+}
+.sysdesign-tool-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+.sysdesign-tool-name {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-1);
+}
+.sysdesign-tool-name a { color: var(--text-primary); }
+.sysdesign-tool-name a:hover { color: var(--accent-primary); text-decoration: none; }
+.sysdesign-tool-one-line {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+.sysdesign-tool-links {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+.sysdesign-extlink { color: var(--text-muted); }
+.sysdesign-detaillink {
+  color: var(--accent-primary);
+  font-weight: var(--font-weight-medium);
+}
+.sysdesign-nodiagram {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: var(--space-4);
 }
 
 @media (max-width: 720px) {

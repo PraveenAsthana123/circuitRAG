@@ -9,7 +9,7 @@ const TAB_ORDER: Array<{ key: keyof Tool['tabs']; label: string }> = [
   { key: 'feature', label: 'Feature' },
   { key: 'benefitMonitoring', label: 'Benefit + Monitoring' },
   { key: 'integration', label: 'Integration' },
-  { key: 'visualization', label: 'Visualization' },
+  { key: 'visualization', label: 'System Design' },
   { key: 'interview', label: 'Interview' },
 ];
 

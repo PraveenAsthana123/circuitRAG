@@ -26,8 +26,14 @@ export default function ToolsIndex() {
       <p className="tools-index-sub">
         Every piece of load-bearing infrastructure in DocuMind. Click any tool for a 6-tab
         deep-dive: dashboard state, features, benefits &amp; monitoring, integration I/O,
-        visualization, and an interview-ready talking point.
+        system design, and an interview-ready talking point.
       </p>
+      <Link href="/tools/system-design" className="sysdesign-cta">
+        <span className="sysdesign-cta-title">📐 See all 13 system-design diagrams on one page</span>
+        <span className="sysdesign-cta-sub">
+          Inline Mermaid for every tool — scan the whole architecture without clicking tabs.
+        </span>
+      </Link>
       {CATEGORY_ORDER.map((cat) => {
         const tools = TOOLS.filter((t) => t.category === cat.key);
         if (tools.length === 0) return null;

@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/documents', label: 'Documents' },
   { href: '/ask', label: 'Ask' },
   { href: '/tools', label: 'Tools' },
+  { href: '/tools/system-design', label: '↳ System Design' },
   { href: '/admin', label: 'Admin' },
 ];
 
