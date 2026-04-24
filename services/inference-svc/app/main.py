@@ -124,7 +124,9 @@ def create_app() -> FastAPI:
             )
             app.state.mcp_client = mcp_client
             app.state.agent_service = AgentService(
-                rag=app.state.rag_service, mcp=mcp_client,
+                rag=app.state.rag_service,
+                mcp=mcp_client,
+                audit_log=audit_log,  # agent.scope_denied rows
             )
             log.info(
                 "agent_service_ready mcp_url=%s draft_store=%s audit=%s",

@@ -84,9 +84,19 @@ def _detect_intent(query: str, employee_id: str | None) -> DetectedIntent | None
 class AgentService:
     """Compose RAG + MCP. Stateless; safe to instantiate per request."""
 
-    def __init__(self, *, rag: RagInferenceService, mcp: MCPClient) -> None:
+    def __init__(
+        self,
+        *,
+        rag: RagInferenceService,
+        mcp: MCPClient,
+        audit_log: Any = None,
+    ) -> None:
         self._rag = rag
         self._mcp = mcp
+        # Optional AuditLog (documind_core.audit.AuditWriter).
+        # When wired, agent-level scope denials produce
+        # governance.audit_log rows so ops can see rejected attempts.
+        self._audit = audit_log
 
     async def _tool_required_scopes(self, tool_name: str) -> list[str]:
         """
@@ -177,6 +187,23 @@ class AgentService:
                     "agent_action_denied_scope tool=%s required=%s have=%s corr=%s",
                     intent.tool, sorted(required_scopes), sorted(have), correlation_id,
                 )
+                # Audit the rejection — invisible denials are the kind
+                # of thing governance reviews ask for after an
+                # incident. Hash-chained onto the existing per-tenant
+                # chain (the AuditWriter handles that).
+                if self._audit is not None and tenant_id:
+                    await self._audit.write(
+                        tenant_id=tenant_id,
+                        action="agent.scope_denied",
+                        resource_type="agent_action",
+                        details={
+                            "tool": intent.tool,
+                            "required": sorted(required_scopes),
+                            "have": sorted(have),
+                            "query_preview": request.query[:120],
+                        },
+                        correlation_id=correlation_id,
+                    )
                 denied = AgentAction(
                     tool=intent.tool,
                     ok=False,
