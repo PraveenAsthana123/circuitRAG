@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from documind_core.auth import required_role_for_tool
 from mcp import MCPClient
 from mcp.client import ToolResult
 
@@ -94,6 +95,8 @@ class AgentService:
         correlation_id: str,
         request: AgentAskRequest,
         auth_token: str | None = None,
+        roles: list[str] | None = None,
+        auth_required: bool = False,
     ) -> AgentAskResponse:
         # 1. Always ground the answer via RAG first.
         rag_req = AskRequest(
@@ -122,6 +125,36 @@ class AgentService:
             return AgentAskResponse(
                 **base.model_dump(), action=None, intent="action_declined",
             )
+
+        # 2b. Scope pre-check — if auth is enforced and the caller
+        # doesn't have the role this tool requires, short-circuit before
+        # the MCP round-trip. The user still gets the grounded RAG
+        # answer plus a structured denial; we don't waste the MCP call
+        # OR expose tool invocation attempts to audit as "failed" when
+        # the policy already forbade them.
+        if auth_required:
+            required = required_role_for_tool(intent.tool)
+            have = set(roles or [])
+            if required not in have:
+                log.info(
+                    "agent_action_denied_scope tool=%s required=%s have=%s corr=%s",
+                    intent.tool, required, sorted(have), correlation_id,
+                )
+                denied = AgentAction(
+                    tool=intent.tool,
+                    ok=False,
+                    error={
+                        "code": "INSUFFICIENT_SCOPE",
+                        "required": [required],
+                        "have": sorted(have),
+                        "tool": intent.tool,
+                    },
+                )
+                return AgentAskResponse(
+                    **base.model_dump(),
+                    action=denied,
+                    intent="action_denied_scope",
+                )
 
         # 3. Invoke MCP
         log.info(

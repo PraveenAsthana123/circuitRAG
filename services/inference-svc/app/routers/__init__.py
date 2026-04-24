@@ -128,13 +128,19 @@ async def agent_ask(
     if not tenant_id:
         raise ValidationError("X-Tenant-ID header is required")
     # Forward the caller's verified JWT to MCP so the server can
-    # enforce per-tool scopes defence-in-depth.
+    # enforce per-tool scopes defence-in-depth. Also pass through
+    # roles + auth_required so the agent can pre-check scope before
+    # spending MCP bandwidth on requests it knows will 403.
     auth_token = getattr(request.state, "raw_token", "") or None
+    roles = list(getattr(request.state, "roles", []) or [])
+    auth_required = bool(getattr(request.app.state, "auth_required", False))
     return await svc.ask(
         tenant_id=tenant_id,
         correlation_id=correlation_id,
         request=body,
         auth_token=auth_token,
+        roles=roles,
+        auth_required=auth_required,
     )
 
 
