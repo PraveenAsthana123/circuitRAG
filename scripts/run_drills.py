@@ -276,6 +276,58 @@ def _list(drills: list[Drill]) -> None:
     print(f"\n{len(drills)} drills.")
 
 
+def _junit_xml(drills: list[Drill], elapsed: float) -> str:
+    """Emit a minimal JUnit-XML document with one <testsuite> wrapping
+    one <testcase> per drill. Sufficient for GitHub Actions
+    test-reporter, Jenkins, and any JUnit consumer."""
+    def _esc(s: str) -> str:
+        return (
+            s.replace("&", "&amp;")
+             .replace("<", "&lt;")
+             .replace(">", "&gt;")
+             .replace('"', "&quot;")
+             .replace("\n", "&#10;")
+        )
+
+    passed = sum(1 for d in drills if d.status == "passed")
+    failed = sum(1 for d in drills if d.status == "failed")
+    skipped = sum(1 for d in drills if d.status in ("pending", "skipped"))
+    total = len(drills)
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        (
+            f'<testsuite name="documind-drills" tests="{total}" '
+            f'failures="{failed}" skipped="{skipped}" '
+            f'time="{elapsed:.3f}">'
+        ),
+    ]
+    for d in drills:
+        tags = " ".join(
+            n if m == "write" else f"{n}:read" for n, m in sorted(d.resources)
+        ) or "(none)"
+        lines.append(
+            f'  <testcase classname="drills" name="{_esc(d.name)}" '
+            f'time="{d.duration_s:.3f}">'
+        )
+        lines.append('    <properties>')
+        lines.append(f'      <property name="resources" value="{_esc(tags)}"/>')
+        lines.append(f'      <property name="steps_passed" value="{d.steps_passed}"/>')
+        ec = d.exit_code if d.exit_code is not None else ""
+        lines.append(f'      <property name="exit_code" value="{ec}"/>')
+        lines.append('    </properties>')
+        if d.status == "failed":
+            lines.append(
+                f'    <failure message="exit {d.exit_code}" type="DrillFailure">'
+                f'{_esc(d.tail)}</failure>'
+            )
+        elif d.status in ("pending", "skipped"):
+            lines.append('    <skipped message="not run"/>')
+        lines.append('  </testcase>')
+    lines.append('</testsuite>')
+    return "\n".join(lines) + "\n"
+
+
 def _report(drills: list[Drill], elapsed: float) -> None:
     passed = [d for d in drills if d.status == "passed"]
     failed = [d for d in drills if d.status == "failed"]
@@ -303,6 +355,13 @@ def main() -> int:
                    help="List drills + resource tags, don't run")
     p.add_argument("--stop-on-fail", action="store_true",
                    help="Cancel remaining drills on first failure")
+    p.add_argument(
+        "--report",
+        help=(
+            "Emit a machine-readable report. Format: 'junit=<path>' writes "
+            "JUnit XML. Multiple uses stack (e.g. --report junit=file.xml)."
+        ),
+    )
     args = p.parse_args()
 
     drills = _discover(args.only)
@@ -321,6 +380,18 @@ def main() -> int:
         return 130
     elapsed = time.monotonic() - t0
     _report(drills, elapsed)
+    if args.report:
+        if args.report.startswith("junit="):
+            out_path = Path(args.report[len("junit="):])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(_junit_xml(drills, elapsed), encoding="utf-8")
+            print(f"report written: {out_path}")
+        else:
+            print(
+                f"{RED}unknown --report format: {args.report!r} "
+                f"(expected junit=<path>){NC}"
+            )
+            return 2
     return code
 
 
