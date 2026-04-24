@@ -26,11 +26,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel
-
 from mcp.server_common import (
     NoopCM as _NoopCM,
     OTEL_AVAILABLE as _OTEL_AVAILABLE,
+    ToolCallRequest,
     build_auth,
     enforce_scope as _enforce_scope_common,
     get_tracer,
@@ -118,11 +117,7 @@ TOOLS = [
 ]
 
 
-class ToolCallRequest(BaseModel):
-    name: str
-    arguments: dict[str, Any]
-    tenant_id: str | None = None
-    correlation_id: str | None = None
+# ToolCallRequest comes from mcp.server_common
 
 
 # ---------------------------------------------------------------------------

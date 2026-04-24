@@ -45,8 +45,23 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 log = logging.getLogger("mcp.server_common")
+
+
+# ---------------------------------------------------------------------------
+# Wire-format request body — identical across every MCP server.
+# Extracting it means all servers share one contract; a client
+# library written against any one is compatible with all.
+# ---------------------------------------------------------------------------
+class ToolCallRequest(BaseModel):
+    """Canonical body for POST /tools/call across every MCP server."""
+
+    name: str
+    arguments: dict[str, Any]
+    tenant_id: str | None = None
+    correlation_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +277,7 @@ __all__ = [
     "OTEL_AVAILABLE",
     "JWT_AVAILABLE",
     "NoopCM",
+    "ToolCallRequest",
     "TokenVerifier",
     "build_auth",
     "enforce_scope",
