@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import CodeBlock from '../../../components/CodeBlock';
 import ToolTabs from '../../../components/ToolTabs';
+import { readRepoFile } from '../../../lib/read-code';
+import { TOOL_CODE_REFS } from '../../../lib/tool-code-refs';
 import { TOOLS, getToolBySlug, type Tool } from '../../../lib/tools';
 
 export async function generateStaticParams() {
@@ -50,6 +53,23 @@ export default function ToolDetail({ params }: Props) {
       </header>
 
       <ToolTabs tool={tool} />
+
+      {(TOOL_CODE_REFS[tool.slug] ?? []).length > 0 && (
+        <section className="tool-code-section">
+          <h2 className="tool-code-title">Source code</h2>
+          <p className="tool-code-sub">
+            The actual files that implement this tool — rendered at build time from the repo.
+          </p>
+          {(TOOL_CODE_REFS[tool.slug] ?? []).map((ref) => (
+            <CodeBlock
+              key={ref.path + ref.label}
+              label={ref.label}
+              path={ref.path}
+              code={readRepoFile(ref.path, ref.maxLines)}
+            />
+          ))}
+        </section>
+      )}
 
       {siblings.length > 0 && (
         <aside className="tool-related">

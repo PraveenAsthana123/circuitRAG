@@ -45,16 +45,22 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   color: var(--text-primary);
-  text-decoration: none;
   transition: box-shadow var(--transition-fast), transform var(--transition-fast),
     border-color var(--transition-fast);
 }
 .tool-card:hover {
-  text-decoration: none;
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
   border-color: var(--accent-primary);
 }
+.tool-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.tool-card-main:hover { text-decoration: none; }
 .tool-card-title {
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-lg);
@@ -277,12 +283,17 @@
 }
 
 /* System Design overview + CTA --------------------------------------- */
+.tools-overviews {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+}
 .sysdesign-cta {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-4) var(--space-5);
-  margin-bottom: var(--space-8);
   background: linear-gradient(135deg, #1e3a8a, #1e40af);
   color: var(--text-inverse);
   border-radius: var(--radius-lg);
@@ -371,7 +382,252 @@
   padding: var(--space-4);
 }
 
+/* Design areas table ------------------------------------------------- */
+.design-areas-page { max-width: 1100px; }
+.design-areas-header { margin-bottom: var(--space-6); }
+.design-areas-sub {
+  color: var(--text-secondary);
+  max-width: 820px;
+  margin-bottom: var(--space-3);
+  line-height: 1.55;
+}
+.design-areas-counts {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+  margin: var(--space-3) 0;
+}
+.design-areas-total {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.design-areas-group { margin-bottom: var(--space-8); }
+.design-areas-group-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-3);
+  color: var(--text-primary);
+}
+.design-areas-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.design-areas-table th,
+.design-areas-table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.design-areas-table th {
+  background: var(--bg-muted);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.design-areas-table tr:last-child td { border-bottom: 0; }
+.da-col-id { width: 50px; font-family: var(--font-mono); color: var(--text-muted); }
+.da-col-name { font-weight: var(--font-weight-medium); }
+.da-col-status { width: 140px; }
+.da-col-ref code {
+  font-size: 0.85em;
+  background: var(--bg-muted);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.status-pill {
+  display: inline-flex;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: var(--font-weight-medium);
+  border: 1px solid transparent;
+}
+.status-implemented { background: #dcfce7; border-color: #bbf7d0; color: #166534; }
+.status-partial     { background: #fef9c3; border-color: #fde68a; color: #854d0e; }
+.status-designed    { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
+
+/* Circuit-breakers list + methodologies + scenarios (shared) --------- */
+.cb-grid,
+.method-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-4);
+}
+.cb-card,
+.method-card {
+  padding: var(--space-5);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--accent-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.cb-card-name,
+.method-name {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-3);
+  color: var(--text-primary);
+}
+.method-card-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  margin-bottom: var(--space-2);
+}
+.method-acronym {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+.method-tagline {
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-bottom: var(--space-3);
+  line-height: 1.45;
+}
+.cb-card-dl {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: var(--space-2) var(--space-3);
+}
+.cb-card-dl dt {
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+}
+.cb-card-dl dd {
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+.cb-card-dl dd code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--bg-muted);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  word-break: break-all;
+}
+.cb-link {
+  color: var(--accent-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Code governance lists ---------------------------------------------- */
+.cg-checklist,
+.cg-evidence {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.cg-checklist li,
+.cg-evidence li {
+  padding: 4px 0 4px 20px;
+  position: relative;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+.cg-checklist li::before {
+  content: '☑';
+  position: absolute;
+  left: 0;
+  color: var(--accent-primary);
+  font-weight: var(--font-weight-bold);
+}
+.cg-evidence li::before {
+  content: '📄';
+  position: absolute;
+  left: 0;
+}
+.cg-evidence li code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  word-break: break-all;
+}
+.cg-inline li {
+  padding-left: 18px;
+  font-size: 0.9rem;
+}
+.cg-per-design-section { margin-top: var(--space-10); }
+
+/* Per-tool code section + CodeBlock --------------------------------- */
+.tool-code-section {
+  margin-top: var(--space-6);
+  padding: var(--space-6);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.tool-code-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-2);
+}
+.tool-code-sub {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-4);
+}
+.code-block {
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+  flex-wrap: wrap;
+}
+.code-block-label { font-weight: var(--font-weight-medium); }
+.code-block-meta { color: var(--text-muted); }
+.code-block-meta code {
+  background: var(--bg-card);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.code-block-pre {
+  margin: 0;
+  border-radius: 0;
+  max-height: 600px;
+}
+
+/* Tool-card weblink on index --------------------------------------- */
+.tool-card-weblink {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.tool-card-weblink:hover { color: var(--accent-primary); text-decoration: none; }
+
 @media (max-width: 720px) {
   .tool-header { grid-template-columns: 1fr; }
   .tool-header-scores { flex-wrap: wrap; }
+  .cb-card-dl { grid-template-columns: 1fr; }
+  .cb-card-dl dt { margin-top: var(--space-2); }
 }

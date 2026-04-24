@@ -9,6 +9,11 @@ const LINKS = [
   { href: '/ask', label: 'Ask' },
   { href: '/tools', label: 'Tools' },
   { href: '/tools/system-design', label: '↳ System Design' },
+  { href: '/tools/design-areas', label: '↳ 74 Design Features' },
+  { href: '/tools/circuit-breakers-list', label: '↳ Circuit Breakers' },
+  { href: '/tools/microservice-scenarios', label: '↳ Microservice Scenarios' },
+  { href: '/tools/methodologies', label: '↳ Methodologies (TDD/BDD/…)' },
+  { href: '/tools/code-governance', label: '↳ Code Governance' },
   { href: '/admin', label: 'Admin' },
 ];
 

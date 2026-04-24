@@ -28,12 +28,34 @@ export default function ToolsIndex() {
         deep-dive: dashboard state, features, benefits &amp; monitoring, integration I/O,
         system design, and an interview-ready talking point.
       </p>
-      <Link href="/tools/system-design" className="sysdesign-cta">
-        <span className="sysdesign-cta-title">📐 See all 13 system-design diagrams on one page</span>
-        <span className="sysdesign-cta-sub">
-          Inline Mermaid for every tool — scan the whole architecture without clicking tabs.
-        </span>
-      </Link>
+      <div className="tools-overviews">
+        <Link href="/tools/system-design" className="sysdesign-cta">
+          <span className="sysdesign-cta-title">📐 System Design (13 diagrams)</span>
+          <span className="sysdesign-cta-sub">Inline Mermaid for every tool.</span>
+        </Link>
+        <Link href="/tools/design-areas" className="sysdesign-cta">
+          <span className="sysdesign-cta-title">🧭 74 Design Features</span>
+          <span className="sysdesign-cta-sub">67 core + CCB + 6 AI-governance extras, with status.</span>
+        </Link>
+        <Link href="/tools/circuit-breakers-list" className="sysdesign-cta">
+          <span className="sysdesign-cta-title">🔌 Circuit Breakers</span>
+          <span className="sysdesign-cta-sub">5 specialized + CCB, with weblinks + code paths.</span>
+        </Link>
+        <Link href="/tools/microservice-scenarios" className="sysdesign-cta">
+          <span className="sysdesign-cta-title">🧩 Microservice Scenarios</span>
+          <span className="sysdesign-cta-sub">12 patterns with DocuMind examples + references.</span>
+        </Link>
+        <Link href="/tools/methodologies" className="sysdesign-cta">
+          <span className="sysdesign-cta-title">🧪 Methodologies</span>
+          <span className="sysdesign-cta-sub">TDD / BDD / MDD / DDD / Agent-DD — 8 in total.</span>
+        </Link>
+        <Link href="/tools/code-governance" className="sysdesign-cta">
+          <span className="sysdesign-cta-title">🛡️ Code Governance</span>
+          <span className="sysdesign-cta-sub">
+            Standards, review, audit, debuggability — with per-design-area checklists.
+          </span>
+        </Link>
+      </div>
       {CATEGORY_ORDER.map((cat) => {
         const tools = TOOLS.filter((t) => t.category === cat.key);
         if (tools.length === 0) return null;
@@ -43,15 +65,25 @@ export default function ToolsIndex() {
             <p className="tools-category-blurb">{cat.blurb}</p>
             <div className="tools-grid">
               {tools.map((t) => (
-                <Link key={t.slug} href={`/tools/${t.slug}`} className="tool-card">
-                  <div className="tool-card-title">{t.name}</div>
-                  <p className="tool-card-one-line">{t.oneLine}</p>
-                  <div className="tool-card-scores">
-                    <ScorePill label="maturity" value={t.scoring.maturity} />
-                    <ScorePill label="ops load" value={t.scoring.operational} invert />
-                    <ScorePill label="benefit" value={t.scoring.benefit} />
-                  </div>
-                </Link>
+                <div key={t.slug} className="tool-card">
+                  <Link href={`/tools/${t.slug}`} className="tool-card-main">
+                    <div className="tool-card-title">{t.name}</div>
+                    <p className="tool-card-one-line">{t.oneLine}</p>
+                    <div className="tool-card-scores">
+                      <ScorePill label="maturity" value={t.scoring.maturity} />
+                      <ScorePill label="ops load" value={t.scoring.operational} invert />
+                      <ScorePill label="benefit" value={t.scoring.benefit} />
+                    </div>
+                  </Link>
+                  <a
+                    href={t.weblink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="tool-card-weblink"
+                  >
+                    official docs ↗
+                  </a>
+                </div>
               ))}
             </div>
           </section>
