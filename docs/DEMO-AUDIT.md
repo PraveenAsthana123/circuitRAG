@@ -111,9 +111,7 @@ Run it: `PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_audit.py`
 
 ## What's next (still open)
 
-- Verification CLI: walk `governance.audit_log` for a tenant, recompute
-  every `entry_hash`, report any break. Today the drill is the only
-  checker — a reusable CLI lives in a follow-up.
+- ✅ Verification CLI — done, see [DEMO-AUDIT-VERIFIER.md](DEMO-AUDIT-VERIFIER.md).
 - Dual-audit: also stream rows to Kafka `audit.events` topic for
   real-time governance consumers.
 - `actor_id` population: today we use `actor_type="service"` with
