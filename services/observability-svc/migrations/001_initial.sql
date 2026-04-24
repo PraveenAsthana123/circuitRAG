@@ -1,19 +1,24 @@
 -- observability schema (Design Areas 28, 64)
+-- target_value is deliberately wider than NUMERIC(5,2) — it holds both
+-- percentages (99.5) AND latency thresholds in milliseconds (3000).
+-- kind disambiguates ('percent' | 'latency_ms' | 'count'), so dashboards
+-- can format correctly.
 CREATE TABLE IF NOT EXISTS observability.slo_targets (
     name             TEXT PRIMARY KEY,
     sli              TEXT NOT NULL,
-    target_percent   NUMERIC(5,2) NOT NULL,
+    target_value     NUMERIC(10,3) NOT NULL,
+    kind             TEXT NOT NULL DEFAULT 'percent',
     window_days      INTEGER NOT NULL,
     error_budget_pct NUMERIC(5,2),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO observability.slo_targets (name, sli, target_percent, window_days)
+INSERT INTO observability.slo_targets (name, sli, target_value, kind, window_days)
 VALUES
-    ('availability', 'successful_requests / total_requests', 99.5, 30),
-    ('query_latency_p95', 'p95(query_duration_ms)', 3000, 30),
-    ('retrieval_precision_at_5', 'eval_precision_at_5', 80, 7),
-    ('answer_faithfulness', 'eval_faithfulness', 90, 7)
+    ('availability', 'successful_requests / total_requests', 99.5, 'percent', 30),
+    ('query_latency_p95', 'p95(query_duration_ms)', 3000, 'latency_ms', 30),
+    ('retrieval_precision_at_5', 'eval_precision_at_5', 80, 'percent', 7),
+    ('answer_faithfulness', 'eval_faithfulness', 90, 'percent', 7)
 ON CONFLICT (name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS observability.alert_rules (

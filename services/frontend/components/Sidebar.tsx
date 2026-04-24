@@ -7,6 +7,7 @@ const LINKS = [
   { href: '/upload', label: 'Upload' },
   { href: '/documents', label: 'Documents' },
   { href: '/ask', label: 'Ask' },
+  { href: '/tools', label: 'Tools' },
   { href: '/admin', label: 'Admin' },
 ];
 
