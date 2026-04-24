@@ -97,6 +97,33 @@ if _METRICS_ENABLED:
     )
 
 
+# Canonical state→numeric mapping used by the shared Gauge.
+# Shared with external breakers (e.g. mcp.client._MCPBreaker,
+# ObservabilityCircuitBreaker) so a dashboard treats all breakers
+# as the same time series regardless of where they live.
+_STATE_NUMERIC = {"closed": 0, "half_open": 1, "open": 2}
+
+
+def record_breaker_state(name: str, state: str) -> None:
+    """
+    Update ``documind_circuit_breaker_state{name=<name>}`` from an
+    external breaker that can't subclass :class:`CircuitBreaker`.
+
+    ``state`` must be one of ``"closed" | "half_open" | "open"`` — if
+    it isn't, the call is a silent no-op so a misreported state can't
+    crash whatever is polling.
+
+    Typical caller: a background poller in a service lifespan that
+    reads ``mcp_client.cb_state`` every N seconds and pushes it here.
+    """
+    if not _METRICS_ENABLED:
+        return
+    value = _STATE_NUMERIC.get(state)
+    if value is None:
+        return
+    _cb_state.labels(name=name).set(value)
+
+
 class CircuitBreaker:
     """
     A simple failure-count circuit breaker.

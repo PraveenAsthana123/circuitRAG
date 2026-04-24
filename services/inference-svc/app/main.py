@@ -131,6 +131,21 @@ def create_app() -> FastAPI:
             app.state.agent_service = None
             log.info("agent_service_disabled reason=no_mcp_url")
 
+        # Breaker metrics exporter — bridges non-CircuitBreaker breakers
+        # (MCP client, OTel OCB) into the shared documind_circuit_breaker_state
+        # gauge so Prometheus + Grafana see them as first-class series.
+        app.state.breaker_metrics_exporter = None
+        if app.state.mcp_client is not None or obs_breaker is not None:
+            from app.workers.breaker_metrics import BreakerMetricsExporter
+
+            exporter = BreakerMetricsExporter(
+                mcp_client=app.state.mcp_client,
+                obs_breaker=obs_breaker,
+                interval_s=int(os.getenv("DOCUMIND_BREAKER_METRICS_INTERVAL_S", "5")),
+            )
+            await exporter.start()
+            app.state.breaker_metrics_exporter = exporter
+
         # Draft replay worker — autonomous counterpart to the admin API.
         # Opt-in via env; requires a tenant list because the runtime role
         # is NOBYPASSRLS (can't enumerate tenants itself).
@@ -163,6 +178,8 @@ def create_app() -> FastAPI:
         finally:
             if app.state.draft_replay_worker is not None:
                 await app.state.draft_replay_worker.stop()
+            if app.state.breaker_metrics_exporter is not None:
+                await app.state.breaker_metrics_exporter.stop()
             await retrieval.aclose()
             await ollama.aclose()
             if app.state.mcp_client is not None:
