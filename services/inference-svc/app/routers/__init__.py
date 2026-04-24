@@ -43,14 +43,24 @@ async def health_detailed(request: Request) -> HealthDetailedResponse:
     uptime = (time.monotonic() - started_at) if started_at is not None else 0.0
 
     breakers: list[BreakerState] = []
-    mcp = getattr(state, "mcp_client", None)
-    if mcp is not None:
+    # Every registered MCP namespace gets its own breaker row so the
+    # dashboard sees them independently. Stable name scheme:
+    # ``mcp_<namespace>`` (mcp_hr, mcp_itsm, ...). Matches the
+    # Prometheus exporter's label naming so /detailed and /metrics
+    # agree on identifiers.
+    mcp_clients = getattr(state, "mcp_clients", None) or {}
+    for namespace in sorted(mcp_clients):
+        client = mcp_clients[namespace]
         failures = None
-        inner = getattr(mcp, "_breaker", None)
+        inner = getattr(client, "_breaker", None)
         if inner is not None:
             failures = getattr(inner, "_failures", None)
         breakers.append(
-            BreakerState(name="mcp_hr", state=mcp.cb_state, failures=failures),
+            BreakerState(
+                name=f"mcp_{namespace}",
+                state=client.cb_state,
+                failures=failures,
+            ),
         )
     # Observability CB lives inside the OTel exporter wrapper; exposed
     # on app.state when the lifespan hands us the reference (opt-in so

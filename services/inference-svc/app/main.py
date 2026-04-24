@@ -157,11 +157,11 @@ def create_app() -> FastAPI:
         # (MCP client, OTel OCB) into the shared documind_circuit_breaker_state
         # gauge so Prometheus + Grafana see them as first-class series.
         app.state.breaker_metrics_exporter = None
-        if app.state.mcp_client is not None or obs_breaker is not None:
+        if app.state.mcp_clients or obs_breaker is not None:
             from app.workers.breaker_metrics import BreakerMetricsExporter
 
             exporter = BreakerMetricsExporter(
-                mcp_client=app.state.mcp_client,
+                mcp_clients=app.state.mcp_clients or None,
                 obs_breaker=obs_breaker,
                 interval_s=int(os.getenv("DOCUMIND_BREAKER_METRICS_INTERVAL_S", "5")),
             )

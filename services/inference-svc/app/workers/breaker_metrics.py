@@ -44,10 +44,18 @@ class BreakerMetricsExporter:
         self,
         *,
         mcp_client: Any = None,
+        mcp_clients: dict[str, Any] | None = None,
         obs_breaker: Any = None,
         interval_s: int = 5,
     ) -> None:
-        self._mcp = mcp_client
+        # mcp_clients is the multi-namespace surface (preferred).
+        # mcp_client is kept for back-compat: a single client implicitly
+        # lives under the "hr" namespace — same convention as
+        # AgentService's back-compat wrap.
+        if mcp_clients is None:
+            mcp_clients = {"hr": mcp_client} if mcp_client is not None else {}
+        # Drop Nones; accept pre-built dict verbatim.
+        self._mcps: dict[str, Any] = {k: v for k, v in mcp_clients.items() if v is not None}
         self._obs = obs_breaker
         self._interval = max(1, interval_s)
         self._task: asyncio.Task | None = None
@@ -58,9 +66,9 @@ class BreakerMetricsExporter:
         if self._task is not None:
             return
         log.info(
-            "breaker_metrics_exporter_start interval=%ds mcp=%s obs=%s",
+            "breaker_metrics_exporter_start interval=%ds mcps=%s obs=%s",
             self._interval,
-            self._mcp is not None,
+            sorted(self._mcps.keys()),
             self._obs is not None,
         )
         self._stop.clear()
@@ -101,10 +109,10 @@ class BreakerMetricsExporter:
 
     async def _sample_once(self) -> None:
         self.stats["cycles"] += 1
-        if self._mcp is not None:
-            state = getattr(self._mcp, "cb_state", None)
+        for namespace, client in self._mcps.items():
+            state = getattr(client, "cb_state", None)
             if state is not None:
-                record_breaker_state("mcp_hr", str(state))
+                record_breaker_state(f"mcp_{namespace}", str(state))
         if self._obs is not None:
             inner_state = getattr(self._obs, "state", None)
             # ObservabilityCircuitBreaker.state is a StrEnum (has .value)
