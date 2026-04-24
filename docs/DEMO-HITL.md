@@ -139,8 +139,8 @@ golden demo's pending row — exactly what the two scripts produced.
 | Follow-up | Status |
 | --- | --- |
 | Admin API: `GET /api/v1/drafts?status=pending` + `POST /api/v1/drafts/{id}/resolve` | ✅ closed — see [DEMO-ADMIN-API.md](DEMO-ADMIN-API.md) |
+| Audit log for every draft transition | ✅ closed — see [DEMO-AUDIT.md](DEMO-AUDIT.md) |
 | Scheduled replay worker | open — auto-retries pending drafts with exponential backoff after MCP recovery |
-| Audit log for every draft transition | open — paste into `governance.audit_log`; who/when/why persisted/replayed/rejected |
 | JWT scope check before `resolve_draft` | open — only role `hr:write` can resolve an `hr.*` draft |
 
 Each remaining gap is a focused commit.

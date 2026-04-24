@@ -113,6 +113,7 @@ class MCPClient:
         failure_threshold: int = 3,
         recovery_timeout: float = 30.0,
         draft_store: DraftStore | None = None,
+        audit_log: Any = None,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._client = httpx.AsyncClient(timeout=timeout_s)
@@ -126,6 +127,10 @@ class MCPClient:
         # environments without a database. Production services pass a
         # PostgresDraftStore from their lifespan.
         self._drafts: DraftStore = draft_store or InMemoryDraftStore()
+        # AuditLog is optional. When wired, every draft.created /
+        # draft.replayed transition produces a hash-chained row in
+        # governance.audit_log. When not, callers behave as before.
+        self._audit = audit_log
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -225,6 +230,19 @@ class MCPClient:
             "mcp_draft_persisted draft_id=%s tool=%s reason=%s corr=%s",
             draft_id, name, reason, correlation_id,
         )
+        if self._audit is not None and tenant_id:
+            await self._audit.write(
+                tenant_id=tenant_id,
+                action="mcp_draft.created",
+                resource_type="mcp_draft",
+                details={
+                    "draft_id": draft_id,
+                    "tool": name,
+                    "reason": reason,
+                    "cb_state": self._breaker.state,
+                },
+                correlation_id=correlation_id,
+            )
         return ToolResult(ok=False, degraded=True, draft_id=draft_id)
 
     async def resolve_draft(
@@ -262,6 +280,19 @@ class MCPClient:
         )
         if result.ok and result.data is not None:
             await self._drafts.mark_replayed(draft_id, result.data, record.tenant_id)
+            if self._audit is not None and record.tenant_id:
+                await self._audit.write(
+                    tenant_id=record.tenant_id,
+                    action="mcp_draft.replayed",
+                    resource_type="mcp_draft",
+                    details={
+                        "draft_id": draft_id,
+                        "tool": record.tool,
+                        "result": result.data,
+                        "idempotent_replay": result.idempotent_replay,
+                    },
+                    correlation_id=record.correlation_id,
+                )
         return result
 
     async def list_pending_drafts(
