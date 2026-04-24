@@ -27,6 +27,7 @@ const GROUPS: Group[] = [
     heading: 'Catalogs',
     items: [
       { href: '/tools/circuit-breakers-list', label: 'Circuit Breakers' },
+      { href: '/tools/rag-scenarios', label: '36 RAG Scenarios' },
       { href: '/tools/microservice-scenarios', label: 'Microservice Scenarios' },
       { href: '/tools/database-scenarios', label: 'Database Scenarios' },
       { href: '/tools/methodologies', label: 'Methodologies' },

@@ -41,9 +41,13 @@ export default function ToolsIndex() {
           <span className="sysdesign-cta-title">🔌 Circuit Breakers</span>
           <span className="sysdesign-cta-sub">5 specialized + CCB, with weblinks + code paths.</span>
         </Link>
+        <Link href="/tools/rag-scenarios" className="sysdesign-cta">
+          <span className="sysdesign-cta-title">🧠 36 RAG Scenarios</span>
+          <span className="sysdesign-cta-sub">Ingestion / Retrieval / Inference / MCP / Governance / Eval / FinOps / Observability / Resilience / System Design — 10 layers.</span>
+        </Link>
         <Link href="/tools/microservice-scenarios" className="sysdesign-cta">
           <span className="sysdesign-cta-title">🧩 Microservice Scenarios</span>
-          <span className="sysdesign-cta-sub">12 patterns with DocuMind examples + references.</span>
+          <span className="sysdesign-cta-sub">12 generic patterns (saga, outbox, CQRS, bulkhead, sidecar…).</span>
         </Link>
         <Link href="/tools/methodologies" className="sysdesign-cta">
           <span className="sysdesign-cta-title">🧪 Methodologies</span>
