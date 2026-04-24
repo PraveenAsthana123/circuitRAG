@@ -5,6 +5,9 @@
 # git history is ever written. This file is the FIRST line of defence
 # against accidental credential leakage.
 
+# --- IDE / tooling local state ---
+.vibecheck/
+
 # --- Secrets ---
 .env
 .env.local
