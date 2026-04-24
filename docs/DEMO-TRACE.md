@@ -170,11 +170,45 @@ cycle to be clean.
 
 ---
 
+## Update (commit after initial drill): MCP server-side OTel wired
+
+The MCP server is now instrumented too. Every `/tools/call` produces:
+
+  * `POST /tools/call` — FastAPI server span (auto)
+  * `POST /tools/call http send` / `http receive` — middleware spans
+  * `mcp.tool:<name>` — custom child span with attributes:
+    `mcp.tool.name`, `mcp.tenant_id`, `mcp.correlation_id`,
+    `mcp.idempotency_key_present`, `mcp.idempotent_replay`
+
+W3C traceparent propagation works out of the box: `HTTPXClientInstrumentor`
+in inference-svc injects the header, `FastAPIInstrumentor` in the MCP
+server extracts it. An agent/ask that touches the leave tool now
+produces a 24-span tree across three services:
+
+```
+traceID=be5bfcb517dd632b51ae754b1449823d
+  inference-svc:    10 spans
+  retrieval-svc:    10 spans
+  mcp-server-hr:     4 spans
+    POST /tools/call
+    POST /tools/call http receive
+    POST /tools/call http send
+    mcp.tool:hr.leave_request    ← filterable in Jaeger
+```
+
+The `mcp.tool:` prefix lets a Jaeger search surface a specific tool
+invocation regardless of which generic endpoint hosted it. Filtering
+by tag `mcp.tool.name=hr.leave_request` catches every ticket-creation
+event across a time window — the operational hook governance has
+been asking for.
+
+Trade-off: `mcp/server_hr.py` now has ~45 LoC of optional OTel setup.
+Kept in the `mcp/` package (no `documind_core` import) so the package
+stays consumable by any service that wants it.
+
 ## Remaining follow-ups
 
-- Instrument `mcp/server_hr.py` with OTel — today its calls show up
-  as an `httpx` POST span in `inference-svc` but there's no server-side
-  span. One `instrument_fastapi` call away.
+_(MCP server-side span — done, see above.)_
 - Activate `AsyncPGInstrumentor` in service lifespans so PG queries
   get spans (today DB calls are invisible in the trace tree).
 - Attach `tenant_id` and `correlation_id` as span attributes on the

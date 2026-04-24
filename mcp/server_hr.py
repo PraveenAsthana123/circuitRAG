@@ -46,6 +46,51 @@ app = FastAPI(title="DocuMind MCP — HR server")
 
 
 # ---------------------------------------------------------------------------
+# OTel — optional. When the SDK + OTLP exporter are present, emit traces
+# so the MCP server-side span shows up in the inference-svc → MCP trace
+# tree. Kept local to mcp/ (no documind_core import) so this package
+# stays consumable by any service that wants it.
+# ---------------------------------------------------------------------------
+try:
+    from opentelemetry import trace as _otel_trace
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+        OTLPSpanExporter,
+    )
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    _OTEL_AVAILABLE = True
+except ImportError:
+    _OTEL_AVAILABLE = False
+
+
+def _setup_otel() -> None:
+    """Wire OTel once per process. Silent no-op if SDK isn't installed."""
+    if not _OTEL_AVAILABLE:
+        log.info("mcp_server_otel_skipped reason=sdk_missing")
+        return
+    endpoint = os.getenv(
+        "DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317",
+    )
+    resource = Resource.create({
+        "service.name": "mcp-server-hr",
+        "service.namespace": "documind",
+        "deployment.environment": os.getenv("DOCUMIND_ENV", "development"),
+    })
+    provider = TracerProvider(resource=resource)
+    provider.add_span_processor(
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True)),
+    )
+    _otel_trace.set_tracer_provider(provider)
+    FastAPIInstrumentor.instrument_app(app)
+    log.info("mcp_server_otel_initialized endpoint=%s service=mcp-server-hr", endpoint)
+
+
+_setup_otel()
+
+
+# ---------------------------------------------------------------------------
 # Fake HR backend (in-memory). Replace with real Workday/ADP client.
 # ---------------------------------------------------------------------------
 @dataclass
@@ -150,11 +195,50 @@ async def tools_call(
         req.name, req.tenant_id, cid, idempotency_key,
     )
 
-    # Idempotency replay
-    if idempotency_key and idempotency_key in state.idempotency:
-        cached = state.idempotency[idempotency_key]
-        log.info("mcp_idempotent_replay key=%s", idempotency_key)
-        return {**cached, "idempotent_replay": True}
+    # Child span named after the tool itself — so Jaeger can filter a
+    # trace to a specific tool invocation regardless of which generic
+    # POST /tools/call hosted it. FastAPIInstrumentor already gave us
+    # the HTTP-level server span; this is a business-level child.
+    _tracer = (
+        _otel_trace.get_tracer(__name__) if _OTEL_AVAILABLE else None
+    )
+    _span_cm = (
+        _tracer.start_as_current_span(f"mcp.tool:{req.name}")
+        if _tracer is not None
+        else _NoopCM()
+    )
+
+    with _span_cm as _sp:
+        if _OTEL_AVAILABLE and _sp is not None:
+            _sp.set_attribute("mcp.tool.name", req.name)
+            if req.tenant_id:
+                _sp.set_attribute("mcp.tenant_id", req.tenant_id)
+            _sp.set_attribute("mcp.correlation_id", cid)
+            _sp.set_attribute(
+                "mcp.idempotency_key_present", idempotency_key is not None,
+            )
+
+        # Idempotency replay
+        if idempotency_key and idempotency_key in state.idempotency:
+            cached = state.idempotency[idempotency_key]
+            log.info("mcp_idempotent_replay key=%s", idempotency_key)
+            if _OTEL_AVAILABLE and _sp is not None:
+                _sp.set_attribute("mcp.idempotent_replay", True)
+            return {**cached, "idempotent_replay": True}
+        return await _dispatch(req, idempotency_key, cid)
+
+
+class _NoopCM:
+    def __enter__(self): return None
+    def __exit__(self, *a): return False
+
+
+async def _dispatch(
+    req: "ToolCallRequest",
+    idempotency_key: str | None,
+    cid: str,
+) -> dict[str, Any]:
+    """Extracted so the span context manager wraps ALL of the work."""
 
     # Tool dispatch
     tool = next((t for t in TOOLS if t["name"] == req.name), None)

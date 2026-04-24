@@ -166,6 +166,22 @@ async def main() -> None:
         a_summ = agent_multi[0]
         ok(f"agent trace multi-service traceID={a_summ['traceID']} services={a_summ['services']}")
 
+        # Prefer a trace that includes mcp-server-hr — once the MCP server
+        # is OTel-instrumented, EVERY agent/ask with a tool call produces
+        # a 3-service tree with the mcp.tool:<name> child span.
+        three_svc = [s for s in (_summarize(t) for t in agent_traces) if "mcp-server-hr" in s["services"]]
+        if three_svc:
+            t3 = three_svc[0]
+            mcp_ops = set(t3["operations"].get("mcp-server-hr", []))
+            if not any(op.startswith("mcp.tool:") for op in mcp_ops):
+                fail(f"mcp-server-hr present but no mcp.tool:* span: {mcp_ops}")
+            if "POST /tools/call" not in mcp_ops:
+                fail(f"mcp-server-hr missing server span POST /tools/call: {mcp_ops}")
+            ok(f"3-service tree (incl. mcp-server-hr) traceID={t3['traceID']} ops={sorted(mcp_ops)}")
+        else:
+            info = "(mcp-server-hr not yet in agent trace — it may be a fresh run; see DEMO-TRACE.md)"
+            print(f"  \033[33m· {info}\033[0m")
+
         step("7. dump trace sample → /tmp/documind-trace-sample.json")
         sample_path = Path("/tmp/documind-trace-sample.json")
         sample_path.write_text(json.dumps({

@@ -26,20 +26,13 @@
     }
   },
   "agent_trace": {
-    "traceID": "d0a5101e6d6868a0ef1b587eb1d7f7e3",
+    "traceID": "cb8fcdea4a5f720f6b127c9ab071fa34",
     "total_spans": 20,
     "services": {
-      "inference-svc": 10,
-      "retrieval-svc": 10
+      "retrieval-svc": 10,
+      "inference-svc": 10
     },
     "operations": {
-      "inference-svc": [
-        "EVALSHA",
-        "POST",
-        "POST /api/v1/agent/ask",
-        "POST /api/v1/agent/ask http receive",
-        "POST /api/v1/agent/ask http send"
-      ],
       "retrieval-svc": [
         "EVALSHA",
         "GET",
@@ -48,6 +41,13 @@
         "POST /api/v1/retrieve http receive",
         "POST /api/v1/retrieve http send",
         "SETEX"
+      ],
+      "inference-svc": [
+        "EVALSHA",
+        "POST",
+        "POST /api/v1/agent/ask",
+        "POST /api/v1/agent/ask http receive",
+        "POST /api/v1/agent/ask http send"
       ]
     }
   },
