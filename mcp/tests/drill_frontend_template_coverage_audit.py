@@ -59,6 +59,18 @@ DEEP_DIVE_ROUTES: list[tuple[str, list[str]]] = [
     ("/admin/data/deep", [
         # Discovered at runtime.
     ]),
+    # Hand-rolled renderers — predate UniversalDeepDive. The audit
+    # walks them too. They will all show as LEGACY (0/29 §N. markers)
+    # until the page migrates to UniversalDeepDive. That's the
+    # honest signal: not "passing" because of the legacy shape.
+    ("/admin/python/deep", [
+        "async-await", "decorators", "context-managers", "exceptions",
+        "typing-pydantic", "iterators-generators", "gil-concurrency-models",
+        "classes-inheritance-mro", "fastapi-middleware",
+    ]),
+    ("/admin/llmops/deep", [
+        # Discovered at runtime.
+    ]),
 ]
 
 # The master-template markers we look for inside each topic block.
