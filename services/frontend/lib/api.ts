@@ -188,6 +188,38 @@ export interface HealthPromptsResponse {
   prompts: PromptInfo[];
 }
 
+export interface TraceLinkAuditRow {
+  id: string;
+  timestamp: string;
+  tenant_id: string | null;
+  actor_id: string | null;
+  actor_type: string;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  fail_closed_failed: boolean;
+}
+
+export interface TraceLinkDraftRow {
+  draft_id: string;
+  tenant_id: string | null;
+  tool: string;
+  status: string;
+  reason: string;
+  created_at: string;
+  replayed_at: string | null;
+}
+
+export interface TraceLinkResponse {
+  correlation_id: string;
+  observed_at: string;
+  db_reachable: boolean;
+  audit_rows: TraceLinkAuditRow[];
+  draft_rows: TraceLinkDraftRow[];
+  // Jaeger deep-link if DOCUMIND_JAEGER_URL is configured server-side
+  jaeger_url: string | null;
+}
+
 export const api = {
   /**
    * Operator-facing detailed health. Powers the admin dashboard:
@@ -225,6 +257,23 @@ export const api = {
       timeout: 5_000,
       signal,
     }),
+
+  /**
+   * Trace → draft → audit reconstruction by (correlation_id,
+   * tenant_id). Tenant is required because audit_log RLS is
+   * FORCE-enabled and the documind_app role is non-BYPASSRLS;
+   * the lookup scopes per-tenant honestly rather than pretending
+   * cross-tenant access works.
+   *
+   * Backend returns 400 on a malformed UUID for either field.
+   * The UI surfaces that as "(invalid X)".
+   */
+  traceLink: (correlationId: string, tenantId: string, signal?: AbortSignal) =>
+    request<TraceLinkResponse>(
+      `/api/v1/admin/trace/${encodeURIComponent(correlationId)}`
+        + `?tenant_id=${encodeURIComponent(tenantId)}`,
+      { timeout: 5_000, signal },
+    ),
 
   uploadDocument: (file: File, { sync = false }: { sync?: boolean } = {}) => {
     const fd = new FormData();

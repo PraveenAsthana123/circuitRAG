@@ -30,6 +30,9 @@ import {
   type BreakerState,
   type PromptInfo,
   type ToolStats,
+  type TraceLinkAuditRow,
+  type TraceLinkDraftRow,
+  type TraceLinkResponse,
 } from '../../lib/api';
 
 const REFRESH_INTERVAL_MS = 5_000;
@@ -106,6 +109,17 @@ export default function AdminPage() {
   const [data, setData] = useState<HealthDetailedResponse | null>(null);
   const [tools, setTools] = useState<HealthToolsResponse | null>(null);
   const [prompts, setPrompts] = useState<HealthPromptsResponse | null>(null);
+
+  // Trace-link panel: search-driven, not poll-driven. Operator
+  // supplies BOTH correlation_id and tenant_id (audit_log RLS is
+  // FORCE-enabled; the lookup is honestly per-tenant — see the
+  // backend route docstring).
+  const [traceQuery, setTraceQuery] = useState('');
+  const [traceTenant, setTraceTenant] = useState('');
+  const [trace, setTrace] = useState<TraceLinkResponse | null>(null);
+  const [traceError, setTraceError] = useState<string | null>(null);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const traceAbortRef = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // ``lastFetchAt`` is local clock — used to show how stale the panel
@@ -161,6 +175,33 @@ export default function AdminPage() {
       abortRef.current?.abort();
     };
   }, []);
+
+  async function runTraceLookup(e: React.FormEvent) {
+    e.preventDefault();
+    const q = traceQuery.trim();
+    const t = traceTenant.trim();
+    if (!q || !t) return;
+    traceAbortRef.current?.abort();
+    const ctl = new AbortController();
+    traceAbortRef.current = ctl;
+    setTraceLoading(true);
+    setTraceError(null);
+    try {
+      const resp = await api.traceLink(q, t, ctl.signal);
+      setTrace(resp);
+    } catch (err) {
+      setTrace(null);
+      if (err instanceof ApiError) {
+        // The 400 INVALID_CORRELATION_ID / INVALID_TENANT_ID paths
+        // land here — give the operator the actionable string.
+        setTraceError(`${err.status}: ${err.detail}`);
+      } else if ((err as Error).name !== 'AbortError') {
+        setTraceError((err as Error).message);
+      }
+    } finally {
+      setTraceLoading(false);
+    }
+  }
 
   return (
     <>
@@ -429,6 +470,214 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+
+      {/* Trace lookup — given a correlation_id, show audit + draft
+          rows linked to it. Search-driven, not auto-refreshing. */}
+      <div className="card">
+        <div className="card-header" style={{ marginBottom: 12 }}>
+          <strong>Trace lookup</strong>
+          <div className="field-help">
+            Paste a <code>correlation_id</code> (the UUID propagated
+            via <code>X-Correlation-ID</code> through every request)
+            to see the audit rows + draft rows it touched. Reconstructs
+            the request end-to-end without code archaeology.
+          </div>
+        </div>
+        <form
+          onSubmit={runTraceLookup}
+          style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}
+        >
+          <input
+            type="text"
+            value={traceQuery}
+            onChange={(e) => setTraceQuery(e.target.value)}
+            placeholder="correlation_id (UUID)"
+            aria-label="Correlation ID"
+            style={{
+              flex: '1 1 280px',
+              padding: '6px 10px',
+              fontFamily: 'monospace',
+              fontSize: 13,
+              border: '1px solid #d1d5db',
+              borderRadius: 4,
+            }}
+          />
+          <input
+            type="text"
+            value={traceTenant}
+            onChange={(e) => setTraceTenant(e.target.value)}
+            placeholder="tenant_id (UUID)"
+            aria-label="Tenant ID"
+            style={{
+              flex: '1 1 280px',
+              padding: '6px 10px',
+              fontFamily: 'monospace',
+              fontSize: 13,
+              border: '1px solid #d1d5db',
+              borderRadius: 4,
+            }}
+          />
+          <button
+            type="submit"
+            className="button"
+            disabled={
+              traceLoading || !traceQuery.trim() || !traceTenant.trim()
+            }
+          >
+            {traceLoading ? 'Searching…' : 'Search'}
+          </button>
+        </form>
+        {traceError && (
+          <div
+            className="field-help"
+            role="alert"
+            style={{ color: '#991b1b', marginBottom: 12 }}
+          >
+            {traceError}
+          </div>
+        )}
+        {trace && !trace.db_reachable && (
+          <div className="list-empty" role="status" style={{ color: '#991b1b' }}>
+            Governance DB unreachable — cannot answer trace lookups.
+          </div>
+        )}
+        {trace && trace.db_reachable && (
+          <>
+            {trace.jaeger_url && (
+              <div className="field-help" style={{ marginBottom: 12 }}>
+                Open the trace in Jaeger:{' '}
+                <a href={trace.jaeger_url} target="_blank" rel="noreferrer">
+                  view spans →
+                </a>
+              </div>
+            )}
+            <div style={{ marginBottom: 16 }}>
+              <strong style={{ fontSize: 14 }}>
+                Audit rows ({trace.audit_rows.length})
+              </strong>
+              {trace.audit_rows.length === 0 ? (
+                <div className="field-help" style={{ marginTop: 4 }}>
+                  No audit rows found for this correlation_id.
+                </div>
+              ) : (
+                <div className="table-wrap" style={{ marginTop: 6 }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Action</th>
+                        <th>Actor</th>
+                        <th>Tenant</th>
+                        <th>Resource</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trace.audit_rows.map((row: TraceLinkAuditRow) => (
+                        <tr key={row.id}>
+                          <td>
+                            <code>{row.timestamp}</code>
+                          </td>
+                          <td>
+                            <code>{row.action}</code>
+                          </td>
+                          <td>
+                            <code>
+                              {row.actor_id ?? '—'} ({row.actor_type})
+                            </code>
+                          </td>
+                          <td>
+                            <code>{row.tenant_id ?? '—'}</code>
+                          </td>
+                          <td>
+                            {row.resource_type ? (
+                              <code>
+                                {row.resource_type}:{row.resource_id ?? '—'}
+                              </code>
+                            ) : (
+                              <span className="field-help">—</span>
+                            )}
+                          </td>
+                          <td>
+                            {row.fail_closed_failed ? (
+                              <span className="badge badge-failed">
+                                fail_closed_failed
+                              </span>
+                            ) : (
+                              <span className="badge badge-active">ok</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div>
+              <strong style={{ fontSize: 14 }}>
+                Draft rows ({trace.draft_rows.length})
+              </strong>
+              {trace.draft_rows.length === 0 ? (
+                <div className="field-help" style={{ marginTop: 4 }}>
+                  No drafts found for this correlation_id.
+                </div>
+              ) : (
+                <div className="table-wrap" style={{ marginTop: 6 }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Draft</th>
+                        <th>Tool</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Replayed</th>
+                        <th>Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trace.draft_rows.map((row: TraceLinkDraftRow) => (
+                        <tr key={row.draft_id}>
+                          <td>
+                            <code>{row.draft_id}</code>
+                          </td>
+                          <td>
+                            <code>{row.tool}</code>
+                          </td>
+                          <td>
+                            <span
+                              className={
+                                row.status === 'replayed'
+                                  ? 'badge badge-active'
+                                  : row.status === 'rejected'
+                                    ? 'badge badge-failed'
+                                    : 'badge badge-parsing'
+                              }
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+                          <td>
+                            <code>{row.created_at}</code>
+                          </td>
+                          <td>
+                            {row.replayed_at ? (
+                              <code>{row.replayed_at}</code>
+                            ) : (
+                              <span className="field-help">—</span>
+                            )}
+                          </td>
+                          <td>{row.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 

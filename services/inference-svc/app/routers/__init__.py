@@ -23,6 +23,9 @@ from app.schemas import (
     PromptInfo,
     ToolLatencyStats,
     ToolStats,
+    TraceLinkAuditRow,
+    TraceLinkDraftRow,
+    TraceLinkResponse,
 )
 from app.services import RagInferenceService
 from app.services.agent import AgentService
@@ -307,6 +310,180 @@ async def health_prompts(request: Request) -> HealthPromptsResponse:
         observed_at=datetime.now(UTC).isoformat(),
         db_reachable=db_reachable,
         prompts=prompts,
+    )
+
+
+@router.get(
+    "/api/v1/admin/trace/{correlation_id}",
+    response_model=TraceLinkResponse,
+    tags=["admin"],
+    summary="Trace → draft → audit linkage by correlation_id",
+)
+async def admin_trace_link(
+    correlation_id: str,
+    request: Request,
+    tenant_id: str = Query(
+        ...,
+        description=(
+            "Tenant UUID — required because audit_log has FORCE-enabled "
+            "RLS and the documind_app role is non-BYPASSRLS. The lookup "
+            "scopes to (correlation_id, tenant_id) — operators investigate "
+            "with both pieces in hand from the dashboard."
+        ),
+    ),
+) -> TraceLinkResponse:
+    """
+    Operator-facing trace reconstruction. Given a correlation_id
+    (propagated by ``X-Correlation-ID`` through every request) and
+    the tenant_id it belongs to, returns the audit rows + draft
+    rows that share that correlation_id — and a Jaeger deep-link
+    if configured.
+
+    Closes the gap "no easy way to follow trace → draft → replay →
+    audit" cited in:
+      * mcp-agent-gap-review.md §2.3
+      * production-trust-quality-and-readiness.md §2
+      * tech-lead-audit-checklist.md §7
+
+    Tenant scoping: ``tenant_id`` is required (not derived from
+    cross-tenant admin context) because audit_log RLS is FORCE-
+    enabled and documind_app is non-BYPASSRLS. This is the honest
+    security shape — a future privileged-role + admin endpoint
+    can offer cross-tenant aggregation, but until that role exists,
+    the safer surface is per-tenant lookup.
+
+    Stays 200 even with zero matches: an unknown (correlation_id,
+    tenant_id) is a normal "I'm investigating, nothing happened
+    yet" state, not a 404. The UI distinguishes empty-result from
+    db_reachable=false.
+    """
+    from datetime import UTC, datetime
+    import os
+    import uuid as _uuid
+
+    # Validate both path/query UUIDs upfront — reject 400 with a
+    # specific code so the UI surfaces "(invalid X)" rather than
+    # running a query that returns zero rows for the wrong reason.
+    try:
+        cid = str(_uuid.UUID(correlation_id))
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INVALID_CORRELATION_ID",
+                "message": "correlation_id must be a UUID",
+            },
+        ) from exc
+    try:
+        tid = str(_uuid.UUID(tenant_id))
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INVALID_TENANT_ID",
+                "message": "tenant_id must be a UUID",
+            },
+        ) from exc
+
+    db_client = getattr(request.app.state, "db_client", None)
+    audit_rows: list[TraceLinkAuditRow] = []
+    draft_rows: list[TraceLinkDraftRow] = []
+    db_reachable = False
+
+    if db_client is not None:
+        try:
+            async with db_client.tenant_connection(tid) as conn:
+                a_rows = await conn.fetch(
+                    """
+                    SELECT id, timestamp, tenant_id, actor_id, actor_type,
+                           action, resource_type, resource_id, details
+                    FROM governance.audit_log
+                    WHERE correlation_id = $1::uuid
+                    ORDER BY timestamp ASC
+                    """,
+                    cid,
+                )
+                d_rows = await conn.fetch(
+                    """
+                    SELECT draft_id, tenant_id, tool, status, reason,
+                           created_at, replayed_at
+                    FROM governance.action_drafts
+                    WHERE correlation_id = $1::uuid
+                    ORDER BY created_at ASC
+                    """,
+                    cid,
+                )
+            db_reachable = True
+
+            for r in a_rows:
+                details = r["details"] or {}
+                # ``details`` arrives as either dict or json-string
+                # depending on asyncpg codec settings; normalize.
+                if isinstance(details, str):
+                    import json as _json
+                    try:
+                        details = _json.loads(details)
+                    except _json.JSONDecodeError:
+                        details = {}
+                audit_rows.append(TraceLinkAuditRow(
+                    id=str(r["id"]),
+                    timestamp=r["timestamp"].isoformat() if r["timestamp"] else "",
+                    tenant_id=str(r["tenant_id"]) if r["tenant_id"] else None,
+                    actor_id=r["actor_id"],
+                    actor_type=r["actor_type"],
+                    action=r["action"],
+                    resource_type=r["resource_type"],
+                    resource_id=str(r["resource_id"]) if r["resource_id"] else None,
+                    fail_closed_failed=bool(
+                        isinstance(details, dict)
+                        and details.get("fail_closed_failed", False)
+                    ),
+                ))
+            for r in d_rows:
+                draft_rows.append(TraceLinkDraftRow(
+                    draft_id=r["draft_id"],
+                    tenant_id=str(r["tenant_id"]) if r["tenant_id"] else None,
+                    tool=r["tool"],
+                    status=r["status"],
+                    reason=r["reason"],
+                    created_at=r["created_at"].isoformat() if r["created_at"] else "",
+                    replayed_at=(
+                        r["replayed_at"].isoformat()
+                        if r["replayed_at"] else None
+                    ),
+                ))
+        except Exception:  # noqa: BLE001 — operator visibility must
+            # not crash. Surface as db_reachable=false; UI shows
+            # "(governance unreachable)" rather than 500.
+            db_reachable = False
+
+    # Jaeger deep-link, only if configured. Constructs the canonical
+    # search URL — Jaeger UI parses ?service=inference-svc&tags=...
+    # and surfaces the trace. The operator clicks through; we don't
+    # try to render spans here.
+    jaeger_url: str | None = None
+    base = os.getenv("DOCUMIND_JAEGER_URL", "").rstrip("/")
+    if base:
+        # ``correlation.id`` is the OTel attribute name we set in
+        # mcp.server_common.handle_tool_call (sp.set_attribute
+        # documind.correlation_id). Jaeger searches by tag.
+        from urllib.parse import quote as _quote
+        tag_filter = _quote(f'documind.correlation_id="{cid}"')
+        jaeger_url = (
+            f"{base}/search?service=inference-svc&tags=%7B"
+            f"%22documind.correlation_id%22%3A%22{cid}%22%7D"
+        )
+        # Suppress F841 — tag_filter computed for clarity; not used
+        # because Jaeger's tag-search format differs.
+        _ = tag_filter
+
+    return TraceLinkResponse(
+        correlation_id=cid,
+        observed_at=datetime.now(UTC).isoformat(),
+        db_reachable=db_reachable,
+        audit_rows=audit_rows,
+        draft_rows=draft_rows,
+        jaeger_url=jaeger_url,
     )
 
 

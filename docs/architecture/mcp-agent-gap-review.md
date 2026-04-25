@@ -214,7 +214,15 @@ If reduced to the most important gaps:
 
 ### Phase 2
 
-- trace -> draft -> audit linkage
+- trace -> draft -> audit linkage ✓ shipped —
+  `GET /api/v1/admin/trace/{correlation_id}?tenant_id=<uuid>`
+  reconstructs one request end-to-end. Returns audit_log rows + draft
+  rows linked by correlation_id, scoped per-tenant (audit_log RLS is
+  FORCE-enabled; documind_app is non-BYPASSRLS). Returns a Jaeger
+  deep-link if `DOCUMIND_JAEGER_URL` is configured. Admin-dashboard
+  panel (search-driven, not poll-driven). Drill
+  `drill_inference_trace_link.py` exercises 7 paths including a
+  cross-tenant negative that locks RLS isolation.
 - better explanation of tool decisions and denials
 
 ### Phase 3

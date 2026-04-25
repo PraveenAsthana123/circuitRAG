@@ -286,3 +286,67 @@ class HealthPromptsResponse(BaseModel):
         default_factory=list,
         description="Rows where status='active', sorted by (name, version desc)",
     )
+
+
+# ---------------------------------------------------------------------------
+# Trace link — given a correlation_id, project the linked audit rows +
+# draft rows so an operator can reconstruct one request end-to-end
+# without code archaeology. Closes:
+#   * mcp-agent-gap-review.md §2.3 (trace → draft → audit linkage)
+#   * production-trust-quality-and-readiness.md §2 ("Can I trace one
+#     request end-to-end?")
+#   * tech-lead-audit-checklist.md §7 ("no easy way to follow
+#     trace → draft → replay → audit")
+# ---------------------------------------------------------------------------
+class TraceLinkAuditRow(BaseModel):
+    """Operator-facing projection of governance.audit_log."""
+
+    id: str = Field(description="Audit row UUID")
+    timestamp: str = Field(description="ISO 8601, when the audit row landed")
+    tenant_id: str | None
+    actor_id: str | None
+    actor_type: str
+    action: str
+    resource_type: str | None = None
+    resource_id: str | None = None
+    fail_closed_failed: bool = Field(
+        default=False,
+        description=(
+            "True when audit details.fail_closed_failed was set — i.e. "
+            "the audit-write failure was tolerated under fail_closed=False. "
+            "Surfaced because the audit row IS the canonical record; "
+            "operators investigating a fail_closed event need to see it."
+        ),
+    )
+
+
+class TraceLinkDraftRow(BaseModel):
+    """Operator-facing projection of governance.action_drafts."""
+
+    draft_id: str
+    tenant_id: str | None
+    tool: str
+    status: str
+    reason: str
+    created_at: str
+    replayed_at: str | None = None
+
+
+class TraceLinkResponse(BaseModel):
+    """All governance state we hold for a single correlation_id —
+    audit rows + draft rows. The Jaeger trace URL is a hint, not a
+    fetched payload (the trace lives in Jaeger, not our DB)."""
+
+    correlation_id: str
+    observed_at: str = Field(description="ISO 8601 timestamp at sample time")
+    db_reachable: bool
+    audit_rows: list[TraceLinkAuditRow] = Field(default_factory=list)
+    draft_rows: list[TraceLinkDraftRow] = Field(default_factory=list)
+    jaeger_url: str | None = Field(
+        default=None,
+        description=(
+            "When DOCUMIND_JAEGER_URL is set, a deep-link to the trace "
+            "in Jaeger. Operators jump from this dashboard to the full "
+            "trace tree; the dashboard doesn't try to render spans itself."
+        ),
+    )
