@@ -465,3 +465,74 @@ class HealthTechstackResponse(BaseModel):
     installed_count: int
     pending_count: int
     entries: list[TechstackEntry] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Client-error reporter — frontend posts uncaught JS errors here so the
+# admin dashboard can show "what broke in the browser" without requiring
+# the user to paste F12 console output. Closes the gap that bit during
+# the techstack page rollout: a client-side exception was reported but
+# the server-side render returned 200 with no error markers, leaving
+# the failure invisible to the backend operator.
+# ---------------------------------------------------------------------------
+class ClientErrorReport(BaseModel):
+    """One frontend-side error event. All fields are caller-supplied
+    (the browser); the server records them with a server-side
+    timestamp + a generated id. Stack traces are length-capped at
+    insertion time to bound memory."""
+
+    kind: str = Field(
+        description=(
+            "Error class — 'window_error' (uncaught exception), "
+            "'unhandled_rejection' (Promise rejection), 'react_boundary' "
+            "(error boundary catch), 'manual' (explicit operator report)."
+        ),
+    )
+    message: str = Field(description="Error.message or stringified rejection")
+    stack: str | None = Field(
+        default=None,
+        description="Stack trace, capped at ~4KB at insertion",
+    )
+    route: str | None = Field(
+        default=None,
+        description="window.location.pathname when the error fired",
+    )
+    user_agent: str | None = None
+    correlation_id: str | None = Field(
+        default=None,
+        description=(
+            "X-Correlation-ID from any in-flight request when the error "
+            "fired — links the JS error to a backend trace."
+        ),
+    )
+    extra: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Caller-supplied context (filename, lineno, source, etc.)",
+    )
+
+
+class ClientErrorRecord(BaseModel):
+    """A stored ClientErrorReport — adds server-side fields."""
+
+    id: str
+    received_at: str = Field(description="ISO 8601 server clock at receipt")
+    kind: str
+    message: str
+    stack: str | None = None
+    route: str | None = None
+    user_agent: str | None = None
+    correlation_id: str | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class ClientErrorListResponse(BaseModel):
+    """Recent client-error reports — newest first. In-memory ring
+    buffer (no DB persistence); restart drops history. That's a
+    deliberate trade — the dashboard's value is debugging the
+    last few minutes' failures, not historical analytics."""
+
+    service: str = "inference-svc"
+    observed_at: str
+    capacity: int = Field(description="Ring buffer capacity")
+    count: int = Field(description="Records currently in buffer")
+    records: list[ClientErrorRecord] = Field(default_factory=list)

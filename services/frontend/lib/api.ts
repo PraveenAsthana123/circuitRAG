@@ -255,6 +255,37 @@ export interface HealthTechstackResponse {
   entries: TechstackEntry[];
 }
 
+export interface ClientErrorRecord {
+  id: string;
+  received_at: string;
+  kind: string; // 'window_error' | 'unhandled_rejection' | 'react_boundary' | 'manual'
+  message: string;
+  stack: string | null;
+  route: string | null;
+  user_agent: string | null;
+  correlation_id: string | null;
+  extra: Record<string, unknown>;
+}
+
+export interface ClientErrorListResponse {
+  service: string;
+  observed_at: string;
+  capacity: number;
+  count: number;
+  records: ClientErrorRecord[];
+}
+
+// Body shape posted by the global error reporter.
+export interface ClientErrorReportBody {
+  kind: string;
+  message: string;
+  stack?: string | null;
+  route?: string | null;
+  user_agent?: string | null;
+  correlation_id?: string | null;
+  extra?: Record<string, unknown>;
+}
+
 export const api = {
   /**
    * Operator-facing detailed health. Powers the admin dashboard:
@@ -316,6 +347,33 @@ export const api = {
     request<HealthTechstackResponse>('/api/v1/health/techstack', {
       timeout: 5_000,
       signal,
+    }),
+
+  /**
+   * List recent client-side errors reported by the frontend's
+   * global error reporter. Newest first, in-memory ring buffer.
+   */
+  clientErrorList: (signal?: AbortSignal) =>
+    request<ClientErrorListResponse>('/api/v1/admin/client-errors', {
+      timeout: 5_000,
+      signal,
+    }),
+
+  /**
+   * Submit a client-error report. Called by the global error
+   * reporter on window.onerror / unhandledrejection / React
+   * error boundaries. Best-effort; reporting must not break
+   * further error handling (so callers ignore the response).
+   *
+   * The request wrapper auto-sets Content-Type when ``body`` is
+   * a non-FormData object, so pass the plain object — don't
+   * pre-stringify.
+   */
+  reportClientError: (body: ClientErrorReportBody) =>
+    request<ClientErrorRecord>('/api/v1/admin/client-errors', {
+      method: 'POST',
+      body,
+      timeout: 3_000,
     }),
 
   /**

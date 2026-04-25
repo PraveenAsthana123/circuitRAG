@@ -12,6 +12,9 @@ from app.schemas import (
     AskRequest,
     AskResponse,
     BreakerState,
+    ClientErrorListResponse,
+    ClientErrorRecord,
+    ClientErrorReport,
     DraftListResponse,
     DraftRejectRequest,
     DraftRejectResponse,
@@ -561,6 +564,89 @@ async def health_upstreams(request: Request) -> HealthUpstreamsResponse:
         service="inference-svc",
         observed_at=datetime.now(UTC).isoformat(),
         upstreams=results,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Client-error ring buffer — module-level so it survives across requests
+# but resets on process restart. Bounded; oldest evicted when full. No DB
+# persistence: this is for debugging the last few minutes, not historical
+# analytics. A real production rollout would forward to Sentry / Faro /
+# Datadog RUM; this is the local-dev variant that doesn't need a network
+# dependency.
+# ---------------------------------------------------------------------------
+from collections import deque as _deque
+
+_CLIENT_ERROR_BUFFER_CAPACITY = 100
+_CLIENT_ERROR_STACK_CAP = 4096  # bytes — cap stack so a runaway error doesn't blow memory
+_client_errors: _deque[ClientErrorRecord] = _deque(maxlen=_CLIENT_ERROR_BUFFER_CAPACITY)
+
+
+@router.post(
+    "/api/v1/admin/client-errors",
+    response_model=ClientErrorRecord,
+    tags=["admin"],
+    status_code=201,
+    summary="Frontend-reported client-side error event",
+)
+async def admin_client_error_report(body: ClientErrorReport) -> ClientErrorRecord:
+    """
+    Frontend posts uncaught JS errors / unhandled promise rejections /
+    React error-boundary catches here. The server stores them in a
+    bounded in-memory ring buffer; the admin dashboard reads them via
+    the GET sibling.
+
+    Stack traces are length-capped at insertion time so a runaway
+    error message can't blow memory. No auth on this endpoint —
+    in dev, the gateway / network policy gates browser access; in
+    prod, this would be replaced by Sentry / Faro / equivalent.
+    """
+    from datetime import UTC, datetime
+    import uuid as _uuid
+
+    stack = body.stack
+    if stack is not None and len(stack) > _CLIENT_ERROR_STACK_CAP:
+        # Cap from the END — the bottom of the stack (the actual error
+        # site) is more useful than the top (which is usually deep
+        # framework frames).
+        stack = "...[truncated]...\n" + stack[-_CLIENT_ERROR_STACK_CAP:]
+
+    record = ClientErrorRecord(
+        id=_uuid.uuid4().hex[:12],
+        received_at=datetime.now(UTC).isoformat(),
+        kind=body.kind,
+        message=body.message[:1024],  # message cap too
+        stack=stack,
+        route=body.route,
+        user_agent=body.user_agent,
+        correlation_id=body.correlation_id,
+        extra=body.extra or {},
+    )
+    _client_errors.appendleft(record)  # newest first
+    return record
+
+
+@router.get(
+    "/api/v1/admin/client-errors",
+    response_model=ClientErrorListResponse,
+    tags=["admin"],
+    summary="Recent frontend-reported client-side errors (newest first)",
+)
+async def admin_client_error_list() -> ClientErrorListResponse:
+    """
+    Read-only view of the in-memory ring buffer. Admin dashboard polls
+    this so operators can see what broke in the browser without asking
+    the user to F12.
+    """
+    from datetime import UTC, datetime
+
+    records = list(_client_errors)
+    return ClientErrorListResponse(
+        service="inference-svc",
+        observed_at=datetime.now(UTC).isoformat(),
+        capacity=_CLIENT_ERROR_BUFFER_CAPACITY,
+        count=len(records),
+        records=records,
     )
 
 

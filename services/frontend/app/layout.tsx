@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ReactNode } from 'react';
 import '../styles/globals.css';
 import Sidebar from '../components/Sidebar';
+import ClientErrorReporter from '../components/ClientErrorReporter';
 
 export const metadata: Metadata = {
   title: 'DocuMind',
@@ -13,6 +14,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
+        {/* Mounted once per tab; installs window.onerror +
+            unhandledrejection handlers that POST to
+            /api/v1/admin/client-errors. */}
+        <ClientErrorReporter />
         <div className="app-shell">
           <aside className="sidebar" aria-label="Primary navigation">
             <div className="sidebar-brand">DocuMind</div>
