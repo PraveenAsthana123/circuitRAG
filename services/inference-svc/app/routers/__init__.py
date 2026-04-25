@@ -18,7 +18,9 @@ from app.schemas import (
     DraftResolveResponse,
     DraftSummary,
     HealthDetailedResponse,
+    HealthPromptsResponse,
     HealthToolsResponse,
+    PromptInfo,
     ToolLatencyStats,
     ToolStats,
 )
@@ -236,6 +238,75 @@ async def health_tools(request: Request) -> HealthToolsResponse:
         observed_at=datetime.now(UTC).isoformat(),
         tools=tools,
         unreachable=sorted(unreachable),
+    )
+
+
+@router.get(
+    "/api/v1/health/prompts",
+    response_model=HealthPromptsResponse,
+    tags=["health"],
+    summary="Active prompt registry — name, version, model, tuning",
+)
+async def health_prompts(request: Request) -> HealthPromptsResponse:
+    """
+    Operator-facing visibility into the active prompt registry
+    (governance.prompts WHERE status='active'). Returns the lifecycle
+    + tuning fields without dumping template bodies.
+
+    Closes the trust-scorecard gap from
+    docs/architecture/production-trust-quality-and-readiness.md:
+    "prompt/model/retrieval registry visibility — operators still
+    can't easily answer 'which prompt + model is live right now?'"
+
+    The endpoint stays 200 even when the DB is unreachable —
+    db_reachable=false + empty prompts lets the UI surface the
+    degradation cleanly. A 500 here would mystify operators
+    investigating an unrelated outage.
+    """
+    from datetime import UTC, datetime
+
+    from app.services.prompt_repo import PromptRepo
+
+    db_client = getattr(request.app.state, "db_client", None)
+    prompts: list[PromptInfo] = []
+    db_reachable = False
+
+    if db_client is not None:
+        try:
+            repo = PromptRepo(db_client)
+            rows = await repo.list_active()
+            db_reachable = True
+            for r in rows:
+                # Coerce DB types (asyncpg Decimal etc.) to plain
+                # Python primitives — Pydantic accepts them but JSON
+                # encoding chokes on Decimal without a default.
+                prompts.append(PromptInfo(
+                    name=str(r["name"]),
+                    version=str(r["version"]),
+                    model=str(r["model"]) if r.get("model") is not None else None,
+                    temperature=(
+                        float(r["temperature"])
+                        if r.get("temperature") is not None
+                        else None
+                    ),
+                    max_tokens=(
+                        int(r["max_tokens"])
+                        if r.get("max_tokens") is not None
+                        else None
+                    ),
+                    status=str(r["status"]),
+                ))
+        except Exception:  # noqa: BLE001 — registry visibility must not
+            # crash the dashboard. Surface as db_reachable=false; the
+            # operator sees "(registry unavailable)" rather than a 500
+            # masking the real outage they're investigating.
+            db_reachable = False
+
+    return HealthPromptsResponse(
+        service="inference-svc",
+        observed_at=datetime.now(UTC).isoformat(),
+        db_reachable=db_reachable,
+        prompts=prompts,
     )
 
 

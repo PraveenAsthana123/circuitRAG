@@ -25,8 +25,10 @@ import {
   api,
   ApiError,
   type HealthDetailedResponse,
+  type HealthPromptsResponse,
   type HealthToolsResponse,
   type BreakerState,
+  type PromptInfo,
   type ToolStats,
 } from '../../lib/api';
 
@@ -103,6 +105,7 @@ function PillRecord({
 export default function AdminPage() {
   const [data, setData] = useState<HealthDetailedResponse | null>(null);
   const [tools, setTools] = useState<HealthToolsResponse | null>(null);
+  const [prompts, setPrompts] = useState<HealthPromptsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // ``lastFetchAt`` is local clock — used to show how stale the panel
@@ -119,16 +122,19 @@ export default function AdminPage() {
       const ctl = new AbortController();
       abortRef.current = ctl;
       try {
-        // Fetch detailed health and per-tool stats in parallel — the
-        // dashboard renders both at the same cadence, and serializing
-        // them would double the perceived stale window.
-        const [resp, toolsResp] = await Promise.all([
+        // Fetch detailed health, per-tool stats, and prompt registry
+        // in parallel — the dashboard renders all three at the same
+        // cadence, and serializing them would multiply the perceived
+        // stale window.
+        const [resp, toolsResp, promptsResp] = await Promise.all([
           api.healthDetailed(ctl.signal),
           api.healthTools(ctl.signal),
+          api.healthPrompts(ctl.signal),
         ]);
         if (cancelled) return;
         setData(resp);
         setTools(toolsResp);
+        setPrompts(promptsResp);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -347,6 +353,76 @@ export default function AdminPage() {
                     </td>
                     <td>
                       <PillRecord rec={t.denials} emptyLabel="0" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Prompt registry — active rows from governance.prompts. */}
+      <div className="card">
+        <div className="card-header" style={{ marginBottom: 12 }}>
+          <strong>Prompt registry</strong>
+          <div className="field-help">
+            Active rows from <code>governance.prompts</code> — name,
+            version, model, tuning. Template bodies are intentionally
+            not shown here; that's a governance-UI concern. This panel
+            answers "which prompt + model is live <em>right now</em>?"
+          </div>
+        </div>
+        {loading && !prompts ? (
+          <div className="list-empty">
+            <span className="spinner" /> Loading…
+          </div>
+        ) : prompts && !prompts.db_reachable ? (
+          <div
+            className="list-empty"
+            role="status"
+            style={{ color: '#991b1b' }}
+          >
+            Registry unavailable — governance DB unreachable. The
+            running service falls back to in-code defaults; check the
+            governance-svc connection.
+          </div>
+        ) : prompts && prompts.prompts.length === 0 ? (
+          <div className="list-empty">
+            No active prompt rows in <code>governance.prompts</code>.
+            Service falls back to in-code <code>PROMPT_TEMPLATES</code>.
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Version</th>
+                  <th>Model</th>
+                  <th>Temperature</th>
+                  <th>Max tokens</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {prompts?.prompts.map((p: PromptInfo) => (
+                  <tr key={`${p.name}::${p.version}`}>
+                    <td>
+                      <code>{p.name}</code>
+                    </td>
+                    <td>
+                      <code>{p.version}</code>
+                    </td>
+                    <td>{p.model ?? <span className="field-help">—</span>}</td>
+                    <td>
+                      {p.temperature ?? <span className="field-help">—</span>}
+                    </td>
+                    <td>
+                      {p.max_tokens ?? <span className="field-help">—</span>}
+                    </td>
+                    <td>
+                      <span className="badge badge-active">{p.status}</span>
                     </td>
                   </tr>
                 ))}

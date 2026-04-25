@@ -169,6 +169,25 @@ export interface HealthToolsResponse {
   unreachable: string[];
 }
 
+export interface PromptInfo {
+  name: string;
+  version: string;
+  model: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
+  status: string;
+}
+
+export interface HealthPromptsResponse {
+  service: string;
+  observed_at: string;
+  // false when the DB is unreachable or the registry table is missing —
+  // UI renders "(registry unavailable)" rather than "(no active prompts)"
+  // since the two states have very different operational meaning.
+  db_reachable: boolean;
+  prompts: PromptInfo[];
+}
+
 export const api = {
   /**
    * Operator-facing detailed health. Powers the admin dashboard:
@@ -191,6 +210,18 @@ export const api = {
    */
   healthTools: (signal?: AbortSignal) =>
     request<HealthToolsResponse>('/api/v1/health/tools', {
+      timeout: 5_000,
+      signal,
+    }),
+
+  /**
+   * Active prompt registry — operator visibility into which prompt
+   * versions + models + tuning are live. Reads governance.prompts
+   * WHERE status='active'; ``db_reachable=false`` means the DB
+   * couldn't be queried (degradation, not "no prompts").
+   */
+  healthPrompts: (signal?: AbortSignal) =>
+    request<HealthPromptsResponse>('/api/v1/health/prompts', {
       timeout: 5_000,
       signal,
     }),

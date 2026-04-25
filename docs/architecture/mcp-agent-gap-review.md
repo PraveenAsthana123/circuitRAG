@@ -219,7 +219,16 @@ If reduced to the most important gaps:
 
 ### Phase 3
 
-- prompt/model/retrieval registry visibility
+- prompt registry visibility ✓ shipped — `GET /api/v1/health/prompts`
+  surfaces `governance.prompts WHERE status='active'` (name, version,
+  model, temperature, max_tokens, status); admin dashboard renders the
+  table; drill `mcp/tests/drill_inference_health_prompts.py` proves
+  WHERE-filter, A/B rollout, and tuning-field round-trip
+- model & retrieval registry visibility — open. Model is currently
+  set per prompt-row (covered above); a separate model-registry
+  surface (model_card-like row per active model) and retrieval-
+  config surface (chunk size, embedding model, k) are not yet
+  exposed
 - threshold-driven routing policy expansion
 
 ### Phase 4

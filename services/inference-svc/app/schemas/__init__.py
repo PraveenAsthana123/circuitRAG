@@ -241,3 +241,48 @@ class HealthToolsResponse(BaseModel):
             "'(stale)' rather than thinking the tools were never called."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Prompt registry visibility — surfaces governance.prompts active rows
+# to the operator UI. Closes the trust-scorecard gap "prompt/model/
+# retrieval registry visibility" — operators need to know which prompt
+# version + model + tuning is live RIGHT NOW, not just "what's in code."
+# ---------------------------------------------------------------------------
+class PromptInfo(BaseModel):
+    """A single active prompt row — the operator-facing projection
+    of governance.prompts. Template body is NOT exposed: the
+    dashboard polls every 5s and dumping ~1KB of template per row
+    per refresh is wasteful, and full-template inspection belongs
+    on the governance UI, not the operator dashboard."""
+
+    name: str
+    version: str
+    model: str | None = Field(
+        default=None,
+        description="Model targeted by this prompt (e.g. 'llama3.1:8b')",
+    )
+    temperature: float | None = None
+    max_tokens: int | None = None
+    status: str = Field(description="lifecycle state — 'active' here")
+
+
+class HealthPromptsResponse(BaseModel):
+    """Active prompt registry as seen by the operator dashboard.
+    Returns 200 even when the DB is unreachable; ``db_reachable=false``
+    + empty ``prompts`` lets the UI render '(registry unavailable)'
+    rather than mystifying the operator with a 500."""
+
+    service: str = "inference-svc"
+    observed_at: str = Field(description="ISO 8601 timestamp at sample time")
+    db_reachable: bool = Field(
+        description=(
+            "True when governance.prompts was successfully queried. "
+            "False on connection failure, missing table, or DbClient "
+            "not configured (governance-svc unwired)."
+        ),
+    )
+    prompts: list[PromptInfo] = Field(
+        default_factory=list,
+        description="Rows where status='active', sorted by (name, version desc)",
+    )
