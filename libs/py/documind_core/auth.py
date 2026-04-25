@@ -46,6 +46,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -56,6 +58,101 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
 log = logging.getLogger(__name__)
+
+
+# Identity-contract regexes — applied AFTER signature/issuer/audience
+# pass, BEFORE the claims propagate into request.state. The point is
+# defence-in-depth: a token signed with the right key but carrying a
+# malformed claim (sub as int, roles as string, tenant_id as "alice")
+# would still pass pyjwt.decode but cause downstream failures in
+# audit, RLS, or scope checks. The reviewer's note: "Reject malformed-
+# but-decodable tokens early. Do not let bad identity data leak into
+# audit or business state."
+#
+# Format choices:
+#   * sub  — non-empty string, ≤256 chars. Accepts UUID, federated
+#     subject ("okta:0o1b2c"), email, service-account name ("svc:replay").
+#     Stricter than that would force every issuer to a single shape and
+#     break federation.
+#   * tenant_id — STRICT UUID. The schema column is UUID and RLS
+#     casts to uuid; any other shape silently breaks tenant isolation.
+#   * roles — list of strings, each ``<namespace>:<scope>`` shape with
+#     printable safe chars. Hard cap on count + per-role length keeps
+#     malformed roles from filling logs / rate limit per-tenant maps.
+_SUB_MAX_LEN = 256
+_ROLES_MAX_COUNT = 32
+_ROLE_RE = re.compile(r"^[a-z][a-z0-9_\-]*:[a-z][a-z0-9_\-]*$")
+_ROLE_MAX_LEN = 64
+_VALID_KINDS = {"access", "refresh"}  # both legal in identity-svc; verifier enforces a single one
+
+
+def _validate_claims(claims: dict[str, Any], expected_kind: str) -> None:
+    """
+    Strict-shape check on a successfully-decoded JWT.
+
+    Raises :class:`pyjwt.InvalidTokenError` (or a subclass) on any
+    failure so the existing middleware path translates it to 401 with
+    a structured ``INVALID_TOKEN`` envelope. Each rejection includes
+    the field name in the message so an operator debugging a bad
+    issuer can tell what's wrong without server logs.
+    """
+    # ---- sub ----
+    sub = claims.get("sub")
+    if not isinstance(sub, str) or not sub:
+        raise pyjwt.InvalidTokenError("malformed claim: sub must be a non-empty string")
+    if len(sub) > _SUB_MAX_LEN:
+        raise pyjwt.InvalidTokenError(
+            f"malformed claim: sub exceeds {_SUB_MAX_LEN} chars"
+        )
+
+    # ---- tenant_id (optional but if present, must be UUID) ----
+    tenant_id = claims.get("tenant_id")
+    if tenant_id is not None and tenant_id != "":
+        if not isinstance(tenant_id, str):
+            raise pyjwt.InvalidTokenError("malformed claim: tenant_id must be a string")
+        try:
+            uuid.UUID(tenant_id)
+        except (ValueError, AttributeError) as exc:
+            raise pyjwt.InvalidTokenError(
+                f"malformed claim: tenant_id is not a UUID ({exc})"
+            ) from exc
+
+    # ---- roles ----
+    roles = claims.get("roles")
+    if roles is not None:
+        if not isinstance(roles, list):
+            raise pyjwt.InvalidTokenError(
+                "malformed claim: roles must be a list of strings"
+            )
+        if len(roles) > _ROLES_MAX_COUNT:
+            raise pyjwt.InvalidTokenError(
+                f"malformed claim: roles exceeds {_ROLES_MAX_COUNT} entries"
+            )
+        for r in roles:
+            if not isinstance(r, str) or len(r) == 0 or len(r) > _ROLE_MAX_LEN:
+                raise pyjwt.InvalidTokenError(
+                    f"malformed claim: role {r!r} must be a non-empty string ≤{_ROLE_MAX_LEN} chars"
+                )
+            if not _ROLE_RE.match(r):
+                raise pyjwt.InvalidTokenError(
+                    f"malformed claim: role {r!r} does not match <namespace>:<scope> shape"
+                )
+
+    # ---- kind ----
+    # The verifier ctor's expected_kind already guards this when set.
+    # Belt-and-braces: reject obviously-malformed kind values that
+    # aren't even known shapes (e.g. integers, missing).
+    kind = claims.get("kind")
+    if kind is None:
+        raise pyjwt.InvalidTokenError("malformed claim: kind is required")
+    if not isinstance(kind, str) or kind not in _VALID_KINDS:
+        raise pyjwt.InvalidTokenError(
+            f"malformed claim: kind {kind!r} not in {sorted(_VALID_KINDS)}"
+        )
+    if expected_kind and kind != expected_kind:
+        raise pyjwt.InvalidTokenError(
+            f"wrong token kind: got {kind!r} want {expected_kind!r}"
+        )
 
 
 class JWTVerifier:
@@ -82,6 +179,15 @@ class JWTVerifier:
 
         Raises :class:`jwt.InvalidTokenError` (or a subclass) on any
         validation failure — callers translate that to 401.
+
+        Two layers of validation:
+          1. ``pyjwt.decode`` — signature, issuer, audience, expiry,
+             required-fields presence.
+          2. ``_validate_claims`` — STRICT SHAPE on sub / tenant_id /
+             roles / kind. A token that decodes but has malformed
+             claims (sub=42, roles="admin", tenant_id="alice") would
+             previously slip through and cause downstream RLS / audit
+             failures. Now it 401s with a structured envelope.
         """
         claims = pyjwt.decode(
             raw_token,
@@ -91,11 +197,7 @@ class JWTVerifier:
             audience=self._audience,
             options={"require": ["exp", "iat", "iss", "aud"]},
         )
-        kind = claims.get("kind")
-        if self._expected_kind and kind != self._expected_kind:
-            raise pyjwt.InvalidTokenError(
-                f"wrong token kind: got {kind!r} want {self._expected_kind!r}"
-            )
+        _validate_claims(claims, self._expected_kind)
         return claims
 
 
