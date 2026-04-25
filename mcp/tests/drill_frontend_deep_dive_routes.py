@@ -56,11 +56,14 @@ ROUTES = [
     "/admin/data/deep",
 ]
 REQUIRED_TEMPLATE_MARKERS = [
-    "Interview line",
     "Maturity model",
     "Failure modes",
     "Where it fits in this project",
 ]
+# The interview-closer marker has two valid forms during the
+# master-template migration. Step 2 already locks it; step 4 below
+# uses ANY-OF for this one.
+INTERVIEW_CLOSER_MARKERS = ["Final interview script", "Interview line"]
 
 
 async def main() -> None:
@@ -75,16 +78,20 @@ async def main() -> None:
             print(f"    {r} -> 200 ({len(resp.text):,} bytes)")
         ok(f"all {len(ROUTES)} routes return 200")
 
-        step("2. each page contains 'Interview line' (≥1)")
+        step("2. each page contains an interview-closer block (≥1)")
+        # Master template renamed the label to "Final interview script".
+        # Accept either form so this drill works during the per-topic
+        # migration.
         for r, body in bodies.items():
-            count = body.count("Interview line")
+            count = body.count("Final interview script") + body.count("Interview line")
             if count < 1:
                 fail(
-                    f"{r}: 0 Interview-line blocks. The "
+                    f"{r}: 0 interview-closer blocks (legacy 'Interview "
+                    f"line' OR new 'Final interview script'). The "
                     f"UniversalDeepDive component didn't render."
                 )
-            print(f"    {r}: {count} interview line(s)")
-        ok("interview-line blocks present on every page")
+            print(f"    {r}: {count} interview-closer(s)")
+        ok("interview-closer blocks present on every page")
 
         step("3. each page has ≥2 mermaid mounts (1 topic × 2 diagrams min)")
         for r, body in bodies.items():
@@ -98,7 +105,7 @@ async def main() -> None:
             print(f"    {r}: {mounts} mermaid mounts")
         ok("≥2 mermaid mounts present on every page")
 
-        step("4. each page contains all 4 universal-template markers")
+        step("4. each page contains all required template markers")
         for r, body in bodies.items():
             missing = [m for m in REQUIRED_TEMPLATE_MARKERS if m not in body]
             if missing:
@@ -107,7 +114,14 @@ async def main() -> None:
                     f"{missing}. The component's load-bearing sections "
                     f"didn't render."
                 )
-        ok(f"all {len(REQUIRED_TEMPLATE_MARKERS)} markers present on every page")
+            # Interview-closer: ANY-OF the legacy + new forms.
+            if not any(m in body for m in INTERVIEW_CLOSER_MARKERS):
+                fail(
+                    f"{r}: no interview-closer block. Expected one of "
+                    f"{INTERVIEW_CLOSER_MARKERS}."
+                )
+        ok(f"all {len(REQUIRED_TEMPLATE_MARKERS)} markers + interview-closer "
+           f"present on every page")
 
         step("5. sidebar exposes all 5 routes")
         # Pick any page; sidebar is rendered into every page's HTML.

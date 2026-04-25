@@ -96,15 +96,21 @@ async def main() -> None:
             )
         ok(f"{mounts} mermaid mount points")
 
-        step("4. 'Interview line' EXACTLY 6x")
-        count = body.count("Interview line")
-        if count != 6:
+        step("4. interview-line block ≥ 6x (one per datastore)")
+        # Master template renamed the label to "Final interview script".
+        # Accept either form so this drill works during the per-topic
+        # migration. Threshold ≥ 6 — the master-template renderer also
+        # echoes the legacy interviewLine in the §36 block, so >6 is
+        # acceptable; <6 means a datastore lost its closer.
+        count = body.count("Final interview script") + body.count("Interview line")
+        if count < 6:
             fail(
-                f"expected 6 interview-line blocks, got {count}. "
-                f"The interview-line is the senior-signal — one per "
-                f"datastore."
+                f"expected ≥ 6 interview-closer blocks (legacy "
+                f"'Interview line' OR new 'Final interview script'), "
+                f"got {count}. The interview-line is the senior-signal "
+                f"— one per datastore."
             )
-        ok(f"interview-line block appears 6x")
+        ok(f"interview-closer block appears {count}x")
 
         step("5. 'Maturity model' EXACTLY 6x")
         mat = body.count("Maturity model")

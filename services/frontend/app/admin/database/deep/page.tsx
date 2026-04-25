@@ -26,6 +26,85 @@ const DATASTORES: Topic[] = [
     title: '1. Postgres + RLS (transactional truth)',
     status: 'shipped',
     coreConcept: 'Postgres is the system of record for transactional, relational, and auditable domain data. RLS forces tenant isolation at the database layer — defense in depth even when app-layer checks slip.',
+    oneLiner: 'Postgres for ACID truth + RLS for tenant isolation as a database invariant, not an application convention.',
+    fiveW: {
+      what: 'A relational database with row-level security policies that filter rows based on a per-session variable (app.current_tenant). Queries silently return only rows the tenant is allowed to see.',
+      why: 'Application-layer tenant filtering is one missed JOIN away from a cross-tenant leak. RLS turns isolation into a database invariant — even a buggy query cannot break it.',
+      where: 'Domain truth tables: audit_log, action_drafts, prompts, mcp_idempotency, identities. Anywhere a tenant_id column needs to be inescapable.',
+      when: 'Multi-tenant SaaS where one tenant seeing another\'s data is unacceptable; auditable systems where access must be reconstructable.',
+      who: 'Application services (NOBYPASSRLS role), operational tools (BYPASSRLS role with audit), migration runner (owner role with explicit grants).',
+    },
+    interview30s: 'For domain truth in a multi-tenant SaaS we use Postgres with row-level security forced on every table. The application connects as a NOBYPASSRLS role and middleware sets app.current_tenant per request via SET LOCAL — so even if a query forgets the tenant_id WHERE clause, the database silently filters rows. Privileged ops use a separate BYPASSRLS role that always writes an audit row. The non-negotiable test is a real-Postgres drill that writes under tenant A and reads under tenant B and asserts zero rows.',
+    coreBuildingBlocks: [
+      'Schema-per-service (identity, ingestion, governance, finops, eval, observability)',
+      'Three roles: documind (owner, migrations), documind_app (NOBYPASSRLS, runtime), documind_ops (BYPASSRLS, audited admin)',
+      'RLS policies with USING + WITH CHECK referencing current_setting(\'app.current_tenant\')',
+      'Session-local SET LOCAL app.current_tenant at the start of every transaction',
+      'asyncpg connection pool with tenant_connection() context manager',
+      'Hash-chained audit_log with prev_hash + curr_hash per row',
+    ],
+    architectureRelevance: {
+      backend: 'Primary system of record; every write goes through a repository class that enforces tenant_connection(); no raw SQL outside repositories.',
+      rag: 'Stores document metadata, chunk_id → doc_id mapping, embedding model version, tenant_id. Vector data lives in Qdrant; relational truth lives in Postgres.',
+      ai: 'Stores prompt registry rows, model registry rows, action_drafts (HITL queue), eval results, decision audit (decision_id → input/output/policy/confidence).',
+      microservices: 'Six services share the cluster but own distinct schemas; cross-service reads go through APIs, not SQL JOINs. Schema-per-service keeps deploys decoupled.',
+    },
+    hld: `flowchart TB
+  subgraph clients[Clients]
+    UI[Admin UI]
+    SDK[SDK / API caller]
+  end
+  subgraph gw[Gateway]
+    APIGW[api-gateway<br/>JWT + tenant_id]
+  end
+  subgraph svcs[Services]
+    INF[inference-svc]
+    RET[retrieval-svc]
+    GOV[governance-svc]
+    AUD[audit writer]
+  end
+  subgraph pg[Postgres cluster]
+    OWN[(documind owner role<br/>migrations only)]
+    APP[(documind_app role<br/>NOBYPASSRLS<br/>runtime)]
+    OPS[(documind_ops role<br/>BYPASSRLS<br/>audited admin)]
+    DB[(Postgres 16<br/>schema-per-service<br/>FORCE ROW LEVEL SECURITY)]
+  end
+  UI --> APIGW
+  SDK --> APIGW
+  APIGW --> INF
+  APIGW --> RET
+  APIGW --> GOV
+  INF --> APP
+  RET --> APP
+  GOV --> APP
+  GOV --> AUD
+  AUD --> APP
+  APP --> DB
+  OPS --> DB
+  OWN --> DB`,
+    lld: `flowchart LR
+  subgraph req[Request scope]
+    M[Middleware]
+    R[Repository]
+  end
+  subgraph pool[asyncpg pool]
+    P1[conn 1]
+    P2[conn 2]
+    PN[conn N]
+  end
+  subgraph pg[Postgres]
+    SES[Session: app.current_tenant]
+    POL[RLS policy:<br/>USING tenant_id = current_setting]
+    TBL[(audit_log table)]
+  end
+  M -->|extract tenant_id from JWT| R
+  R -->|acquire conn| P1
+  R -->|BEGIN; SET LOCAL app.current_tenant = $1| SES
+  SES --> POL
+  R -->|SELECT/INSERT| POL
+  POL -->|filter by tenant_id| TBL
+  TBL -->|rows OR empty| R
+  R -->|COMMIT; release conn| P1`,
     problem: 'You need ACID guarantees, tenant isolation, queryable domain state, and an audit-grade access path. Mocking it isn\'t enough — RLS bugs only surface against a real cluster.',
     whyThisApproach: 'Postgres is the right choice when correctness matters more than throughput, multi-tenancy is required, and the data is relational. RLS provides tenant isolation as a database invariant, not just an application convention.',
     whenToUse: [
@@ -146,6 +225,211 @@ const DATASTORES: Topic[] = [
       'governance.mcp_idempotency (durable idempotency keys)',
       'documind_app role NOBYPASSRLS; documind_ops role audited',
     ],
+    implementationSteps: [
+      { step: '1', logic: 'Create three Postgres roles via 001_initial.sql: documind (owner), documind_app (NOBYPASSRLS), documind_ops (BYPASSRLS).' },
+      { step: '2', logic: 'Define schema-per-service in migrations: CREATE SCHEMA governance; ALTER ROLE documind_app SET search_path TO governance.' },
+      { step: '3', logic: 'On every multi-tenant table: ENABLE ROW LEVEL SECURITY + FORCE ROW LEVEL SECURITY. CREATE POLICY tenant_isolation USING (tenant_id = current_setting(\'app.current_tenant\')::uuid) WITH CHECK (...).' },
+      { step: '4', logic: 'Wrap connection acquisition in async tenant_connection(tenant_id): pool.acquire() → conn.execute("SET LOCAL app.current_tenant = $1", tenant_id) → yield conn.' },
+      { step: '5', logic: 'Repository methods take tenant_id explicitly; no module-level connection; every method opens its own tenant-scoped transaction.' },
+      { step: '6', logic: 'Privileged ops route through documind_ops role and write an audit_log row with actor + reason + redact_pii=True.' },
+      { step: '7', logic: 'Drill against real Postgres — write tenant A, read tenant B → assert empty result. Mocks lie about RLS.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# libs/py/documind_core/db/tenant_connection.py
+from contextlib import asynccontextmanager
+import asyncpg
+
+@asynccontextmanager
+async def tenant_connection(pool: asyncpg.Pool, tenant_id: str):
+    """Yield a Postgres connection with app.current_tenant set
+    for the lifetime of the transaction.
+    RLS policies reference current_setting('app.current_tenant').
+    """
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "SET LOCAL app.current_tenant = $1", tenant_id
+            )
+            yield conn
+        # COMMIT releases the SET LOCAL automatically.
+
+# Repository usage:
+class AuditRepo:
+    def __init__(self, pool: asyncpg.Pool):
+        self._pool = pool
+
+    async def list_for_tenant(self, tenant_id: str, limit: int = 100):
+        async with tenant_connection(self._pool, tenant_id) as c:
+            return await c.fetch(
+                "SELECT * FROM audit_log "
+                "ORDER BY created_at DESC LIMIT $1",
+                limit,
+            )
+        # No tenant_id WHERE clause needed — RLS adds it.`,
+    },
+    realUseCase: 'Tenant A uploads a confidential PDF; later, tenant B searches their corpus and accidentally crafts a query that would have matched tenant A\'s chunk. Without RLS, a missed JOIN clause in the audit query exposes the chunk\'s metadata. With RLS, even the buggy query returns zero rows because Postgres filters at the storage layer. The drill that proves this is drill_retrieval_tenant_isolation: write under tenant A, read under tenant B, assert empty.',
+    prosCons: {
+      pros: [
+        'Tenant isolation as a database invariant — survives application bugs',
+        'ACID guarantees + foreign keys + JOINs + standard SQL ergonomics',
+        'Auditable access via separate roles with explicit grants',
+        'Hash-chained audit_log makes tampering detectable',
+        'Single cluster simpler to operate than per-tenant DB sharding',
+      ],
+      cons: [
+        'Real-DB tests required — mocks lie about RLS',
+        'SET LOCAL must be paired with BEGIN; lapse = no isolation',
+        'Cross-tenant analytics needs a separate pipeline (warehouse)',
+        'Connection pool exhaustion is a real risk under load',
+        'Single cluster = single blast radius if it goes down',
+      ],
+    },
+    comparison: {
+      left: 'Postgres + RLS',
+      right: 'App-layer tenant filtering',
+      rows: [
+        { aspect: 'Failure mode', left: 'Empty result (silent isolation)', right: 'Cross-tenant leak (data breach)' },
+        { aspect: 'Defense in depth', left: 'DB enforces even if app forgets', right: 'Single point of failure in app code' },
+        { aspect: 'Test reliability', left: 'Real-DB drill catches regressions', right: 'Easy to forget to test the missed-WHERE case' },
+        { aspect: 'Performance', left: 'Index on tenant_id required for hot tables', right: 'Same index requirement' },
+        { aspect: 'Migration cost', left: 'Higher: roles + policies + tenant_connection()', right: 'Lower: just a column + a WHERE clause' },
+        { aspect: 'Auditability', left: 'BYPASSRLS only via audited ops role', right: 'No structural separation' },
+      ],
+    },
+    solutions: [
+      { problem: 'A new repository method skips tenant_connection()', solution: 'Code review checklist + drill that asserts cross-tenant read returns zero (catches the bug post-merge)' },
+      { problem: 'Migration runs as runtime role and fails on BYPASSRLS', solution: 'Migration runner uses owner role; explicit GRANT on each migration; CI runs migrations against a fresh DB' },
+      { problem: 'Operator forgets to set redact_pii=True for ops query', solution: 'Repository ops_query() helper requires redact_pii kwarg; lint rule fails build if literal False' },
+      { problem: 'Long-running query holds connection + blocks pool', solution: 'statement_timeout = 30s on app role; pg_stat_activity dashboard; alert on idle_in_transaction > 10s' },
+      { problem: 'Hash-chain breaks because two writers race on prev_hash', solution: 'SELECT ... FOR UPDATE on the previous row inside the same transaction; serialize per-tenant via advisory lock' },
+    ],
+    bestPractices: {
+      do: [
+        'FORCE ROW LEVEL SECURITY on every multi-tenant table (not just ENABLE)',
+        'SET LOCAL inside a BEGIN — never SET (session-level) in a pooled connection',
+        'Real-DB integration tests for every RLS policy',
+        'Index every tenant_id column (it\'s in every WHERE clause now)',
+        'Hash-chain the audit_log; verify with a periodic drill',
+      ],
+      avoid: [
+        'BYPASSRLS in the runtime role — it defeats the entire mechanism',
+        'Mocking Postgres in RLS tests — only real Postgres enforces policies',
+        'Cross-schema foreign keys — they couple deploys',
+        'Long-running connections without statement_timeout',
+        'Storing PII in audit_log.details without redact_pii=True',
+      ],
+      optimize: [
+        'pg_stat_statements + slow query log → indexed top-N hot queries',
+        'Partition audit_log by month once it crosses ~10M rows',
+        'Read replicas for analytics; never for tenant-scoped reads (replication lag)',
+        'Connection pool sized to (services × workers × concurrency); monitor wait time histogram',
+        'EXPLAIN (ANALYZE, BUFFERS) on hot queries; add covering indexes',
+      ],
+    },
+    antiPatterns: [
+      'Granting BYPASSRLS to documind_app "just for one feature" — irreversible drift',
+      'Setting app.current_tenant at session level on a pooled connection — leaks tenant context to next caller',
+      'Cross-tenant SELECT in admin code without a corresponding audit_log row',
+      'Mocking the database in RLS unit tests — passes locally, leaks in prod',
+      'Running migrations as documind_app — silently fails on policy creation',
+      'Using SELECT ... FROM tenant_a.table inside tenant_b\'s flow — schema-as-tenant is brittle',
+    ],
+    testTypes: [
+      'Unit (repository method shape, not RLS itself)',
+      'Integration against real Postgres (RLS policies)',
+      'Drill — multi-tenant write/read with negative assertion',
+      'Performance — pgbench under representative concurrency',
+      'Failure injection — pool exhaustion, statement_timeout, connection drop',
+    ],
+    testScenarios: [
+      { scenario: 'Write under tenant A; read under tenant B', expected: 'Zero rows returned' },
+      { scenario: 'App role attempts SET ROLE TO documind', expected: 'Permission denied' },
+      { scenario: 'Run migration as app role', expected: 'Permission denied on CREATE POLICY' },
+      { scenario: 'Long query exceeds statement_timeout', expected: 'Query cancelled; pool returned' },
+      { scenario: 'Insert with mismatched tenant_id WITH CHECK', expected: 'INSERT rejected by policy' },
+      { scenario: 'Audit row write without prev_hash lock', expected: 'Two concurrent writers serialize via FOR UPDATE; chain stays valid' },
+    ],
+    testData: [
+      { type: 'Valid', example: '{tenant_id: <UUID-A>, action: "draft.create", actor: "user@A", details: {...}}' },
+      { type: 'Cross-tenant', example: 'tenant_id = UUID-A in row, app.current_tenant = UUID-B in session → SELECT returns zero' },
+      { type: 'Boundary', example: '10MB JSON in details field; verify TOAST handling' },
+      { type: 'Extreme', example: '50K writes/sec for 60s — verify replication lag, pool wait time' },
+      { type: 'Invalid', example: 'tenant_id = NULL → policy rejects with NOT NULL violation' },
+    ],
+    debuggingChecklist: [
+      'Is app.current_tenant set in this transaction? (SHOW app.current_tenant)',
+      'Is the connection role NOBYPASSRLS? (SELECT current_user, rolbypassrls FROM pg_roles)',
+      'Is RLS enabled AND forced on this table? (\\d+ tablename in psql)',
+      'Does the policy reference current_setting() correctly? (\\dp+ tablename)',
+      'Is the index on tenant_id being used? (EXPLAIN ANALYZE)',
+      'Is statement_timeout firing too aggressively for the workload? (SHOW statement_timeout)',
+      'Are there idle_in_transaction connections holding rows? (pg_stat_activity)',
+    ],
+    productionIssues: [
+      { issue: 'Cross-tenant rows visible in admin UI', rootCause: 'Admin UI used documind_ops role without audit; RLS bypassed silently' },
+      { issue: 'Pool exhaustion at 10 RPS', rootCause: 'Long-running BYPASSRLS analytics query held connection for 90s' },
+      { issue: 'Audit chain hash mismatch', rootCause: 'Concurrent writers raced on prev_hash without FOR UPDATE; one chain forked' },
+      { issue: 'Migration fails on production', rootCause: 'CI ran migrations against fresh DB; prod had data violating new CHECK constraint' },
+      { issue: 'p99 latency spike on every audit write', rootCause: 'audit_log lacked index on (tenant_id, created_at DESC); table-scan as it grew' },
+    ],
+    performance: [
+      'p50 query latency < 5ms on indexed tenant_id reads',
+      'p99 < 50ms with statement_timeout = 30s ceiling',
+      'Connection pool wait time < 10ms p95 (alert > 100ms)',
+      'pg_stat_statements top-10 reviewed weekly',
+      'Audit_log writes < 2ms p95; partition once size > 10M rows',
+    ],
+    costConsiderations: [
+      'Storage growth dominated by audit_log retention — partition + drop policy',
+      'Read replicas double IOPS cost; useful only for analytics',
+      'BYPASSRLS roles often hide expensive cross-tenant scans → audit cost',
+      'Connection count × pool size × workers — easy to over-provision',
+      'WAL archive storage for PITR — sized to RPO target',
+    ],
+    observability: [
+      'Logs: every BEGIN with app.current_tenant tagged in the log line',
+      'Traces: span attribute db.tenant_id on every query span',
+      'Metrics: pool_wait_time_seconds_bucket, audit_write_failures_total, rls_policy_eval_total',
+      'Dashboards: per-role connection count, slow query top-10, replication lag',
+      'Alerts: idle_in_transaction > 10s; replication lag > 30s; statement_timeout firing rate',
+    ],
+    metrics: [
+      { name: 'pg_pool_wait_ms_p95', example: '< 10ms target; alert > 100ms' },
+      { name: 'pg_stat_statements_total_time', example: 'Top-10 reviewed weekly' },
+      { name: 'audit_write_failures_total', example: '0 expected; any non-zero pages on-call' },
+      { name: 'rls_policy_eval_per_query', example: 'Approximate via pg_stat_user_tables seq_scan delta' },
+      { name: 'connection_count_by_role', example: 'documind_app < 80%; documind_ops < 5%' },
+    ],
+    tradeoffs: [
+      { decision: 'Single cluster vs per-tenant DB', tradeoff: 'Operational simplicity vs blast-radius isolation' },
+      { decision: 'RLS vs app-layer filtering', tradeoff: 'Higher migration cost + real-DB tests vs cross-tenant leak risk' },
+      { decision: 'BYPASSRLS for ops vs no BYPASSRLS at all', tradeoff: 'Operational ergonomics vs zero structural cross-tenant access' },
+      { decision: 'Schema-per-service vs DB-per-service', tradeoff: 'Shared cluster cost vs full deploy independence' },
+      { decision: 'Hash-chain audit vs append-only WAL audit', tradeoff: 'Cryptographic detection of tampering vs simpler write path' },
+    ],
+    decisionMatrix: [
+      { option: 'Postgres + RLS', whenToUse: 'Multi-tenant SaaS; ACID required; relational data; auditable' },
+      { option: 'Postgres without RLS', whenToUse: 'Single-tenant; or non-sensitive data; or tiny scale where app-layer filtering is auditable' },
+      { option: 'DB-per-tenant', whenToUse: 'Hard regulatory isolation (e.g., HIPAA-per-tenant); few large tenants' },
+      { option: 'Schema-per-tenant', whenToUse: 'Mid-tenant count with strong isolation but shared infra; harder to operate' },
+      { option: 'CockroachDB / Citus', whenToUse: 'Beyond single-cluster scale; willing to trade extension breadth for distributed strong consistency' },
+    ],
+    starStory: {
+      situation: 'During a multi-tenant SaaS rollout, two tenants reported seeing each other\'s draft data in the admin UI. Initial guess: an app-layer JOIN bug.',
+      task: 'Find the cross-tenant leak, prove it doesn\'t recur, ship a fix that survives future regressions.',
+      action: 'Wrote a real-Postgres drill (drill_retrieval_tenant_isolation): write under tenant A, read under tenant B, assert empty. Drill went red against staging. Root cause: admin UI used the BYPASSRLS ops role for convenience and forgot the WHERE tenant_id = ... clause. Fix: removed the BYPASSRLS shortcut, made tenant_connection() the only path, added the drill to CI.',
+      result: 'Drill caught two more would-be leaks during the next two sprints (different code paths, same anti-pattern). Migration to NOBYPASSRLS-only runtime took two weeks; zero cross-tenant incidents in the year since.',
+    },
+    interviewTraps: [
+      'Saying "RLS replaces application-layer filtering" — it complements it, doesn\'t replace it',
+      'Forgetting to mention SET LOCAL must be inside BEGIN (session-level SET on a pooled conn leaks)',
+      'Conflating ENABLE with FORCE — without FORCE, table owner bypasses policies',
+      'Treating BYPASSRLS as a "harmless convenience" — it\'s a structural escape hatch that needs an audit row',
+      'Claiming "we tested RLS" with mocks — only real Postgres enforces policies',
+      'Skipping the index on tenant_id — every query now filters on it; missing index = seq scan',
+    ],
+    finalScript: 'For domain truth in a multi-tenant SaaS we use Postgres with row-level security forced on every table. The application connects as a NOBYPASSRLS role, and middleware sets app.current_tenant per request via SET LOCAL inside the transaction. So even if a query forgets the tenant_id WHERE clause, the database silently filters rows. Privileged operations use a separate BYPASSRLS role and always write an audit row. The non-negotiable test is a real-Postgres drill that writes under tenant A, reads under tenant B, and asserts zero rows. Mocks lie about RLS — only the live cluster enforces it.',
     interviewLine: 'For domain truth we use Postgres with schema-per-service and row-level security. The key design choice is role separation: the app runtime cannot bypass RLS, while privileged operational access is isolated and audited.',
   },
 
