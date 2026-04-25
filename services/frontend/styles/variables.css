@@ -20,7 +20,11 @@
   --bg-hover: #f0f1f7;
 
   /* Text palette --------------------------------------------------------- */
-  --text-primary: #0b2d5b;
+  /* Pure black for primary text — per user requirement repeated across
+     several turns ("background keep white, font keep black"). The
+     previous dark-navy (#0b2d5b) read as near-black on most screens
+     but failed strict accessibility/contrast on white. */
+  --text-primary: #000000;
   --text-secondary: #5a5a77;
   --text-muted: #8a8aa8;
   --text-inverse: #ffffff;

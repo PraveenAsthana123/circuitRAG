@@ -43,6 +43,7 @@ const GROUPS: Group[] = [
       { href: '/admin/python/deep', label: 'Python deep dive (interview)' },
       { href: '/admin/llmops', label: 'LLMOps scorecard' },
       { href: '/admin/llmops/deep', label: 'LLMOps deep dive (interview)' },
+      { href: '/admin/database/deep', label: 'Database deep dive (interview)' },
       { href: '/admin/client-errors', label: 'Client errors (F12 capture)' },
     ],
   },
