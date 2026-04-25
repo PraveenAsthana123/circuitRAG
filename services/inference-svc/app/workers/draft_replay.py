@@ -104,6 +104,7 @@ class DraftReplayWorker:
         skip_when_cb_open: bool = True,
         service_auth_token: str | None = None,
         service_actor_id: str | None = None,
+        auto_reject_threshold: int = 5,
     ) -> None:
         # mcp_clients (preferred) is a namespace→client dict so the
         # worker can route each draft to the server that owns its
@@ -139,9 +140,27 @@ class DraftReplayWorker:
         # (staging vs prod replay sweeper) shows up as a different
         # actor_id under the same actor_type="worker".
         self._service_actor_id = service_actor_id
+        # Permanent-failure detection. The worker tracks consecutive
+        # 4xx/business-rejection failures per draft; once the count
+        # reaches ``auto_reject_threshold``, the draft is auto-rejected
+        # with a ``worker``-actored audit row instead of cycling
+        # forever. This closes the "MCP returns internal_error
+        # because the draft has malformed arguments → worker retries
+        # every backoff window for eternity" failure mode.
+        #
+        # Threshold is heuristic — a transient 4xx-shaped error
+        # (e.g. tool returning ok=false because of an external
+        # service hiccup) gets a few retries before being marked
+        # terminal. Set to 0 to disable (worker keeps retrying).
+        self._auto_reject_threshold = max(0, int(auto_reject_threshold))
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         self._last_attempt: dict[str, float] = {}
+        # Per-draft consecutive-failure counter. Only carries entries
+        # for drafts that have failed at least once; a successful
+        # replay transitions the draft out of pending so we never see
+        # it again — bounded growth.
+        self._consecutive_failures: dict[str, int] = {}
         # Observable counters — useful in tests + metrics later.
         self.stats = {
             "cycles": 0,
@@ -304,10 +323,93 @@ class DraftReplayWorker:
                         draft.draft_id, namespace,
                     )
                 else:
-                    # 4xx-shaped failure that didn't degrade. Surfaces
-                    # NOT_AUTHENTICATED, INSUFFICIENT_SCOPE, etc.
+                    # 4xx-shaped failure or business rejection that
+                    # didn't degrade. Surfaces NOT_AUTHENTICATED,
+                    # INSUFFICIENT_SCOPE, internal_error from a
+                    # KeyError-y tool handler, etc. Track per-draft
+                    # consecutive count; auto-reject past threshold so
+                    # permanent failures don't loop forever.
                     _bump(namespace, "failed")
                     log.warning(
                         "draft_replay_failed draft_id=%s namespace=%s err=%s",
                         draft.draft_id, namespace, result.error,
                     )
+                    if self._auto_reject_threshold > 0:
+                        prev = self._consecutive_failures.get(draft.draft_id, 0)
+                        new_count = prev + 1
+                        self._consecutive_failures[draft.draft_id] = new_count
+                        if new_count >= self._auto_reject_threshold:
+                            await self._auto_reject(
+                                client, draft, tenant, namespace, result.error,
+                            )
+
+    async def _auto_reject(
+        self,
+        client: Any,
+        draft: Any,
+        tenant: str,
+        namespace: str,
+        last_error: dict[str, Any] | None,
+    ) -> None:
+        """
+        Terminal auto-rejection of a draft after ``auto_reject_threshold``
+        consecutive failures. Marks the row 'rejected' with a system-
+        generated reason, so:
+          * The worker stops attempting it (list_pending filters
+            status='pending').
+          * Operators reviewing audit see WHY it stopped — a permanent
+            failure that needs human attention, not a silent abandon.
+          * The metric ``outcome="auto_rejected"`` makes the spike
+            graphable so a flood of auto-rejections triggers an
+            on-call alert (often the symptom of an upstream regression
+            that's poisoning every retry).
+
+        Uses ``actor_type="worker"`` and the worker's service-account
+        actor_id — same attribution as a successful worker replay,
+        but with the rejection action.
+
+        ``audit_fail_closed=False`` (default): if audit is unreachable,
+        the metric still moves and a structured log emits, but we
+        don't crash the sweep. The draft DB transition is the
+        load-bearing thing; the audit row is best-effort here.
+        """
+        reason = (
+            f"auto-rejected by worker after {self._consecutive_failures.get(draft.draft_id, 0)} "
+            f"consecutive failures; last error: {last_error}"
+        )
+        try:
+            result = await client.reject_draft(
+                draft.draft_id,
+                reason=reason,
+                tenant_id=tenant,
+                actor_type="worker",
+                actor_id=self._service_actor_id,
+            )
+        except Exception as exc:  # noqa: BLE001 — auto-reject must never wedge sweep
+            log.error(
+                "draft_auto_reject_call_failed draft_id=%s namespace=%s err=%s",
+                draft.draft_id, namespace, exc,
+            )
+            return
+
+        if result.ok:
+            _bump(namespace, "auto_rejected")
+            log.warning(
+                "draft_auto_rejected draft_id=%s namespace=%s threshold=%d reason=%r",
+                draft.draft_id, namespace, self._auto_reject_threshold, reason,
+            )
+            # Cleanup the per-draft counter so an operator manually
+            # reopening this draft id (rare, requires DB intervention)
+            # would start fresh. Bounded growth is the main goal —
+            # the dict only carries failed-count for currently-pending
+            # drafts.
+            self._consecutive_failures.pop(draft.draft_id, None)
+        else:
+            # CAS lost — another actor moved this draft between our
+            # read and reject (an operator clicking reject, or a
+            # parallel worker). Log + carry on; we'll see the next
+            # cycle whether the draft is gone.
+            log.info(
+                "draft_auto_reject_lost_race draft_id=%s namespace=%s err=%s",
+                draft.draft_id, namespace, result.error,
+            )

@@ -236,6 +236,13 @@ def create_app() -> FastAPI:
                     # of every tool's required scope.
                     service_auth_token=service_token,
                     service_actor_id=service_actor_id,
+                    # Permanent-failure detection. After N consecutive
+                    # 4xx/business-rejection failures, the worker
+                    # auto-rejects the draft so a malformed-arguments
+                    # bug doesn't loop forever. 0 disables.
+                    auto_reject_threshold=int(
+                        os.getenv("DOCUMIND_REPLAY_WORKER_AUTO_REJECT_THRESHOLD", "5"),
+                    ),
                 )
                 await worker.start()
                 app.state.draft_replay_worker = worker
