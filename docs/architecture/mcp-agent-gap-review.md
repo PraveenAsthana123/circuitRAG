@@ -214,6 +214,11 @@ If reduced to the most important gaps:
 
 ### Phase 2
 
+- cross-service reachability ✓ shipped — `GET /api/v1/health/upstreams`
+  parallel-probes retrieval-svc, ollama, registered MCP namespaces, and
+  governance-db; admin dashboard renders the unified table; drill
+  `drill_inference_health_upstreams.py` locks parallel-execution
+  bound, version parsing, kind enum, and row-order stability.
 - trace -> draft -> audit linkage ✓ shipped —
   `GET /api/v1/admin/trace/{correlation_id}?tenant_id=<uuid>`
   reconstructs one request end-to-end. Returns audit_log rows + draft

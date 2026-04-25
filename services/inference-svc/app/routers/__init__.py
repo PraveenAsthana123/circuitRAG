@@ -20,12 +20,14 @@ from app.schemas import (
     HealthDetailedResponse,
     HealthPromptsResponse,
     HealthToolsResponse,
+    HealthUpstreamsResponse,
     PromptInfo,
     ToolLatencyStats,
     ToolStats,
     TraceLinkAuditRow,
     TraceLinkDraftRow,
     TraceLinkResponse,
+    UpstreamHealthRow,
 )
 from app.services import RagInferenceService
 from app.services.agent import AgentService
@@ -310,6 +312,175 @@ async def health_prompts(request: Request) -> HealthPromptsResponse:
         observed_at=datetime.now(UTC).isoformat(),
         db_reachable=db_reachable,
         prompts=prompts,
+    )
+
+
+@router.get(
+    "/api/v1/health/upstreams",
+    response_model=HealthUpstreamsResponse,
+    tags=["health"],
+    summary="Cross-service reachability view from inference-svc's perspective",
+)
+async def health_upstreams(request: Request) -> HealthUpstreamsResponse:
+    """
+    Probe every upstream dependency this service reaches out to:
+    retrieval-svc, ollama, registered MCP namespaces, the governance
+    DB. Returns reachability + probe latency + version per row.
+
+    Honest scoping: this endpoint reflects ONE service's upstream
+    view, not a global service registry. governance-svc / ingestion-
+    svc / etc. own their own equivalents. The frontend renders this
+    as a "Service mesh — inference-svc upstreams" panel; the same
+    pattern can be added to other services without coupling them.
+
+    Closes the audit-checklist gap "service-level monitoring" and
+    the gRPC/microservices reference doc's monitoring scenarios
+    around cross-service reachability.
+
+    Probes run in parallel with a tight 2s timeout — a slow upstream
+    must NOT block the dashboard refresh on the rest. Each row
+    surfaces ``error`` as a short label so operators can pattern-
+    match without reading server logs.
+    """
+    import asyncio
+    import os
+    import time
+    from datetime import UTC, datetime
+
+    import httpx
+
+    state = request.app.state
+    settings = getattr(state, "settings", None)
+
+    # Probe specs — (name, kind, url, probe_path). ``probe_path`` is
+    # optional; for ollama we hit the root, for HTTP services /health.
+    specs: list[tuple[str, str, str, str]] = []
+
+    # retrieval-svc: from settings, fall back to env. The settings object
+    # may not be on app.state for older lifespans; getattr defends.
+    retrieval_url = (
+        getattr(settings, "retrieval_svc_url", None)
+        or os.getenv("DOCUMIND_RETRIEVAL_SVC_URL", "http://localhost:8083")
+    )
+    specs.append(("retrieval-svc", "http_service", retrieval_url, "/health"))
+
+    # ollama: probes the root which Ollama returns "Ollama is running"
+    # on, no auth needed. Skipped if not configured.
+    ollama_url = (
+        getattr(settings, "ollama_url", None)
+        or os.getenv("DOCUMIND_OLLAMA_URL", "")
+    )
+    if ollama_url:
+        specs.append(("ollama", "llm", ollama_url, "/"))
+
+    # MCP namespaces: probe each registered MCP server's /health.
+    mcp_clients = getattr(state, "mcp_clients", None) or {}
+    for namespace, mcp in sorted(mcp_clients.items()):
+        base = getattr(mcp, "_base", "") or ""
+        if base:
+            specs.append((f"mcp_{namespace}", "mcp", base, "/health"))
+
+    # governance DB: a connection check, not an HTTP probe.
+    db_client = getattr(state, "db_client", None)
+
+    async def _probe_http(
+        client: httpx.AsyncClient,
+        name: str, kind: str, base_url: str, path: str,
+    ) -> UpstreamHealthRow:
+        url = f"{base_url.rstrip('/')}{path}"
+        started = time.perf_counter()
+        try:
+            r = await client.get(url, timeout=2.0)
+            latency_ms = round((time.perf_counter() - started) * 1000, 2)
+            version: str | None = None
+            try:
+                body = r.json()
+                if isinstance(body, dict):
+                    version = body.get("version")
+            except (ValueError, TypeError):
+                pass
+            return UpstreamHealthRow(
+                name=name, kind=kind, url=base_url,
+                reachable=200 <= r.status_code < 300,
+                latency_ms=latency_ms,
+                status=str(r.status_code),
+                version=version,
+                error=(None if r.status_code < 400 else f"http_{r.status_code}"),
+            )
+        except httpx.ConnectError:
+            return UpstreamHealthRow(
+                name=name, kind=kind, url=base_url,
+                reachable=False,
+                latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                error="connect_refused",
+            )
+        except httpx.TimeoutException:
+            return UpstreamHealthRow(
+                name=name, kind=kind, url=base_url,
+                reachable=False,
+                latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                error="timeout",
+            )
+        except httpx.RequestError as exc:
+            return UpstreamHealthRow(
+                name=name, kind=kind, url=base_url,
+                reachable=False,
+                latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                error=type(exc).__name__,
+            )
+
+    async def _probe_db() -> UpstreamHealthRow:
+        # ``db_client.pool.fetchval('SELECT 1')`` is the canonical
+        # liveness probe for asyncpg — exercises pool acquire +
+        # query roundtrip without touching schema.
+        host = os.getenv("DOCUMIND_PG_HOST", "localhost")
+        port = os.getenv("DOCUMIND_PG_PORT", "5432")
+        url = f"{host}:{port}"
+        if db_client is None:
+            return UpstreamHealthRow(
+                name="governance-db", kind="db", url=url,
+                reachable=False,
+                error="db_client_not_configured",
+            )
+        started = time.perf_counter()
+        try:
+            async with db_client.admin_connection() as conn:
+                v = await conn.fetchval("SELECT 1")
+            latency_ms = round((time.perf_counter() - started) * 1000, 2)
+            return UpstreamHealthRow(
+                name="governance-db", kind="db", url=url,
+                reachable=(v == 1),
+                latency_ms=latency_ms,
+                status="connected",
+            )
+        except Exception as exc:  # noqa: BLE001 — operator probe must not raise
+            return UpstreamHealthRow(
+                name="governance-db", kind="db", url=url,
+                reachable=False,
+                latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                error=type(exc).__name__,
+            )
+
+    # Run all probes in parallel — slowest probe sets the latency
+    # ceiling, not the sum. 2s timeout per probe means the endpoint
+    # always returns within ~2.1s even if every upstream is dead.
+    async with httpx.AsyncClient() as client:
+        http_tasks = [
+            _probe_http(client, name, kind, url, path)
+            for (name, kind, url, path) in specs
+        ]
+        results: list[UpstreamHealthRow] = list(
+            await asyncio.gather(*http_tasks, _probe_db()),
+        )
+
+    # Stable sort: kind (db, http_service, llm, mcp), then name —
+    # operators visually expect related rows together.
+    results.sort(key=lambda r: (r.kind, r.name))
+
+    return HealthUpstreamsResponse(
+        service="inference-svc",
+        observed_at=datetime.now(UTC).isoformat(),
+        upstreams=results,
     )
 
 

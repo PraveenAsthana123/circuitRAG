@@ -350,3 +350,66 @@ class TraceLinkResponse(BaseModel):
             "trace tree; the dashboard doesn't try to render spans itself."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Upstream health — cross-service reachability view from inference-svc's
+# perspective. Closes the gap "no single cross-service view" surfaced in
+# the gRPC/microservices reference docs and the audit checklist §2.
+# Honest scoping: inference-svc only polls what IT depends on (retrieval,
+# ollama, registered MCP namespaces, governance DB). Other services own
+# their own equivalents.
+# ---------------------------------------------------------------------------
+class UpstreamHealthRow(BaseModel):
+    """One row per upstream dependency. ``reachable=True`` means the
+    probe succeeded; ``latency_ms`` is the wall-clock for that probe.
+    On failure ``error`` carries a short string the operator can act
+    on without reading code."""
+
+    name: str = Field(
+        description=(
+            "Stable identifier — 'retrieval-svc', 'ollama', "
+            "'mcp_hr', 'mcp_itsm', 'governance-db', etc."
+        ),
+    )
+    kind: str = Field(
+        description=(
+            "Dependency kind — 'http_service', 'mcp', 'llm', 'db'. "
+            "Operators alert on different kinds differently."
+        ),
+    )
+    url: str = Field(
+        description=(
+            "URL or endpoint hint. For 'db' kind the host:port string."
+        ),
+    )
+    reachable: bool
+    latency_ms: float | None = Field(
+        default=None,
+        description="Probe latency in ms. None when probe never started.",
+    )
+    status: str | None = Field(
+        default=None,
+        description="HTTP status code or 'connected' for db/llm probes.",
+    )
+    version: str | None = Field(
+        default=None,
+        description="Service version string when the /health response carried one.",
+    )
+    error: str | None = Field(
+        default=None,
+        description=(
+            "Short error label when reachable=False. e.g. 'timeout', "
+            "'connect_refused', 'http_500'. Stack traces stay in logs."
+        ),
+    )
+
+
+class HealthUpstreamsResponse(BaseModel):
+    """Inference-svc's view of its own upstreams — health probes
+    done in parallel with a tight timeout so the dashboard stays
+    responsive even when one upstream is wedged."""
+
+    service: str = "inference-svc"
+    observed_at: str = Field(description="ISO 8601 timestamp at sample time")
+    upstreams: list[UpstreamHealthRow] = Field(default_factory=list)

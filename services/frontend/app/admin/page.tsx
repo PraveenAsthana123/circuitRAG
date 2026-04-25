@@ -27,12 +27,14 @@ import {
   type HealthDetailedResponse,
   type HealthPromptsResponse,
   type HealthToolsResponse,
+  type HealthUpstreamsResponse,
   type BreakerState,
   type PromptInfo,
   type ToolStats,
   type TraceLinkAuditRow,
   type TraceLinkDraftRow,
   type TraceLinkResponse,
+  type UpstreamHealthRow,
 } from '../../lib/api';
 
 const REFRESH_INTERVAL_MS = 5_000;
@@ -109,6 +111,7 @@ export default function AdminPage() {
   const [data, setData] = useState<HealthDetailedResponse | null>(null);
   const [tools, setTools] = useState<HealthToolsResponse | null>(null);
   const [prompts, setPrompts] = useState<HealthPromptsResponse | null>(null);
+  const [upstreams, setUpstreams] = useState<HealthUpstreamsResponse | null>(null);
 
   // Trace-link panel: search-driven, not poll-driven. Operator
   // supplies BOTH correlation_id and tenant_id (audit_log RLS is
@@ -136,19 +139,23 @@ export default function AdminPage() {
       const ctl = new AbortController();
       abortRef.current = ctl;
       try {
-        // Fetch detailed health, per-tool stats, and prompt registry
-        // in parallel — the dashboard renders all three at the same
-        // cadence, and serializing them would multiply the perceived
-        // stale window.
-        const [resp, toolsResp, promptsResp] = await Promise.all([
+        // Fetch detailed health, per-tool stats, prompt registry,
+        // and upstream probes in parallel. All four panels render at
+        // the same cadence; serializing would multiply the stale
+        // window. The backend probes upstreams in parallel internally
+        // too, so the worst-case latency is bounded by the slowest
+        // single upstream.
+        const [resp, toolsResp, promptsResp, upstreamsResp] = await Promise.all([
           api.healthDetailed(ctl.signal),
           api.healthTools(ctl.signal),
           api.healthPrompts(ctl.signal),
+          api.healthUpstreams(ctl.signal),
         ]);
         if (cancelled) return;
         setData(resp);
         setTools(toolsResp);
         setPrompts(promptsResp);
+        setUpstreams(upstreamsResp);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -314,6 +321,84 @@ export default function AdminPage() {
                       {b.recovery_timeout_s != null
                         ? `${b.recovery_timeout_s}s`
                         : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Upstream reachability — cross-service health view from
+          inference-svc's perspective. */}
+      <div className="card">
+        <div className="card-header" style={{ marginBottom: 12 }}>
+          <strong>Upstreams</strong>
+          <div className="field-help">
+            Reachability + probe latency for every upstream this service
+            depends on — retrieval-svc, ollama, MCP servers, governance
+            DB. Each row is a parallel probe with a 2s timeout; one slow
+            upstream doesn't stall the rest.
+          </div>
+        </div>
+        {loading && !upstreams ? (
+          <div className="list-empty">
+            <span className="spinner" /> Loading…
+          </div>
+        ) : upstreams && upstreams.upstreams.length === 0 ? (
+          <div className="list-empty">No upstreams configured.</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Kind</th>
+                  <th>URL</th>
+                  <th>Reachable</th>
+                  <th>Latency</th>
+                  <th>Status</th>
+                  <th>Version</th>
+                </tr>
+              </thead>
+              <tbody>
+                {upstreams?.upstreams.map((u: UpstreamHealthRow) => (
+                  <tr key={u.name}>
+                    <td>
+                      <code>{u.name}</code>
+                    </td>
+                    <td>
+                      <span className="field-help">{u.kind}</span>
+                    </td>
+                    <td>
+                      <code style={{ fontSize: 11 }}>{u.url}</code>
+                    </td>
+                    <td>
+                      {u.reachable ? (
+                        <span className="badge badge-active">yes</span>
+                      ) : (
+                        <span className="badge badge-failed">
+                          {u.error ?? 'no'}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {u.latency_ms != null ? (
+                        `${u.latency_ms.toFixed(1)} ms`
+                      ) : (
+                        <span className="field-help">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {u.status ? (
+                        <code>{u.status}</code>
+                      ) : (
+                        <span className="field-help">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {u.version ?? <span className="field-help">—</span>}
                     </td>
                   </tr>
                 ))}

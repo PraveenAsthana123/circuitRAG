@@ -220,6 +220,23 @@ export interface TraceLinkResponse {
   jaeger_url: string | null;
 }
 
+export interface UpstreamHealthRow {
+  name: string;
+  kind: string; // 'http_service' | 'mcp' | 'llm' | 'db'
+  url: string;
+  reachable: boolean;
+  latency_ms: number | null;
+  status: string | null;
+  version: string | null;
+  error: string | null;
+}
+
+export interface HealthUpstreamsResponse {
+  service: string;
+  observed_at: string;
+  upstreams: UpstreamHealthRow[];
+}
+
 export const api = {
   /**
    * Operator-facing detailed health. Powers the admin dashboard:
@@ -254,6 +271,19 @@ export const api = {
    */
   healthPrompts: (signal?: AbortSignal) =>
     request<HealthPromptsResponse>('/api/v1/health/prompts', {
+      timeout: 5_000,
+      signal,
+    }),
+
+  /**
+   * Cross-service reachability probes from inference-svc's
+   * perspective — retrieval-svc, ollama, MCP namespaces, governance
+   * DB. Probes run in parallel server-side with a 2s per-probe
+   * timeout, so the UI gets a complete picture even when one
+   * upstream is wedged.
+   */
+  healthUpstreams: (signal?: AbortSignal) =>
+    request<HealthUpstreamsResponse>('/api/v1/health/upstreams', {
       timeout: 5_000,
       signal,
     }),
