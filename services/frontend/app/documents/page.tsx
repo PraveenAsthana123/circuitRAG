@@ -7,6 +7,8 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<DocumentSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [stateFilter, setStateFilter] = useState('all');
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -28,18 +30,91 @@ export default function DocumentsPage() {
     return () => controller.abort();
   }, [load]);
 
+  const filtered = items.filter((d) => {
+    const matchesQuery =
+      !query.trim() || d.filename.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesState = stateFilter === 'all' || d.state === stateFilter;
+    return matchesQuery && matchesState;
+  });
+
+  const states = Array.from(new Set(items.map((item) => item.state))).sort();
+  const activeCount = items.filter((item) => item.state === 'active').length;
+  const failedCount = items.filter((item) => item.state === 'failed').length;
+
   return (
     <>
-      <h1 className="section-title">Documents</h1>
-      {error && <div className="error">{error}</div>}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <strong>{items.length} documents</strong>
+      <div className="page-header">
+        <div className="page-header-copy">
+          <h1 className="section-title">Documents</h1>
+          <p className="page-subtitle">
+            Browse the indexed corpus, monitor document state, and quickly see whether ingestion is
+            healthy or blocked.
+          </p>
+        </div>
+        <div className="page-actions">
           <button className="btn" onClick={() => load()}>Refresh</button>
         </div>
+      </div>
+
+      {error && <div className="error">{error}</div>}
+
+      <div className="status-grid">
+        <div className="status-card">
+          <div className="status-card-title">Total documents</div>
+          <div className="status-card-value">{items.length}</div>
+        </div>
+        <div className="status-card">
+          <div className="status-card-title">Active</div>
+          <div className="status-card-value">{activeCount}</div>
+        </div>
+        <div className="status-card">
+          <div className="status-card-title">Failed</div>
+          <div className="status-card-value">{failedCount}</div>
+        </div>
+        <div className="status-card">
+          <div className="status-card-title">Visible rows</div>
+          <div className="status-card-value">{filtered.length}</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="toolbar">
+          <div className="toolbar-group">
+            <div className="field-group">
+              <label className="field-label" htmlFor="document-search">Search filename</label>
+              <input
+                id="document-search"
+                className="input"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="policy.pdf"
+              />
+            </div>
+            <div className="field-group">
+              <label className="field-label" htmlFor="document-state">State</label>
+              <select
+                id="document-state"
+                className="select"
+                value={stateFilter}
+                onChange={(e) => setStateFilter(e.target.value)}
+              >
+                <option value="all">all states</option>
+                {states.map((state) => (
+                  <option key={state} value={state}>{state}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="result-meta">{filtered.length} of {items.length} documents shown</div>
+        </div>
+
         {loading && <div className="list-empty">Loading...</div>}
         {!loading && items.length === 0 && <div className="list-empty">No documents uploaded yet.</div>}
-        {!loading && items.length > 0 && (
+        {!loading && items.length > 0 && filtered.length === 0 && (
+          <div className="list-empty">No documents match the current filters.</div>
+        )}
+        {!loading && filtered.length > 0 && (
+          <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -51,7 +126,7 @@ export default function DocumentsPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((d) => (
+              {filtered.map((d) => (
                 <tr key={d.id}>
                   <td>{d.filename}</td>
                   <td>
@@ -66,6 +141,7 @@ export default function DocumentsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </>
