@@ -18,6 +18,47 @@ from documind_core.exceptions import ExternalServiceError
 log = logging.getLogger(__name__)
 
 
+# Prometheus token counter — closes the convergence-shortlist
+# "token-cost metric" item (3× cited across rag-data-layers, AIOps,
+# enterprise gap reviews). Two cardinality-bounded labels:
+#   * ``model`` — finite set (one per configured model)
+#   * ``kind`` ∈ {"prompt", "completion"}
+# Tenant intentionally NOT a label — `inference_complete` log lines
+# carry tenant for forensics; per-tenant cost rollups should be
+# computed offline from logs (Grafana Loki) or via a separate
+# tenant-bucket gauge if cost-by-tenant becomes a hot need.
+#
+# PromQL recipes
+#   rate(documind_inference_tokens_total[5m])
+#     → tokens/sec, fleet-wide
+#   sum by(model) (rate(documind_inference_tokens_total[5m]))
+#     → spend distribution by model
+#   sum by(kind) (rate(documind_inference_tokens_total[5m]))
+#     → input vs output token-rate (proxy for cost shape)
+try:
+    from prometheus_client import Counter as _PromCounter
+
+    _inference_tokens_total = _PromCounter(
+        "documind_inference_tokens_total",
+        "LLM tokens consumed (input + output) by model and kind. "
+        "Bounded cardinality: model ∈ configured set, kind ∈ "
+        "{prompt, completion}.",
+        labelnames=["model", "kind"],
+    )
+except ImportError:  # pragma: no cover — prometheus_client is optional
+    _inference_tokens_total = None
+
+
+def _record_tokens(*, model: str, prompt_tokens: int, completion_tokens: int) -> None:
+    """Bump the token counter; no-op if prometheus_client missing."""
+    if _inference_tokens_total is None:
+        return
+    if prompt_tokens > 0:
+        _inference_tokens_total.labels(model=model, kind="prompt").inc(prompt_tokens)
+    if completion_tokens > 0:
+        _inference_tokens_total.labels(model=model, kind="completion").inc(completion_tokens)
+
+
 @dataclass
 class GenerationResult:
     text: str
@@ -79,12 +120,23 @@ class OllamaClient:
                     details={"status": resp.status_code},
                 )
             data = resp.json()
-            return GenerationResult(
+            result = GenerationResult(
                 text=data["message"]["content"],
                 tokens_prompt=int(data.get("prompt_eval_count", 0)),
                 tokens_completion=int(data.get("eval_count", 0)),
                 model=model or self._model,
             )
+            # Record tokens AFTER successful response — never count
+            # tokens for failed calls. Bumping inside ``_call`` (vs
+            # outside) means circuit-breaker rejections (CircuitOpenError)
+            # also don't increment the counter, which is the right
+            # semantic: rejected calls didn't consume tokens.
+            _record_tokens(
+                model=result.model,
+                prompt_tokens=result.tokens_prompt,
+                completion_tokens=result.tokens_completion,
+            )
+            return result
 
         return await self._breaker.call_async(_call)
 
