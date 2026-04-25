@@ -413,3 +413,55 @@ class HealthUpstreamsResponse(BaseModel):
     service: str = "inference-svc"
     observed_at: str = Field(description="ISO 8601 timestamp at sample time")
     upstreams: list[UpstreamHealthRow] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Techstack inventory — read-only view of which curated tools are
+# installed in the running process / repo environment vs which are
+# pending. Operators answer "do I need to pip/npm install X?" without
+# leaving the dashboard. NO INSTALLS from the UI; this endpoint reads
+# but never mutates.
+# ---------------------------------------------------------------------------
+class TechstackEntry(BaseModel):
+    """One curated tool. ``installed=False`` means we checked and it's
+    not present (operator can pip/npm install it manually). ``error``
+    surfaces probe failures (e.g. malformed version string)."""
+
+    name: str = Field(description="Canonical tool name, e.g. 'fastapi'")
+    category: str = Field(
+        description=(
+            "Grouping for the UI — 'core', 'rag-framework', 'agent-framework', "
+            "'low-code', 'autonomous-agent', 'voice', 'image-video', "
+            "'data', 'ecommerce', 'cms', 'frontend', 'observability', "
+            "'enterprise'."
+        ),
+    )
+    source: str = Field(
+        description="Probe source — 'pip' | 'npm' | 'binary' | 'docker'",
+    )
+    installed: bool
+    version: str | None = Field(
+        default=None,
+        description="Version string when installed, None when pending",
+    )
+    purpose: str = Field(
+        default="",
+        description="One-line description so operators don't need to look it up",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Probe error label (None on success or pending)",
+    )
+
+
+class HealthTechstackResponse(BaseModel):
+    """Curated tech-stack inventory across pip + npm packages.
+    The catalog is hardcoded server-side (no dynamic command
+    construction = no security surface). Operators see at a glance
+    which RAG/agent/observability/data-tier tools are wired."""
+
+    service: str = "inference-svc"
+    observed_at: str = Field(description="ISO 8601 timestamp at sample time")
+    installed_count: int
+    pending_count: int
+    entries: list[TechstackEntry] = Field(default_factory=list)

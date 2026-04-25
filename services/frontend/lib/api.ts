@@ -237,6 +237,24 @@ export interface HealthUpstreamsResponse {
   upstreams: UpstreamHealthRow[];
 }
 
+export interface TechstackEntry {
+  name: string;
+  category: string;
+  source: string; // 'pip' | 'npm' | 'binary' | 'docker'
+  installed: boolean;
+  version: string | null;
+  purpose: string;
+  error: string | null;
+}
+
+export interface HealthTechstackResponse {
+  service: string;
+  observed_at: string;
+  installed_count: number;
+  pending_count: number;
+  entries: TechstackEntry[];
+}
+
 export const api = {
   /**
    * Operator-facing detailed health. Powers the admin dashboard:
@@ -284,6 +302,18 @@ export const api = {
    */
   healthUpstreams: (signal?: AbortSignal) =>
     request<HealthUpstreamsResponse>('/api/v1/health/upstreams', {
+      timeout: 5_000,
+      signal,
+    }),
+
+  /**
+   * Curated tech-stack inventory — installed pip/npm packages vs
+   * pending. Read-only; no installs from the UI. Operators see
+   * which RAG/agent/observability/data tools are wired and run
+   * `pip install X` themselves for any pending row they want.
+   */
+  healthTechstack: (signal?: AbortSignal) =>
+    request<HealthTechstackResponse>('/api/v1/health/techstack', {
       timeout: 5_000,
       signal,
     }),

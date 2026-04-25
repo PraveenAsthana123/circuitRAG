@@ -19,9 +19,11 @@ from app.schemas import (
     DraftSummary,
     HealthDetailedResponse,
     HealthPromptsResponse,
+    HealthTechstackResponse,
     HealthToolsResponse,
     HealthUpstreamsResponse,
     PromptInfo,
+    TechstackEntry,
     ToolLatencyStats,
     ToolStats,
     TraceLinkAuditRow,
@@ -559,6 +561,179 @@ async def health_upstreams(request: Request) -> HealthUpstreamsResponse:
         service="inference-svc",
         observed_at=datetime.now(UTC).isoformat(),
         upstreams=results,
+    )
+
+
+@router.get(
+    "/api/v1/health/techstack",
+    response_model=HealthTechstackResponse,
+    tags=["health"],
+    summary="Curated tech-stack inventory — installed pip/npm packages vs pending",
+)
+async def health_techstack(request: Request) -> HealthTechstackResponse:
+    """
+    Read-only tech-stack inventory. Curates a list of "interesting"
+    Python and Node packages (RAG frameworks, agent frameworks,
+    observability tools, data-tier libs, etc.) and reports each one
+    as installed (with version) or pending.
+
+    Hard rules:
+      * The catalog is HARDCODED server-side. No dynamic command
+        construction; no path for an attacker to probe arbitrary
+        binaries via crafted request data.
+      * No installs triggered from this endpoint. Operator runs
+        `pip install X` themselves if they want a pending tool.
+      * Probe-cost is bounded: importlib.metadata for pip lookups
+        (no subprocess), file-system read of package.json for npm.
+
+    Closes the request for a 'techstack UI to know what software
+    has been installed or pending' from the integration / RAG /
+    agent catalog stream.
+    """
+    from datetime import UTC, datetime
+    from importlib import metadata as _meta
+    import json as _json
+    import os as _os
+    from pathlib import Path as _Path
+
+    # ---- Curated catalog --------------------------------------------------
+    # source ∈ {pip, npm}. category drives the UI grouping. purpose is a
+    # one-line description so operators don't context-switch to look up
+    # what 'crewai' or 'ragas' is.
+    PIP_CATALOG: list[tuple[str, str, str]] = [
+        # (pkg_dist_name, category, purpose)
+        # core stack
+        ("fastapi", "core", "Web framework"),
+        ("pydantic", "core", "Schema validation"),
+        ("asyncpg", "core", "Postgres async driver"),
+        ("redis", "core", "Redis client"),
+        ("httpx", "core", "Async HTTP client"),
+        ("uvicorn", "core", "ASGI server"),
+        # observability
+        ("opentelemetry-api", "observability", "OTel API surface"),
+        ("opentelemetry-sdk", "observability", "OTel SDK"),
+        ("prometheus-client", "observability", "Prometheus metrics"),
+        # rag frameworks
+        ("langchain", "rag-framework", "RAG/agent framework (heavy)"),
+        ("llama-index", "rag-framework", "Indexing + retrieval framework"),
+        ("langgraph", "rag-framework", "Stateful agent orchestration"),
+        # agent frameworks
+        ("autogen", "agent-framework", "Multi-agent communication"),
+        ("crewai", "agent-framework", "Lightweight role-based agents"),
+        ("semantic-kernel", "agent-framework", "Enterprise agent SDK"),
+        # vector + embeddings
+        ("qdrant-client", "vector-db", "Qdrant client"),
+        ("weaviate-client", "vector-db", "Weaviate client"),
+        ("pymilvus", "vector-db", "Milvus client"),
+        ("sentence-transformers", "embeddings", "Local embedding models"),
+        # llm hosting / inference
+        ("ollama", "llm-host", "Ollama Python client"),
+        ("vllm", "llm-host", "vLLM inference server"),
+        ("openai", "llm-host", "OpenAI / OpenAI-compatible client"),
+        ("anthropic", "llm-host", "Anthropic SDK"),
+        # voice
+        ("openai-whisper", "voice", "Whisper transcription"),
+        ("TTS", "voice", "Coqui TTS"),
+        # eval / quality
+        ("ragas", "eval", "RAG evaluation"),
+        ("guardrails-ai", "guardrails", "Guardrails for LLM output"),
+        ("promptfoo", "eval", "Prompt regression"),
+        # data
+        ("pyspark", "data", "Apache Spark"),
+        ("clickhouse-driver", "data", "ClickHouse client"),
+        ("duckdb", "data", "DuckDB"),
+        ("mlflow", "data", "ML experiment tracking"),
+        ("pandas", "data", "DataFrames"),
+        # autonomous experimental
+        ("autogpt", "autonomous-agent", "AutoGPT (experimental)"),
+        # workflow
+        ("apache-airflow", "data", "Workflow orchestration"),
+    ]
+
+    NPM_CATALOG: list[tuple[str, str, str]] = [
+        # (pkg_name, category, purpose)
+        ("next", "frontend", "Next.js framework"),
+        ("react", "frontend", "React"),
+        ("react-dom", "frontend", "React DOM bindings"),
+        ("typescript", "frontend", "TypeScript"),
+        ("@opentelemetry/api", "observability", "OTel browser API"),
+        ("@playwright/test", "testing", "E2E testing"),
+        ("zod", "frontend", "Schema validation"),
+        ("eslint", "frontend", "Linting"),
+    ]
+
+    entries: list[TechstackEntry] = []
+
+    # ---- Probe pip distributions (pure Python, no subprocess) -------------
+    # importlib.metadata.version() raises PackageNotFoundError when the
+    # package isn't installed; we catch and mark pending.
+    for pkg, category, purpose in PIP_CATALOG:
+        try:
+            ver = _meta.version(pkg)
+            entries.append(TechstackEntry(
+                name=pkg, category=category, source="pip",
+                installed=True, version=ver, purpose=purpose,
+            ))
+        except _meta.PackageNotFoundError:
+            entries.append(TechstackEntry(
+                name=pkg, category=category, source="pip",
+                installed=False, version=None, purpose=purpose,
+            ))
+        except Exception as exc:  # noqa: BLE001 — never crash the dashboard
+            entries.append(TechstackEntry(
+                name=pkg, category=category, source="pip",
+                installed=False, version=None, purpose=purpose,
+                error=type(exc).__name__,
+            ))
+
+    # ---- Probe npm via package.json read ----------------------------------
+    # Read the frontend's package.json. The repo root is a known path
+    # (DOCUMIND_REPO_ROOT) or we walk up from this file. Defensive: if
+    # the file is missing, mark every npm entry as pending — don't
+    # 500 the endpoint.
+    pkg_json_path = _Path(
+        _os.getenv("DOCUMIND_FRONTEND_PACKAGE_JSON", "")
+        or "/mnt/deepa/rag/services/frontend/package.json"
+    )
+    npm_versions: dict[str, str] = {}
+    if pkg_json_path.is_file():
+        try:
+            data = _json.loads(pkg_json_path.read_text())
+            for section in ("dependencies", "devDependencies"):
+                deps = data.get(section, {}) or {}
+                for k, v in deps.items():
+                    if isinstance(v, str):
+                        # strip leading ^ ~ to get a clean version
+                        npm_versions[k] = v.lstrip("^~>=< ")
+        except (OSError, ValueError):
+            # File unreadable or malformed — leave npm_versions empty;
+            # every npm entry below will mark pending.
+            pass
+    for pkg, category, purpose in NPM_CATALOG:
+        if pkg in npm_versions:
+            entries.append(TechstackEntry(
+                name=pkg, category=category, source="npm",
+                installed=True, version=npm_versions[pkg], purpose=purpose,
+            ))
+        else:
+            entries.append(TechstackEntry(
+                name=pkg, category=category, source="npm",
+                installed=False, version=None, purpose=purpose,
+            ))
+
+    # Stable order: category → name. Operators visually expect related
+    # rows together (e.g. all rag-framework rows side-by-side).
+    entries.sort(key=lambda e: (e.category, e.source, e.name))
+
+    installed_count = sum(1 for e in entries if e.installed)
+    pending_count = len(entries) - installed_count
+
+    return HealthTechstackResponse(
+        service="inference-svc",
+        observed_at=datetime.now(UTC).isoformat(),
+        installed_count=installed_count,
+        pending_count=pending_count,
+        entries=entries,
     )
 
 

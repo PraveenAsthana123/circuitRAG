@@ -35,7 +35,11 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    items: [{ href: '/admin', label: 'Admin' }],
+    heading: 'Admin',
+    items: [
+      { href: '/admin', label: 'Operator Dashboard' },
+      { href: '/admin/techstack', label: 'Techstack' },
+    ],
   },
 ];
 
