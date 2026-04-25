@@ -424,13 +424,18 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
 
     # Scope BEFORE cache — prevents leaked-idempotency-key replays
     # from bypassing scope enforcement.
+    # ``claims`` is captured here (not just discarded) so the span
+    # below can carry actor identity — without this, Jaeger queries
+    # by actor ('show me alice's calls in the last hour') don't work
+    # and operators have to grep logs.
+    claims: dict[str, Any] = {}
     if auth_required:
         tool = next((t for t in tools if t["name"] == req.name), None)
         if tool is None:
             # Authenticate first so unknown-name probes get 401 from
             # unauthenticated callers, 404 from authenticated ones.
             try:
-                enforce_scope(
+                claims = enforce_scope(
                     verifier, authorization,
                     {"name": req.name, "required_scopes": []},
                 )
@@ -445,7 +450,7 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
                 detail={"code": "tool_not_found", "name": req.name},
             )
         try:
-            enforce_scope(verifier, authorization, tool)
+            claims = enforce_scope(verifier, authorization, tool)
         except HTTPException as exc:
             _record_scope_denial(
                 namespace=service_label, tool=req.name,
@@ -453,12 +458,38 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
             )
             raise
 
+    # Identified-actor log line — emitted ONCE per call, after
+    # enforce_scope has validated the JWT (so actor strings are
+    # trustworthy). Operators grep on this to answer "who called
+    # this tool" without going to Jaeger.
+    actor_id = claims.get("sub") if claims else None
+    actor_email = claims.get("email") if claims else None
+    if actor_id:
+        logger.info(
+            "%s_actor_identified tool=%s actor=%s email=%s corr=%s",
+            service_label, req.name, actor_id, actor_email, cid,
+        )
+
     tracer = get_tracer(tracer_module)
     span_cm = (
         tracer.start_as_current_span(f"mcp.tool:{req.name}")
         if tracer is not None
         else NoopCM()
     )
+
+    # Track the outcome locally so we can stamp it as a span attribute
+    # on every exit path (success + error + replay + denial). Operators
+    # filtering Jaeger by `mcp.outcome="error"` get the failed-call
+    # population without parsing logs. Shipped as part of the OTel
+    # tool-level coverage rollout (see
+    # docs/architecture/otel-tool-level-coverage-scorecard-and-tracker.md).
+    outcome_attr: str = "unknown"
+
+    def _stamp_outcome(span, value: str) -> None:
+        nonlocal outcome_attr
+        outcome_attr = value
+        if OTEL_AVAILABLE and span is not None:
+            span.set_attribute("mcp.outcome", value)
 
     with span_cm as sp:
         if OTEL_AVAILABLE and sp is not None:
@@ -471,6 +502,14 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
             sp.set_attribute(
                 "mcp.idempotency_key_present", idempotency_key is not None,
             )
+            # Actor identity from validated claims. Emitted only when
+            # auth is on AND a token was successfully validated;
+            # auth-off mode and unauthenticated 401 paths don't reach
+            # here, so this is safe.
+            if actor_id:
+                sp.set_attribute("mcp.actor.id", actor_id)
+            if actor_email:
+                sp.set_attribute("mcp.actor.email", actor_email)
 
         # Idempotency lookup. The store handles payload fingerprinting,
         # in-progress / conflict detection, and TTL purging — this
@@ -489,6 +528,7 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
                 )
                 if OTEL_AVAILABLE and sp is not None:
                     sp.set_attribute("mcp.idempotent_replay", True)
+                _stamp_outcome(sp, "replay")
                 _record_tool_call(
                     namespace=service_label, tool=req.name, outcome="replay",
                 )
@@ -501,6 +541,7 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
                     "%s_idempotent_in_progress key=%s",
                     service_label, idempotency_key,
                 )
+                _stamp_outcome(sp, "in_progress")
                 _record_tool_call(
                     namespace=service_label, tool=req.name, outcome="in_progress",
                 )
@@ -520,6 +561,7 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
                     "%s_idempotency_conflict key=%s tool=%s",
                     service_label, idempotency_key, req.name,
                 )
+                _stamp_outcome(sp, "conflict")
                 _record_tool_call(
                     namespace=service_label, tool=req.name, outcome="conflict",
                 )
@@ -567,6 +609,7 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
                     )
                 except Exception:  # noqa: BLE001 — finalize must not shadow the dispatch error
                     pass
+            _stamp_outcome(sp, f"http_{exc.status_code}")
             _record_tool_call(
                 namespace=service_label, tool=req.name,
                 outcome=f"http_{exc.status_code}",
@@ -581,6 +624,7 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
             await idempotency_store.finalize(idempotency_key, response, status="succeeded")
 
         outcome = "ok" if response.get("ok") else "error"
+        _stamp_outcome(sp, outcome)
         _record_tool_call(namespace=service_label, tool=req.name, outcome=outcome)
         return response
 
