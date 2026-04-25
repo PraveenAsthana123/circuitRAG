@@ -128,7 +128,37 @@ export interface AskResponse {
   debug?: Record<string, unknown>;
 }
 
+// -- Operator / health surfaces ---------------------------------------
+
+export interface BreakerState {
+  name: string;
+  state: 'closed' | 'open' | 'half_open';
+  failures: number | null;
+  recovery_timeout_s: number | null;
+}
+
+export interface HealthDetailedResponse {
+  service: string;
+  uptime_s: number;
+  observed_at: string;
+  breakers: BreakerState[];
+  readiness: Record<string, string>;
+}
+
 export const api = {
+  /**
+   * Operator-facing detailed health. Powers the admin dashboard:
+   * breaker states + readiness flags + uptime + observed_at, refreshed
+   * client-side every few seconds. The endpoint is unauthenticated by
+   * design (operators reach it through nginx + admin role at the
+   * gateway, not through tenant auth).
+   */
+  healthDetailed: (signal?: AbortSignal) =>
+    request<HealthDetailedResponse>('/api/v1/health/detailed', {
+      timeout: 5_000,
+      signal,
+    }),
+
   uploadDocument: (file: File, { sync = false }: { sync?: boolean } = {}) => {
     const fd = new FormData();
     fd.append('file', file);
