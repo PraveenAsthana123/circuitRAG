@@ -25,6 +25,7 @@ import {
   api,
   ApiError,
   type HealthDetailedResponse,
+  type FrontendBuildInfoResponse,
   type HealthPromptsResponse,
   type HealthToolsResponse,
   type HealthUpstreamsResponse,
@@ -109,6 +110,7 @@ function PillRecord({
 
 export default function AdminPage() {
   const [data, setData] = useState<HealthDetailedResponse | null>(null);
+  const [buildInfo, setBuildInfo] = useState<FrontendBuildInfoResponse | null>(null);
   const [tools, setTools] = useState<HealthToolsResponse | null>(null);
   const [prompts, setPrompts] = useState<HealthPromptsResponse | null>(null);
   const [upstreams, setUpstreams] = useState<HealthUpstreamsResponse | null>(null);
@@ -145,14 +147,16 @@ export default function AdminPage() {
         // window. The backend probes upstreams in parallel internally
         // too, so the worst-case latency is bounded by the slowest
         // single upstream.
-        const [resp, toolsResp, promptsResp, upstreamsResp] = await Promise.all([
+        const [resp, buildInfoResp, toolsResp, promptsResp, upstreamsResp] = await Promise.all([
           api.healthDetailed(ctl.signal),
+          api.frontendBuildInfo(ctl.signal),
           api.healthTools(ctl.signal),
           api.healthPrompts(ctl.signal),
           api.healthUpstreams(ctl.signal),
         ]);
         if (cancelled) return;
         setData(resp);
+        setBuildInfo(buildInfoResp);
         setTools(toolsResp);
         setPrompts(promptsResp);
         setUpstreams(upstreamsResp);
@@ -257,6 +261,23 @@ export default function AdminPage() {
             )}
           </div>
         </div>
+        <div className="metric-card">
+          <div className="metric-label">Frontend build</div>
+          <div className="metric-value">
+            {buildInfo?.build_id ? (
+              <code style={{ fontSize: 12 }}>{buildInfo.build_id}</code>
+            ) : (
+              '—'
+            )}
+          </div>
+          <div className="field-help">
+            {buildInfo?.git_sha
+              ? `git ${buildInfo.git_sha.slice(0, 12)}`
+              : buildInfo?.app_version
+                ? `version ${buildInfo.app_version}`
+                : 'runtime build id'}
+          </div>
+        </div>
       </div>
 
       {/* Error banner — visible AND announced to assistive tech. */}
@@ -274,6 +295,59 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      <div className="card">
+        <div className="card-header" style={{ marginBottom: 12 }}>
+          <strong>Frontend build and deploy identity</strong>
+          <div className="field-help">
+            Use this when users report chunk-load failures, stale bundles, or deployment drift.
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="table">
+            <tbody>
+              <tr>
+                <th>Build ID</th>
+                <td>
+                  {buildInfo?.build_id ? (
+                    <code>{buildInfo.build_id}</code>
+                  ) : (
+                    <span className="field-help">unavailable</span>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <th>App version</th>
+                <td>{buildInfo?.app_version ?? <span className="field-help">—</span>}</td>
+              </tr>
+              <tr>
+                <th>Git SHA</th>
+                <td>
+                  {buildInfo?.git_sha ? (
+                    <code>{buildInfo.git_sha}</code>
+                  ) : (
+                    <span className="field-help">not provided by runtime</span>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <th>Node env</th>
+                <td>{buildInfo?.node_env ?? <span className="field-help">—</span>}</td>
+              </tr>
+              <tr>
+                <th>Observed at</th>
+                <td>
+                  {buildInfo ? (
+                    <code>{buildInfo.generated_at}</code>
+                  ) : (
+                    <span className="field-help">—</span>
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Breakers table. */}
       <div className="card">

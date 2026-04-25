@@ -23,8 +23,16 @@
  *     a real RUM SDK (Sentry / Faro / Datadog) at the layout level.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+
+type ChunkRecoveryBanner = {
+  route: string;
+  at: number;
+};
+
+const CHUNK_RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
+const CHUNK_BANNER_TTL_MS = 30 * 1000;
 
 // Keep the window-property names stable so a hot-reload doesn't
 // register two listeners. The globals dance with `as any` is
@@ -37,10 +45,64 @@ declare global {
 }
 
 export default function ClientErrorReporter() {
+  const [chunkBanner, setChunkBanner] = useState<ChunkRecoveryBanner | null>(null);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (window.__documindClientErrorReporterInstalled) return;
     window.__documindClientErrorReporterInstalled = true;
+
+    function isChunkLoadError(message: string, stack?: string | null): boolean {
+      const hay = `${message}\n${stack ?? ''}`;
+      return /ChunkLoadError|Loading chunk \d+ failed|Failed to fetch dynamically imported module/i.test(hay);
+    }
+
+    function loadChunkBanner() {
+      try {
+        const raw = sessionStorage.getItem('documind_chunk_recovered_banner');
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as ChunkRecoveryBanner;
+        if (!parsed?.route || typeof parsed.at !== 'number') {
+          sessionStorage.removeItem('documind_chunk_recovered_banner');
+          return null;
+        }
+        if (Date.now() - parsed.at > CHUNK_BANNER_TTL_MS) {
+          sessionStorage.removeItem('documind_chunk_recovered_banner');
+          return null;
+        }
+        sessionStorage.removeItem('documind_chunk_recovered_banner');
+        return parsed;
+      } catch {
+        return null;
+      }
+    }
+
+    const pendingBanner = loadChunkBanner();
+    if (pendingBanner) {
+      setChunkBanner(pendingBanner);
+      window.setTimeout(() => setChunkBanner(null), 10000);
+    }
+
+    function maybeRecoverChunkError(message: string, stack?: string | null) {
+      if (!isChunkLoadError(message, stack)) return;
+      const route = window.location.pathname || '/';
+      const key = `documind_chunk_reload_attempted:${route}`;
+      try {
+        const lastAttempt = Number(sessionStorage.getItem(key) ?? '0');
+        if (Number.isFinite(lastAttempt) && Date.now() - lastAttempt < CHUNK_RELOAD_COOLDOWN_MS) {
+          return;
+        }
+        sessionStorage.setItem(key, String(Date.now()));
+        sessionStorage.setItem('documind_chunk_recovered_banner', JSON.stringify({
+          route,
+          at: Date.now(),
+        } satisfies ChunkRecoveryBanner));
+      } catch {
+        // If sessionStorage is unavailable, fail open once.
+      }
+      // Give the best-effort telemetry POST a short head start before reload.
+      window.setTimeout(() => window.location.reload(), 150);
+    }
 
     function safeReport(body: Parameters<typeof api.reportClientError>[0]) {
       // Fire-and-forget. Catch the catch — a reporting failure
@@ -49,10 +111,12 @@ export default function ClientErrorReporter() {
     }
 
     function onError(ev: ErrorEvent) {
+      const message = ev.message || 'unknown';
+      const stack = ev.error?.stack ?? null;
       safeReport({
         kind: 'window_error',
-        message: ev.message || 'unknown',
-        stack: ev.error?.stack ?? null,
+        message,
+        stack,
         route: window.location.pathname,
         user_agent: navigator.userAgent,
         extra: {
@@ -61,6 +125,7 @@ export default function ClientErrorReporter() {
           colno: ev.colno ?? null,
         },
       });
+      maybeRecoverChunkError(message, stack);
     }
 
     function onRejection(ev: PromiseRejectionEvent) {
@@ -82,6 +147,7 @@ export default function ClientErrorReporter() {
         route: window.location.pathname,
         user_agent: navigator.userAgent,
       });
+      maybeRecoverChunkError(message, stack);
     }
 
     window.addEventListener('error', onError);
@@ -96,5 +162,20 @@ export default function ClientErrorReporter() {
     };
   }, []);
 
-  return null;
+  return chunkBanner ? (
+    <div className="client-recovery-banner" role="status" aria-live="polite">
+      <div>
+        <strong>App updated.</strong> Recovered from a stale browser chunk on{' '}
+        <code>{chunkBanner.route}</code>.
+      </div>
+      <button
+        type="button"
+        className="client-recovery-banner-dismiss"
+        onClick={() => setChunkBanner(null)}
+        aria-label="Dismiss app recovery banner"
+      >
+        Dismiss
+      </button>
+    </div>
+  ) : null;
 }

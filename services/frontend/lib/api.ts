@@ -237,6 +237,14 @@ export interface HealthUpstreamsResponse {
   upstreams: UpstreamHealthRow[];
 }
 
+export interface FrontendBuildInfoResponse {
+  build_id: string | null;
+  app_version: string | null;
+  git_sha: string | null;
+  node_env: string | null;
+  generated_at: string;
+}
+
 export interface TechstackEntry {
   name: string;
   category: string;
@@ -333,6 +341,16 @@ export const api = {
    */
   healthUpstreams: (signal?: AbortSignal) =>
     request<HealthUpstreamsResponse>('/api/v1/health/upstreams', {
+      timeout: 5_000,
+      signal,
+    }),
+
+  // Path is /app-meta/build-info — NOT under a private (underscore-
+  // prefixed) Next.js folder, since those are excluded from routing
+  // and would silently 404. NOT under /api/* either, since
+  // next.config.mjs rewrites /api/* to the backend gateway.
+  frontendBuildInfo: (signal?: AbortSignal) =>
+    request<FrontendBuildInfoResponse>('/app-meta/build-info', {
       timeout: 5_000,
       signal,
     }),
