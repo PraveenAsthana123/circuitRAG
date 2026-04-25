@@ -36,20 +36,22 @@ and switched to Y because Z" is the load-bearing artefact.
 | [010](./010-metric-cardinality-no-tenant-label.md) | No `tenant_id` label on Prometheus series — cardinality discipline | Accepted | `334917e`, `aa255a0`, `19ff1eb` | `drill_worker_metrics`, `drill_worker_backlog_age`, `drill_inference_token_metric` |
 | [011](./011-drill-pattern-real-stack-no-mocks.md) | Drills exercise real services; mocks belong in pytest | Accepted | (CLAUDE.md §43, every `drill_*.py`) | self-referential |
 | [012](./012-orchestration-layer-local-first.md) | Orchestration stays local; defer external frameworks (Paperclip, AutoGen, LangGraph) | Accepted | (this commit) | n/a — design decision |
+| [013](./013-audit-redaction-policy.md) | Audit `details` redaction is opt-in per call; default preserves forensics | Proposed | — (deferred from `09458ef`) | n/a until implementing commit lands |
 
 ## Planned ADRs (not yet authored)
 
 These are decisions visible in pending commits / catalog items:
 
-- ADR-013: PII redaction — regex-based v1 in `documind_core.pii`,
-  upgrade path to a learned classifier
-- ADR-014: Eval pipeline — design for prompt + model regression
-  baseline
-- ADR-015: Prompt registry — Git-tracked YAML vs DB-backed; append-
-  only with version stamps in audit `details`
-- ADR-016: Subsystem ownership map — markdown table tied to CODEOWNERS
-- ADR-017: Cluster-coordinated breaker state — Redis-backed shared
+- ADR-014: Eval-baseline storage — when to cut a baseline, who
+  approves replacement, where rows live
+  (governance.eval_baselines)
+- ADR-015: Presidio NER upgrade for PII — context-aware redaction
+  (e.g., "John Smith" → "[REDACTED:person]") layered on top of
+  the regex v1
+- ADR-016: Cluster-coordinated breaker state — Redis-backed shared
   state for multi-replica deployments
+- ADR-017: Audit retention policy — when can rows be dropped /
+  archived, and what does that mean for the hash chain
 
 ## How to write a new ADR
 
