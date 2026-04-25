@@ -148,6 +148,70 @@ async def _dead(c: httpx.AsyncClient, url: str, tries: int = 10) -> None:
         await asyncio.sleep(0.3)
 
 
+async def _wait_recovery_timeout(c: httpx.AsyncClient, namespace: str) -> float:
+    """
+    Read ``recovery_timeout_s`` from /health/detailed and sleep that
+    duration + 0.5s. Same pattern as drill_audit_actor_type — drives
+    the wait length from the live breaker config rather than baking
+    a fixed ``sleep(32)`` into the drill. If recovery_timeout changes
+    via env or prod tune, the drill picks it up automatically.
+
+    Returns the timeout actually waited (seconds) so the caller can
+    log it for diagnosis.
+    """
+    target = f"mcp_{namespace}"
+    r = await c.get(f"{INFERENCE}/api/v1/health/detailed", timeout=2.0)
+    if r.status_code == 200:
+        for b in r.json().get("breakers", []):
+            if b.get("name") == target:
+                rt = b.get("recovery_timeout_s")
+                if rt is not None:
+                    await asyncio.sleep(float(rt) + 0.5)
+                    return float(rt)
+    # Fallback for older inference-svc versions that don't expose
+    # recovery_timeout_s. Conservative — better to wait too long than
+    # probe before the breaker eligibility window opens.
+    await asyncio.sleep(30.5)
+    return 30.0
+
+
+async def _poll_metrics_until(
+    c: httpx.AsyncClient,
+    predicate,  # callable(transitions_dict) -> bool
+    *,
+    deadline_s: float = 12.0,
+    poll_s: float = 0.5,
+) -> dict[tuple[str, str, str], float]:
+    """
+    Poll /metrics until ``predicate(transitions)`` returns True or the
+    deadline elapses. Replaces the fixed ``await asyncio.sleep(7)``
+    "exporter cycle + scrape" pattern — observation-driven instead of
+    guessing-the-cycle. Returns the final transitions dict on success;
+    raises if the deadline elapses (deterministic CI signal that the
+    expected counter delta never landed).
+
+    BreakerMetricsExporter pushes state every 5s by default, so a 12s
+    deadline gives us comfortably more than one full cycle while still
+    failing fast if metrics are stuck.
+    """
+    end = asyncio.get_running_loop().time() + deadline_s
+    last: dict[tuple[str, str, str], float] = {}
+    while asyncio.get_running_loop().time() < end:
+        try:
+            r = await c.get(METRICS, timeout=2.0)
+            if r.status_code == 200:
+                last = _transitions(r.text)
+                if predicate(last):
+                    return last
+        except httpx.HTTPError:
+            pass
+        await asyncio.sleep(poll_s)
+    raise RuntimeError(
+        f"transitions counter did not satisfy predicate within {deadline_s}s; "
+        f"last seen: { {k: v for k, v in last.items() if k[0] == 'mcp_hr'} }"
+    )
+
+
 async def main() -> None:
     write_tok = _mint(["hr:read", "hr:write"])
     async with httpx.AsyncClient(timeout=60.0) as c:
@@ -189,13 +253,17 @@ async def main() -> None:
                 fail(f"call {i} didn't degrade")
         ok("3 degraded calls — CB should have tripped")
 
-        step("3. wait 7s for exporter cycle + scrape — counter +1, not +N")
-        await asyncio.sleep(7)
-        r = await c.get(METRICS)
-        after = _transitions(r.text)
+        step("3. poll /metrics for closed→open delta — counter +1, not +N")
+        # Replaced fixed sleep(7) with bounded polling. The exporter
+        # pushes every 5s, so we wait up to 12s (>1 full cycle) for
+        # the closed→open delta to land. Faster CI on the happy path
+        # (often arrives in 2-3s) and a deterministic failure on
+        # genuine bugs.
+        after = await _poll_metrics_until(
+            c,
+            lambda t: t.get(("mcp_hr", "closed", "open"), 0) - baseline_closed_open >= 1,
+        )
         delta = after.get(("mcp_hr", "closed", "open"), 0) - baseline_closed_open
-        if delta < 1:
-            fail(f"expected closed→open +1, got delta={delta}")
         if delta > 2:
             # Allow ≤2 in case the CB flapped briefly during setup; but > 2
             # means every poll is counting as a transition (the bug).
@@ -205,13 +273,16 @@ async def main() -> None:
         if after.get(("retrieval-svc", "closed", "open"), 0) != baseline_retrieval:
             fail(f"retrieval-svc counter moved on mcp_hr event: {after}")
 
-        step("4. restart MCP + 32s CB recovery + probe — recovery edge +1")
+        step("4. restart MCP + config-driven recovery wait + probe → recovery edge +1")
         mcp_proc = _spawn_mcp()
         try:
             if not await _healthy(c, MCP_BASE):
                 fail("MCP didn't come back")
-            print("    waiting 32s for CB recovery_timeout...")
-            await asyncio.sleep(32)
+            # Read recovery_timeout_s from /health/detailed instead of
+            # hardcoding 32. If the breaker config changes (env override,
+            # prod tune), the drill picks it up automatically.
+            waited = await _wait_recovery_timeout(c, "hr")
+            print(f"    waited {waited:.1f}s (config-driven recovery_timeout)")
             r = await c.post(
                 f"{INFERENCE}/api/v1/agent/ask",
                 headers={
@@ -227,9 +298,19 @@ async def main() -> None:
             )
             if not (r.json().get("action") or {}).get("ok"):
                 fail(f"probe didn't succeed: {r.json()}")
-            await asyncio.sleep(7)
-            r = await c.get(METRICS)
-            post = _transitions(r.text)
+            # Poll /metrics for the recovery edge instead of a fixed 7s
+            # wait. The exporter pushes every 5s; predicate succeeds as
+            # soon as ANY recovery edge counter moved.
+            post = await _poll_metrics_until(
+                c,
+                lambda t: (
+                    (t.get(("mcp_hr", "half_open", "closed"), 0)
+                     + t.get(("mcp_hr", "open", "closed"), 0)
+                     + t.get(("mcp_hr", "open", "half_open"), 0))
+                    - baseline_hopen_closed
+                    >= 1
+                ),
+            )
             # Recovery can show as open→half_open then half_open→closed OR
             # directly open→closed depending on when the exporter polled.
             # Accept either; what matters: SOME recovery-edge counter moved.
@@ -239,11 +320,6 @@ async def main() -> None:
                 + post.get(("mcp_hr", "open", "half_open"), 0)
                 - baseline_hopen_closed
             )
-            if recovery_delta < 1:
-                fail(
-                    f"no recovery-edge transitions: "
-                    f"{[(k,v) for k,v in post.items() if k[0] == 'mcp_hr']}"
-                )
             ok(f"mcp_hr recovery edges delta={int(recovery_delta)}")
         finally:
             if mcp_proc.poll() is None:
