@@ -3,9 +3,11 @@
 **Status:** Opt-in per session.
 **Activation:** user says "enter the loop" / "continuous mode" /
 "make next automated" / "keep going until I stop."
-**Global policy:** `~/.claude/policies/autonomous-feature-loop.md`.
+**Scope:** Repository-level loop behavior. Apply this together with any
+user- or tool-level local automation policy active in your
+environment.
 
-> When active, Claude picks the next feature without waiting for a
+> When active, the agent picks the next feature without waiting for a
 > "next" prompt. Each iteration ends with a commit hash + one-line
 > insight. Loop stops only on explicit user signal, gated operation,
 > drill failure, environmental flake, or empty menu.
@@ -81,14 +83,14 @@ When the loop needs a candidate, it searches:
   could be replaced by a poll).
 - `services/*/app/` for TODO comments.
 
-## Example iterations (reference)
+## Example iteration shapes
 
-Recent ones from this session that exemplify the pattern:
+Representative loop candidates in this repository:
 
-- `08ea981` — composition-of-features bug (admin API's resolve hardcoded HR client
-  after multi-server commit). Follow-up from `3fbbddb`.
-- `e93b5c5` — same bug pattern in the worker. Follow-up from `08ea981`.
-- `cd7604b` — server_common refactor. DRY debt after 3rd occurrence.
+- Composition bug after a multi-server routing change.
+- Follow-up fix when worker behavior diverges from API behavior.
+- Refactor once the same coordination pattern appears in 3+ files.
 
-Each took ~15 minutes, ~300 LoC (code + drill + doc), ended with a
-commit + drill-scoreboard tick.
+Keep examples generic here. Put time estimates, commit hashes, and
+session-specific outcomes in demo docs or commit history rather than in
+the standing policy.

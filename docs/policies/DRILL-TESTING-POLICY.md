@@ -1,8 +1,9 @@
 # Drill Testing Policy — DocuMind / circuitRAG
 
-**Status:** 🟢 Mandatory for every feature commit.
-**Scope:** Project-level. See also global policy at
-`~/.claude/policies/drill-testing-pattern.md`.
+**Status:** Mandatory for every feature commit.
+**Scope:** Project-level for this repository. Apply this policy together
+with any user- or tool-level local instructions active in your
+environment.
 
 > **The rule:** every feature commit ships with a drill. Every commit
 > that closes a bug ships with a drill that would have caught the bug
@@ -182,9 +183,11 @@ if __name__ == "__main__":
   that. Otherwise the drill picks up stale state from prior runs and
   flakes in CI.
 
-## Drill scoreboard as of this policy
+## Maintenance note
 
-As of 2026-04-24: 25 drills, 167+ green assertions across the session's
-arc. Every one of the last 30 feature commits shipped a new drill.
-The regression surface grows monotonically — drills don't get deleted,
-they get added.
+Keep this document normative rather than historical. Do not pin the
+policy to session-specific counts like "N drills" or "last M commits"
+inside the policy text; those numbers go stale quickly and turn a
+project rule into a snapshot. If you want current coverage, inspect the
+live drill inventory under `mcp/tests/drill_*.py` or capture the
+current totals in a changelog, demo doc, or CI report instead.
