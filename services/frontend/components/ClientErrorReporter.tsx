@@ -152,6 +152,81 @@ export default function ClientErrorReporter() {
 
     window.addEventListener('error', onError);
     window.addEventListener('unhandledrejection', onRejection);
+
+    // ---- Network/API failure capture ---------------------------------
+    // Wrap window.fetch so 4xx/5xx responses, network errors, timeouts,
+    // and CORS failures get reported alongside JS exceptions. Runtime
+    // errors were well-covered by onerror/unhandledrejection; HTTP-shaped
+    // failures (like the localhost:3000/tools/rag-scenarios 500 the user
+    // just hit) were invisible to the backend. Now they surface in
+    // /admin/client-errors with the same correlation_id pivot.
+    //
+    // Hard rules:
+    //   * Skip recursive reports — POSTs to the client-errors endpoint
+    //     itself never report (otherwise a failing reporter loops).
+    //   * 2xx and 3xx are silent. Only failures.
+    //   * Skip /_next/* assets (chunk loads handled by ChunkLoadError
+    //     path, not fetch). Skip /__nextjs_* dev probes.
+    const originalFetch = window.fetch.bind(window);
+    function wrappedFetch(
+      input: RequestInfo | URL, init?: RequestInit,
+    ): Promise<Response> {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL ? input.toString() : input.url;
+      const method = (init?.method || 'GET').toUpperCase();
+      const isReportingEndpoint = url.includes('/api/v1/admin/client-errors');
+      const isNextInternal = url.includes('/_next/')
+        || url.includes('/__nextjs_');
+      return originalFetch(input, init).then(
+        (resp) => {
+          if (!isReportingEndpoint && !isNextInternal && resp.status >= 400) {
+            safeReport({
+              kind: 'fetch_failed',
+              message: `${method} ${url} → ${resp.status}`,
+              route: window.location.pathname,
+              user_agent: navigator.userAgent,
+              correlation_id: resp.headers.get('X-Correlation-ID') ?? null,
+              extra: {
+                method,
+                url,
+                status: resp.status,
+                status_text: resp.statusText,
+              },
+            });
+          }
+          return resp;
+        },
+        (err: unknown) => {
+          // Network error / DNS / CORS / timeout (AbortError) all land here.
+          // Skip our own reporting endpoint (avoid recursion) AND
+          // AbortErrors when the caller deliberately cancelled (every
+          // useEffect cleanup aborts in-flight requests; reporting
+          // those is noise, not signal).
+          const isAbort = (err as Error)?.name === 'AbortError';
+          if (!isReportingEndpoint && !isNextInternal && !isAbort) {
+            safeReport({
+              kind: 'fetch_error',
+              message: `${method} ${url} → ${(err as Error).message ?? String(err)}`,
+              stack: (err as Error).stack ?? null,
+              route: window.location.pathname,
+              user_agent: navigator.userAgent,
+              extra: {
+                method,
+                url,
+                error_name: (err as Error).name ?? 'Error',
+              },
+            });
+          }
+          throw err; // never swallow — caller still sees the failure
+        },
+      );
+    }
+    // Mark on window so a hot-reload / re-mount doesn't double-wrap.
+    if (!(window as unknown as { __documindFetchWrapped?: boolean }).__documindFetchWrapped) {
+      window.fetch = wrappedFetch;
+      (window as unknown as { __documindFetchWrapped?: boolean }).__documindFetchWrapped = true;
+    }
     return () => {
       // No removeEventListener — the install-once guard above means
       // this effect runs at most once per mount. If the component

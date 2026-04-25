@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
-    "start": "next start -p 3000",
+    "dev": "NEXT_DIST_DIR=.next-dev next dev -p 3000",
+    "build": "NEXT_DIST_DIR=.next-prod next build",
+    "start": "NEXT_DIST_DIR=.next-prod next start -p 3000",
     "lint": "next lint --max-warnings=0",
     "test": "vitest run"
   },

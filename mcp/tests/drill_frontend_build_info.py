@@ -73,13 +73,31 @@ async def main() -> None:
         for required in ("build_id", "app_version", "generated_at", "node_env"):
             if required not in body:
                 fail(f"missing key: {required}")
-        if body["build_id"] in (None, ""):
-            fail(
-                f"build_id is null/empty — likely .next/BUILD_ID is "
-                f"unreadable or the route is serving from a path the "
-                f"server doesn't see."
-            )
-        ok(f"build_id={body['build_id']} node_env={body['node_env']}")
+        # build_id is created by `next build`, NOT by `next dev`. In
+        # dev mode, null is the correct answer. In production mode,
+        # null is a real bug (BUILD_ID unreadable / path mismatch).
+        # The dev-stack runs both ports — :3001 is dev, :3000 is prod
+        # via NEXT_DIST_DIR=.next-prod. Discriminate on node_env.
+        node_env = body.get("node_env")
+        if node_env == "production":
+            if body["build_id"] in (None, ""):
+                fail(
+                    f"build_id null in PRODUCTION mode — likely "
+                    f"BUILD_ID unreadable. Route reads "
+                    f"$NEXT_DIST_DIR/BUILD_ID; verify the env var "
+                    f"matches the build script."
+                )
+        elif node_env == "development":
+            # Dev mode: null is acceptable (next dev doesn't write
+            # BUILD_ID). But the response shape MUST still include
+            # the field (operators see '—' in the UI).
+            if "build_id" not in body:
+                fail("build_id field missing from response (must be present even if null)")
+        else:
+            # Unknown node_env — treat as production for safety.
+            if body["build_id"] in (None, ""):
+                fail(f"build_id null with unknown node_env={node_env!r}")
+        ok(f"build_id={body['build_id']} node_env={node_env}")
 
         step("2. app_version round-trips from package.json")
         if body["app_version"] in (None, ""):

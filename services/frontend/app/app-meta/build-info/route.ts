@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 
 async function readBuildId(): Promise<string | null> {
   try {
-    const buildId = await readFile(path.join(process.cwd(), '.next', 'BUILD_ID'), 'utf8');
+    const distDir = process.env.NEXT_DIST_DIR || '.next';
+    const buildId = await readFile(path.join(process.cwd(), distDir, 'BUILD_ID'), 'utf8');
     return buildId.trim() || null;
   } catch {
     return null;

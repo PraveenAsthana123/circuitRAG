@@ -23,6 +23,7 @@ import {
   ApiError,
   type ClientErrorListResponse,
   type ClientErrorRecord,
+  type FrontendBuildInfoResponse,
 } from '../../../lib/api';
 
 const REFRESH_INTERVAL_MS = 5_000;
@@ -31,11 +32,16 @@ function kindBadgeClass(kind: string): string {
   if (kind === 'window_error') return 'badge badge-failed';
   if (kind === 'unhandled_rejection') return 'badge badge-failed';
   if (kind === 'react_boundary') return 'badge badge-parsing';
+  // fetch_failed (4xx/5xx) and fetch_error (network/timeout/CORS) are
+  // separate signals — color them amber so they stand out from JS
+  // exceptions but don't read as 'crashed.'
+  if (kind === 'fetch_failed' || kind === 'fetch_error') return 'badge badge-parsing';
   return 'badge badge-active';
 }
 
 export default function ClientErrorsPage() {
   const [data, setData] = useState<ClientErrorListResponse | null>(null);
+  const [buildInfo, setBuildInfo] = useState<FrontendBuildInfoResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -48,9 +54,18 @@ export default function ClientErrorsPage() {
       const ctl = new AbortController();
       abortRef.current = ctl;
       try {
-        const resp = await api.clientErrorList(ctl.signal);
+        // Fetch errors + build identity together. When operators are
+        // looking at "what broke in the browser," knowing WHICH BUILD
+        // those browsers are running is load-bearing — a chunk error
+        // on build A and a chunk error on build B mean different
+        // things.
+        const [resp, biResp] = await Promise.all([
+          api.clientErrorList(ctl.signal),
+          api.frontendBuildInfo(ctl.signal),
+        ]);
         if (cancelled) return;
         setData(resp);
+        setBuildInfo(biResp);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -110,6 +125,23 @@ export default function ClientErrorsPage() {
               : '—'}
           </div>
           <div className="field-help">server clock at last fetch</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Frontend build</div>
+          <div
+            className="metric-value"
+            style={{ fontFamily: 'monospace', fontSize: 14 }}
+            title={buildInfo?.build_id ?? '—'}
+          >
+            {buildInfo?.build_id
+              ? buildInfo.build_id.slice(0, 8)
+              : '—'}
+          </div>
+          <div className="field-help">
+            {buildInfo
+              ? `v${buildInfo.app_version ?? '—'} (${buildInfo.node_env ?? '—'})`
+              : '—'}
+          </div>
         </div>
       </div>
 
