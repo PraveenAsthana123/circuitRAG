@@ -29,9 +29,12 @@ Run:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
+import select
+import signal
 import subprocess
 import sys
 import time
@@ -69,6 +72,19 @@ DRILL_DIR = REPO / "mcp" / "tests"
 # explicitly when it wants determinism (e.g. comparing two venvs).
 PY_BIN = os.getenv("PYTHON_BIN") or sys.executable
 DEFAULT_TIMEOUT_S = int(os.getenv("MCP_DRILL_TIMEOUT_S", "180"))
+# Hard caps for production hardening. Each cap is independently
+# overridable so an operator can tune for a beefy CI box without
+# editing source.
+#   MCP_DRILL_MAX_CONCURRENT — gate on simultaneous drill.run executions.
+#     Drills spawn services + Postgres connections + ports; without a
+#     cap a burst of drill.run calls fork-bombs the host. Default 2 is
+#     conservative; CI matches scripts/run_drills.py's --parallel.
+#   MCP_DRILL_MAX_STDOUT_BYTES — truncate the captured drill stdout
+#     before it ever reaches a Python ``bytes`` allocation. A drill
+#     printing a megabyte JSON dump can't OOM the runner.
+MAX_CONCURRENT_DRILLS = max(1, int(os.getenv("MCP_DRILL_MAX_CONCURRENT", "2")))
+MAX_STDOUT_BYTES = max(4_000, int(os.getenv("MCP_DRILL_MAX_STDOUT_BYTES", "65_536")))
+_DRILL_RUN_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_DRILLS)
 RESOURCE_TAG_RE = re.compile(r"^#\s*RESOURCES\s*:\s*(.+)$", re.MULTILINE)
 RESULT_RE = re.compile(r"ALL\s+(\d+)\s+.*STEPS\s+PASSED")
 DEFAULT_RESOURCES = ["mcp_hr", "inference", "pg"]
@@ -81,7 +97,18 @@ def _enforce_scope(authorization: str | None, tool: dict[str, Any]) -> dict[str,
 
 
 # ---------------------------------------------------------------------------
-# Idempotency (thin; drill.run is the only write-side tool)
+# Idempotency — process-local memoization (DEV / single-node ONLY).
+#
+# This dict is NOT durable idempotency. It does not persist across
+# restarts, does not coordinate across replicas, has no TTL, and grows
+# without bound. For dev tooling that's acceptable — a re-run of the
+# drill server starts fresh and replays are cheap.
+#
+# A future production iteration should back this with Postgres or
+# Redis (TTL + payload fingerprint + status enum: in_progress |
+# succeeded | failed) and reject same-key-different-payload calls.
+# Until then, this label is the honest one. See deferred items list
+# in the round-2 enterprise corrections rollout.
 # ---------------------------------------------------------------------------
 _IDEMPOTENCY: dict[str, dict[str, Any]] = {}
 
@@ -172,6 +199,23 @@ def _discover_drills() -> list[dict[str, Any]]:
 
 
 def _run_drill(name: str, timeout_s: int) -> dict[str, Any]:
+    """
+    Spawn a drill subprocess and capture its result.
+
+    Hardening (over the previous ``subprocess.run`` version):
+      * **Process group** — the child is the leader of a new process
+        group via ``start_new_session=True``. On timeout we
+        ``killpg(SIGKILL)`` so any helper processes the drill spawned
+        (MCP servers, retrieval-svc replicas) die with the parent
+        instead of orphaning.
+      * **Stdout cap** — output is read in chunks and truncated at
+        ``MAX_STDOUT_BYTES``. A misbehaving drill that prints a
+        gigabyte JSON dump can't OOM the runner.
+      * **Path injection guard** — ``known`` set is rebuilt on every
+        call; only file basenames matching the on-disk catalogue are
+        accepted. (Pattern is also enforced upstream by the JSON
+        Schema, but defence-in-depth.)
+    """
     # Only allow names from the discovered list — no arbitrary path
     # injection even with pattern validation above.
     known = {d["name"] for d in _discover_drills()}
@@ -187,31 +231,109 @@ def _run_drill(name: str, timeout_s: int) -> dict[str, Any]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO)
     t0 = time.monotonic()
+
+    # Popen with new process group so we can SIGKILL the whole tree
+    # on timeout. ``start_new_session=True`` is the POSIX way; on
+    # Windows this would need ``creationflags=CREATE_NEW_PROCESS_GROUP``
+    # but DocuMind is Linux-only.
+    proc = subprocess.Popen(  # noqa: S603 — argv list, no shell, name validated above
+        [PY_BIN, str(path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+        start_new_session=True,
+    )
+    captured = bytearray()
+    timed_out = False
+    deadline = time.monotonic() + timeout_s
+    truncated = False
+    # Read with ``select`` so a silent / sleeping child can't block us
+    # past the deadline. The previous version used ``proc.stdout.read()``
+    # which only returns when the child writes — a drill that runs
+    # ``time.sleep(120)`` would block past the timeout entirely. select
+    # gives us deadline-honouring poll semantics, and the read is
+    # non-blocking on the stdout fd.
+    assert proc.stdout is not None  # for type narrowing
+    fd = proc.stdout.fileno()
     try:
-        result = subprocess.run(
-            [PY_BIN, str(path)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            env=env,
-            timeout=timeout_s,
-            check=False,
+        while True:
+            remaining_time = deadline - time.monotonic()
+            if remaining_time <= 0:
+                timed_out = True
+                break
+            # Wait up to remaining_time for stdout activity OR child exit.
+            # On select timeout, ready=[] and we re-check the deadline.
+            ready, _, _ = select.select([fd], [], [], min(remaining_time, 1.0))
+            if not ready:
+                # Deadline-tick. Check if child exited cleanly with no
+                # more output to drain — if so, we're done.
+                if proc.poll() is not None:
+                    break
+                continue
+            chunk = os.read(fd, 4096)
+            if not chunk:
+                # EOF → child closed stdout. Wait for exit (should be
+                # imminent) then bail.
+                break
+            remaining_cap = MAX_STDOUT_BYTES - len(captured)
+            if remaining_cap <= 0:
+                # Already at the cap. Discard further reads in a tight
+                # drain loop so the child's pipe doesn't block — but
+                # also bail out fast on timeout while draining.
+                truncated = True
+                while True:
+                    rem = deadline - time.monotonic()
+                    if rem <= 0:
+                        timed_out = True
+                        break
+                    rd, _, _ = select.select([fd], [], [], min(rem, 1.0))
+                    if not rd:
+                        if proc.poll() is not None:
+                            break
+                        continue
+                    if not os.read(fd, 4096):
+                        break
+                break
+            captured.extend(chunk[:remaining_cap])
+            if len(chunk) > remaining_cap:
+                truncated = True
+    except OSError:  # noqa: BLE001 — capture is best-effort; we still need to reap
+        pass
+
+    if timed_out or proc.poll() is None:
+        # Kill the entire process group — any subprocess the drill
+        # spawned (mcp_hr, retrieval-svc, etc.) gets SIGKILL'd too.
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            proc.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            proc.kill()  # last-ditch direct kill
+            proc.wait()
+
+    duration = time.monotonic() - t0
+    text = captured.decode(errors="replace")
+    m = RESULT_RE.search(text)
+    steps = int(m.group(1)) if m else 0
+    tail_lines = text.strip().splitlines()[-20:]
+    tail = "\n".join(tail_lines)
+    if truncated:
+        tail = (
+            f"[stdout truncated at {MAX_STDOUT_BYTES} bytes]\n" + tail
         )
-    except subprocess.TimeoutExpired as exc:
+    if timed_out:
         return {
             "ok": False,
             "exit_code": -2,
-            "steps_passed": 0,
-            "duration_s": timeout_s,
-            "tail": (exc.stdout or b"").decode(errors="replace")[-4000:] or "timeout",
+            "steps_passed": steps,
+            "duration_s": round(duration, 2),
+            "tail": tail or f"timeout after {timeout_s}s",
         }
-    duration = time.monotonic() - t0
-    text = result.stdout.decode(errors="replace")
-    m = RESULT_RE.search(text)
-    steps = int(m.group(1)) if m else 0
-    tail = "\n".join(text.strip().splitlines()[-20:])
     return {
-        "ok": result.returncode == 0 and bool(m),
-        "exit_code": result.returncode,
+        "ok": proc.returncode == 0 and bool(m),
+        "exit_code": proc.returncode,
         "steps_passed": steps,
         "duration_s": round(duration, 2),
         "tail": tail,
@@ -272,7 +394,13 @@ async def _dispatch(
             if not name:
                 return {"ok": False, "error": {"code": "missing_arg", "arg": "name"}}
             timeout_s = int(req.arguments.get("timeout_s", DEFAULT_TIMEOUT_S))
-            result = _run_drill(name, timeout_s)
+            # Concurrency cap — gate inflight drill.run executions. A
+            # burst of calls beyond MAX_CONCURRENT_DRILLS waits at the
+            # semaphore; first-in / first-out. ``_run_drill`` is sync
+            # (subprocess), so we offload to a thread to avoid blocking
+            # the event loop while holding the semaphore.
+            async with _DRILL_RUN_SEMAPHORE:
+                result = await asyncio.to_thread(_run_drill, name, timeout_s)
         else:  # pragma: no cover
             raise HTTPException(status_code=501, detail={"code": "not_implemented"})
         response = {"ok": True, "result": result}
