@@ -146,34 +146,92 @@ export default function MicroserviceScenarios() {
           link to the canonical write-up. Use this page as a talking-point menu for
           architecture reviews.
         </p>
+        <p className="design-areas-sub">
+          Need the interview-grade explanation layer? Use the microservices deep dive for
+          when-to-use vs when-not-to-use, failure modes, monitoring, scaling, and tradeoffs.
+        </p>
+        <div className="page-actions">
+          <Link href="/admin/microservices/deep" className="btn btn-primary">
+            Open Microservices Deep Dive
+          </Link>
+        </div>
         <Link href="/tools" className="sysdesign-back">← back to tool index</Link>
       </header>
 
       <div className="method-grid">
-        {SCENARIOS.map((s) => (
-          <article key={s.pattern} className="method-card">
-            <div className="method-card-head">
-              <h3 className="method-name">{s.pattern}</h3>
-            </div>
-            <dl className="cb-card-dl">
-              <dt>Problem</dt>
-              <dd>{s.problem}</dd>
-              <dt>Pattern</dt>
-              <dd>{s.solution}</dd>
-              <dt>DocuMind example</dt>
-              <dd>{s.documindExample}</dd>
-              <dt>Tradeoffs</dt>
-              <dd>{s.tradeoffs}</dd>
-              <DerivedRows narr={{ name: s.pattern, problem: s.problem, solution: s.solution, example: s.documindExample, category: 'microservice' }} />
-              <dt>Reference</dt>
-              <dd>
-                <a href={s.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">
-                  {s.docsLabel} ↗
-                </a>
-              </dd>
-            </dl>
-          </article>
-        ))}
+        {SCENARIOS.map((s) => {
+          // Map each pattern to its anchor on /admin/microservices/deep.
+          // Bulkhead, mesh, sidecar, gateway, strangler all live in
+          // service-boundaries; Saga, outbox, CQRS, idempotency,
+          // event-driven, breaker live under rest-vs-grpc-vs-mcp
+          // (transport + cross-service contract concerns).
+          const p = s.pattern.toLowerCase();
+          const deepSlug = (() => {
+            if (
+              p.includes('database-per-service') ||
+              p.includes('gateway') ||
+              p.includes('mesh') ||
+              p.includes('sidecar') ||
+              p.includes('bulkhead') ||
+              p.includes('strangler')
+            )
+              return 'service-boundaries';
+            if (
+              p.includes('saga') ||
+              p.includes('outbox') ||
+              p.includes('cqrs') ||
+              p.includes('circuit') ||
+              p.includes('idempotency') ||
+              p.includes('event-driven') ||
+              p.includes('dlq')
+            )
+              return 'rest-vs-grpc-vs-mcp';
+            return null;
+          })();
+          return (
+            <article key={s.pattern} className="method-card">
+              <div className="method-card-head">
+                <h3 className="method-name">{s.pattern}</h3>
+                {deepSlug && (
+                  <Link
+                    href={`/admin/microservices/deep#${deepSlug}`}
+                    style={{ fontSize: 13, color: '#1e3a8a', textDecoration: 'underline' }}
+                  >
+                    Deep dive →
+                  </Link>
+                )}
+              </div>
+              <dl className="cb-card-dl">
+                <dt>Problem</dt>
+                <dd>{s.problem}</dd>
+                <dt>Pattern</dt>
+                <dd>{s.solution}</dd>
+                <dt>DocuMind example</dt>
+                <dd>{s.documindExample}</dd>
+                <dt>Tradeoffs</dt>
+                <dd>{s.tradeoffs}</dd>
+                {deepSlug && (
+                  <>
+                    <dt>Interview deep dive</dt>
+                    <dd>
+                      <Link href={`/admin/microservices/deep#${deepSlug}`} style={{ color: '#1e3a8a' }}>
+                        Open the 20-dimension interview view for{' '}
+                        <code>{deepSlug}</code> →
+                      </Link>
+                    </dd>
+                  </>
+                )}
+                <DerivedRows narr={{ name: s.pattern, problem: s.problem, solution: s.solution, example: s.documindExample, category: 'microservice' }} />
+                <dt>Reference</dt>
+                <dd>
+                  <a href={s.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">
+                    {s.docsLabel} ↗
+                  </a>
+                </dd>
+              </dl>
+            </article>
+          );
+        })}
       </div>
     </div>
   );

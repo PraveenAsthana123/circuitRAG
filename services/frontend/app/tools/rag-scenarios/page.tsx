@@ -26,6 +26,15 @@ export default function RagScenariosPage() {
           10 architectural layers. Each card expands into full detail: diagrams, I/O, pros/cons,
           comparison, interview talking point, reference link.
         </p>
+        <p className="design-areas-sub">
+          Need the interview-grade explanation layer? Use the RAG deep dive for chunking,
+          hybrid retrieval, failure modes, monitoring, scaling, and maturity model.
+        </p>
+        <div className="page-actions">
+          <Link href="/admin/rag/deep" className="btn btn-primary">
+            Open RAG Deep Dive
+          </Link>
+        </div>
         <Link href="/tools" className="sysdesign-back">← back to tool index</Link>
 
         <nav className="scen-toc">
@@ -44,33 +53,63 @@ export default function RagScenariosPage() {
           <section key={layer} id={slug(layer)} className="design-areas-group">
             <h2 className="design-areas-group-title">{layer}</h2>
             <div className="method-grid">
-              {rows.map((s) => (
-                <article key={s.id} className="method-card">
-                  <div className="method-card-head">
-                    <span className="method-acronym">#{s.id}</span>
-                    <h3 className="method-name">{s.name}</h3>
-                  </div>
-                  <dl className="cb-card-dl">
-                    <dt>Problem</dt>
-                    <dd>{s.problem}</dd>
-                    <dt>Pattern</dt>
-                    <dd>{s.solution}</dd>
-                    <dt>DocuMind example</dt>
-                    <dd>{s.example}</dd>
-                    <DerivedRows narr={{ name: s.name, problem: s.problem, solution: s.solution, example: s.example, category: layer }} />
-                    {s.docsUrl && (
-                      <>
-                        <dt>Reference</dt>
-                        <dd>
-                          <a href={s.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">
-                            canonical ↗
-                          </a>
-                        </dd>
-                      </>
-                    )}
-                  </dl>
-                </article>
-              ))}
+              {rows.map((s) => {
+                // Map each scenario to its anchor on /admin/rag/deep.
+                // Substring match on name + layer keeps the rule thin.
+                const n = s.name.toLowerCase();
+                const l = layer.toLowerCase();
+                const deepSlug = (() => {
+                  if (n.includes('chunk') || n.includes('embed') || n.includes('re-index')) return 'chunking';
+                  if (n.includes('retriev') || n.includes('hybrid') || l === 'retrieval') return 'hybrid-retrieval';
+                  return null;
+                })();
+                return (
+                  <article key={s.id} className="method-card">
+                    <div className="method-card-head">
+                      <span className="method-acronym">#{s.id}</span>
+                      <h3 className="method-name">{s.name}</h3>
+                      {deepSlug && (
+                        <Link
+                          href={`/admin/rag/deep#${deepSlug}`}
+                          style={{ fontSize: 13, color: '#1e3a8a', textDecoration: 'underline' }}
+                        >
+                          Deep dive →
+                        </Link>
+                      )}
+                    </div>
+                    <dl className="cb-card-dl">
+                      <dt>Problem</dt>
+                      <dd>{s.problem}</dd>
+                      <dt>Pattern</dt>
+                      <dd>{s.solution}</dd>
+                      <dt>DocuMind example</dt>
+                      <dd>{s.example}</dd>
+                      {deepSlug && (
+                        <>
+                          <dt>Interview deep dive</dt>
+                          <dd>
+                            <Link href={`/admin/rag/deep#${deepSlug}`} style={{ color: '#1e3a8a' }}>
+                              Open the 20-dimension interview view for{' '}
+                              <code>{deepSlug}</code> →
+                            </Link>
+                          </dd>
+                        </>
+                      )}
+                      <DerivedRows narr={{ name: s.name, problem: s.problem, solution: s.solution, example: s.example, category: layer }} />
+                      {s.docsUrl && (
+                        <>
+                          <dt>Reference</dt>
+                          <dd>
+                            <a href={s.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">
+                              canonical ↗
+                            </a>
+                          </dd>
+                        </>
+                      )}
+                    </dl>
+                  </article>
+                );
+              })}
             </div>
           </section>
         );
