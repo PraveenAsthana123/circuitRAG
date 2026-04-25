@@ -342,15 +342,34 @@ def enforce_scope(
         return claims
     have = set(claims.get("roles") or [])
     if required.isdisjoint(have):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "INSUFFICIENT_SCOPE",
-                "required": sorted(required),
-                "have": sorted(have),
-                "tool": tool.get("name"),
-            },
-        )
+        # Enrich the 403 detail so denials are self-explaining without
+        # log archaeology. The trust-scorecard ("better explanation of
+        # denials" — production-trust-quality-and-readiness.md §2,
+        # mcp-agent-gap-review.md §2.4) names this gap explicitly:
+        # operators investigating a denial should be able to read the
+        # response body and know WHO was denied and WHAT they need.
+        # ``actor`` and ``actor_email`` come from the verified JWT —
+        # they're trustworthy because the token signature has already
+        # been validated above.
+        actor = claims.get("sub")
+        actor_email = claims.get("email")
+        # ``missing`` (the scopes the caller would have needed but
+        # doesn't have) is more actionable than 'required' alone:
+        # an operator paging through denials reads it as "grant
+        # role X" not "intersect these sets."
+        missing = sorted(required - have)
+        detail = {
+            "code": "INSUFFICIENT_SCOPE",
+            "required": sorted(required),
+            "have": sorted(have),
+            "missing": missing,
+            "tool": tool.get("name"),
+        }
+        if actor is not None:
+            detail["actor"] = actor
+        if actor_email is not None:
+            detail["actor_email"] = actor_email
+        raise HTTPException(status_code=403, detail=detail)
     return claims
 
 

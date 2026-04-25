@@ -219,6 +219,16 @@ If reduced to the most important gaps:
   governance-db; admin dashboard renders the unified table; drill
   `drill_inference_health_upstreams.py` locks parallel-execution
   bound, version parsing, kind enum, and row-order stability.
+- denial explainability ✓ shipped — 403 INSUFFICIENT_SCOPE response
+  detail now carries `{actor, actor_email, missing}` in addition to
+  `{required, have, tool}`. Operators investigating a denial read
+  the response body and see WHO was denied + WHAT they need
+  ("grant role X" rather than intersect-these-sets). 401 paths
+  do NOT propagate any actor info — no token / failed signature
+  means no trustworthy claims to echo. Drill
+  `drill_scope_denial_actor_attribution.py` locks both the
+  positive path (actor surfaces) and the negative paths (no leak
+  on 401 NOT_AUTHENTICATED / INVALID_TOKEN).
 - trace -> draft -> audit linkage ✓ shipped —
   `GET /api/v1/admin/trace/{correlation_id}?tenant_id=<uuid>`
   reconstructs one request end-to-end. Returns audit_log rows + draft
