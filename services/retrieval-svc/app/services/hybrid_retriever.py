@@ -143,15 +143,21 @@ class HybridRetriever:
             )
 
         log.info(
-            "retrieval_complete tenant=%s strategy=%s n=%d latency_ms=%.1f top_score=%.3f breaker=%s",
+            "retrieval_complete tenant=%s strategy=%s n=%d latency_ms=%.1f top_score=%.3f breaker=%s degraded=%s",
             tenant_id, request.strategy, len(chunks), latency_ms,
-            top_score, self._quality_breaker.state.value,
+            top_score, self._quality_breaker.state.value, backend_failed,
         )
         return RetrieveResponse(
             chunks=chunks,
             latency_ms=latency_ms,
             strategy=request.strategy,
             cached=False,
+            # Surface the same signal the cache-skip uses internally —
+            # callers need it for the same reason: "this result is
+            # built from a subset of the requested backends." Without
+            # this, the agent path silently downstreams partial RAG
+            # context as if it were complete.
+            degraded=backend_failed,
         )
 
     async def _do_vector(self, tenant_id: str, req: RetrieveRequest) -> list[dict]:

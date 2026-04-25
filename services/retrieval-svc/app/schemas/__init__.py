@@ -30,3 +30,19 @@ class RetrieveResponse(BaseModel):
     latency_ms: float
     strategy: str
     cached: bool
+    # ``degraded`` is True when at least one requested backend failed
+    # (timeout, exception, dependency unreachable). The response still
+    # contains whatever the surviving backends returned — but callers
+    # downstream of retrieval (the agent path, the RAG answer path)
+    # can use this signal to skip caching derived results, lower
+    # confidence on the answer, or surface "partial results" in the UI.
+    # Default False keeps existing callers compatible — the field is
+    # additive and only becomes True when something actually failed.
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "True when at least one retrieval backend (vector, graph) "
+            "failed and the response is built from the remainder. "
+            "False when all requested backends succeeded."
+        ),
+    )

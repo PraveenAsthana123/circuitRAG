@@ -145,16 +145,21 @@ too.
   cross tenants.
 - `top_k` is bounded server-side; clients can request smaller, not
   larger.
-- A retrieval timeout never returns partial results without a
-  timeout flag in the response.
+- Partial results carry `degraded=True` in the response envelope
+  (added in commit landing alongside this catalog entry); callers
+  downstream of retrieval must NOT treat degraded results as
+  authoritative.
+- Degraded results are NOT cached — a transient backend outage
+  cannot poison the retrieval cache for `cache_ttl` seconds.
 
 **Best drill / test**
 
 - `drill_retrieval_tenant_isolation` — identical vectors under
   distinct tenants stay isolated; symmetric filter; HTTP rejects
   missing `X-Tenant-ID`.
-- GAP — `drill_retrieval_timeout_envelope` (no drill yet for the
-  partial-results-on-timeout invariant).
+- `drill_retrieval_degraded_envelope` — `RetrieveResponse.degraded`
+  is True when any backend fails; partial results are NOT cached;
+  empty result on full failure is not silent success.
 
 ---
 
@@ -1047,7 +1052,7 @@ these:
 | --- | --- | --- |
 | Document ingestion (1) | `drill_ingestion_e2e` | open |
 | Retrieval (2) | `drill_retrieval_tenant_isolation` | **shipped** |
-| Retrieval (2) | `drill_retrieval_timeout_envelope` | open |
+| Retrieval (2) | `drill_retrieval_degraded_envelope` | **shipped** |
 | RAG answer (3) | `drill_rag_answer_e2e` (citation-presence + guardrail-failure negatives) | open |
 
 Open items are good loop candidates when there's no higher-priority
