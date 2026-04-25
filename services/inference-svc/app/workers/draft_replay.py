@@ -47,9 +47,59 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
+from contextlib import nullcontext
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+
+# OTel — guarded import so the worker still runs when the SDK is
+# unavailable. ``_TRACER`` is None in that case and the wrappers
+# below collapse to a nullcontext, so the sweep never sprouts a
+# branch like "did we instrument this?" in business code.
+try:
+    from opentelemetry import trace as _otel_trace
+
+    _TRACER = _otel_trace.get_tracer(__name__)
+    _OTEL_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _TRACER = None
+    _OTEL_AVAILABLE = False
+
+
+def _sweep_span(correlation_id: str, tenant_count: int) -> Any:
+    """
+    Open a span around the worker sweep cycle, or a nullcontext
+    when OTel is unavailable. Span carries:
+
+      documind.correlation_id  — uuid per sweep, links log lines
+      worker.tenant_count      — how many tenants this sweep covered
+      worker.kind              — ``"draft_replay"``
+
+    Per-namespace and per-draft details land on log lines + the
+    existing Prometheus counters; the span is the trace seam that
+    makes those signals queryable as a unit in Jaeger.
+    """
+    if _TRACER is None:
+        return nullcontext()
+    span_cm = _TRACER.start_as_current_span("draft_replay.sweep")
+
+    class _SpanWrap:
+        def __enter__(self):
+            self._sp = span_cm.__enter__()
+            try:
+                self._sp.set_attribute("documind.correlation_id", correlation_id)
+                self._sp.set_attribute("worker.tenant_count", int(tenant_count))
+                self._sp.set_attribute("worker.kind", "draft_replay")
+            except Exception:  # noqa: BLE001 — never let span attributes break the sweep
+                pass
+            return self._sp
+
+        def __exit__(self, exc_type, exc, tb):
+            return span_cm.__exit__(exc_type, exc, tb)
+
+    return _SpanWrap()
 
 
 # Prometheus metric for the autonomous worker. The pre-existing
@@ -251,6 +301,16 @@ class DraftReplayWorker:
                 pass  # interval elapsed → next cycle
 
     async def _sweep(self) -> None:
+        # Per-sweep correlation_id stamps the span + every log line
+        # in this cycle, so a Jaeger trace and the structured logs
+        # can be cross-joined. Same convention as the rest of the
+        # codebase — see ADR-007 (identity-driven attribution) for
+        # how correlation flows downstream.
+        sweep_correlation_id = uuid.uuid4().hex
+        with _sweep_span(sweep_correlation_id, len(self._tenants)):
+            await self._sweep_inner(sweep_correlation_id)
+
+    async def _sweep_inner(self, sweep_correlation_id: str) -> None:
         self.stats["cycles"] += 1
         now = time.monotonic()
         # Wall-clock for draft-age computation. ``time.monotonic()``
