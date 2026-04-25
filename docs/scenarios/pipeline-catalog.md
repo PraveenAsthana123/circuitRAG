@@ -150,10 +150,11 @@ too.
 
 **Best drill / test**
 
-GAP — no dedicated retrieval drill. Propose
-`drill_retrieval_tenant_isolation` (cross-tenant query MUST return
-zero hits even if vectors match) and
-`drill_retrieval_timeout_envelope`.
+- `drill_retrieval_tenant_isolation` — identical vectors under
+  distinct tenants stay isolated; symmetric filter; HTTP rejects
+  missing `X-Tenant-ID`.
+- GAP — `drill_retrieval_timeout_envelope` (no drill yet for the
+  partial-results-on-timeout invariant).
 
 ---
 
@@ -1042,14 +1043,13 @@ these:
 
 ## Drill coverage gaps
 
-The catalog surfaces three pipelines without dedicated drills today:
+| Pipeline | Suggested drill | Status |
+| --- | --- | --- |
+| Document ingestion (1) | `drill_ingestion_e2e` | open |
+| Retrieval (2) | `drill_retrieval_tenant_isolation` | **shipped** |
+| Retrieval (2) | `drill_retrieval_timeout_envelope` | open |
+| RAG answer (3) | `drill_rag_answer_e2e` (citation-presence + guardrail-failure negatives) | open |
 
-| Pipeline | Suggested drill |
-| --- | --- |
-| Document ingestion (1) | `drill_ingestion_e2e` |
-| Retrieval (2) | `drill_retrieval_tenant_isolation` + `drill_retrieval_timeout_envelope` |
-| RAG answer (3) | `drill_rag_answer_e2e` (citation-presence + guardrail-failure negatives) |
-
-These are good loop candidates when there's no higher-priority
+Open items are good loop candidates when there's no higher-priority
 governance / replay / breaker work outstanding. Closing each one
 adds a regression surface for a critical user-facing path.
