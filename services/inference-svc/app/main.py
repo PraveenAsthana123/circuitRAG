@@ -188,6 +188,42 @@ def create_app() -> FastAPI:
             tenants_csv = os.getenv("DOCUMIND_REPLAY_WORKER_TENANTS", "").strip()
             tenants = [t.strip() for t in tenants_csv.split(",") if t.strip()]
             if tenants:
+                # Verify + decode the worker's service token at boot so
+                # we can plumb the ``sub`` claim into the audit row as
+                # actor_id. Without this, worker-driven replays land in
+                # governance.audit_log with actor_id=NULL — fine for
+                # "is it a worker?" review (actor_type tells you that)
+                # but useless for "WHICH worker?" if multiple service
+                # accounts run replay in different deployments.
+                #
+                # Verifying at boot fails fast on a bad token (operator
+                # set the wrong key, expired token, etc.) — better than
+                # discovering it on the first sweep when MCP returns 401.
+                service_token = os.getenv("DOCUMIND_REPLAY_WORKER_TOKEN") or None
+                service_actor_id: str | None = None
+                if service_token:
+                    try:
+                        from documind_core.auth import JWTVerifier as _JV
+                        _wv = _JV(
+                            public_key_path=settings.jwt_public_key_path,
+                            issuer=settings.jwt_issuer,
+                            audience=settings.jwt_audience,
+                        )
+                        service_actor_id = _wv.verify(service_token).get("sub") or None
+                        log.info(
+                            "draft_replay_worker_actor_id=%s (from service token sub)",
+                            service_actor_id,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        # Token unverifiable. Don't crash the whole
+                        # service — worker will just submit audit rows
+                        # with actor_id=NULL (regression to the old
+                        # behaviour). Log loud so an operator notices.
+                        log.error(
+                            "draft_replay_worker_token_invalid err=%s — "
+                            "worker will run but actor_id will be NULL", exc,
+                        )
+
                 worker = DraftReplayWorker(
                     mcp_clients=app.state.mcp_clients,
                     tenant_ids=tenants,
@@ -198,7 +234,8 @@ def create_app() -> FastAPI:
                     # accumulate forever. Production deployments should
                     # bind this to a service-account JWT with the union
                     # of every tool's required scope.
-                    service_auth_token=os.getenv("DOCUMIND_REPLAY_WORKER_TOKEN") or None,
+                    service_auth_token=service_token,
+                    service_actor_id=service_actor_id,
                 )
                 await worker.start()
                 app.state.draft_replay_worker = worker

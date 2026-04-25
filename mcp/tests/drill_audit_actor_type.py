@@ -413,15 +413,17 @@ async def main() -> None:
                 # this also exercises the actor_id-text migration: a
                 # ``service:replay-worker`` subject would have crashed
                 # the audit write before migration 005.
-                svc_tok = _mint(
-                    ["hr:read", "hr:write"], sub="service:replay-worker"
-                )
+                WORKER_SUB = "service:replay-worker"
+                svc_tok = _mint(["hr:read", "hr:write"], sub=WORKER_SUB)
                 worker = DraftReplayWorker(
                     mcp_clients={"hr": client},
                     tenant_ids=[TENANT],
                     interval_s=1,
                     per_draft_backoff_s=1,
                     service_auth_token=svc_tok,
+                    # Pass the decoded sub so the audit row carries it
+                    # as actor_id — proves "which worker?" attribution.
+                    service_actor_id=WORKER_SUB,
                 )
                 await worker.sweep_once()
                 if worker.stats["replayed"] < 1:
@@ -447,12 +449,22 @@ async def main() -> None:
             wk_row = wk_replay[0]
             if wk_row["actor_type"] != "worker":
                 fail(f"expected actor_type=worker, got {wk_row['actor_type']}")
-            if wk_row["actor_id"] and wk_row["actor_id"] != "None":
-                # Worker doesn't have a JWT sub → actor_id should be NULL
+            # actor_id must now carry the service-token sub. Without
+            # this, "which worker?" is unanswerable when more than one
+            # service account runs replay (staging vs prod sweeper).
+            # The previous assertion accepted NULL — that was the gap
+            # this iteration closes.
+            if wk_row["actor_id"] != WORKER_SUB:
                 fail(
-                    f"expected actor_id=NULL for worker, got {wk_row['actor_id']!r}"
+                    f"expected actor_id={WORKER_SUB!r} for worker, "
+                    f"got {wk_row['actor_id']!r}. The service-token sub "
+                    f"is not propagating from the worker into the audit "
+                    f"row — check DraftReplayWorker._service_actor_id."
                 )
-            ok(f"actor_type=worker actor_id=NULL (autonomous, no JWT sub)")
+            ok(
+                f"actor_type=worker actor_id={WORKER_SUB!r} "
+                f"(from service-token sub — proves which worker replayed)"
+            )
 
             step("5. regression: mcp_draft.created still actor_type=service")
             # The original 'created' row from step 1 should still say service

@@ -73,6 +73,7 @@ class DraftReplayWorker:
         per_draft_backoff_s: int = 60,
         skip_when_cb_open: bool = True,
         service_auth_token: str | None = None,
+        service_actor_id: str | None = None,
     ) -> None:
         # mcp_clients (preferred) is a namespace→client dict so the
         # worker can route each draft to the server that owns its
@@ -101,6 +102,13 @@ class DraftReplayWorker:
         # log fills with NOT_AUTHENTICATED while drafts pile up — a
         # silent operational failure mode that the previous version had.
         self._service_auth_token = service_auth_token
+        # ``service_actor_id`` is the ``sub`` claim of the service token,
+        # decoded once in the lifespan. We forward it as actor_id on the
+        # audit row so governance can answer "WHICH service account
+        # replayed this draft?" — a different worker per environment
+        # (staging vs prod replay sweeper) shows up as a different
+        # actor_id under the same actor_type="worker".
+        self._service_actor_id = service_actor_id
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         self._last_attempt: dict[str, float] = {}
@@ -218,6 +226,7 @@ class DraftReplayWorker:
                     result = await client.resolve_draft(
                         draft.draft_id, tenant_id=tenant,
                         actor_type="worker",  # governance-visible; not "service"
+                        actor_id=self._service_actor_id,
                         auth_token=self._service_auth_token,
                     )
                 except Exception as exc:  # noqa: BLE001
