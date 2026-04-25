@@ -62,6 +62,44 @@ class RunResponse(BaseModel):
     answer_relevance: float
 
 
+# ---- Regression gate schemas --------------------------------------
+# Default tolerances are intentionally conservative — a 2% drop on any
+# quality metric blocks rollout. Operators tune via the request body
+# when a model upgrade is expected to trade one metric for another
+# (e.g. "we accept -3% mrr for +5% answer_relevance").
+_DEFAULT_TOLERANCE = 0.02
+
+
+class RegressionGateTolerance(BaseModel):
+    precision_at_k: float = _DEFAULT_TOLERANCE
+    recall: float = _DEFAULT_TOLERANCE
+    mrr: float = _DEFAULT_TOLERANCE
+    ndcg_at_10: float = _DEFAULT_TOLERANCE
+    faithfulness: float = _DEFAULT_TOLERANCE
+    answer_relevance: float = _DEFAULT_TOLERANCE
+
+
+class RegressionGateRequest(BaseModel):
+    current: RunResponse
+    baseline: RunResponse
+    tolerance: RegressionGateTolerance = RegressionGateTolerance()
+
+
+class MetricDelta(BaseModel):
+    metric: str
+    baseline: float
+    current: float
+    delta: float
+    tolerance: float
+    passed: bool
+
+
+class RegressionGateResponse(BaseModel):
+    passed: bool
+    deltas: list[MetricDelta]
+    failed_metrics: list[str]
+
+
 def create_app() -> FastAPI:
     settings = get_settings(EvaluationSettings)
     setup_logging(
@@ -127,6 +165,69 @@ def create_app() -> FastAPI:
             ndcg_at_10=totals["ndcg"] / n,
             faithfulness=totals["f"] / n,
             answer_relevance=totals["rel"] / n,
+        )
+
+    @app.post(
+        "/api/v1/evaluation/regression-gate",
+        response_model=RegressionGateResponse,
+        tags=["scoring"],
+    )
+    async def regression_gate(body: RegressionGateRequest) -> RegressionGateResponse:
+        """
+        Compare a current eval run against a baseline. Returns
+        ``passed=True`` only when every quality metric is within
+        tolerance of the baseline (current >= baseline - tolerance).
+
+        This is the "block rollout if quality regressed" gate
+        referenced in the original docstring. CI pipelines can POST
+        this against the latest run + the last-known-good baseline
+        and fail the build on any flagged regression.
+
+        Implementation contract:
+          * Per-metric delta = current - baseline.
+          * Per-metric passed = (delta >= -tolerance). A small drop
+            within tolerance is acceptable; a larger drop fails.
+          * Overall passed = all per-metric passed.
+          * ``failed_metrics`` lists the names of regressed metrics
+            so an alert / Slack post can name them directly.
+
+        Why this shape:
+          * Baseline is supplied by the caller, not stored — the
+            evaluation service stays stateless. A future commit can
+            wire baselines into governance.eval_baselines or similar.
+          * Tolerance per-metric (not global) matches the reality
+            that a model upgrade may trade one metric for another;
+            operators set the tradeoff envelope explicitly.
+        """
+        c = body.current
+        b = body.baseline
+        t = body.tolerance
+        # Pair each metric name with (baseline_value, current_value, tolerance).
+        pairs = [
+            ("precision_at_k", b.precision_at_k, c.precision_at_k, t.precision_at_k),
+            ("recall",         b.recall,         c.recall,         t.recall),
+            ("mrr",            b.mrr,            c.mrr,            t.mrr),
+            ("ndcg_at_10",     b.ndcg_at_10,     c.ndcg_at_10,     t.ndcg_at_10),
+            ("faithfulness",   b.faithfulness,   c.faithfulness,   t.faithfulness),
+            ("answer_relevance", b.answer_relevance, c.answer_relevance, t.answer_relevance),
+        ]
+        deltas: list[MetricDelta] = []
+        failed: list[str] = []
+        for name, base, cur, tol in pairs:
+            delta = cur - base
+            # Negative delta = regression. -0.005 with tolerance 0.02 passes;
+            # -0.05 with tolerance 0.02 fails.
+            metric_passed = delta >= -tol
+            if not metric_passed:
+                failed.append(name)
+            deltas.append(MetricDelta(
+                metric=name, baseline=base, current=cur,
+                delta=delta, tolerance=tol, passed=metric_passed,
+            ))
+        return RegressionGateResponse(
+            passed=(not failed),
+            deltas=deltas,
+            failed_metrics=failed,
         )
 
     return app
