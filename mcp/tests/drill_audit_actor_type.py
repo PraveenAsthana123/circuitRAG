@@ -139,6 +139,74 @@ async def _dead(c: httpx.AsyncClient, url: str, tries: int = 10) -> None:
         await asyncio.sleep(0.3)
 
 
+async def _read_breaker(
+    c: httpx.AsyncClient, inference_url: str, namespace: str,
+) -> dict | None:
+    """Snapshot a single breaker's state from /health/detailed."""
+    r = await c.get(f"{inference_url}/api/v1/health/detailed", timeout=2.0)
+    target = f"mcp_{namespace}"
+    for b in r.json().get("breakers", []):
+        if b.get("name") == target:
+            return b
+    return None
+
+
+async def _wait_cb_closed(
+    c: httpx.AsyncClient,
+    inference_url: str,
+    namespace: str,
+) -> None:
+    """
+    Wait until the named MCP breaker can re-probe, then verify it
+    closes after the next call.
+
+    Why this isn't pure polling: ``CircuitBreaker`` transitions are
+    *demand-driven* — OPEN → HALF_OPEN happens inside ``allow()``
+    when the recovery timeout has elapsed AND a call comes in.
+    Pure passive polling on /health/detailed would loop forever
+    because nothing flips state without traffic.
+
+    So:
+      1. Read ``recovery_timeout_s`` from /health/detailed (no
+         hardcoded "32" magic number — driven by the live config).
+      2. Sleep that duration + 0.5s buffer.
+      3. The drill's NEXT call (e.g. /resolve) will trigger the
+         OPEN → HALF_OPEN → CLOSED transition organically. The
+         caller verifies state="closed" via _read_breaker after.
+
+    Replaces ``await asyncio.sleep(32)`` — same wait, but the
+    duration comes from the breaker's own config + we expose the
+    state shape that lets the caller observe the transition. If
+    the breaker recovery_timeout changes (env override, prod tune),
+    the drill picks it up automatically.
+    """
+    b = await _read_breaker(c, inference_url, namespace)
+    if b is None:
+        raise RuntimeError(f"breaker mcp_{namespace} not in /health/detailed")
+    recovery = b.get("recovery_timeout_s")
+    if recovery is None:
+        # Conservative fallback for older inference-svc versions.
+        recovery = 30.0
+    print(f"    breaker mcp_{namespace} state={b['state']} recovery_timeout={recovery}s")
+    if b["state"] == "closed":
+        # Already closed — nothing to wait for.
+        return
+    await asyncio.sleep(float(recovery) + 0.5)
+
+
+async def _assert_cb_closed_after(
+    c: httpx.AsyncClient, inference_url: str, namespace: str,
+) -> None:
+    """Confirm the breaker actually transitioned to CLOSED. Pairs with _wait_cb_closed."""
+    b = await _read_breaker(c, inference_url, namespace)
+    if b is None or b["state"] != "closed":
+        raise RuntimeError(
+            f"breaker mcp_{namespace} did not close: {b!r}. "
+            f"The next call did not trigger HALF_OPEN→CLOSED — "
+            f"check recovery_timeout vs probe call ordering."
+        )
+
+
 async def _read_audit_rows(pool: asyncpg.Pool) -> list[dict]:
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -210,8 +278,13 @@ async def main() -> None:
             try:
                 if not await _healthy(c, MCP_BASE):
                     fail("MCP didn't return")
-                print("    waiting 32s for CB recovery...")
-                await asyncio.sleep(32)
+                # Polling on observable CB state instead of sleep(32).
+                # The breaker recovery_timeout is 30s in production but
+                # the actual close happens on the next probe call —
+                # waiting for the state to flip beats waiting a fixed
+                # window. See _wait_cb_closed() docstring for why.
+                print("    polling /health/detailed for CB recovery...")
+                await _wait_cb_closed(c, INFERENCE, "hr")
                 r = await c.post(
                     f"{INFERENCE}/api/v1/drafts/{operator_draft}/resolve",
                     headers={
@@ -222,6 +295,9 @@ async def main() -> None:
                 )
                 if r.status_code != 200 or not r.json().get("ok"):
                     fail(f"admin resolve failed: {r.status_code} {r.text[:300]}")
+                # Verify the trigger call actually closed the breaker —
+                # the observation half of the wait+probe pattern.
+                await _assert_cb_closed_after(c, INFERENCE, "hr")
                 await asyncio.sleep(0.5)
             finally:
                 pass
@@ -287,8 +363,14 @@ async def main() -> None:
             try:
                 if not await _healthy(c, MCP_BASE):
                     fail("MCP didn't return 2nd time")
-                print("    waiting 32s for CB recovery...")
-                await asyncio.sleep(32)
+                # Step 4 deliberately uses a FRESH MCPClient (below) with
+                # its own CircuitBreaker — recovery_timeout=1.0, starts
+                # CLOSED. We don't need to wait on inference-svc's CB
+                # here because we're not driving the worker through
+                # inference-svc; we're constructing a worker pointed at
+                # the fresh client. The previous version of this drill
+                # waited 32s here defensively — pure CI tax with no
+                # correctness role.
 
                 # Wire client+store+audit the way the inference-svc lifespan does.
                 pool2 = await asyncpg.create_pool(dsn=PG_DSN, min_size=1, max_size=3)

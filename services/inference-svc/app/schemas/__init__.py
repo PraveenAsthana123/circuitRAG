@@ -122,6 +122,13 @@ class BreakerState(BaseModel):
         default=None,
         description="Current failure counter (None if the breaker doesn't expose it)",
     )
+    # Exposed so observers (drills, dashboards) can compute "when can
+    # this breaker re-probe?" without baking the timeout into client
+    # code. None when the breaker doesn't expose it (legacy paths).
+    recovery_timeout_s: float | None = Field(
+        default=None,
+        description="Seconds the breaker waits in OPEN before allowing a probe.",
+    )
 
 
 class HealthDetailedResponse(BaseModel):

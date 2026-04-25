@@ -57,11 +57,15 @@ async def health_detailed(request: Request) -> HealthDetailedResponse:
         # surface only so dashboards keep working when the breaker swaps.
         inner = getattr(client, "_breaker", None)
         failures = getattr(inner, "failures", None) if inner is not None else None
+        recovery_timeout_s = (
+            getattr(inner, "recovery_timeout", None) if inner is not None else None
+        )
         breakers.append(
             BreakerState(
                 name=f"mcp_{namespace}",
                 state=client.cb_state,
                 failures=failures,
+                recovery_timeout_s=recovery_timeout_s,
             ),
         )
     # Observability CB lives inside the OTel exporter wrapper; exposed
