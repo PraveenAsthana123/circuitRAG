@@ -53,6 +53,109 @@ PY_BIN = os.getenv("PYTHON_BIN", "/tmp/documind-venv/bin/python")
 RESOURCE_TAG_RE = re.compile(r"^#\s*RESOURCES\s*:\s*(.+)$", re.MULTILINE)
 RESULT_RE = re.compile(r"ALL\s+(\d+)\s+.*STEPS\s+PASSED")
 
+
+# ---------------------------------------------------------------------------
+# Resource healers — ensures shared infrastructure that chaos drills kill
+# (typically MCP_HR via fuser -k, but also drill-spawned child subprocesses
+# that terminate at end) is alive again before the next drill that needs
+# it runs. Without this, one chaos drill cascades 25+ subsequent drills
+# into ConnectError, even though each would pass individually.
+#
+# A healer is (probe_url, launch_argv, env_overrides). After a drill
+# releases its 'write' lock on a resource we know how to heal, the runner
+# probes; if down, it relaunches the resource as a detached subprocess
+# (start_new_session=True so a future killpg/fuser doesn't take it).
+# ---------------------------------------------------------------------------
+_HEALER_HEALTH_URL = {
+    "mcp_hr": "http://127.0.0.1:8090/health",
+    "mcp_itsm": "http://127.0.0.1:8091/health",
+}
+_HEALER_SCRIPT = {
+    "mcp_hr": REPO / "mcp" / "server_hr.py",
+    "mcp_itsm": REPO / "mcp" / "server_itsm.py",
+}
+_HEALER_PORT_VAR = {
+    "mcp_hr": ("MCP_HR_PORT", "8090"),
+    "mcp_itsm": ("MCP_ITSM_PORT", "8091"),
+}
+# Minimum env to start an MCP server in dev-stack mode. Real env may
+# carry more (Postgres credentials, OTEL endpoint) — those flow from
+# os.environ.copy() at heal time. This dict only sets what's
+# nonstandard or what the heal must enforce.
+_HEALER_ENV_DEFAULTS = {
+    "DOCUMIND_AUTH_REQUIRED": "true",
+    "MCP_AUTH_REQUIRED": "true",
+    "DOCUMIND_JWT_PUBLIC_KEY_PATH": str(
+        REPO / "scripts" / "dev-keys" / "jwt-public.pem",
+    ),
+    "MCP_JWT_PUBLIC_KEY_PATH": str(
+        REPO / "scripts" / "dev-keys" / "jwt-public.pem",
+    ),
+    "DOCUMIND_PG_HOST": "localhost",
+    "DOCUMIND_PG_PORT": "55432",
+    "DOCUMIND_PG_USER": "documind_app",
+    "DOCUMIND_PG_PASSWORD": "documind_app",
+    "DOCUMIND_PG_DB": "documind",
+}
+
+
+def _is_alive(url: str, timeout_s: float = 1.0) -> bool:
+    """Cheap liveness probe. Any 2xx counts as alive."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url, timeout=timeout_s) as r:
+            return 200 <= r.status < 300
+    except Exception:  # noqa: BLE001 — every connection failure means "dead"
+        return False
+
+
+def _heal_resource(resource: str) -> str:
+    """Restart a healable resource if it's dead. Returns one of:
+    'alive' (probe succeeded, no action), 'healed' (we restarted it
+    and it came up), 'failed' (we tried to restart but it didn't
+    come up within the bound), 'unknown' (resource has no healer)."""
+    url = _HEALER_HEALTH_URL.get(resource)
+    if not url:
+        return "unknown"
+    if _is_alive(url):
+        return "alive"
+    script = _HEALER_SCRIPT.get(resource)
+    if script is None:
+        return "unknown"
+    port_var, port = _HEALER_PORT_VAR[resource]
+    env = os.environ.copy()
+    env.update(_HEALER_ENV_DEFAULTS)
+    env[port_var] = port
+    env["PYTHONPATH"] = str(REPO)
+    # Use the SAME log path the dev-stack startup uses, not a runner-
+    # specific path. Drills like drill_otel_actor_outcome_attrs grep
+    # /tmp/mcp_hr.log for actor_identified lines; if the healer writes
+    # somewhere else, those drills break for an unrelated reason.
+    log_paths = {
+        "mcp_hr": "/tmp/mcp_hr.log",
+        "mcp_itsm": "/tmp/mcp_itsm.log",
+    }
+    log_path = log_paths.get(resource, f"/tmp/run_drills_heal_{resource}.log")
+    log_fh = open(log_path, "ab")
+    # start_new_session=True puts the child in its own session so a
+    # future drill's `fuser -k <port>/tcp` only kills the listener,
+    # not the whole shell. The new session detaches from the runner's
+    # process group too, so the child outlives the runner if needed.
+    subprocess.Popen(
+        [PY_BIN, str(script)],
+        env=env,
+        stdout=log_fh, stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    # Bound the wait — a busted restart shouldn't hang the runner
+    # forever. 8s covers a cold OTel-init + Postgres-pool warmup.
+    deadline = time.monotonic() + 8.0
+    while time.monotonic() < deadline:
+        if _is_alive(url):
+            return "healed"
+        time.sleep(0.3)
+    return "failed"
+
 # Default (no tag): "touches everything with write-level exclusion."
 # Safe — untagged drills serialise against every other drill.
 DEFAULT_RESOURCES: frozenset[tuple[str, str]] = frozenset({
@@ -236,6 +339,28 @@ async def _run_one(
                 )
         finally:
             await table.release(drill.resources)
+            # Heal any resource the drill held in 'write' mode that
+            # the drill killed and didn't restore (chaos-test pattern).
+            # Only heal write-mode holds — read-mode drills don't kill.
+            # The probe is fast (<10ms) when the resource is alive,
+            # so the no-op case has negligible cost.
+            for res_name, res_mode in drill.resources:
+                if res_mode != "write":
+                    continue
+                if res_name not in _HEALER_HEALTH_URL:
+                    continue
+                outcome = await asyncio.to_thread(_heal_resource, res_name)
+                if outcome == "healed":
+                    print(
+                        f"  {YELLOW}↻ healed {res_name} after {drill.name}{NC}",
+                        flush=True,
+                    )
+                elif outcome == "failed":
+                    print(
+                        f"  {RED}↻ failed to heal {res_name} after "
+                        f"{drill.name} — subsequent drills may flake{NC}",
+                        flush=True,
+                    )
 
 
 async def _run_all(
@@ -280,7 +405,14 @@ def _junit_xml(drills: list[Drill], elapsed: float) -> str:
     """Emit a minimal JUnit-XML document with one <testsuite> wrapping
     one <testcase> per drill. Sufficient for GitHub Actions
     test-reporter, Jenkins, and any JUnit consumer."""
+    # XML 1.0 prohibits raw control chars 0x00-0x1F EXCEPT tab/LF/CR.
+    # ANSI escape sequences in drill output (e.g. ESC=0x1b for color
+    # codes) survive into the tail and trip xml.etree's parser with
+    # "not well-formed (invalid token)". Strip them before escaping.
+    _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
     def _esc(s: str) -> str:
+        s = _CTRL_RE.sub("", s)
         return (
             s.replace("&", "&amp;")
              .replace("<", "&lt;")

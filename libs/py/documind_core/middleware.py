@@ -240,6 +240,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in ("/health", "/healthz", "/metrics"):
             return await call_next(request)
 
+        # Drill / load-test escape hatch. When the env var is set, the
+        # middleware short-circuits — every request passes. Use ONLY in
+        # dev / CI; production must never set this. The drill suite
+        # (scripts/run_drills.py) sets it for the duration of a run so
+        # 60+ drills sharing demo-tenant don't saturate the per-tenant
+        # 60s sliding window. Spelled with a noisy name on purpose so
+        # an accidental prod setting is grep-able.
+        import os as _os
+        if _os.getenv("DOCUMIND_RATE_LIMIT_DISABLED", "").lower() in (
+            "1", "true", "yes",
+        ):
+            return await call_next(request)
+
         tenant_id = getattr(request.state, "tenant_id", "")
         limit, window, endpoint = self._select_budget(request.url.path, request.method)
 
