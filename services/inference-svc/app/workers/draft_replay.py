@@ -52,6 +52,36 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 
+# Prometheus metric for the autonomous worker. The pre-existing
+# ``self.stats`` dict gave per-instance introspection, but production
+# operators needed a graphable signal. One counter with two labels
+# keeps cardinality bounded (finite namespace × finite outcome set)
+# and lets a single PromQL query answer the operational questions:
+#   * How many drafts is the worker actually completing?
+#     sum(rate(documind_draft_replay_total{outcome="replayed"}[5m]))
+#   * Is a namespace's CB stuck open (worker tries blocked)?
+#     rate(...{outcome="cb_wait", namespace="hr"}[5m])
+#   * Is the worker running into systematic errors?
+#     rate(...{outcome="error"}[5m])
+try:
+    from prometheus_client import Counter as _PromCounter
+
+    _draft_replay_total = _PromCounter(
+        "documind_draft_replay_total",
+        "Draft replay attempts by the autonomous worker, labelled by "
+        "MCP namespace and outcome.",
+        labelnames=["namespace", "outcome"],
+    )
+except ImportError:  # pragma: no cover — prometheus_client is optional
+    _draft_replay_total = None
+
+
+def _bump(namespace: str, outcome: str) -> None:
+    """Increment the worker counter; no-op if prometheus_client missing."""
+    if _draft_replay_total is not None:
+        _draft_replay_total.labels(namespace=namespace, outcome=outcome).inc()
+
+
 def _cb_state(client: Any) -> str | None:
     """Read the MCP client's breaker state if exposed, else None."""
     state = getattr(client, "cb_state", None)
@@ -158,6 +188,12 @@ class DraftReplayWorker:
                 await self._sweep()
             except Exception as exc:  # noqa: BLE001
                 self.stats["errors"] += 1
+                # Cycle-level failure (sweep itself blew up before
+                # reaching any namespace). ``__cycle__`` label keeps
+                # this distinct from per-namespace error counts so
+                # dashboards can alert on "worker is fundamentally
+                # broken" vs "one namespace flaking."
+                _bump("__cycle__", "error")
                 log.error("draft_replay_worker_cycle_failed err=%s", exc)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._interval)
@@ -182,6 +218,11 @@ class DraftReplayWorker:
                 drafts = await reader.list_pending_drafts(tenant)
             except Exception as exc:  # noqa: BLE001
                 self.stats["errors"] += 1
+                # Tenant enumeration failure isn't tied to a specific
+                # namespace; label it ``__list__`` so dashboards
+                # distinguish "the worker can't even read drafts" from
+                # per-namespace replay failures.
+                _bump("__list__", "error")
                 log.error("draft_replay_list_failed tenant=%s err=%s", tenant, exc)
                 continue
             if not drafts:
@@ -200,6 +241,7 @@ class DraftReplayWorker:
                 client = self._client_for(draft.tool)
                 if client is None:
                     self.stats["no_server_skips"] += 1
+                    _bump(namespace, "no_server")
                     log.info(
                         "draft_replay_no_server draft_id=%s namespace=%s — leaving pending",
                         draft.draft_id, namespace,
@@ -211,6 +253,7 @@ class DraftReplayWorker:
                 # even when another namespace's CB is open.
                 if self._skip_when_cb_open and _cb_state(client) == "open":
                     self.stats["cb_wait_skips"] += 1
+                    _bump(namespace, "cb_wait")
                     log.info(
                         "draft_replay_cb_wait draft_id=%s namespace=%s cb=open",
                         draft.draft_id, namespace,
@@ -220,6 +263,7 @@ class DraftReplayWorker:
                 last = self._last_attempt.get(draft.draft_id, 0.0)
                 if now - last < self._backoff:
                     self.stats["skipped_backoff"] += 1
+                    _bump(namespace, "skipped_backoff")
                     continue
                 self._last_attempt[draft.draft_id] = now
                 try:
@@ -231,6 +275,7 @@ class DraftReplayWorker:
                     )
                 except Exception as exc:  # noqa: BLE001
                     self.stats["errors"] += 1
+                    _bump(namespace, "error")
                     log.error(
                         "draft_replay_call_failed draft_id=%s namespace=%s err=%s",
                         draft.draft_id, namespace, exc,
@@ -238,6 +283,7 @@ class DraftReplayWorker:
                     continue
                 if result.ok:
                     self.stats["replayed"] += 1
+                    _bump(namespace, "replayed")
                     ticket = (result.data or {}).get("ticket_id") or (
                         result.data or {}
                     ).get("incident_id")
@@ -250,6 +296,7 @@ class DraftReplayWorker:
                     # for THIS namespace this cycle. Other namespaces
                     # keep being processed in the outer loop.
                     self.stats["degraded_bailouts"] += 1
+                    _bump(namespace, "degraded")
                     bailed.add(namespace)
                     log.info(
                         "draft_replay_namespace_down draft_id=%s namespace=%s "
@@ -257,6 +304,9 @@ class DraftReplayWorker:
                         draft.draft_id, namespace,
                     )
                 else:
+                    # 4xx-shaped failure that didn't degrade. Surfaces
+                    # NOT_AUTHENTICATED, INSUFFICIENT_SCOPE, etc.
+                    _bump(namespace, "failed")
                     log.warning(
                         "draft_replay_failed draft_id=%s namespace=%s err=%s",
                         draft.draft_id, namespace, result.error,
