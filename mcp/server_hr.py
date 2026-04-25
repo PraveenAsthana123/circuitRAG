@@ -67,10 +67,38 @@ def _enforce_scope(authorization: str | None, tool: dict[str, Any]) -> dict[str,
 @dataclass
 class HRState:
     tickets: dict[str, dict[str, Any]] = field(default_factory=dict)
-    idempotency: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 state = HRState()
+
+
+def _build_idempotency_store():
+    """
+    Postgres-backed when ``DOCUMIND_PG_HOST`` is set (production
+    posture); in-memory otherwise. Mirrors mcp/server_drills.py —
+    same migration 007 backing table, same protocol.
+    """
+    from mcp.idempotency import (
+        InMemoryIdempotencyStore,
+        PostgresIdempotencyStore,
+    )
+
+    pg_host = os.getenv("DOCUMIND_PG_HOST", "").strip()
+    if pg_host and os.getenv("MCP_IDEMPOTENCY_DURABLE", "true").lower() == "true":
+        dsn = (
+            f"postgresql://{os.getenv('DOCUMIND_PG_USER', 'documind_app')}:"
+            f"{os.getenv('DOCUMIND_PG_PASSWORD', 'documind_app')}@"
+            f"{pg_host}:{os.getenv('DOCUMIND_PG_PORT', '5432')}/"
+            f"{os.getenv('DOCUMIND_PG_DB', 'documind')}"
+        )
+        ttl = int(os.getenv("MCP_IDEMPOTENCY_TTL_S", "86400"))
+        log.info("mcp_hr_idempotency_store=postgres ttl=%ds", ttl)
+        return PostgresIdempotencyStore(dsn, ttl_seconds=ttl)
+    log.info("mcp_hr_idempotency_store=in_memory (NOT durable)")
+    return InMemoryIdempotencyStore()
+
+
+_IDEMPOTENCY = _build_idempotency_store()
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +189,7 @@ async def tools_call(
         authorization=authorization,
         auth_required=_AUTH_REQUIRED,
         verifier=_VERIFIER,
-        idempotency_cache=state.idempotency,
+        idempotency_store=_IDEMPOTENCY,
         dispatch=_dispatch,
         tracer_module=__name__,
         logger=log,
@@ -210,10 +238,9 @@ async def _dispatch(
         else:  # pragma: no cover
             raise HTTPException(status_code=501, detail={"code": "not_implemented"})
 
-        response = {"ok": True, "result": result}
-        if idempotency_key:
-            state.idempotency[idempotency_key] = response
-        return response
+        # Idempotency cache writes are owned by handle_tool_call now —
+        # see mcp/server_common.py + mcp/idempotency.py.
+        return {"ok": True, "result": result}
 
     except HTTPException:
         raise

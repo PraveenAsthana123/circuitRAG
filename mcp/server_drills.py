@@ -97,20 +97,39 @@ def _enforce_scope(authorization: str | None, tool: dict[str, Any]) -> dict[str,
 
 
 # ---------------------------------------------------------------------------
-# Idempotency — process-local memoization (DEV / single-node ONLY).
+# Idempotency store. Backed by Postgres when DOCUMIND_PG_HOST is set
+# (production posture) — durable, coordinated, TTL-purged, with same-
+# key-different-payload conflict detection. Falls back to in-memory
+# for tests and bare dev runs without Postgres.
 #
-# This dict is NOT durable idempotency. It does not persist across
-# restarts, does not coordinate across replicas, has no TTL, and grows
-# without bound. For dev tooling that's acceptable — a re-run of the
-# drill server starts fresh and replays are cheap.
-#
-# A future production iteration should back this with Postgres or
-# Redis (TTL + payload fingerprint + status enum: in_progress |
-# succeeded | failed) and reject same-key-different-payload calls.
-# Until then, this label is the honest one. See deferred items list
-# in the round-2 enterprise corrections rollout.
+# The previous module-level ``_IDEMPOTENCY: dict`` was honest dev
+# tooling but wedged any deployment that horizontally scaled the
+# drill server (a retry routed to a different replica re-executed).
+# Migration 007 + mcp/idempotency.py close that gap.
 # ---------------------------------------------------------------------------
-_IDEMPOTENCY: dict[str, dict[str, Any]] = {}
+def _build_idempotency_store():
+    """Return a Postgres store if env wires one, else in-memory."""
+    from mcp.idempotency import (
+        InMemoryIdempotencyStore,
+        PostgresIdempotencyStore,
+    )
+
+    pg_host = os.getenv("DOCUMIND_PG_HOST", "").strip()
+    if pg_host and os.getenv("MCP_IDEMPOTENCY_DURABLE", "true").lower() == "true":
+        dsn = (
+            f"postgresql://{os.getenv('DOCUMIND_PG_USER', 'documind_app')}:"
+            f"{os.getenv('DOCUMIND_PG_PASSWORD', 'documind_app')}@"
+            f"{pg_host}:{os.getenv('DOCUMIND_PG_PORT', '5432')}/"
+            f"{os.getenv('DOCUMIND_PG_DB', 'documind')}"
+        )
+        ttl = int(os.getenv("MCP_IDEMPOTENCY_TTL_S", "86400"))
+        log.info("mcp_drills_idempotency_store=postgres ttl=%ds", ttl)
+        return PostgresIdempotencyStore(dsn, ttl_seconds=ttl)
+    log.info("mcp_drills_idempotency_store=in_memory (NOT durable)")
+    return InMemoryIdempotencyStore()
+
+
+_IDEMPOTENCY = _build_idempotency_store()
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +385,7 @@ async def tools_call(
         authorization=authorization,
         auth_required=_AUTH_REQUIRED,
         verifier=_VERIFIER,
-        idempotency_cache=_IDEMPOTENCY,
+        idempotency_store=_IDEMPOTENCY,
         dispatch=_dispatch,
         tracer_module=__name__,
         logger=log,
@@ -403,10 +422,10 @@ async def _dispatch(
                 result = await asyncio.to_thread(_run_drill, name, timeout_s)
         else:  # pragma: no cover
             raise HTTPException(status_code=501, detail={"code": "not_implemented"})
-        response = {"ok": True, "result": result}
-        if idempotency_key:
-            _IDEMPOTENCY[idempotency_key] = response
-        return response
+        # handle_tool_call now owns idempotency cache writes — see
+        # mcp/server_common.py + mcp/idempotency.py. The dispatch
+        # only returns the response; finalize is handled upstream.
+        return {"ok": True, "result": result}
     except HTTPException:
         raise
     except Exception as exc:

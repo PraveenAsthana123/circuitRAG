@@ -340,7 +340,11 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
     authorization: str | None,
     auth_required: bool,
     verifier: TokenVerifier | None,
-    idempotency_cache: dict[str, dict[str, Any]],
+    # ``idempotency_store`` replaces the previous ``idempotency_cache: dict``.
+    # The store knows how to fingerprint payloads, detect same-key /
+    # different-payload conflicts, and finalise on success or failure.
+    # ``handle_tool_call`` stays dumb — get-or-record — see mcp/idempotency.py.
+    idempotency_store: "Any",  # IdempotencyStore protocol; avoid circular import here
     dispatch,  # noqa: ANN001 — async callable(req, idempotency_key, cid) -> dict
     tracer_module: str,
     logger: logging.Logger,
@@ -388,17 +392,70 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
                 "mcp.idempotency_key_present", idempotency_key is not None,
             )
 
-        if idempotency_key and idempotency_key in idempotency_cache:
-            cached = idempotency_cache[idempotency_key]
-            logger.info(
-                "%s_idempotent_replay key=%s", service_label, idempotency_key,
+        # Idempotency lookup. The store handles payload fingerprinting,
+        # in-progress / conflict detection, and TTL purging — this
+        # function only translates the (state, response) tuple to the
+        # right HTTP shape and metric outcome.
+        from mcp.idempotency import fingerprint as _fingerprint
+
+        if idempotency_key and idempotency_store is not None:
+            fp = _fingerprint(req.arguments or {})
+            state, cached = await idempotency_store.lookup_or_register(
+                idempotency_key, req.name, fp,
             )
-            if OTEL_AVAILABLE and sp is not None:
-                sp.set_attribute("mcp.idempotent_replay", True)
-            _record_tool_call(
-                namespace=service_label, tool=req.name, outcome="replay",
-            )
-            return {**cached, "idempotent_replay": True}
+            if state == "done":
+                logger.info(
+                    "%s_idempotent_replay key=%s", service_label, idempotency_key,
+                )
+                if OTEL_AVAILABLE and sp is not None:
+                    sp.set_attribute("mcp.idempotent_replay", True)
+                _record_tool_call(
+                    namespace=service_label, tool=req.name, outcome="replay",
+                )
+                return {**(cached or {}), "idempotent_replay": True}
+            if state == "in_progress":
+                # Don't wait — drill.run can take minutes; a waiting
+                # client wedges the connection pool. 202 tells the
+                # caller to come back later.
+                logger.info(
+                    "%s_idempotent_in_progress key=%s",
+                    service_label, idempotency_key,
+                )
+                _record_tool_call(
+                    namespace=service_label, tool=req.name, outcome="in_progress",
+                )
+                raise HTTPException(
+                    status_code=202,
+                    detail={
+                        "code": "idempotency_in_progress",
+                        "key": idempotency_key,
+                        "message": (
+                            "A call with this Idempotency-Key is still "
+                            "running. Retry in a moment."
+                        ),
+                    },
+                )
+            if state == "conflict":
+                logger.warning(
+                    "%s_idempotency_conflict key=%s tool=%s",
+                    service_label, idempotency_key, req.name,
+                )
+                _record_tool_call(
+                    namespace=service_label, tool=req.name, outcome="conflict",
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "idempotency_conflict",
+                        "key": idempotency_key,
+                        "message": (
+                            "This Idempotency-Key was previously used with "
+                            "a different request payload. Use a new key or "
+                            "send the original payload."
+                        ),
+                    },
+                )
+            # state == "new" → caller proceeds; we finalise after.
 
         try:
             response = await dispatch(req, idempotency_key, cid)
@@ -407,11 +464,27 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
             # surface as "error" since a 5xx-shaped outcome isn't what
             # happened. Upstream HTTPException raised from enforce_scope
             # already incremented nothing because we never got here.
+            if idempotency_key and idempotency_store is not None:
+                # Record as 'failed' so the row doesn't linger as
+                # in_progress (a future retry would 202 forever).
+                # Best-effort: don't shadow the original exception.
+                try:
+                    await idempotency_store.finalize(
+                        idempotency_key,
+                        {"ok": False, "error": {"http_status": exc.status_code}},
+                        status="failed",
+                    )
+                except Exception:  # noqa: BLE001 — finalize must not shadow the dispatch error
+                    pass
             _record_tool_call(
                 namespace=service_label, tool=req.name,
                 outcome=f"http_{exc.status_code}",
             )
             raise
+
+        if idempotency_key and idempotency_store is not None:
+            await idempotency_store.finalize(idempotency_key, response, status="succeeded")
+
         outcome = "ok" if response.get("ok") else "error"
         _record_tool_call(namespace=service_label, tool=req.name, outcome=outcome)
         return response
