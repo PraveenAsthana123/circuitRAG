@@ -64,7 +64,7 @@ log = logging.getLogger(__name__)
 #   * Is the worker running into systematic errors?
 #     rate(...{outcome="error"}[5m])
 try:
-    from prometheus_client import Counter as _PromCounter
+    from prometheus_client import Counter as _PromCounter, Gauge as _PromGauge
 
     _draft_replay_total = _PromCounter(
         "documind_draft_replay_total",
@@ -72,14 +72,45 @@ try:
         "MCP namespace and outcome.",
         labelnames=["namespace", "outcome"],
     )
+    # Backlog-age gauge — surfaces the slow-leak case the auto-reject
+    # threshold doesn't catch. A draft hitting cb_wait or
+    # skipped_backoff repeatedly never increments the consecutive-
+    # failure counter, so it never auto-rejects, but it also never
+    # gets replayed. Without this metric an operator wouldn't notice
+    # the queue ageing.
+    #
+    # PromQL recipes:
+    #   max by(namespace) (documind_draft_pending_age_seconds)
+    #     → "what's the oldest draft I have, per namespace?"
+    #   max(documind_draft_pending_age_seconds) > 3600
+    #     → alert: any draft older than an hour
+    #
+    # Cardinality bound: namespace count is finite + small (one per
+    # MCP server). Tenant is intentionally NOT a label — a future
+    # multi-tenant deployment can add a second gauge with quantized
+    # tenant buckets if cross-tenant breakdown is needed; for now
+    # the per-namespace dimension is enough to trigger an alert.
+    _draft_pending_age_seconds = _PromGauge(
+        "documind_draft_pending_age_seconds",
+        "Age of the oldest pending draft per MCP namespace, in seconds. "
+        "Updated each sweep cycle.",
+        labelnames=["namespace"],
+    )
 except ImportError:  # pragma: no cover — prometheus_client is optional
     _draft_replay_total = None
+    _draft_pending_age_seconds = None
 
 
 def _bump(namespace: str, outcome: str) -> None:
     """Increment the worker counter; no-op if prometheus_client missing."""
     if _draft_replay_total is not None:
         _draft_replay_total.labels(namespace=namespace, outcome=outcome).inc()
+
+
+def _set_pending_age(namespace: str, age_seconds: float) -> None:
+    """Set the per-namespace oldest-pending-draft gauge."""
+    if _draft_pending_age_seconds is not None:
+        _draft_pending_age_seconds.labels(namespace=namespace).set(age_seconds)
 
 
 def _cb_state(client: Any) -> str | None:
@@ -222,6 +253,17 @@ class DraftReplayWorker:
     async def _sweep(self) -> None:
         self.stats["cycles"] += 1
         now = time.monotonic()
+        # Wall-clock for draft-age computation. ``time.monotonic()``
+        # above is for elapsed-since-last-attempt (immune to clock
+        # drift); ``wall_now`` is for "how old is this draft" against
+        # the row's ``created_at`` epoch.
+        wall_now = time.time()
+        # Per-namespace max age, computed across ALL tenants in this
+        # sweep. The gauge is set once per namespace at sweep end so
+        # an empty queue resets the gauge to 0 (otherwise a stale
+        # value from a previous cycle lingers forever and triggers
+        # phantom alerts).
+        oldest_age_per_namespace: dict[str, float] = {}
         # list_pending_drafts works through any client because the
         # PostgresDraftStore is shared across clients. Use the first
         # one arbitrarily as the reader; routing happens per-draft.
@@ -249,6 +291,18 @@ class DraftReplayWorker:
             log.info(
                 "draft_replay_sweep tenant=%s pending=%d", tenant, len(drafts),
             )
+            # Pre-scan: compute oldest age per namespace BEFORE the
+            # per-draft loop. The loop short-circuits on ``bailed``,
+            # so doing this inline would miss drafts in degraded
+            # namespaces — exactly the namespaces an operator most
+            # wants to watch ageing.
+            for draft in drafts:
+                ns = (
+                    draft.tool.split(".", 1)[0] if "." in draft.tool else draft.tool
+                )
+                age = max(0.0, wall_now - float(draft.created_at))
+                if age > oldest_age_per_namespace.get(ns, 0.0):
+                    oldest_age_per_namespace[ns] = age
             for draft in drafts:
                 namespace = (
                     draft.tool.split(".", 1)[0] if "." in draft.tool else draft.tool
@@ -342,6 +396,14 @@ class DraftReplayWorker:
                             await self._auto_reject(
                                 client, draft, tenant, namespace, result.error,
                             )
+
+        # Set the backlog-age gauge for EVERY known namespace — not
+        # just the ones with pending drafts this cycle. A namespace
+        # whose queue drained should drop to 0; otherwise the gauge
+        # stays at the last-seen value and triggers phantom alerts
+        # forever.
+        for ns in self._clients:
+            _set_pending_age(ns, oldest_age_per_namespace.get(ns, 0.0))
 
     async def _auto_reject(
         self,
