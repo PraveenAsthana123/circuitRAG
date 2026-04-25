@@ -13,6 +13,8 @@ from app.schemas import (
     AskResponse,
     BreakerState,
     DraftListResponse,
+    DraftRejectRequest,
+    DraftRejectResponse,
     DraftResolveResponse,
     DraftSummary,
     HealthDetailedResponse,
@@ -344,4 +346,100 @@ async def resolve_draft(
         degraded=result.degraded,
         new_draft_id=result.draft_id if result.degraded else None,
         idempotent_replay=result.idempotent_replay,
+    )
+
+
+@router.post(
+    "/api/v1/drafts/{draft_id}/reject",
+    response_model=DraftRejectResponse,
+    tags=["hitl"],
+    summary="Operator-driven terminal rejection of a pending draft",
+)
+async def reject_draft(
+    draft_id: str,
+    body: DraftRejectRequest,
+    request: Request,
+) -> DraftRejectResponse:
+    """
+    Reject a pending draft. After this, the autonomous worker will skip
+    the row (``list_pending`` filters on ``status='pending'``).
+
+    Posture mirrors /resolve: operator-only when auth_required, the
+    rejection audit row is fail_closed because a missing audit record
+    on a governance-terminal action is exactly the gap operators need
+    to see immediately.
+
+    Returns 200 + ``status='rejected'`` on success, 404 if the draft
+    doesn't exist, 409 if it's already moved (replayed by a worker, or
+    rejected by another operator).
+    """
+    tenant_id = getattr(request.state, "tenant_id", "") or ""
+    if not tenant_id:
+        raise ValidationError("X-Tenant-ID header is required")
+
+    clients: dict = getattr(request.app.state, "mcp_clients", None) or {}
+    if not clients:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AGENT_DISABLED", "message": "no MCP clients configured"},
+        )
+
+    # Two-phase scope check — same shape as /resolve.
+    auth_required = getattr(request.app.state, "auth_required", False)
+    if auth_required:
+        require_roles()(request)
+
+    lookup_client = next(iter(clients.values()))
+    record = await lookup_client.get_draft(draft_id, tenant_id=tenant_id)
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "DRAFT_NOT_FOUND", "draft_id": draft_id},
+        )
+
+    if auth_required:
+        # Same role mapping — rejecting an hr.* draft requires hr:write.
+        # A rejection is a write-side governance action, not a read.
+        role = required_role_for_tool(record.tool)
+        require_roles(role)(request)
+
+    namespace = record.tool.split(".", 1)[0] if "." in record.tool else record.tool
+    target = clients.get(namespace)
+    if target is None:
+        # Reject is intentionally MORE permissive than resolve here —
+        # we don't need an MCP server to be reachable to record a
+        # terminal "don't retry this" decision. But routing through
+        # the namespace's client keeps the audit + DB connection paths
+        # consistent. If a deployment lost its NS server, fall back to
+        # any client (the DraftStore is shared).
+        target = lookup_client
+
+    auth_user = getattr(request.state, "auth_user_id", "") or None
+    if auth_user:
+        actor_type = "operator"
+        actor_id = auth_user
+    else:
+        actor_type = "system"
+        actor_id = None
+    audit_fail_closed = (actor_type == "operator")
+
+    result = await target.reject_draft(
+        draft_id,
+        reason=body.reason,
+        tenant_id=tenant_id,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        audit_fail_closed=audit_fail_closed,
+    )
+
+    if not result.ok and result.error and result.error.get("code") == "DRAFT_NOT_FOUND":
+        raise HTTPException(status_code=404, detail=result.error)
+    if not result.ok and result.error and result.error.get("code") == "DRAFT_NOT_PENDING":
+        raise HTTPException(status_code=409, detail=result.error)
+    return DraftRejectResponse(
+        draft_id=draft_id,
+        ok=result.ok,
+        status=(result.data or {}).get("status"),
+        reason=(result.data or {}).get("reason"),
+        error=result.error,
     )

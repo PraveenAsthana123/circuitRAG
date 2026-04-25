@@ -110,6 +110,33 @@ class DraftResolveResponse(BaseModel):
     idempotent_replay: bool = Field(default=False)
 
 
+class DraftRejectRequest(BaseModel):
+    """Operator-supplied rationale for rejecting a pending draft."""
+
+    reason: str = Field(
+        min_length=1,
+        max_length=500,
+        description=(
+            "Free-form reason. Required — an unexplained rejection is an "
+            "audit gap, not a feature."
+        ),
+    )
+
+
+class DraftRejectResponse(BaseModel):
+    """Outcome of a draft rejection. Terminal — no replay attempt was made."""
+
+    draft_id: str
+    ok: bool
+    status: str | None = Field(
+        default=None, description="'rejected' on success",
+    )
+    reason: str | None = Field(
+        default=None, description="Echoed back for client correlation",
+    )
+    error: dict[str, Any] | None = None
+
+
 # ---------------------------------------------------------------------------
 # Detailed health — exposes internal breaker + readiness state to operators
 # ---------------------------------------------------------------------------

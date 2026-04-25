@@ -399,6 +399,81 @@ class MCPClient:
                 )
         return result
 
+    async def reject_draft(
+        self,
+        draft_id: str,
+        *,
+        reason: str,
+        tenant_id: str | None = None,
+        actor_type: str = "operator",
+        actor_id: str | None = None,
+        audit_fail_closed: bool = True,
+    ) -> ToolResult:
+        """
+        Terminal rejection of a pending draft.
+
+        Unlike :meth:`resolve_draft`, this never calls the MCP tool —
+        rejection is a pure governance act that says "this should not
+        execute." The worker's autonomous sweep will skip rejected
+        drafts because ``list_pending`` filters on ``status='pending'``.
+
+        Defaults match the operator-driven admin route's posture:
+          actor_type="operator"          (only operators reject)
+          audit_fail_closed=True         (a missing audit row on a
+                                          governance-critical action
+                                          surfaces as 5xx, not silent)
+
+        Returns a ToolResult shaped to mirror resolve_draft so admin
+        routes can reuse the same envelope normalization. ``ok=True``
+        when the CAS won; ``ok=False`` with code DRAFT_NOT_FOUND or
+        DRAFT_NOT_PENDING when the row is gone or already moved.
+        """
+        record = await self._drafts.get(draft_id, tenant_id)
+        if record is None:
+            return ToolResult(
+                ok=False,
+                error={"code": "DRAFT_NOT_FOUND", "draft_id": draft_id},
+            )
+        if record.status != "pending":
+            return ToolResult(
+                ok=False,
+                error={"code": "DRAFT_NOT_PENDING", "status": record.status},
+            )
+        transitioned = await self._drafts.mark_rejected(
+            draft_id, reason, record.tenant_id,
+        )
+        if not transitioned:
+            # Lost the CAS race — another actor moved the draft between
+            # the get() and the mark. Re-read to surface the current
+            # status to the caller (a worker may have replayed it).
+            current = await self._drafts.get(draft_id, tenant_id)
+            return ToolResult(
+                ok=False,
+                error={
+                    "code": "DRAFT_NOT_PENDING",
+                    "status": current.status if current else "unknown",
+                },
+            )
+        if self._audit is not None and record.tenant_id:
+            await self._audit.write(
+                tenant_id=record.tenant_id,
+                action="mcp_draft.rejected",
+                actor_type=actor_type,
+                actor_id=actor_id,
+                resource_type="mcp_draft",
+                details={
+                    "draft_id": draft_id,
+                    "tool": record.tool,
+                    "reason": reason,
+                },
+                correlation_id=record.correlation_id,
+                fail_closed=audit_fail_closed,
+            )
+        return ToolResult(
+            ok=True,
+            data={"draft_id": draft_id, "status": "rejected", "reason": reason},
+        )
+
     async def list_pending_drafts(
         self, tenant_id: str | None = None
     ) -> list[DraftRecord]:

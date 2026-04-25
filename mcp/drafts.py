@@ -75,6 +75,27 @@ class DraftStore(Protocol):
         """
         ...
 
+    async def mark_rejected(
+        self,
+        draft_id: str,
+        reason: str,
+        tenant_id: str | None = None,
+    ) -> bool:
+        """
+        Compare-and-swap pending → rejected.
+
+        Same CAS contract as ``mark_replayed`` but for the rejection
+        terminal state. Returns ``True`` when this call transitioned
+        the row; ``False`` when the row was already moved by another
+        actor (replayed by a worker, rejected by another operator).
+
+        ``reason`` is operator-supplied free text — stored in
+        ``replay_result`` as ``{"rejected": true, "reason": ...}``.
+        Migration 006's pending/replayed CHECK constraints leave
+        rejected rows free-shape so we don't need a new column.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # In-memory (default)
@@ -121,6 +142,19 @@ class InMemoryDraftStore:
             return False
         d.status = "replayed"
         d.replay_result = result
+        d.replayed_at = time.time()
+        return True
+
+    async def mark_rejected(
+        self, draft_id: str, reason: str, tenant_id: str | None = None,
+    ) -> bool:
+        d = self._drafts.get(draft_id)
+        if d is None or (tenant_id is not None and d.tenant_id != tenant_id):
+            return False
+        if d.status != "pending":
+            return False
+        d.status = "rejected"
+        d.replay_result = {"rejected": True, "reason": reason}
         d.replayed_at = time.time()
         return True
 
@@ -267,6 +301,50 @@ class PostgresDraftStore:
                 )
                 return False
             log.info("action_draft_replayed draft_id=%s tenant=%s", draft_id, tenant_id)
+            return True
+
+    async def mark_rejected(
+        self,
+        draft_id: str,
+        reason: str,
+        tenant_id: str | None = None,
+    ) -> bool:
+        # Same CAS pattern as mark_replayed — terminal rejection
+        # transition. The rejection ``reason`` is stored in
+        # ``replay_result`` as a JSON object so a future column-typed
+        # migration can lift it without touching the application
+        # contract. Migration 006 deliberately allows arbitrary
+        # ``replay_result`` shape on rejected rows; the only invariant
+        # is "succeeded → response present, pending → response NULL",
+        # both unaffected.
+        async with self._conn_for(tenant_id) as conn:
+            tag = await conn.execute(
+                """
+                UPDATE governance.action_drafts
+                   SET status = 'rejected',
+                       replay_result = $2::jsonb,
+                       replayed_at = NOW()
+                 WHERE draft_id = $1
+                   AND status = 'pending'
+                """,
+                draft_id,
+                json.dumps({"rejected": True, "reason": reason}),
+            )
+            try:
+                affected = int(tag.rsplit(" ", 1)[-1])
+            except (ValueError, AttributeError):
+                affected = 0
+            if affected == 0:
+                log.warning(
+                    "action_draft_reject_lost_race draft_id=%s tenant=%s "
+                    "— row no longer pending; skipping side-effects",
+                    draft_id, tenant_id,
+                )
+                return False
+            log.info(
+                "action_draft_rejected draft_id=%s tenant=%s reason=%r",
+                draft_id, tenant_id, reason,
+            )
             return True
 
 
