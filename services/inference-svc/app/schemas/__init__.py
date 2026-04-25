@@ -176,3 +176,68 @@ class HealthDetailedResponse(BaseModel):
             "agent_service — each 'on' | 'off' | a backend name."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-tool stats — surfaces the MCP /metrics primitives (calls, latency,
+# scope denials) as a structured response so the operator dashboard can
+# render a "per-tool monitoring" panel without scraping Prometheus itself.
+# Closes Phase-1 #2 from docs/architecture/mcp-agent-gap-review.md.
+# ---------------------------------------------------------------------------
+class ToolLatencyStats(BaseModel):
+    """Histogram aggregate. None when no calls observed yet."""
+
+    count: int = 0
+    sum_seconds: float = 0.0
+    avg_seconds: float | None = Field(
+        default=None,
+        description=(
+            "sum / count, or None when count==0 — caller renders '—'. "
+            "p95 not exposed: deriving p95 from prom-client buckets is "
+            "lossy. Real p95 alerts go through Prometheus directly."
+        ),
+    )
+
+
+class ToolStats(BaseModel):
+    """Per-tool aggregate. One row per (namespace, tool) seen on the
+    MCP /metrics endpoint."""
+
+    namespace: str = Field(description="MCP namespace, e.g. 'mcp_hr'")
+    tool: str = Field(description="Tool name, e.g. 'hr.leave_request'")
+    calls: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "outcome → count. outcome ∈ {ok, error, replay, "
+            "in_progress, conflict, http_<status>, ...}"
+        ),
+    )
+    latency: ToolLatencyStats = Field(default_factory=ToolLatencyStats)
+    denials: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "reason → count. reason ∈ {NOT_AUTHENTICATED, INVALID_TOKEN, "
+            "INSUFFICIENT_SCOPE, UNKNOWN}."
+        ),
+    )
+
+
+class HealthToolsResponse(BaseModel):
+    """Per-tool aggregation of MCP /metrics across every registered
+    namespace. Returns 200 when at least one MCP server was reachable;
+    namespaces that failed scrape are listed in ``unreachable`` so the
+    UI can surface them as stale rather than missing."""
+
+    service: str = "inference-svc"
+    observed_at: str = Field(description="ISO 8601 timestamp at sample time")
+    tools: list[ToolStats] = Field(
+        default_factory=list,
+        description="One entry per (namespace, tool) seen across MCP /metrics",
+    )
+    unreachable: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Namespaces whose /metrics scrape failed — operator sees "
+            "'(stale)' rather than thinking the tools were never called."
+        ),
+    )

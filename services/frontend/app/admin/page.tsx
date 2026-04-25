@@ -25,7 +25,9 @@ import {
   api,
   ApiError,
   type HealthDetailedResponse,
+  type HealthToolsResponse,
   type BreakerState,
+  type ToolStats,
 } from '../../lib/api';
 
 const REFRESH_INTERVAL_MS = 5_000;
@@ -53,8 +55,54 @@ function breakerBadgeClass(state: BreakerState['state']): string {
   return 'badge badge-active';
 }
 
+function fmtMs(s: number | null): string {
+  if (s == null) return '—';
+  return `${(s * 1000).toFixed(1)} ms`;
+}
+
+function sumValues(rec: Record<string, number>): number {
+  return Object.values(rec).reduce((a, b) => a + b, 0);
+}
+
+/**
+ * Compact pill list "ok=3 error=1 replay=2" — keeps the table dense
+ * since each tool can have a half-dozen outcome / denial-reason
+ * variants and breaking each into its own column would explode width.
+ */
+function PillRecord({
+  rec,
+  emptyLabel = '—',
+}: {
+  rec: Record<string, number>;
+  emptyLabel?: string;
+}) {
+  const entries = Object.entries(rec).filter(([, v]) => v > 0);
+  if (entries.length === 0) return <span className="field-help">{emptyLabel}</span>;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {entries
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => (
+          <span
+            key={k}
+            style={{
+              fontSize: 12,
+              padding: '2px 6px',
+              borderRadius: 4,
+              backgroundColor: '#f3f4f6',
+              fontFamily: 'monospace',
+            }}
+          >
+            {k}={v}
+          </span>
+        ))}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [data, setData] = useState<HealthDetailedResponse | null>(null);
+  const [tools, setTools] = useState<HealthToolsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // ``lastFetchAt`` is local clock — used to show how stale the panel
@@ -71,9 +119,16 @@ export default function AdminPage() {
       const ctl = new AbortController();
       abortRef.current = ctl;
       try {
-        const resp = await api.healthDetailed(ctl.signal);
+        // Fetch detailed health and per-tool stats in parallel — the
+        // dashboard renders both at the same cadence, and serializing
+        // them would double the perceived stale window.
+        const [resp, toolsResp] = await Promise.all([
+          api.healthDetailed(ctl.signal),
+          api.healthTools(ctl.signal),
+        ]);
         if (cancelled) return;
         setData(resp);
+        setTools(toolsResp);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -212,6 +267,86 @@ export default function AdminPage() {
                       {b.recovery_timeout_s != null
                         ? `${b.recovery_timeout_s}s`
                         : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Per-tool monitoring — aggregate of MCP /metrics. */}
+      <div className="card">
+        <div className="card-header" style={{ marginBottom: 12 }}>
+          <strong>Per-tool monitoring</strong>
+          <div className="field-help">
+            Aggregate of <code>/metrics</code> across registered MCP
+            servers, keyed by (namespace, tool). Latency is the
+            histogram count + average; <em>p95 stays in Prometheus</em>
+            (deriving it from buckets is lossy). Denials list
+            auth/scope rejection counts by reason — alert on a sudden
+            spike in any reason for a given tool.
+          </div>
+        </div>
+        {tools && tools.unreachable.length > 0 && (
+          <div
+            className="field-help"
+            style={{ marginBottom: 12, color: '#991b1b' }}
+            role="status"
+          >
+            Unreachable namespaces (showing stale data or none):{' '}
+            {tools.unreachable.map((n) => (
+              <code key={n} style={{ marginRight: 8 }}>
+                {n}
+              </code>
+            ))}
+          </div>
+        )}
+        {loading && !tools ? (
+          <div className="list-empty">
+            <span className="spinner" /> Loading…
+          </div>
+        ) : tools && tools.tools.length === 0 ? (
+          <div className="list-empty">
+            No MCP tool calls observed yet. Make a call to populate this
+            panel.
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Namespace</th>
+                  <th>Tool</th>
+                  <th>Calls (by outcome)</th>
+                  <th>Latency</th>
+                  <th>Denials (by reason)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tools?.tools.map((t: ToolStats) => (
+                  <tr key={`${t.namespace}::${t.tool}`}>
+                    <td>
+                      <code>{t.namespace}</code>
+                    </td>
+                    <td>
+                      <code>{t.tool}</code>
+                    </td>
+                    <td>
+                      <PillRecord rec={t.calls} emptyLabel="no calls" />
+                      <div className="field-help" style={{ marginTop: 4 }}>
+                        total={sumValues(t.calls)}
+                      </div>
+                    </td>
+                    <td>
+                      <div>avg {fmtMs(t.latency.avg_seconds)}</div>
+                      <div className="field-help">
+                        n={t.latency.count}
+                      </div>
+                    </td>
+                    <td>
+                      <PillRecord rec={t.denials} emptyLabel="0" />
                     </td>
                   </tr>
                 ))}

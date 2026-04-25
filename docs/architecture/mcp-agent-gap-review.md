@@ -191,19 +191,22 @@ If reduced to the most important gaps:
 
 - operator dashboard ✓ shipped (`services/frontend/app/admin/page.tsx`,
   commit `96f5d4b`)
-- per-tool monitoring views — **primitives shipped**:
+- per-tool monitoring views ✓ shipped — three primitives + a
+  surfacing endpoint + a UI panel:
   - `documind_mcp_tool_calls_total{namespace,tool,outcome}` (existing)
   - `documind_mcp_tool_call_duration_seconds{namespace,tool}` —
-    histogram, this commit
+    histogram around dispatch, commit `598ca9a`
   - `documind_mcp_scope_denials_total{namespace,tool,reason}` —
-    counter (reason ∈ {NOT_AUTHENTICATED, INVALID_TOKEN,
-    INSUFFICIENT_SCOPE, UNKNOWN}), this commit
-  - drill: `mcp/tests/drill_mcp_per_tool_telemetry.py`
-
-  Still missing (next iteration): admin-dashboard panel that
-  surfaces these per-tool views as a UI; an aggregation endpoint
-  that bundles `{calls, latency_p95, denials, last_outcome}` per
-  registered tool so the panel can render with one fetch.
+    counter, commit `598ca9a`
+  - `GET /api/v1/health/tools` — aggregation endpoint that scrapes
+    every registered MCP `/metrics` and returns a typed
+    `{tools: [{namespace, tool, calls, latency, denials}], unreachable: []}`
+  - admin dashboard panel — `services/frontend/app/admin/page.tsx`
+    renders the per-tool table at the same 5s cadence as breakers
+  - drills:
+    - `mcp/tests/drill_mcp_per_tool_telemetry.py` (primitives)
+    - `mcp/tests/drill_inference_health_tools.py` (aggregation +
+      surfacing endpoint, with per-tool isolation negative)
 
 - draft and replay backlog visibility ✓ shipped
   (`documind_draft_pending_age_seconds`, `documind_draft_replay_total`,

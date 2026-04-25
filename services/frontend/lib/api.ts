@@ -145,6 +145,30 @@ export interface HealthDetailedResponse {
   readiness: Record<string, string>;
 }
 
+export interface ToolLatencyStats {
+  count: number;
+  sum_seconds: number;
+  avg_seconds: number | null;
+}
+
+export interface ToolStats {
+  namespace: string;
+  tool: string;
+  // outcome → count: ok | error | replay | http_<status> | in_progress | conflict
+  calls: Record<string, number>;
+  latency: ToolLatencyStats;
+  // reason → count: NOT_AUTHENTICATED | INVALID_TOKEN | INSUFFICIENT_SCOPE | UNKNOWN
+  denials: Record<string, number>;
+}
+
+export interface HealthToolsResponse {
+  service: string;
+  observed_at: string;
+  tools: ToolStats[];
+  // namespaces whose /metrics scrape failed; UI shows them as "(stale)"
+  unreachable: string[];
+}
+
 export const api = {
   /**
    * Operator-facing detailed health. Powers the admin dashboard:
@@ -155,6 +179,18 @@ export const api = {
    */
   healthDetailed: (signal?: AbortSignal) =>
     request<HealthDetailedResponse>('/api/v1/health/detailed', {
+      timeout: 5_000,
+      signal,
+    }),
+
+  /**
+   * Per-tool aggregate of MCP /metrics across every registered MCP
+   * server. Powers the per-tool monitoring panel in the admin
+   * dashboard — calls by outcome, latency aggregate, denials by
+   * reason, all keyed by (namespace, tool).
+   */
+  healthTools: (signal?: AbortSignal) =>
+    request<HealthToolsResponse>('/api/v1/health/tools', {
       timeout: 5_000,
       signal,
     }),

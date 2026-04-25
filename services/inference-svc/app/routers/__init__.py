@@ -18,6 +18,9 @@ from app.schemas import (
     DraftResolveResponse,
     DraftSummary,
     HealthDetailedResponse,
+    HealthToolsResponse,
+    ToolLatencyStats,
+    ToolStats,
 )
 from app.services import RagInferenceService
 from app.services.agent import AgentService
@@ -97,6 +100,142 @@ async def health_detailed(request: Request) -> HealthDetailedResponse:
         observed_at=datetime.now(UTC).isoformat(),
         breakers=breakers,
         readiness=readiness,
+    )
+
+
+@router.get(
+    "/api/v1/health/tools",
+    response_model=HealthToolsResponse,
+    tags=["health"],
+    summary="Per-tool aggregate of MCP /metrics — calls, latency, denials",
+)
+async def health_tools(request: Request) -> HealthToolsResponse:
+    """
+    Aggregate per-tool stats by scraping every registered MCP server's
+    /metrics endpoint. Operators read this to see, per (namespace,
+    tool):
+      * calls by outcome (ok / error / replay / http_<status>)
+      * latency aggregate (count, sum, avg) — p95 stays in Prometheus
+      * scope denials by reason (NOT_AUTHENTICATED, INVALID_TOKEN,
+        INSUFFICIENT_SCOPE, UNKNOWN)
+
+    The endpoint is best-effort: each namespace is scraped with a
+    short timeout, and a failed scrape lands in ``unreachable`` so
+    the UI shows '(stale)' rather than '(no data)'.
+
+    Closes Phase-1 #2 of mcp-agent-gap-review.md ("per-tool
+    monitoring views"). The metrics primitives shipped in commit
+    598ca9a; this endpoint surfaces them.
+    """
+    from datetime import UTC, datetime
+    import httpx
+    from prometheus_client.parser import text_string_to_metric_families
+
+    state = request.app.state
+    mcp_clients = getattr(state, "mcp_clients", None) or {}
+
+    tools_by_key: dict[tuple[str, str], ToolStats] = {}
+    unreachable: list[str] = []
+
+    # Short timeout — this endpoint is poll-driven from the dashboard
+    # at ~5s cadence. A slow MCP shouldn't block the operator UI.
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        for namespace, mcp in sorted(mcp_clients.items()):
+            ns_key = f"mcp_{namespace}"
+            try:
+                # MCPClient stores its base URL on ``_base`` (already
+                # rstrip-cleaned). Touch the private attr deliberately —
+                # it's a stable contract within this monorepo and the
+                # alternative (a public getter just for this scrape) is
+                # over-engineering for one consumer.
+                base = getattr(mcp, "_base", "") or ""
+                if not base:
+                    unreachable.append(ns_key)
+                    continue
+                r = await client.get(f"{base}/metrics")
+                if r.status_code != 200:
+                    unreachable.append(ns_key)
+                    continue
+                body = r.text
+            except (httpx.RequestError, httpx.TimeoutException):
+                unreachable.append(ns_key)
+                continue
+
+            # Parse with prometheus_client's tolerant parser — handles
+            # HELP/TYPE/buckets/sum/count without us reimplementing
+            # exposition format. We only care about three families.
+            try:
+                families = list(text_string_to_metric_families(body))
+            except (ValueError, OSError):
+                # Malformed exposition — log via unreachable rather
+                # than crashing the dashboard with a 500.
+                unreachable.append(ns_key)
+                continue
+
+            for fam in families:
+                if fam.name == "documind_mcp_tool_calls":
+                    for s in fam.samples:
+                        labels = s.labels or {}
+                        ns = labels.get("namespace", "")
+                        tool = labels.get("tool", "")
+                        outcome = labels.get("outcome", "")
+                        if not ns or not tool or not outcome:
+                            continue
+                        ts = tools_by_key.setdefault(
+                            (ns, tool),
+                            ToolStats(namespace=ns, tool=tool),
+                        )
+                        ts.calls[outcome] = int(s.value)
+                elif fam.name == "documind_mcp_tool_call_duration_seconds":
+                    # _count and _sum samples drive the aggregate.
+                    # Bucket samples (one per `le`) carry no extra
+                    # info beyond the histogram count surface, and
+                    # we don't expose p95 (deriving it from buckets
+                    # is lossy — Prometheus does it correctly).
+                    for s in fam.samples:
+                        labels = s.labels or {}
+                        ns = labels.get("namespace", "")
+                        tool = labels.get("tool", "")
+                        if not ns or not tool:
+                            continue
+                        ts = tools_by_key.setdefault(
+                            (ns, tool),
+                            ToolStats(namespace=ns, tool=tool),
+                        )
+                        if s.name.endswith("_count"):
+                            ts.latency.count = int(s.value)
+                        elif s.name.endswith("_sum"):
+                            ts.latency.sum_seconds = float(s.value)
+                elif fam.name == "documind_mcp_scope_denials":
+                    for s in fam.samples:
+                        labels = s.labels or {}
+                        ns = labels.get("namespace", "")
+                        tool = labels.get("tool", "")
+                        reason = labels.get("reason", "")
+                        if not ns or not tool or not reason:
+                            continue
+                        ts = tools_by_key.setdefault(
+                            (ns, tool),
+                            ToolStats(namespace=ns, tool=tool),
+                        )
+                        ts.denials[reason] = int(s.value)
+
+    # Compute avg_seconds now that count + sum are populated. Done
+    # post-loop so partial samples (sum without count, etc.) don't
+    # produce divide-by-zero or nonsensical averages.
+    tools = []
+    for (_ns, _tool), ts in sorted(tools_by_key.items()):
+        if ts.latency.count > 0:
+            ts.latency.avg_seconds = round(
+                ts.latency.sum_seconds / ts.latency.count, 6,
+            )
+        tools.append(ts)
+
+    return HealthToolsResponse(
+        service="inference-svc",
+        observed_at=datetime.now(UTC).isoformat(),
+        tools=tools,
+        unreachable=sorted(unreachable),
     )
 
 
