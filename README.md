@@ -29,7 +29,7 @@ DocuMind answers all of these — 67 design areas in total, each implemented as 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    React + Vite Frontend (port 3000)                │
+│             Next.js 14 Frontend + Admin UI (port 3000)              │
 └───────────────────────────┬─────────────────────────────────────────┘
                             │ HTTPS + JWT
 ┌───────────────────────────▼─────────────────────────────────────────┐
@@ -81,7 +81,7 @@ make run-identity         # terminal 2 — Go
 make run-ingestion        # terminal 3 — Python
 make run-retrieval        # terminal 4 — Python
 make run-inference        # terminal 5 — Python
-make run-frontend         # terminal 6 — React
+make run-frontend         # terminal 6 — Next.js
 
 # 6. Open http://localhost:3000
 #    login:   demo@tenant-a.local / demo
@@ -175,6 +175,205 @@ make chaos             # inject faults (kill Ollama, slow Qdrant) — verify res
 ```
 
 **Pre-commit:** install hooks with `pre-commit install`. Prevents secrets, enforces formatting, runs mypy on staged files.
+
+---
+
+## Testing and verification
+
+DocuMind should be verified as a distributed system, not just as a set of libraries.
+That means testing needs to cover:
+
+- code quality gates
+- unit and integration tests
+- frontend behavior
+- API and routing errors
+- degraded and replay flows
+- resilience and chaos behavior
+- evaluation and regression safety
+
+### CI surfaces already wired
+
+The repo already runs several useful checks in CI:
+
+- Python linting and hygiene: `ruff`, `black --check`, `pycodestyle`
+- Python security checks: `bandit`, `pip-audit`
+- Python tests: `pytest` on the shared library
+- Go verification: `go vet`, `go build`, `go test -race`
+- frontend build verification
+- Docker image builds
+- Kubernetes and YAML validation
+
+See:
+
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+
+### Local test commands
+
+```bash
+# repo-level quality gates
+make lint
+make test
+
+# shared Python library tests
+pytest -q libs/py/tests --cov=libs/py/documind_core --cov-report=term-missing
+
+# frontend
+cd services/frontend
+npm run test
+npm run build
+```
+
+### Current service test surfaces
+
+The repo already includes service-level Python test directories:
+
+- `services/ingestion-svc/tests`
+- `services/retrieval-svc/tests`
+- `services/inference-svc/tests`
+- `services/evaluation-svc/tests`
+
+Go services are exercised through `go test -race ./...` in CI.
+
+### What to test beyond the happy path
+
+The highest-value tests in this repo are not only “returns 200”.
+You should explicitly exercise:
+
+- invalid payloads and stable error envelopes
+- gateway and routing mistakes
+- frontend failed-request UX
+- breaker-open behavior
+- MCP degraded draft creation
+- replay after recovery
+- scope-denied tool calls
+- audit truthfulness
+- retrieval and prompt regressions
+
+Useful deeper docs:
+
+- [`docs/learning/testing-and-error-debugging-map.md`](docs/learning/testing-and-error-debugging-map.md)
+- [`docs/scenarios/deep-testing-checklist.md`](docs/scenarios/deep-testing-checklist.md)
+- [`docs/architecture/repo-deep-test-plan.md`](docs/architecture/repo-deep-test-plan.md)
+
+---
+
+## Performance, load, and capacity testing
+
+Correctness alone is not enough for a system like this.
+Performance trust means being able to explain and measure:
+
+- latency
+- throughput
+- degraded-mode behavior under load
+- replay backlog and recovery
+- retrieval cost and performance trade-offs
+- capacity per service and dependency
+
+### What to measure
+
+At minimum, benchmark:
+
+- request latency: p50, p95, p99
+- request throughput
+- error rate
+- timeout rate
+- breaker-open rate
+- MCP degraded draft rate
+- replay success rate and replay lag
+- retrieval latency
+- token and model cost per request
+- queue or backlog age
+
+### Useful load-testing targets
+
+Good load tests for this repo include:
+
+- API gateway request bursts
+- retrieval-svc search concurrency
+- inference-svc answer latency under concurrent load
+- MCP tool-call success vs degraded behavior during outages
+- replay-worker backlog drain after recovery
+- frontend critical-page behavior when APIs are slow or failing
+
+### Capacity planning guidance
+
+Capacity should be treated as a first-class design area.
+Important planning axes include:
+
+- API requests per second
+- retrieval QPS
+- inference concurrency
+- embedding throughput
+- vector and graph storage growth
+- Redis cache size and hit ratio
+- draft backlog size and replay throughput
+
+Useful supporting docs:
+
+- [`docs/scenarios/phase-23-capacity.md`](docs/scenarios/phase-23-capacity.md)
+- [`docs/architecture/ai-platform-execution-planning.md`](docs/architecture/ai-platform-execution-planning.md)
+- [`docs/architecture/production-trust-quality-and-readiness.md`](docs/architecture/production-trust-quality-and-readiness.md)
+
+### Current state
+
+The repo includes capacity and observability design, but it does **not** yet claim a fully productized load-testing suite.
+
+If you want stronger production confidence, add:
+
+- repeatable `k6` or `Locust` scripts under `scripts/load/`
+- benchmark baselines for major request paths
+- per-service SLO targets
+- dashboards for latency, backlog, breaker state, and replay health
+
+---
+
+## Monitoring and production-readiness signals
+
+DocuMind is designed to be observable.
+To judge whether it is ready for production-like use, monitor:
+
+- request rate, latency, and error rate
+- breaker state and transitions
+- MCP tool outcomes by namespace and tool
+- draft creation, replay, and rejection counts
+- audit write failures
+- denial rates
+- retrieval quality and evaluation trends
+- cost and token usage
+
+Useful supporting docs:
+
+- [`docs/architecture/ai-system-quality-observability-and-control-layer.md`](docs/architecture/ai-system-quality-observability-and-control-layer.md)
+- [`docs/architecture/ai-quality-tool-decision-matrix.md`](docs/architecture/ai-quality-tool-decision-matrix.md)
+- [`docs/architecture/mcp-agent-architecture-and-monitoring.md`](docs/architecture/mcp-agent-architecture-and-monitoring.md)
+- [`docs/architecture/production-trust-quality-and-readiness.md`](docs/architecture/production-trust-quality-and-readiness.md)
+
+---
+
+## README honesty: what this repo is and is not
+
+DocuMind is strong as:
+
+- a reference implementation
+- a systems-design learning repo
+- a serious architecture portfolio project
+- a base for real internal builds
+
+DocuMind is **not** yet presented as:
+
+- a turnkey SaaS product
+- a fully benchmarked production deployment
+- a finished operator platform with every dashboard and runbook completed
+
+That distinction matters.
+The repo is best read as:
+
+- implemented production concerns
+- plus documented next-step hardening
+
+instead of:
+
+- “everything is already finished”
 
 ---
 
