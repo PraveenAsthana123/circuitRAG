@@ -58,13 +58,97 @@ a:hover { text-decoration: underline; }
   z-index: var(--z-topbar);
 }
 .topbar .brand { letter-spacing: 0.02em; }
+/*
+  Brand consolidation — topbar brand renders ONLY when the sidebar
+  is hidden (mobile). On desktop the sidebar carries the brand;
+  rendering it in both places is the exact duplication the UI
+  review flagged. Toggled in the @media (max-width: 900px) block
+  below.
+*/
+.topbar .brand-mobile-only { display: none; }
 .topbar .spacer { flex: 1; }
+.topbar-link {
+  color: inherit;
+  opacity: 0.85;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+.topbar-link:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+  text-decoration: none;
+}
 .topbar .tenant-pill {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-normal);
   background: rgba(255, 255, 255, 0.1);
   padding: var(--space-1) var(--space-3);
   border-radius: 999px;
+}
+
+.mobile-nav {
+  display: none;
+}
+.mobile-nav-toggle {
+  list-style: none;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.1);
+}
+.mobile-nav-toggle::-webkit-details-marker {
+  display: none;
+}
+.mobile-nav[open] .mobile-nav-toggle {
+  background: rgba(255, 255, 255, 0.16);
+}
+/*
+  Drawer + backdrop. Without the backdrop the previous version had
+  no visual separation between the open drawer and underlying
+  content, so taps near the edge would seem to fall through. The
+  backdrop fixes that AND gives a click-outside-to-close affordance
+  via the native <details> behavior.
+*/
+.mobile-nav-backdrop {
+  display: none;
+}
+.mobile-nav[open] .mobile-nav-backdrop {
+  display: block;
+  position: fixed;
+  top: var(--topbar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: calc(var(--z-topbar) - 1);
+  /* Visible click target so tapping outside closes the drawer. */
+  cursor: pointer;
+}
+.mobile-nav-toggle-text {
+  margin-left: var(--space-2);
+}
+.mobile-nav-panel {
+  position: fixed;
+  top: var(--topbar-height);
+  left: 0;
+  width: min(280px, 80vw);
+  bottom: 0;
+  background: var(--bg-sidebar);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4) 0;
+  z-index: var(--z-topbar);
+  overflow-y: auto;
+  /* Slide-in animation makes the open/close transition feel intentional. */
+  animation: drawer-slide-in 180ms ease-out;
+}
+@keyframes drawer-slide-in {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
 }
 
 .sidebar {
@@ -115,6 +199,160 @@ a:hover { text-decoration: underline; }
 .content-inner {
   max-width: var(--content-max-width);
   margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+.page-header-copy {
+  max-width: 760px;
+}
+.page-subtitle {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.page-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.field-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+.field-help {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+.form-row {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.form-row .field-group {
+  min-width: 160px;
+  flex: 0 1 auto;
+}
+.form-spacer {
+  flex: 1;
+}
+
+.metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.metric-card {
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+.metric-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+.metric-value {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.surface-muted {
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.result-meta {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+.answer-body {
+  margin-top: var(--space-4);
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+.split-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.toolbar-group {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.status-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--bg-card);
+}
+.status-card-title {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-1);
+}
+.status-card-value {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.table-wrap {
+  overflow-x: auto;
 }
 
 /* Components ---------------------------------------------------------- */
@@ -241,4 +479,64 @@ a:hover { text-decoration: underline; }
 .table td {
   padding: var(--space-2);
   border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--topbar-height) 1fr;
+    grid-template-areas:
+      'topbar'
+      'content';
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .mobile-nav {
+    display: block;
+    position: relative;
+  }
+
+  .topbar {
+    padding: 0 var(--space-4);
+  }
+
+  /* Sidebar is hidden on mobile — bring the brand to the topbar. */
+  .topbar .brand-mobile-only {
+    display: inline;
+  }
+
+  .content {
+    padding: var(--space-5);
+  }
+}
+
+@media (max-width: 720px) {
+  .content {
+    padding: var(--space-4);
+  }
+
+  .topbar .tenant-pill,
+  .topbar-link {
+    display: none;
+  }
+
+  .page-header,
+  .result-header,
+  .toolbar,
+  .toolbar-group,
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .section-title {
+    margin-bottom: var(--space-3);
+  }
 }
