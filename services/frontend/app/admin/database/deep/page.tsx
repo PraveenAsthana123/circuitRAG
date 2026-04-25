@@ -29,12 +29,12 @@ const DATASTORES: Topic[] = [
     oneLiner: 'Postgres for ACID truth + RLS for tenant isolation as a database invariant, not an application convention.',
     businessContext: 'We need to design a multi-tenant SaaS data layer where one tenant cannot read or write another tenant\'s data — even if the application code has a bug. Compliance and trust require isolation as a structural invariant, not an application convention.',
     networkFlow: `flowchart LR
-  C[Client] --> AGW[api-gateway<br/>JWT + tenant_id header]
-  AGW -->|HTTPS<br/>X-Tenant-ID| GS[governance-svc]
-  AGW -->|HTTPS<br/>X-Tenant-ID| RS[retrieval-svc]
-  GS -->|asyncpg pool<br/>role=documind_app| PG[(Postgres<br/>RLS forced)]
-  RS -->|asyncpg pool<br/>role=documind_app| PG
-  GS -->|asyncpg pool<br/>role=documind_ops<br/>+ audit row| PG
+  C[Client] --> AGW["api-gateway — JWT + tenant_id header"]
+  AGW -->|HTTPS X-Tenant-ID| GS[governance-svc]
+  AGW -->|HTTPS X-Tenant-ID| RS[retrieval-svc]
+  GS -->|asyncpg pool app role| PG[("Postgres — RLS forced")]
+  RS -->|asyncpg pool app role| PG
+  GS -->|asyncpg pool ops role + audit| PG
   PG -.->|WAL stream| REP[(read replica)]
   PG -.->|WAL archive| S3[(S3 PITR)]`,
     coreLayers: [
@@ -74,7 +74,7 @@ const DATASTORES: Topic[] = [
     SDK[SDK / API caller]
   end
   subgraph gw[Gateway]
-    APIGW[api-gateway<br/>JWT + tenant_id]
+    APIGW["api-gateway — JWT + tenant_id"]
   end
   subgraph svcs[Services]
     INF[inference-svc]
@@ -83,10 +83,10 @@ const DATASTORES: Topic[] = [
     AUD[audit writer]
   end
   subgraph pg[Postgres cluster]
-    OWN[(documind owner role<br/>migrations only)]
-    APP[(documind_app role<br/>NOBYPASSRLS<br/>runtime)]
-    OPS[(documind_ops role<br/>BYPASSRLS<br/>audited admin)]
-    DB[(Postgres 16<br/>schema-per-service<br/>FORCE ROW LEVEL SECURITY)]
+    OWN[("documind owner role — migrations only")]
+    APP[("documind_app — NOBYPASSRLS runtime")]
+    OPS[("documind_ops — BYPASSRLS audited admin")]
+    DB[("Postgres 16 — schema-per-service + FORCE RLS")]
   end
   UI --> APIGW
   SDK --> APIGW
@@ -113,17 +113,17 @@ const DATASTORES: Topic[] = [
   end
   subgraph pg[Postgres]
     SES[Session: app.current_tenant]
-    POL[RLS policy:<br/>USING tenant_id = current_setting]
+    POL["RLS policy USING tenant_id = current_setting"]
     TBL[(audit_log table)]
   end
   M -->|extract tenant_id from JWT| R
   R -->|acquire conn| P1
-  R -->|BEGIN; SET LOCAL app.current_tenant = $1| SES
+  R -->|BEGIN + SET LOCAL app.current_tenant| SES
   SES --> POL
   R -->|SELECT/INSERT| POL
   POL -->|filter by tenant_id| TBL
   TBL -->|rows OR empty| R
-  R -->|COMMIT; release conn| P1`,
+  R -->|COMMIT + release conn| P1`,
     problem: 'You need ACID guarantees, tenant isolation, queryable domain state, and an audit-grade access path. Mocking it isn\'t enough — RLS bugs only surface against a real cluster.',
     whyThisApproach: 'Postgres is the right choice when correctness matters more than throughput, multi-tenancy is required, and the data is relational. RLS provides tenant isolation as a database invariant, not just an application convention.',
     whenToUse: [
@@ -166,7 +166,7 @@ const DATASTORES: Topic[] = [
   participant Aud as audit_log
   Cli->>Svc: request + X-Tenant-ID + JWT
   Svc->>Mid: extract tenant + actor
-  Mid->>PG: BEGIN; SET LOCAL app.current_tenant=...
+  Mid->>PG: BEGIN then SET LOCAL app.current_tenant
   Svc->>PG: SELECT/INSERT
   PG->>PG: RLS policy applies
   PG-->>Svc: rows or error
@@ -622,11 +622,11 @@ class AuditRepo:
   U->>Svc: GET /docs/{id}
   Svc->>R: GET tenant:T:doc:id
   R-->>Svc: nil
-  Svc->>DB: SELECT * FROM docs WHERE id=...
+  Svc->>DB: SELECT * FROM docs WHERE id matches
   DB-->>Svc: row
   Svc->>R: SETEX tenant:T:doc:id 300 row
   Svc-->>U: doc
-  Note over Svc,R: Next request hits cache; saves a DB round-trip`,
+  Note over Svc,R: Next request hits cache and saves a DB round-trip`,
     alternatives: [
       { name: 'In-memory dict', tradeoff: 'Process-local; lost on restart; not shared across replicas' },
       { name: 'Memcached', tradeoff: 'Simpler; no data structures; no persistence' },
@@ -746,7 +746,7 @@ class AuditRepo:
   participant K as Kafka
   participant Con as Consumer
   participant Side as Side effect target
-  Svc->>DB: BEGIN; INSERT row + INSERT outbox; COMMIT
+  Svc->>DB: BEGIN then INSERT row plus INSERT outbox then COMMIT
   Out->>DB: poll outbox
   Out->>K: publish event
   Out->>DB: mark outbox sent

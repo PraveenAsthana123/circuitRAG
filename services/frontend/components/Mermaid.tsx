@@ -104,20 +104,36 @@ export default function Mermaid({ chart }: { chart: string }) {
 
   useEffect(() => {
     mounted.current = true;
+    const renderId = `m_${domId}`;
+    const cleanupScratch = () => {
+      try {
+        const scratch = document.getElementById(`d${renderId}`);
+        if (scratch && scratch.parentElement === document.body) {
+          scratch.remove();
+        }
+      } catch {
+        /* ignore */
+      }
+    };
     ensureMermaid()
       .then(async () => {
         if (!window.mermaid) throw new Error('mermaid-not-available');
-        const out = await window.mermaid.render(`m_${domId}`, chart);
+        const out = await window.mermaid.render(renderId, chart);
         if (mounted.current && hostRef.current) {
+          // mermaid output is computed via mermaid v11 strict SVG — sanitized
+          // by the library itself; safe to attach.
           hostRef.current.innerHTML = out.svg;
           setReady(true);
         }
+        cleanupScratch();
       })
       .catch(() => {
+        cleanupScratch();
         if (mounted.current) setFailed(true);
       });
     return () => {
       mounted.current = false;
+      cleanupScratch();
     };
   }, [chart, domId]);
 
