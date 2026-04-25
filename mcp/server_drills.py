@@ -33,6 +33,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -58,7 +59,15 @@ mount_metrics_endpoint(app)
 
 REPO = Path(__file__).resolve().parent.parent
 DRILL_DIR = REPO / "mcp" / "tests"
-PY_BIN = os.getenv("PYTHON_BIN", "/tmp/documind-venv/bin/python")
+# Interpreter resolution order:
+#   1. PYTHON_BIN env var — explicit override for ops who pin a specific venv.
+#   2. sys.executable — the interpreter THIS server runs under.
+# The previous default of ``/tmp/documind-venv/bin/python`` was a host-
+# specific path that didn't exist on most boxes. Falling back to
+# sys.executable means a properly-installed deployment "just works"
+# without anyone having to discover the env var. CI sets PYTHON_BIN
+# explicitly when it wants determinism (e.g. comparing two venvs).
+PY_BIN = os.getenv("PYTHON_BIN") or sys.executable
 DEFAULT_TIMEOUT_S = int(os.getenv("MCP_DRILL_TIMEOUT_S", "180"))
 RESOURCE_TAG_RE = re.compile(r"^#\s*RESOURCES\s*:\s*(.+)$", re.MULTILINE)
 RESULT_RE = re.compile(r"ALL\s+(\d+)\s+.*STEPS\s+PASSED")

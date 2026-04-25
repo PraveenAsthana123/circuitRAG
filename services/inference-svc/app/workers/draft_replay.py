@@ -72,6 +72,7 @@ class DraftReplayWorker:
         interval_s: int = 20,
         per_draft_backoff_s: int = 60,
         skip_when_cb_open: bool = True,
+        service_auth_token: str | None = None,
     ) -> None:
         # mcp_clients (preferred) is a namespace→client dict so the
         # worker can route each draft to the server that owns its
@@ -93,6 +94,13 @@ class DraftReplayWorker:
         # cycle with both hr (closed) and itsm (open) would sleep the
         # whole cycle instead of making progress on hr drafts.
         self._skip_when_cb_open = skip_when_cb_open
+        # Service-account JWT to forward to MCP. The autonomous worker
+        # has no human caller to inherit a token from, so a deployment
+        # with MCP_AUTH_REQUIRED=true MUST inject one (env var picked up
+        # in the lifespan). Without it every replay 401s and the audit
+        # log fills with NOT_AUTHENTICATED while drafts pile up — a
+        # silent operational failure mode that the previous version had.
+        self._service_auth_token = service_auth_token
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         self._last_attempt: dict[str, float] = {}
@@ -209,6 +217,8 @@ class DraftReplayWorker:
                 try:
                     result = await client.resolve_draft(
                         draft.draft_id, tenant_id=tenant,
+                        actor_type="worker",  # governance-visible; not "service"
+                        auth_token=self._service_auth_token,
                     )
                 except Exception as exc:  # noqa: BLE001
                     self.stats["errors"] += 1

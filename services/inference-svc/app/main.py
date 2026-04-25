@@ -186,6 +186,12 @@ def create_app() -> FastAPI:
                     tenant_ids=tenants,
                     interval_s=int(os.getenv("DOCUMIND_REPLAY_WORKER_INTERVAL_S", "20")),
                     per_draft_backoff_s=int(os.getenv("DOCUMIND_REPLAY_WORKER_BACKOFF_S", "60")),
+                    # Required when MCP_AUTH_REQUIRED=true — without this
+                    # the worker 401s on every replay and pending drafts
+                    # accumulate forever. Production deployments should
+                    # bind this to a service-account JWT with the union
+                    # of every tool's required scope.
+                    service_auth_token=os.getenv("DOCUMIND_REPLAY_WORKER_TOKEN") or None,
                 )
                 await worker.start()
                 app.state.draft_replay_worker = worker

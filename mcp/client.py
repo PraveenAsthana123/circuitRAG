@@ -349,6 +349,8 @@ class MCPClient:
         tenant_id: str | None = None,
         idempotency_key: str | None = None,
         auth_token: str | None = None,
+        actor_type: str = "service",
+        actor_id: str | None = None,
     ) -> ToolResult:
         """
         Replay a previously-persisted draft once the MCP server is back.
@@ -360,6 +362,11 @@ class MCPClient:
         returned; the original draft stays ``pending``.
 
         ``tenant_id`` is required for RLS-enforced backends (Postgres).
+        ``actor_type`` + ``actor_id`` propagate into the audit row so
+        governance reviews can distinguish a human operator replay
+        (actor_type="operator", actor_id=<user UUID>) from an
+        autonomous worker (actor_type="worker", actor_id=None) from
+        generic service calls (actor_type="service").
         """
         record = await self._drafts.get(draft_id, tenant_id)
         if record is None:
@@ -378,11 +385,20 @@ class MCPClient:
             auth_token=auth_token,
         )
         if result.ok and result.data is not None:
-            await self._drafts.mark_replayed(draft_id, result.data, record.tenant_id)
-            if self._audit is not None and record.tenant_id:
+            # CAS — only one replayer wins. If we lost the race (another
+            # operator/worker already transitioned this draft), skip the
+            # duplicate audit row + leave the result envelope ok=True
+            # because the side-effect (ticket created) is real, just not
+            # owned by us.
+            transitioned = await self._drafts.mark_replayed(
+                draft_id, result.data, record.tenant_id,
+            )
+            if transitioned and self._audit is not None and record.tenant_id:
                 await self._audit.write(
                     tenant_id=record.tenant_id,
                     action="mcp_draft.replayed",
+                    actor_type=actor_type,
+                    actor_id=actor_id,
                     resource_type="mcp_draft",
                     details={
                         "draft_id": draft_id,

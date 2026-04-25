@@ -294,8 +294,28 @@ async def resolve_draft(
         )
 
     auth_token = getattr(request.state, "raw_token", "") or None
+    # Identity-driven actor_type — NEVER infer "operator" from route shape.
+    # The mapping (governance contract):
+    #   verified human JWT (auth_user_id present)  -> "operator"
+    #   no verified token (dev / auth_required=False) -> "system"
+    # A future federated worker hitting this admin route with a service
+    # token would still hit "system" here unless its sub maps to a
+    # known worker — which is correct: the worker path is the loop in
+    # draft_replay.py, not this handler. "Came through admin API" is
+    # not the same as "performed by a human operator."
+    auth_user = getattr(request.state, "auth_user_id", "") or None
+    if auth_user:
+        actor_type = "operator"
+        actor_id = auth_user
+    else:
+        actor_type = "system"
+        actor_id = None
     result = await target.resolve_draft(
-        draft_id, tenant_id=tenant_id, auth_token=auth_token,
+        draft_id,
+        tenant_id=tenant_id,
+        auth_token=auth_token,
+        actor_type=actor_type,
+        actor_id=actor_id,
     )
     # Error envelope from DraftStore: DRAFT_NOT_FOUND | DRAFT_NOT_PENDING
     if not result.ok and result.error and result.error.get("code") == "DRAFT_NOT_FOUND":

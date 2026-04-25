@@ -63,7 +63,17 @@ class DraftStore(Protocol):
     ) -> list[DraftRecord]: ...
     async def mark_replayed(
         self, draft_id: str, result: dict[str, Any], tenant_id: str | None = None
-    ) -> None: ...
+    ) -> bool:
+        """
+        Compare-and-swap pending → replayed.
+
+        MUST only succeed when the row is currently ``pending``. Returns
+        ``True`` if the row was transitioned by THIS call, ``False`` if
+        another actor already moved it (replayed/rejected/deleted). The
+        caller decides what to do with the loser — typically log + skip
+        any duplicate side-effects (audit row, replay-side-effect).
+        """
+        ...
 
 
 # ---------------------------------------------------------------------------
@@ -100,13 +110,19 @@ class InMemoryDraftStore:
 
     async def mark_replayed(
         self, draft_id: str, result: dict[str, Any], tenant_id: str | None = None
-    ) -> None:
+    ) -> bool:
         d = self._drafts.get(draft_id)
         if d is None or (tenant_id is not None and d.tenant_id != tenant_id):
-            return
+            return False
+        # CAS — only transition from pending. If another caller already
+        # moved this draft (replayed/rejected), report False so the
+        # caller skips duplicate side-effects.
+        if d.status != "pending":
+            return False
         d.status = "replayed"
         d.replay_result = result
         d.replayed_at = time.time()
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -213,20 +229,45 @@ class PostgresDraftStore:
 
     async def mark_replayed(
         self, draft_id: str, result: dict[str, Any], tenant_id: str | None = None
-    ) -> None:
+    ) -> bool:
+        # Compare-and-swap: only transition pending → replayed. The
+        # WHERE-status='pending' guard prevents:
+        #   * Two replayers racing — second UPDATE matches 0 rows.
+        #   * Replaying a previously rejected draft.
+        #   * Reverting a replayed draft back to replayed.
+        # Without it, the previous code would overwrite ``replay_result``
+        # on every call and log success forever — and the audit log
+        # would carry duplicate ``mcp_draft.replayed`` rows for the same
+        # draft. asyncpg returns the command tag from execute(); the
+        # tag for a row-affecting UPDATE is "UPDATE <count>".
         async with self._conn_for(tenant_id) as conn:
-            await conn.execute(
+            tag = await conn.execute(
                 """
                 UPDATE governance.action_drafts
                    SET status = 'replayed',
                        replay_result = $2::jsonb,
                        replayed_at = NOW()
                  WHERE draft_id = $1
+                   AND status = 'pending'
                 """,
                 draft_id,
                 json.dumps(result),
             )
+            # Tag is "UPDATE 1" on success, "UPDATE 0" if no row matched.
+            # Parse defensively — a future asyncpg bump could shift format.
+            try:
+                affected = int(tag.rsplit(" ", 1)[-1])
+            except (ValueError, AttributeError):
+                affected = 0
+            if affected == 0:
+                log.warning(
+                    "action_draft_replay_lost_race draft_id=%s tenant=%s "
+                    "— row no longer pending; skipping side-effects",
+                    draft_id, tenant_id,
+                )
+                return False
             log.info("action_draft_replayed draft_id=%s tenant=%s", draft_id, tenant_id)
+            return True
 
 
 # ---------------------------------------------------------------------------

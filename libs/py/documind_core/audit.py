@@ -48,6 +48,38 @@ from typing import Any, Protocol
 
 log = logging.getLogger(__name__)
 
+# Prometheus counter — audit writes that *failed*. Without this, the
+# fail-open path (see ``AuditWriter.write``) is invisible: rows just
+# disappear and reviewers never know. Loud-but-non-blocking is the
+# right posture for governance — never break the business path, but
+# never drop a row without a graphable signal either.
+try:
+    from prometheus_client import Counter as _PCounter
+
+    _audit_write_failures = _PCounter(
+        "documind_audit_write_failures_total",
+        "Audit-row writes that failed and were dropped — by action and error class.",
+        labelnames=["action", "error_type"],
+    )
+except ImportError:  # pragma: no cover — prometheus_client is optional
+    _audit_write_failures = None
+
+
+def _classify_error(exc: BaseException) -> str:
+    """
+    Stable, low-cardinality label for the failure class. We deliberately
+    do NOT include the asyncpg-encoded SQLSTATE in the label text —
+    Prometheus would explode if every malformed actor_id produced its
+    own series. ``InvalidTextRepresentation`` is by far the common case
+    and gets its own bucket; everything else collapses into the
+    exception class name.
+    """
+    name = type(exc).__name__
+    # asyncpg.exceptions.InvalidTextRepresentationError -> 'InvalidTextRepresentationError'
+    if name.endswith("Error"):
+        return name[:-5] or name  # strip trailing 'Error' for terser label
+    return name
+
 
 def _canonical_json(payload: dict[str, Any]) -> str:
     """Stable, sorted JSON so hashes are reproducible across runs."""
@@ -155,12 +187,17 @@ class AuditWriter:
                     details=details,
                 )
                 await conn.execute(
+                    # actor_id is TEXT (migration 005). NEVER cast to UUID
+                    # here — federated subjects, emails, and service-account
+                    # names are all valid actor_ids, and a cast would silently
+                    # raise + drop the audit row. Migration 005 has the full
+                    # rationale.
                     """
                     INSERT INTO governance.audit_log
                         (timestamp, tenant_id, actor_id, actor_type,
                          action, resource_type, resource_id, details,
                          correlation_id, previous_hash, entry_hash)
-                    VALUES ($1, $2::uuid, $3::uuid, $4,
+                    VALUES ($1, $2::uuid, $3, $4,
                             $5, $6, $7::uuid, $8::jsonb,
                             $9::uuid, $10, $11)
                     """,
@@ -180,10 +217,31 @@ class AuditWriter:
                 "audit_written tenant=%s action=%s resource=%s corr=%s",
                 tenant_id, action, resource_type, correlation_id,
             )
-        except Exception as exc:  # noqa: BLE001 — audit must never block the business path
+        except Exception as exc:  # noqa: BLE001 — audit fails open per design (§audit-fail-open)
+            # Fail-open: governance must never break the business path.
+            # But "fail-open" is NOT "fail-silent" — every dropped row
+            # increments a graphable counter and emits a structured log
+            # with full attribution context so an operator can reconstruct
+            # what was lost. If you ever see this counter climb, the chain
+            # is incomplete and someone has to backfill.
+            error_type = _classify_error(exc)
+            if _audit_write_failures is not None:
+                _audit_write_failures.labels(
+                    action=action, error_type=error_type,
+                ).inc()
             log.error(
-                "audit_write_failed action=%s tenant=%s err=%s — row dropped",
-                action, tenant_id, exc,
+                "audit_write_failed action=%s tenant_id=%s actor_type=%s "
+                "actor_id=%r resource_type=%s resource_id=%s "
+                "correlation_id=%s error_type=%s err=%s — row dropped (fail-open)",
+                action,
+                tenant_id,
+                actor_type,
+                actor_id,
+                resource_type,
+                resource_id,
+                correlation_id,
+                error_type,
+                exc,
             )
 
 
