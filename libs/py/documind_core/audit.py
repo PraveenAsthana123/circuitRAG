@@ -124,6 +124,7 @@ class AuditLog(Protocol):
         resource_id: str | None = None,
         details: dict[str, Any] | None = None,
         correlation_id: str | None = None,
+        fail_closed: bool = False,
     ) -> None: ...
 
 
@@ -152,7 +153,30 @@ class AuditWriter:
         resource_id: str | None = None,
         details: dict[str, Any] | None = None,
         correlation_id: str | None = None,
+        fail_closed: bool = False,
     ) -> None:
+        """
+        Record an audit row.
+
+        ``fail_closed``: when True, an audit-write failure RAISES
+        ``DataError`` instead of silently swallowing. Default False
+        keeps the existing fail-open posture (governance must never
+        break the business path) — this is the right default for
+        retries, draft creation, scope denials, and other cases
+        where dropping a row + emitting a metric is the right
+        trade-off. Callers that need a hard guarantee (operator-driven
+        admin actions, regulatory writes) opt in per call:
+
+            await audit.write(..., fail_closed=True)
+
+        Per-call control is deliberately the only knob — we don't
+        ship a policy table or per-action enum because that's
+        design-then-fix, not fix.
+
+        Both modes increment ``documind_audit_write_failures_total``
+        and emit a structured error log on failure. The only
+        difference is whether the exception escapes the writer.
+        """
         details = dict(details or {})
         details.setdefault("service", self._service)
         try:
@@ -217,22 +241,19 @@ class AuditWriter:
                 "audit_written tenant=%s action=%s resource=%s corr=%s",
                 tenant_id, action, resource_type, correlation_id,
             )
-        except Exception as exc:  # noqa: BLE001 — audit fails open per design (§audit-fail-open)
-            # Fail-open: governance must never break the business path.
-            # But "fail-open" is NOT "fail-silent" — every dropped row
-            # increments a graphable counter and emits a structured log
-            # with full attribution context so an operator can reconstruct
-            # what was lost. If you ever see this counter climb, the chain
-            # is incomplete and someone has to backfill.
+        except Exception as exc:  # noqa: BLE001 — controlled re-raise on fail_closed
+            # Counter + structured log are the same in both modes —
+            # the difference is only whether we then raise or swallow.
             error_type = _classify_error(exc)
             if _audit_write_failures is not None:
                 _audit_write_failures.labels(
                     action=action, error_type=error_type,
                 ).inc()
+            posture = "fail_closed" if fail_closed else "fail_open"
             log.error(
                 "audit_write_failed action=%s tenant_id=%s actor_type=%s "
                 "actor_id=%r resource_type=%s resource_id=%s "
-                "correlation_id=%s error_type=%s err=%s — row dropped (fail-open)",
+                "correlation_id=%s error_type=%s err=%s posture=%s",
                 action,
                 tenant_id,
                 actor_type,
@@ -242,7 +263,25 @@ class AuditWriter:
                 correlation_id,
                 error_type,
                 exc,
+                posture,
             )
+            if fail_closed:
+                # Caller asked for a hard guarantee. Wrap as DataError
+                # (5xx) so the FastAPI error handler maps it to a
+                # consistent envelope and the original exception is
+                # preserved in __cause__.
+                from .exceptions import DataError
+
+                raise DataError(
+                    f"audit write failed (fail_closed) action={action!r} "
+                    f"error_type={error_type}",
+                    details={
+                        "action": action,
+                        "error_type": error_type,
+                        "tenant_id": tenant_id,
+                        "correlation_id": correlation_id,
+                    },
+                ) from exc
 
 
 __all__ = ["AuditLog", "AuditWriter", "_compute_entry_hash", "_canonical_json"]

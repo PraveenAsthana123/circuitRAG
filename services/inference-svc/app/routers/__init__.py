@@ -316,12 +316,20 @@ async def resolve_draft(
     else:
         actor_type = "system"
         actor_id = None
+    # Operator-driven replays are governance-critical. fail_closed=True
+    # guarantees that if audit is unreachable, the replay surfaces a
+    # 5xx instead of silently succeeding — an operator clicking
+    # "Replay" deserves a visible error if the action wouldn't be
+    # recorded. The autonomous worker path keeps fail_closed=False
+    # so transient audit hiccups don't wedge background retries.
+    audit_fail_closed = (actor_type == "operator")
     result = await target.resolve_draft(
         draft_id,
         tenant_id=tenant_id,
         auth_token=auth_token,
         actor_type=actor_type,
         actor_id=actor_id,
+        audit_fail_closed=audit_fail_closed,
     )
     # Error envelope from DraftStore: DRAFT_NOT_FOUND | DRAFT_NOT_PENDING
     if not result.ok and result.error and result.error.get("code") == "DRAFT_NOT_FOUND":

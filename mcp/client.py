@@ -332,6 +332,7 @@ class MCPClient:
         auth_token: str | None = None,
         actor_type: str = "service",
         actor_id: str | None = None,
+        audit_fail_closed: bool = False,
     ) -> ToolResult:
         """
         Replay a previously-persisted draft once the MCP server is back.
@@ -375,6 +376,12 @@ class MCPClient:
                 draft_id, result.data, record.tenant_id,
             )
             if transitioned and self._audit is not None and record.tenant_id:
+                # ``audit_fail_closed`` is OPT-IN per call — operator-driven
+                # admin replays pass True (a missing audit row on a human
+                # action is a governance gap that ops must see immediately).
+                # Worker + service replays keep the default False (fail-open
+                # so a transient audit-DB hiccup can't wedge the autonomous
+                # retry loop).
                 await self._audit.write(
                     tenant_id=record.tenant_id,
                     action="mcp_draft.replayed",
@@ -388,6 +395,7 @@ class MCPClient:
                         "idempotent_replay": result.idempotent_replay,
                     },
                     correlation_id=record.correlation_id,
+                    fail_closed=audit_fail_closed,
                 )
         return result
 
