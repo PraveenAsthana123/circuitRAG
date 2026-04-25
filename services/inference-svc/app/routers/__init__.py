@@ -383,6 +383,15 @@ async def health_upstreams(request: Request) -> HealthUpstreamsResponse:
     # governance DB: a connection check, not an HTTP probe.
     db_client = getattr(state, "db_client", None)
 
+    # Kafka broker(s): TCP-level reachability probe. The settings/env
+    # carry a comma-separated bootstrap list; we probe the FIRST entry
+    # (the broker exposes the cluster via metadata once you connect to
+    # any node, so first-bootstrap reachability is a fair proxy).
+    kafka_bootstrap = (
+        getattr(settings, "kafka_bootstrap_servers", None)
+        or os.getenv("DOCUMIND_KAFKA_BOOTSTRAP_SERVERS", "")
+    )
+
     async def _probe_http(
         client: httpx.AsyncClient,
         name: str, kind: str, base_url: str, path: str,
@@ -429,6 +438,75 @@ async def health_upstreams(request: Request) -> HealthUpstreamsResponse:
                 error=type(exc).__name__,
             )
 
+    async def _probe_kafka() -> UpstreamHealthRow:
+        # TCP-level broker reachability — open a connection to the
+        # first bootstrap host:port, close immediately. Doesn't
+        # exchange the Kafka protocol (which would require aiokafka
+        # producer/consumer setup); for a 5s dashboard refresh this
+        # would be too heavy and would create + tear down clients
+        # constantly. TCP-reachable + nothing-listening-on-port is
+        # the strongest signal we get cheaply, and it's what the
+        # operator actually needs to know first.
+        url = kafka_bootstrap or "(unset)"
+        if not kafka_bootstrap:
+            return UpstreamHealthRow(
+                name="kafka", kind="kafka", url=url,
+                reachable=False,
+                error="bootstrap_unset",
+            )
+        # Take the first bootstrap entry; brokers exchange cluster
+        # metadata once we connect to any node.
+        first = kafka_bootstrap.split(",")[0].strip()
+        if ":" not in first:
+            return UpstreamHealthRow(
+                name="kafka", kind="kafka", url=url,
+                reachable=False,
+                error="bad_bootstrap_format",
+            )
+        host, port_s = first.rsplit(":", 1)
+        try:
+            port = int(port_s)
+        except ValueError:
+            return UpstreamHealthRow(
+                name="kafka", kind="kafka", url=url,
+                reachable=False,
+                error="bad_bootstrap_port",
+            )
+        started = time.perf_counter()
+        try:
+            # 2s timeout same as the HTTP probes — a slow Kafka
+            # mustn't drag the dashboard.
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port),
+                timeout=2.0,
+            )
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except (ConnectionError, OSError):
+                pass
+            latency_ms = round((time.perf_counter() - started) * 1000, 2)
+            return UpstreamHealthRow(
+                name="kafka", kind="kafka", url=url,
+                reachable=True,
+                latency_ms=latency_ms,
+                status="tcp_open",
+            )
+        except asyncio.TimeoutError:
+            return UpstreamHealthRow(
+                name="kafka", kind="kafka", url=url,
+                reachable=False,
+                latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                error="timeout",
+            )
+        except (ConnectionRefusedError, OSError) as exc:
+            return UpstreamHealthRow(
+                name="kafka", kind="kafka", url=url,
+                reachable=False,
+                latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                error=type(exc).__name__,
+            )
+
     async def _probe_db() -> UpstreamHealthRow:
         # ``db_client.pool.fetchval('SELECT 1')`` is the canonical
         # liveness probe for asyncpg — exercises pool acquire +
@@ -470,11 +548,11 @@ async def health_upstreams(request: Request) -> HealthUpstreamsResponse:
             for (name, kind, url, path) in specs
         ]
         results: list[UpstreamHealthRow] = list(
-            await asyncio.gather(*http_tasks, _probe_db()),
+            await asyncio.gather(*http_tasks, _probe_db(), _probe_kafka()),
         )
 
-    # Stable sort: kind (db, http_service, llm, mcp), then name —
-    # operators visually expect related rows together.
+    # Stable sort: kind (db, http_service, kafka, llm, mcp), then
+    # name — operators visually expect related rows together.
     results.sort(key=lambda r: (r.kind, r.name))
 
     return HealthUpstreamsResponse(

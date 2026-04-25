@@ -374,8 +374,8 @@ class UpstreamHealthRow(BaseModel):
     )
     kind: str = Field(
         description=(
-            "Dependency kind — 'http_service', 'mcp', 'llm', 'db'. "
-            "Operators alert on different kinds differently."
+            "Dependency kind — 'http_service', 'mcp', 'llm', 'db', "
+            "'kafka'. Operators alert on different kinds differently."
         ),
     )
     url: str = Field(

@@ -63,7 +63,7 @@ def step(title: str) -> None:
     print(f"\n{BOLD}── {title} ──{NC}")
 
 
-VALID_KINDS = {"db", "http_service", "llm", "mcp"}
+VALID_KINDS = {"db", "http_service", "kafka", "llm", "mcp"}
 
 
 async def main() -> None:
@@ -83,8 +83,10 @@ async def main() -> None:
             fail(f"upstreams must be non-empty list, got {upstreams!r}")
         names = {u["name"] for u in upstreams}
         # The known-wired set on the dev stack. retrieval-svc + ollama +
-        # mcp_hr + governance-db are minimum; mcp_itsm is optional.
-        required_names = {"retrieval-svc", "ollama", "mcp_hr", "governance-db"}
+        # mcp_hr + governance-db + kafka are minimum; mcp_itsm is optional.
+        required_names = {
+            "retrieval-svc", "ollama", "mcp_hr", "governance-db", "kafka",
+        }
         missing = required_names - names
         if missing:
             fail(
@@ -92,6 +94,28 @@ async def main() -> None:
                 f"specs are wrong or an upstream isn't running."
             )
         ok(f"observed {len(upstreams)} upstreams: {sorted(names)}")
+
+        step("1b. kafka probe — TCP-open status, real latency")
+        kafka_rows = [u for u in upstreams if u["kind"] == "kafka"]
+        if len(kafka_rows) != 1:
+            fail(f"expected exactly 1 kafka row, got {len(kafka_rows)}")
+        k = kafka_rows[0]
+        if not k["reachable"]:
+            fail(
+                f"kafka not reachable: {k}. Bootstrap host:port "
+                f"{k['url']!r} should be TCP-reachable on the dev stack."
+            )
+        if k["status"] != "tcp_open":
+            fail(
+                f"kafka status should be literal 'tcp_open' (proves a "
+                f"real socket connect happened), got {k['status']!r}. "
+                f"A regression that hardcoded reachable=true would fail "
+                f"this — the literal status string is the load-bearing "
+                f"signal."
+            )
+        if k["latency_ms"] is None or k["latency_ms"] < 0:
+            fail(f"kafka latency_ms missing or negative: {k['latency_ms']!r}")
+        ok(f"kafka {k['url']} TCP-open, latency={k['latency_ms']:.1f}ms")
 
         step("2. parallel-probe latency bound — total < 2.5s")
         # Each probe has a 2s timeout. If they're serialised, 5
@@ -157,7 +181,7 @@ async def main() -> None:
         ok(f"order locked: {[n for _, n in order]}")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
-    print(f"{BOLD}{GREEN}  ALL 6 UPSTREAM-HEALTH STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  ALL 7 UPSTREAM-HEALTH STEPS PASSED{NC}")
     print(f"{BOLD}{GREEN}════════════════════════════════════════{NC}")
 
 

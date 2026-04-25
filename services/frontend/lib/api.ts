@@ -222,7 +222,7 @@ export interface TraceLinkResponse {
 
 export interface UpstreamHealthRow {
   name: string;
-  kind: string; // 'http_service' | 'mcp' | 'llm' | 'db'
+  kind: string; // 'http_service' | 'mcp' | 'llm' | 'db' | 'kafka'
   url: string;
   reachable: boolean;
   latency_ms: number | null;
