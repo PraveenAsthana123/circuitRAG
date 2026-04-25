@@ -59,13 +59,20 @@ def step(title: str) -> None:
 
 # Master-template section markers (the §N. labels rendered by
 # UniversalDeepDive when the matching field is present).
+# Updated 2026-04-25 — user revised template:
+#   §1 = Problem/Context (NEW position, was implicit)
+#   §4 = HLD diagram (was unnumbered)
+#   §5 = Network Flow (NEW)
+#   §6 = Sequence Flow (was §7; merges flowchart + sequence)
+#   §7 = Core Components / Layers (NEW)
 REQUIRED_MASTER_SECTIONS = [
+    "§1.",   # Problem / Context
     "§2.",   # 5W
-    "§3.",   # Interview explanation (30-60s)
-    "§4.",   # Core building blocks
-    "§5.",   # Architecture relevance
-    "§6.",   # Flowchart
-    "§7.",   # Sequence flow
+    "§3.",   # Interview answer (30-60s)
+    "§4.",   # HLD
+    "§5.",   # Network Flow
+    "§6.",   # Sequence Flow (flowchart + sequence merged)
+    "§7.",   # Core Components / Layers
     "§8.",   # Implementation steps
     "§9.",   # Code example
     "§10.",  # Real use case
@@ -95,7 +102,7 @@ FIVE_W_LABELS = ["What", "Why", "Where", "When", "Who"]
 
 # HLD + LLD source sniffs (verify the mermaid mounts contain the
 # expected diagram content, not just the section headers).
-HLD_SNIFFS = ["High-level design", "owner role", "FORCE ROW LEVEL SECURITY"]
+HLD_SNIFFS = ["High-Level Architecture", "owner role", "FORCE ROW LEVEL SECURITY"]
 LLD_SNIFFS = ["Low-level design", "asyncpg pool", "app.current_tenant"]
 
 
@@ -108,10 +115,10 @@ async def main() -> None:
         body = r.text
         ok(f"200 + {len(body)} bytes")
 
-        step("2. master-template section markers present (≥ 26 of the §N. set)")
+        step("2. master-template section markers present (≥ 27 of the §N. set)")
         present = [s for s in REQUIRED_MASTER_SECTIONS if s in body]
         missing = [s for s in REQUIRED_MASTER_SECTIONS if s not in body]
-        threshold = 26  # of 28 expected; tolerance for sections that
+        threshold = 27  # of 29 expected; tolerance for sections that
                         # may render conditionally on optional data.
         if len(present) < threshold:
             fail(
@@ -151,7 +158,44 @@ async def main() -> None:
             )
         ok(f"§36 long-form final-script content present")
 
-        step("5. 5W table contains all five row labels")
+        step("5b. §5 Network Flow + §7 Core Layers SSR content present")
+        # Note: Mermaid is a client-only component, so HLD/LLD/networkFlow
+        # diagram sources do NOT appear in the SSR HTML. We can only
+        # assert their <header> label + Mermaid mount wrapper. Server-
+        # rendered text (tables, lists) IS present and IS sniffable.
+
+        # §5 Network Flow: section header + a Mermaid mount wrapper
+        # immediately following ⇒ the diagram is wired.
+        idx5 = body.find("Network Flow")
+        if idx5 < 0:
+            fail("§5 Network Flow header missing")
+        # Look ahead 2KB for an md-mermaid-wrap mount.
+        if "md-mermaid-wrap" not in body[idx5:idx5 + 2000]:
+            fail(
+                "§5 header present but no md-mermaid-wrap mount within "
+                "2KB downstream. The networkFlow Mermaid component was "
+                "removed."
+            )
+
+        # §7 Core Layers table: at least 5 of the 7 layer labels.
+        # These ARE server-rendered (plain HTML <td>) so they sniff cleanly.
+        layer_labels = [
+            "Connection layer", "Role layer", "Schema layer",
+            "RLS policy layer", "Repository layer", "Migration layer",
+            "Audit layer",
+        ]
+        present_layers = [l for l in layer_labels if l in body]
+        if len(present_layers) < 5:
+            fail(
+                f"§7 Core Layers: only {len(present_layers)}/{len(layer_labels)} "
+                f"layer labels present. Expected ≥ 5. Missing: "
+                f"{[l for l in layer_labels if l not in body]}. "
+                f"The coreLayers[] field was dropped from postgres-rls."
+            )
+        ok(f"§5 wired + §7 has {len(present_layers)}/"
+           f"{len(layer_labels)} layer labels")
+
+        step("6. 5W table contains all five row labels")
         # Each label appears in many places; require a dense neighbourhood
         # near the §2. header. Cheap heuristic: locate §2. then check
         # the next 4000 chars contain all five labels.

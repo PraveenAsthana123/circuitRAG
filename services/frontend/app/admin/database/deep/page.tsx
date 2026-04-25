@@ -27,6 +27,25 @@ const DATASTORES: Topic[] = [
     status: 'shipped',
     coreConcept: 'Postgres is the system of record for transactional, relational, and auditable domain data. RLS forces tenant isolation at the database layer — defense in depth even when app-layer checks slip.',
     oneLiner: 'Postgres for ACID truth + RLS for tenant isolation as a database invariant, not an application convention.',
+    businessContext: 'We need to design a multi-tenant SaaS data layer where one tenant cannot read or write another tenant\'s data — even if the application code has a bug. Compliance and trust require isolation as a structural invariant, not an application convention.',
+    networkFlow: `flowchart LR
+  C[Client] --> AGW[api-gateway<br/>JWT + tenant_id header]
+  AGW -->|HTTPS<br/>X-Tenant-ID| GS[governance-svc]
+  AGW -->|HTTPS<br/>X-Tenant-ID| RS[retrieval-svc]
+  GS -->|asyncpg pool<br/>role=documind_app| PG[(Postgres<br/>RLS forced)]
+  RS -->|asyncpg pool<br/>role=documind_app| PG
+  GS -->|asyncpg pool<br/>role=documind_ops<br/>+ audit row| PG
+  PG -.->|WAL stream| REP[(read replica)]
+  PG -.->|WAL archive| S3[(S3 PITR)]`,
+    coreLayers: [
+      { layer: 'Connection layer', responsibility: 'asyncpg pool per service; tenant_connection() context manager; opens BEGIN + SET LOCAL app.current_tenant.' },
+      { layer: 'Role layer', responsibility: 'Three Postgres roles: documind (owner, migrations only), documind_app (NOBYPASSRLS, runtime), documind_ops (BYPASSRLS, audited admin).' },
+      { layer: 'Schema layer', responsibility: 'Schema-per-service (governance / ingestion / retrieval / observability / etc); cross-service reads go through APIs, not SQL JOINs.' },
+      { layer: 'RLS policy layer', responsibility: 'Every multi-tenant table: ENABLE + FORCE ROW LEVEL SECURITY with policy USING (tenant_id = current_setting(\'app.current_tenant\')::uuid).' },
+      { layer: 'Repository layer', responsibility: 'Python class wrapping all SQL; exposes tenant-scoped methods only; no module-level globals; constructor injection.' },
+      { layer: 'Migration layer', responsibility: 'Forward-only numbered SQL files; runs as owner role; CI runs against fresh DB; never edit deployed migrations.' },
+      { layer: 'Audit layer', responsibility: 'governance.audit_log with hash-chained prev_hash/curr_hash per tenant; every BYPASSRLS op writes an audit row.' },
+    ],
     fiveW: {
       what: 'A relational database with row-level security policies that filter rows based on a per-session variable (app.current_tenant). Queries silently return only rows the tenant is allowed to see.',
       why: 'Application-layer tenant filtering is one missed JOIN away from a cross-tenant leak. RLS turns isolation into a database invariant — even a buggy query cannot break it.',

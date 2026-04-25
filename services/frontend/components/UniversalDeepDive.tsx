@@ -58,15 +58,16 @@
 import Mermaid from './Mermaid';
 
 export interface Topic {
-  // ---- 1. Topic definition ------------------------------------
+  // ---- §1. Problem / Context (START HERE) ---------------------
   slug: string;
   title: string;
   status?: 'shipped' | 'partial' | 'open';
   level?: { label: string; tone: string };
   coreConcept: string;
   oneLiner?: string;
+  businessContext?: string;  // "We need to design/implement..."
 
-  // ---- 2. 5W ---------------------------------------------------
+  // ---- §2. 5W -------------------------------------------------
   fiveW?: {
     what: string;
     why: string;
@@ -75,27 +76,32 @@ export interface Topic {
     who: string;
   };
 
-  // ---- 3. Interview explanation (30-60s) ---------------------
+  // ---- §3. Interview answer (30-60s) -------------------------
   interview30s?: string;
 
-  // ---- 4. Core concepts / building blocks --------------------
+  // ---- §4. High-Level Architecture (HLD) ---------------------
+  hld?: string;
+
+  // ---- §5. Network Flow (system boundaries + communication) --
+  networkFlow?: string;
+
+  // ---- §6. Sequence Flow + execution flowchart ---------------
+  flowchart?: string;
+  sequence?: string;
+
+  // ---- §7. Core Components / Layers (+ LLD diagram) ----------
+  coreLayers?: { layer: string; responsibility: string }[];
+  lld?: string;
+  // Legacy: kept rendered as supplementary list inside §7.
   coreBuildingBlocks?: string[];
 
-  // ---- 5. Architecture relevance -----------------------------
+  // ---- Architecture relevance (kept, unnumbered legacy block) -
   architectureRelevance?: {
     backend: string;
     rag: string;
     ai: string;
     microservices: string;
   };
-
-  // ---- 6 & 7. Flowchart + sequence (existing) ----------------
-  flowchart?: string;
-  sequence?: string;
-
-  // ---- HLD + LLD diagrams (new) ------------------------------
-  hld?: string;
-  lld?: string;
 
   // ---- Existing problem/why/IPO blocks -----------------------
   // (Renders inside section 1 / 8 alongside new fields.)
@@ -234,7 +240,7 @@ function H({ n, t }: { n: number | string; t: string }) {
 export default function UniversalDeepDive({ t }: { t: Topic }) {
   return (
     <article id={t.slug} className="card" style={{ marginBottom: 32 }}>
-      {/* ====== §1. Topic definition ====== */}
+      {/* ====== §1. Problem / Context (START HERE) ====== */}
       <header style={{ marginBottom: 12 }}>
         <h2 className="section-title" style={{ marginBottom: 6 }}>
           {t.title}{' '}
@@ -248,12 +254,35 @@ export default function UniversalDeepDive({ t }: { t: Topic }) {
             </span>
           )}
         </h2>
+        <H n={1} t="Problem / Context" />
         <p style={{ fontStyle: 'italic', color: '#000000' }}>{t.coreConcept}</p>
         {t.oneLiner && (
           <p style={{ color: '#000000', marginTop: 4 }}>
             <strong>One-liner:</strong> {t.oneLiner}
           </p>
         )}
+        {t.businessContext && (
+          <p style={{ color: '#000000', marginTop: 4 }}>
+            <strong>Business context:</strong> {t.businessContext}
+          </p>
+        )}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 12,
+            marginTop: 12,
+          }}
+        >
+          <div className="card" style={{ padding: 12, backgroundColor: '#f9fafb' }}>
+            <strong>Problem it solves</strong>
+            <p style={{ marginTop: 4 }}>{t.problem}</p>
+          </div>
+          <div className="card" style={{ padding: 12, backgroundColor: '#f9fafb' }}>
+            <strong>Why this approach</strong>
+            <p style={{ marginTop: 4 }}>{t.whyThisApproach}</p>
+          </div>
+        </div>
       </header>
 
       {/* ====== §2. 5W ====== */}
@@ -278,30 +307,94 @@ export default function UniversalDeepDive({ t }: { t: Topic }) {
         </div>
       )}
 
-      {/* ====== §3. Interview explanation (30-60s) ====== */}
+      {/* ====== §3. Interview answer (30-60s) ====== */}
       {t.interview30s && (
         <div style={{ marginBottom: 12 }}>
-          <H n={3} t="Interview explanation (30-60 sec)" />
+          <H n={3} t="Interview answer (30-60 sec)" />
           <div className="card" style={{ padding: 12, backgroundColor: '#dbeafe' }}>
             <p style={{ margin: 0 }}>{t.interview30s}</p>
           </div>
         </div>
       )}
 
-      {/* ====== §4. Core concepts / building blocks ====== */}
-      {t.coreBuildingBlocks && t.coreBuildingBlocks.length > 0 && (
+      {/* ====== §4. High-Level Architecture (HLD) ====== */}
+      {t.hld && (
         <div style={{ marginBottom: 12 }}>
-          <H n={4} t="Core concepts / building blocks" />
-          <ul style={{ paddingLeft: 18 }}>
-            {t.coreBuildingBlocks.map((c, i) => <li key={i}>{c}</li>)}
-          </ul>
+          <H n={4} t="High-Level Architecture (HLD)" />
+          <Mermaid chart={t.hld} />
         </div>
       )}
 
-      {/* ====== §5. Architecture relevance ====== */}
+      {/* ====== §5. Network Flow (system view: boundaries + comms) ====== */}
+      {t.networkFlow && (
+        <div style={{ marginBottom: 12 }}>
+          <H n={5} t="Network Flow (system view)" />
+          <Mermaid chart={t.networkFlow} />
+        </div>
+      )}
+
+      {/* ====== §6. Sequence Flow (runtime view) — flowchart + sequence ====== */}
+      {(t.flowchart || t.sequence) && (
+        <div style={{ marginBottom: 12 }}>
+          <H n={6} t="Sequence Flow (runtime view)" />
+          {t.flowchart && (
+            <div style={{ marginBottom: 12 }}>
+              <strong>Execution flow</strong>
+              <Mermaid chart={t.flowchart} />
+            </div>
+          )}
+          {t.sequence && (
+            <div>
+              <strong>Sequence diagram</strong>
+              <Mermaid chart={t.sequence} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ====== §7. Core Components / Layers (+ LLD diagram) ====== */}
+      {(t.coreLayers || t.lld || t.coreBuildingBlocks) && (
+        <div style={{ marginBottom: 12 }}>
+          <H n={7} t="Core Components / Layers" />
+          {t.coreLayers && t.coreLayers.length > 0 && (
+            <table className="table" style={{ marginTop: 6 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 200 }}>Layer</th>
+                  <th>Responsibility</th>
+                </tr>
+              </thead>
+              <tbody>
+                {t.coreLayers.map((l, i) => (
+                  <tr key={i}>
+                    <td><strong>{l.layer}</strong></td>
+                    <td>{l.responsibility}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {t.coreBuildingBlocks && t.coreBuildingBlocks.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <strong>Building blocks</strong>
+              <ul style={{ paddingLeft: 18 }}>
+                {t.coreBuildingBlocks.map((c, i) => <li key={i}>{c}</li>)}
+              </ul>
+            </div>
+          )}
+          {t.lld && (
+            <div style={{ marginTop: 8 }}>
+              <strong>Low-level design (LLD) diagram</strong>
+              <Mermaid chart={t.lld} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Architecture relevance (kept as backwards-compat unnumbered block) */}
       {t.architectureRelevance && (
         <div style={{ marginBottom: 12 }}>
-          <H n={5} t="Architecture relevance" />
+          <strong>Architecture relevance</strong>
           <table className="table" style={{ marginTop: 6 }}>
             <thead>
               <tr><th style={{ width: 160 }}>Layer</th><th>Usage</th></tr>
@@ -313,57 +406,6 @@ export default function UniversalDeepDive({ t }: { t: Topic }) {
               <tr><td><strong>Microservices</strong></td><td>{t.architectureRelevance.microservices}</td></tr>
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* Problem + Why (legacy block, kept) */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 12,
-          marginBottom: 12,
-        }}
-      >
-        <div className="card" style={{ padding: 12, backgroundColor: '#f9fafb' }}>
-          <strong>Problem it solves</strong>
-          <p style={{ marginTop: 4 }}>{t.problem}</p>
-        </div>
-        <div className="card" style={{ padding: 12, backgroundColor: '#f9fafb' }}>
-          <strong>Why this approach</strong>
-          <p style={{ marginTop: 4 }}>{t.whyThisApproach}</p>
-        </div>
-      </div>
-
-      {/* ====== HLD diagram ====== */}
-      {t.hld && (
-        <div style={{ marginBottom: 12 }}>
-          <H n="HLD" t="High-level design (system view)" />
-          <Mermaid chart={t.hld} />
-        </div>
-      )}
-
-      {/* ====== §6. Flowchart ====== */}
-      {t.flowchart && (
-        <div style={{ marginBottom: 12 }}>
-          <H n={6} t="Flowchart (execution flow)" />
-          <Mermaid chart={t.flowchart} />
-        </div>
-      )}
-
-      {/* ====== §7. Sequence flow ====== */}
-      {t.sequence && (
-        <div style={{ marginBottom: 12 }}>
-          <H n={7} t="Sequence flow (runtime execution)" />
-          <Mermaid chart={t.sequence} />
-        </div>
-      )}
-
-      {/* ====== LLD diagram ====== */}
-      {t.lld && (
-        <div style={{ marginBottom: 12 }}>
-          <H n="LLD" t="Low-level design (component view)" />
-          <Mermaid chart={t.lld} />
         </div>
       )}
 
