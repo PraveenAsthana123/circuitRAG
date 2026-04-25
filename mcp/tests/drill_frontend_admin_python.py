@@ -65,6 +65,22 @@ REQUIRED_FLOWCHART_LABELS = [
     "Async fan-out flow for a RAG request",
     "asyncio coroutine lifecycle",
 ]
+# Per-topic deep-link anchors that MUST appear (the topics that have
+# deep-dive entries on /admin/python/deep). Locked by drill so a
+# regression that drops the per-topic enrichment goes red.
+REQUIRED_DEEP_ANCHORS = [
+    "/admin/python/deep#exceptions",
+    "/admin/python/deep#decorators",
+    "/admin/python/deep#context-managers",
+    "/admin/python/deep#async-await",
+    "/admin/python/deep#typing-pydantic",
+    "/admin/python/deep#iterators-generators",
+    "/admin/python/deep#gil-concurrency-models",
+    "/admin/python/deep#classes-inheritance-mro",
+    "/admin/python/deep#fastapi-middleware",
+    "/admin/python/deep#http-pool-retry-breaker",
+    "/admin/python/deep#observability-python",
+]
 
 
 async def main() -> None:
@@ -107,8 +123,40 @@ async def main() -> None:
                 )
         ok(f"sidebar exposes Operator Dashboard + Techstack + Python")
 
+        step("5. per-topic deep-dive anchors present (≥10 of the deep set)")
+        # Topics with a deep-dive entry on /admin/python/deep MUST link
+        # there from this catalog page. Locks the per-topic enrichment.
+        missing_anchors = [a for a in REQUIRED_DEEP_ANCHORS if a not in body]
+        if len(REQUIRED_DEEP_ANCHORS) - len(missing_anchors) < 10:
+            fail(
+                f"only {len(REQUIRED_DEEP_ANCHORS) - len(missing_anchors)} "
+                f"of {len(REQUIRED_DEEP_ANCHORS)} per-topic deep-dive "
+                f"anchors present. Missing: {missing_anchors}. "
+                f"Regression that dropped the deepSlug field from topics "
+                f"would land here."
+            )
+        ok(
+            f"{len(REQUIRED_DEEP_ANCHORS) - len(missing_anchors)}/"
+            f"{len(REQUIRED_DEEP_ANCHORS)} per-topic deep anchors present"
+        )
+
+        step("6. per-topic mermaid flowcharts (≥8 inline mounts)")
+        # The page-level flowcharts (Async fan-out + Coroutine lifecycle)
+        # are inline SVG, not Mermaid. The per-topic flowcharts use the
+        # self-hosted Mermaid component → md-mermaid-wrap class.
+        # ≥8 = catches a regression that drops most of the enrichment.
+        mermaid_mounts = body.count("md-mermaid-wrap")
+        if mermaid_mounts < 8:
+            fail(
+                f"expected ≥8 per-topic mermaid mounts, got "
+                f"{mermaid_mounts}. Per-topic flowchart enrichment "
+                f"regressed — verify the Mermaid component imports + "
+                f"the conditional render in topics.map."
+            )
+        ok(f"{mermaid_mounts} per-topic mermaid flowcharts rendered")
+
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
-    print(f"{BOLD}{GREEN}  ALL 4 ADMIN-PYTHON-PAGE STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  ALL 6 ADMIN-PYTHON-PAGE STEPS PASSED{NC}")
     print(f"{BOLD}{GREEN}════════════════════════════════════════{NC}")
 
 
