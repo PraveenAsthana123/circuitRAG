@@ -127,8 +127,15 @@ def create_app() -> FastAPI:
         for namespace, url in mcp_spec:
             if not url:
                 continue
+            # ``breaker_name=mcp_<ns>`` keeps the canonical Prometheus
+            # series in sync with /health/detailed and the breaker
+            # exporter — see MCPClient ctor docstring for why this
+            # matters post-unification.
             clients[namespace] = MCPClient(
-                base_url=url, draft_store=draft_store, audit_log=audit_log,
+                base_url=url,
+                breaker_name=f"mcp_{namespace}",
+                draft_store=draft_store,
+                audit_log=audit_log,
             )
         if clients:
             # Preserve the single-client `mcp_client` state slot for the

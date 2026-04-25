@@ -65,6 +65,10 @@ T = TypeVar("T")
 log = logging.getLogger(__name__)
 
 
+class _BreakerCallFailed(Exception):
+    """Sentinel for record_failure(exc=None). Never raised — only labeled."""
+
+
 class State(StrEnum):
     CLOSED = "closed"
     OPEN = "open"
@@ -188,6 +192,50 @@ class CircuitBreaker:
     @property
     def state(self) -> State:
         return self._state
+
+    @property
+    def failures(self) -> int:
+        """Current consecutive-failure counter. Read by /health/detailed."""
+        return self._failure_count
+
+    # ---- Bool-return guarded API (used by mcp/ for fine-grained control) ----
+    # CircuitBreaker.call_async raises CircuitOpenError when OPEN, which is
+    # the right shape when the caller wants exception-driven control flow.
+    # The MCP client uses a different idiom: it asks the breaker "may I
+    # call?" then on rejection persists a draft and returns a degraded
+    # ToolResult (NOT raises). Adding bool-returning siblings of the
+    # internal sync methods unifies _MCPBreaker into this class without
+    # forcing every site to switch to exception-based control flow.
+    def allow(self) -> bool:
+        """
+        Pre-call gate. Returns True when a call may proceed (CLOSED, or
+        OPEN past the recovery timeout — in which case the breaker is
+        atomically transitioned to HALF_OPEN). Returns False when OPEN
+        and inside the recovery window. Side-effects (rejection metric)
+        are recorded inside.
+        """
+        if self._state is State.OPEN:
+            if time.monotonic() - self._opened_at >= self.recovery_timeout:
+                self._transition(State.HALF_OPEN)
+                return True
+            self._bump_rejections()
+            return False
+        return True
+
+    def record_success(self) -> None:
+        """Mark the most recent gated call as succeeded. Closes a HALF_OPEN."""
+        self._on_success_sync()
+
+    def record_failure(self, exc: BaseException | None = None) -> None:
+        """
+        Mark the most recent gated call as failed. ``exc`` is logged when
+        the breaker trips so dashboards can correlate the trip cause; pass
+        ``None`` for callers that don't have an exception object handy.
+        """
+        # Mirror the rest of the API: a missing exc just becomes a generic
+        # marker so the failure-class log isn't ``NoneType``.
+        cause = exc if exc is not None else _BreakerCallFailed()
+        self._on_failure_sync(cause)
 
     async def call_async(self, fn: Callable[[], Awaitable[T]]) -> T:
         """Invoke ``fn()`` through the breaker. Awaitable entry point."""

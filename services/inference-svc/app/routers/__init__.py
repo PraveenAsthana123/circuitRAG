@@ -51,10 +51,12 @@ async def health_detailed(request: Request) -> HealthDetailedResponse:
     mcp_clients = getattr(state, "mcp_clients", None) or {}
     for namespace in sorted(mcp_clients):
         client = mcp_clients[namespace]
-        failures = None
+        # ``failures`` is the public CircuitBreaker property (post-unification).
+        # Old code reached into ``_breaker._failures`` — that attribute
+        # only existed on the deleted ``_MCPBreaker``. Touch the public
+        # surface only so dashboards keep working when the breaker swaps.
         inner = getattr(client, "_breaker", None)
-        if inner is not None:
-            failures = getattr(inner, "_failures", None)
+        failures = getattr(inner, "failures", None) if inner is not None else None
         breakers.append(
             BreakerState(
                 name=f"mcp_{namespace}",

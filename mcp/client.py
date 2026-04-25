@@ -40,6 +40,8 @@ from typing import Any
 
 import httpx
 
+from documind_core.circuit_breaker import CircuitBreaker
+
 from .drafts import DraftRecord, DraftStore, InMemoryDraftStore
 
 log = logging.getLogger(__name__)
@@ -95,44 +97,15 @@ class ToolResult:
 
 
 # ---------------------------------------------------------------------------
-# Minimal CB (local, not documind_core — keeps mcp/ decoupled)
+# Breaker — unified with documind_core.circuit_breaker.CircuitBreaker.
+# Earlier iterations kept a private ``_MCPBreaker`` here "for decoupling,"
+# which silently forked behavior: the local copy was lockless, didn't
+# emit failure/open/rejection counters, and had no transition accounting.
+# Now mcp/ uses the canonical breaker via the ``allow/record_success/
+# record_failure`` bool-return API added for this file's call shape (see
+# documind_core/circuit_breaker.py — the methods are documented there).
+# One state machine, one metric model, one set of semantics.
 # ---------------------------------------------------------------------------
-class _MCPBreaker:
-    CLOSED, OPEN, HALF_OPEN = "closed", "open", "half_open"
-
-    def __init__(self, name: str, *, failure_threshold: int = 3, recovery_timeout: float = 30.0) -> None:
-        self.name = name
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self._state = self.CLOSED
-        self._failures = 0
-        self._opened_at = 0.0
-
-    def allow(self) -> bool:
-        if self._state == self.OPEN:
-            if time.monotonic() - self._opened_at >= self.recovery_timeout:
-                self._state = self.HALF_OPEN
-                return True
-            return False
-        return True
-
-    def record_success(self) -> None:
-        if self._state == self.HALF_OPEN:
-            log.info("mcp_cb transition name=%s half_open->closed", self.name)
-        self._state = self.CLOSED
-        self._failures = 0
-
-    def record_failure(self) -> None:
-        self._failures += 1
-        if self._state == self.HALF_OPEN or self._failures >= self.failure_threshold:
-            if self._state != self.OPEN:
-                log.warning("mcp_cb transition name=%s -> OPEN (failures=%d)", self.name, self._failures)
-            self._state = self.OPEN
-            self._opened_at = time.monotonic()
-
-    @property
-    def state(self) -> str:
-        return self._state
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +116,7 @@ class MCPClient:
         self,
         *,
         base_url: str,
+        breaker_name: str | None = None,
         timeout_s: float = 5.0,
         failure_threshold: int = 3,
         recovery_timeout: float = 30.0,
@@ -152,8 +126,15 @@ class MCPClient:
     ) -> None:
         self._base = base_url.rstrip("/")
         self._client = httpx.AsyncClient(timeout=timeout_s)
-        self._breaker = _MCPBreaker(
-            name=self._base,
+        # Canonical breaker. The lifespan should pass ``breaker_name``
+        # using the stable ``mcp_<namespace>`` scheme (mcp_hr, mcp_itsm)
+        # so the URL-keyed series the breaker emits matches what
+        # BreakerMetricsExporter pushes for /health/detailed. Without
+        # the override the breaker labels by URL — fine for ad-hoc
+        # tests, but in production it produces a duplicate Prometheus
+        # series alongside the canonical ``mcp_<ns>`` one.
+        self._breaker = CircuitBreaker(
+            name=breaker_name or self._base,
             failure_threshold=failure_threshold,
             recovery_timeout=recovery_timeout,
         )
@@ -427,7 +408,14 @@ class MCPClient:
 
     @property
     def cb_state(self) -> str:
-        return self._breaker.state
+        # CircuitBreaker.state is a StrEnum (``State.OPEN`` etc.). Dashboards
+        # and /health/detailed expect a plain ``"closed"|"open"|"half_open"``
+        # string and serialise via JSON, so we normalise here. ``StrEnum``
+        # equality already works against string literals, but ``json.dumps``
+        # on a StrEnum can serialise as "State.OPEN" depending on the
+        # encoder — explicit ``.value`` keeps the wire shape stable.
+        s = self._breaker.state
+        return s.value if hasattr(s, "value") else str(s)
 
     @property
     def draft_store(self) -> DraftStore:
