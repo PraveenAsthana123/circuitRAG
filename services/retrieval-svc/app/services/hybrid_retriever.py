@@ -20,6 +20,7 @@ import time
 
 from documind_core.breakers import RetrievalCircuitBreaker
 from documind_core.cache import Cache
+from documind_core.circuit_breaker import CircuitBreaker
 
 from app.schemas import RetrievedChunk, RetrieveRequest, RetrieveResponse
 
@@ -44,6 +45,8 @@ class HybridRetriever:
         graph_top_k: int = 10,
         cache_ttl: int = 300,
         quality_breaker: RetrievalCircuitBreaker | None = None,
+        vector_breaker: CircuitBreaker | None = None,
+        graph_breaker: CircuitBreaker | None = None,
     ) -> None:
         self._embedder = embedder
         self._vector = vector
@@ -62,6 +65,29 @@ class HybridRetriever:
             recovery_timeout=60.0,
             min_quality=0.35,
             quality_window=20,
+        )
+        # Transport-level breakers — guard the actual HTTP/Bolt calls
+        # to Qdrant and Neo4j. The quality breaker checks RESULT QUALITY
+        # (top_score, n_results); these check RAW EXCEPTIONS (Connect
+        # errors, timeouts, 5xx). Both layers matter:
+        #   * Quality breaker catches "service is up but corpus is empty"
+        #   * Transport breaker catches "service is unreachable" and
+        #     fast-rejects after N failures so a 30-min Qdrant outage
+        #     doesn't cost every retrieval ~5s of timeout each.
+        # Failure during call_async is re-raised, which the
+        # ``asyncio.gather(return_exceptions=True)`` in ``retrieve``
+        # converts into the existing degraded path. No new error path
+        # to wire — the breaker just changes the SHAPE of failure
+        # (fast CircuitOpenError vs slow ConnectError/ReadTimeout).
+        self._vector_breaker = vector_breaker or CircuitBreaker(
+            "retrieval-vector-transport",
+            failure_threshold=3,
+            recovery_timeout=30.0,
+        )
+        self._graph_breaker = graph_breaker or CircuitBreaker(
+            "retrieval-graph-transport",
+            failure_threshold=3,
+            recovery_timeout=30.0,
         )
 
     @staticmethod
@@ -161,12 +187,21 @@ class HybridRetriever:
         )
 
     async def _do_vector(self, tenant_id: str, req: RetrieveRequest) -> list[dict]:
+        # Embedding is intentionally OUTSIDE the vector breaker —
+        # an Ollama outage is a separate failure mode (the embedder
+        # has its own breaker). The vector breaker only protects
+        # the Qdrant transport.
         qv = await self._embedder.embed_query(req.query)
-        return await self._vector.search(
-            tenant_id=tenant_id, query_vector=qv, top_k=self._vector_top_k
-        )
+
+        async def _call() -> list[dict]:
+            return await self._vector.search(
+                tenant_id=tenant_id, query_vector=qv, top_k=self._vector_top_k,
+            )
+        return await self._vector_breaker.call_async(_call)
 
     async def _do_graph(self, tenant_id: str, req: RetrieveRequest) -> list[dict]:
-        return await self._graph.search(
-            tenant_id=tenant_id, query=req.query, top_k=self._graph_top_k
-        )
+        async def _call() -> list[dict]:
+            return await self._graph.search(
+                tenant_id=tenant_id, query=req.query, top_k=self._graph_top_k,
+            )
+        return await self._graph_breaker.call_async(_call)
