@@ -59,6 +59,7 @@ try:
     from prometheus_client import (
         CONTENT_TYPE_LATEST,
         Counter as _PromCounter,
+        Histogram as _PromHistogram,
         generate_latest,
     )
     _PROM_AVAILABLE = True
@@ -72,6 +73,27 @@ if _PROM_AVAILABLE:
         "Count of MCP /tools/call invocations by outcome",
         labelnames=["namespace", "tool", "outcome"],
     )
+    # Per-tool latency histogram. Buckets tuned for tool calls that
+    # mostly land between 5ms (cache replay) and ~5s (LLM-backed
+    # tools); +Inf catches the long tail. Operators read p95/p99 per
+    # (namespace, tool) — the primitive the per-tool dashboard panel
+    # in the gap-review Phase 1 needs.
+    _TOOL_LATENCY = _PromHistogram(
+        "documind_mcp_tool_call_duration_seconds",
+        "Wall-clock duration of MCP /tools/call dispatch by (namespace, tool).",
+        labelnames=["namespace", "tool"],
+        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    )
+    # Scope-denial counter. reason ∈ {NOT_AUTHENTICATED, INVALID_TOKEN,
+    # INSUFFICIENT_SCOPE}. Operators alert on per-tool denial rate
+    # spikes — a sudden surge means either a token-rotation gap or a
+    # caller-config drift. Without this counter, denials only show up
+    # in logs and there's no rate-of-denial signal.
+    _SCOPE_DENIALS = _PromCounter(
+        "documind_mcp_scope_denials_total",
+        "MCP scope/auth rejections by (namespace, tool, reason).",
+        labelnames=["namespace", "tool", "reason"],
+    )
 
 
 def _record_tool_call(*, namespace: str, tool: str, outcome: str) -> None:
@@ -84,6 +106,28 @@ def _record_tool_call(*, namespace: str, tool: str, outcome: str) -> None:
     """
     if _PROM_AVAILABLE:
         _TOOL_CALLS.labels(namespace=namespace, tool=tool, outcome=outcome).inc()
+
+
+def _observe_tool_latency(*, namespace: str, tool: str, seconds: float) -> None:
+    if _PROM_AVAILABLE:
+        _TOOL_LATENCY.labels(namespace=namespace, tool=tool).observe(seconds)
+
+
+def _record_scope_denial(*, namespace: str, tool: str, reason: str) -> None:
+    if _PROM_AVAILABLE:
+        _SCOPE_DENIALS.labels(namespace=namespace, tool=tool, reason=reason).inc()
+
+
+def _denial_reason(exc: HTTPException) -> str:
+    """Map an HTTPException raised by enforce_scope to a stable
+    Prometheus label value. Defends against detail-shape drift —
+    if a new code is added we get ``UNKNOWN`` rather than a
+    label-cardinality blow-up."""
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    code = detail.get("code") if isinstance(detail, dict) else None
+    return code if code in {
+        "NOT_AUTHENTICATED", "INVALID_TOKEN", "INSUFFICIENT_SCOPE",
+    } else "UNKNOWN"
 
 
 def mount_metrics_endpoint(app: FastAPI) -> None:
@@ -366,12 +410,29 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
         if tool is None:
             # Authenticate first so unknown-name probes get 401 from
             # unauthenticated callers, 404 from authenticated ones.
-            enforce_scope(verifier, authorization, {"name": req.name, "required_scopes": []})
+            try:
+                enforce_scope(
+                    verifier, authorization,
+                    {"name": req.name, "required_scopes": []},
+                )
+            except HTTPException as exc:
+                _record_scope_denial(
+                    namespace=service_label, tool=req.name,
+                    reason=_denial_reason(exc),
+                )
+                raise
             raise HTTPException(
                 status_code=404,
                 detail={"code": "tool_not_found", "name": req.name},
             )
-        enforce_scope(verifier, authorization, tool)
+        try:
+            enforce_scope(verifier, authorization, tool)
+        except HTTPException as exc:
+            _record_scope_denial(
+                namespace=service_label, tool=req.name,
+                reason=_denial_reason(exc),
+            )
+            raise
 
     tracer = get_tracer(tracer_module)
     span_cm = (
@@ -457,9 +518,20 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
                 )
             # state == "new" → caller proceeds; we finalise after.
 
+        # Time only the real dispatch path — cache replays returned
+        # above are accounted for via outcome="replay" on the call
+        # counter. Failed dispatches still record latency: an op
+        # alert on rising p95 wants to see slow-failures, not just
+        # slow-successes.
+        import time as _time
+        _started = _time.perf_counter()
         try:
             response = await dispatch(req, idempotency_key, cid)
         except HTTPException as exc:
+            _observe_tool_latency(
+                namespace=service_label, tool=req.name,
+                seconds=_time.perf_counter() - _started,
+            )
             # 4xx from dispatch (e.g. 404 tool_not_found inside dispatch) —
             # surface as "error" since a 5xx-shaped outcome isn't what
             # happened. Upstream HTTPException raised from enforce_scope
@@ -482,6 +554,10 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
             )
             raise
 
+        _observe_tool_latency(
+            namespace=service_label, tool=req.name,
+            seconds=_time.perf_counter() - _started,
+        )
         if idempotency_key and idempotency_store is not None:
             await idempotency_store.finalize(idempotency_key, response, status="succeeded")
 
