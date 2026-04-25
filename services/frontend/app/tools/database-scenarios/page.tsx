@@ -266,6 +266,15 @@ export default function DatabaseScenarios() {
           solution, the DocuMind-specific example, the trade-offs, and the canonical reference.
           Use as a menu for database-design interviews.
         </p>
+        <p className="design-areas-sub">
+          Need the deeper interview view? Use the database deep-dive for core concepts, when-to-use
+          vs when-not-to-use, failure modes, monitoring, scaling, and maturity model per store.
+        </p>
+        <div className="page-actions">
+          <Link href="/admin/database/deep" className="btn btn-primary">
+            Open Database Deep Dive
+          </Link>
+        </div>
         <Link href="/tools" className="sysdesign-back">← back to tool index</Link>
       </header>
 
@@ -276,30 +285,72 @@ export default function DatabaseScenarios() {
           <section key={cat} className="design-areas-group">
             <h2 className="design-areas-group-title">{cat}</h2>
             <div className="method-grid">
-              {rows.map((s) => (
-                <article key={s.pattern} className="method-card">
-                  <div className="method-card-head">
-                    <h3 className="method-name">{s.pattern}</h3>
-                  </div>
-                  <dl className="cb-card-dl">
-                    <dt>Problem</dt>
-                    <dd>{s.problem}</dd>
-                    <dt>Pattern</dt>
-                    <dd>{s.solution}</dd>
-                    <dt>DocuMind example</dt>
-                    <dd>{s.documindExample}</dd>
-                    <dt>Tradeoffs</dt>
-                    <dd>{s.tradeoffs}</dd>
-                    <DerivedRows narr={{ name: s.pattern, problem: s.problem, solution: s.solution, example: s.documindExample, category: s.category }} />
-                    <dt>Reference</dt>
-                    <dd>
-                      <a href={s.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">
-                        {s.docsLabel} ↗
-                      </a>
-                    </dd>
-                  </dl>
-                </article>
-              ))}
+              {rows.map((s) => {
+                // Map each pattern to its anchor on /admin/database/deep.
+                // Substring match keeps the table thin; updates here when
+                // a new pattern lands.
+                const p = s.pattern.toLowerCase();
+                const cl = s.category.toLowerCase();
+                const deepSlug = (() => {
+                  if (p.includes('postgres') || p.includes('rls') || p.includes('schema') || p.includes('migration') || p.includes('orm') || p.includes('repo')) return 'postgres-rls';
+                  if (p.includes('qdrant') || p.includes('pgvector') || p.includes('vector') || p.includes('embedding') || cl === 'vector db') return 'qdrant';
+                  if (p.includes('redis') || cl === 'cache') return 'redis';
+                  if (p.includes('kafka') || cl === 'event store' || cl.includes('event')) return 'kafka';
+                  if (p.includes('clickhouse') || cl === 'analytics' || cl === 'observability') return 'clickhouse';
+                  if (p.includes('s3') || p.includes('minio') || p.includes('blob') || p.includes('object') || cl === 'object storage' || cl === 'blob') return 'object-storage';
+                  return null;
+                })();
+                return (
+                  <article key={s.pattern} className="method-card">
+                    <div className="method-card-head">
+                      <h3 className="method-name">{s.pattern}</h3>
+                      {deepSlug && (
+                        <Link
+                          href={`/admin/database/deep#${deepSlug}`}
+                          style={{
+                            fontSize: 13,
+                            color: '#1e3a8a',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Deep dive →
+                        </Link>
+                      )}
+                    </div>
+                    <dl className="cb-card-dl">
+                      <dt>Problem</dt>
+                      <dd>{s.problem}</dd>
+                      <dt>Pattern</dt>
+                      <dd>{s.solution}</dd>
+                      <dt>DocuMind example</dt>
+                      <dd>{s.documindExample}</dd>
+                      <dt>Tradeoffs</dt>
+                      <dd>{s.tradeoffs}</dd>
+                      {deepSlug && (
+                        <>
+                          <dt>Interview deep dive</dt>
+                          <dd>
+                            <Link
+                              href={`/admin/database/deep#${deepSlug}`}
+                              style={{ color: '#1e3a8a' }}
+                            >
+                              Open the 20-dimension interview view for{' '}
+                              <code>{deepSlug}</code> →
+                            </Link>
+                          </dd>
+                        </>
+                      )}
+                      <DerivedRows narr={{ name: s.pattern, problem: s.problem, solution: s.solution, example: s.documindExample, category: s.category }} />
+                      <dt>Reference</dt>
+                      <dd>
+                        <a href={s.docsUrl} target="_blank" rel="noopener noreferrer" className="cb-link">
+                          {s.docsLabel} ↗
+                        </a>
+                      </dd>
+                    </dl>
+                  </article>
+                );
+              })}
             </div>
           </section>
         );
