@@ -16,6 +16,15 @@ Checks:
 
 Each failure is logged and attached to the response for the governance-svc
 to act on.
+
+Observability: every check() call is wrapped in an OTel span
+``inference.guardrail.check`` with attributes for passed-state,
+confidence, and violation counts. A matching ``guardrail_check_completed``
+log line carries the same shape so operators can pivot between
+Jaeger and logs without losing context. Closes one row of the
+OTel tool-level coverage scorecard
+(docs/architecture/otel-tool-level-coverage-scorecard-and-tracker.md):
+inference-svc — "tool-decision and answer-quality spans".
 """
 from __future__ import annotations
 
@@ -24,7 +33,19 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+# OTel is optional on this code path — the same observability layer as
+# server_common imports it tolerantly so libraries can run without the
+# SDK installed (e.g. in unit tests). When present, tracer.start_as_
+# current_span returns a real span; when absent we get a context that
+# accepts set_attribute() as a no-op.
+try:
+    from opentelemetry import trace as _otel_trace
+    _OTEL_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _OTEL_AVAILABLE = False
+
 log = logging.getLogger(__name__)
+_tracer = _otel_trace.get_tracer(__name__) if _OTEL_AVAILABLE else None
 
 # Coarse PII patterns — real prod wires a proper detector (AWS Comprehend,
 # Presidio, on-device NER). These catch the common stuff.
@@ -61,6 +82,71 @@ class GuardrailChecker:
         citation_map: list[dict[str, Any]],
         retrieval_scores: list[float],
     ) -> GuardrailResult:
+        # Wrap the whole check in a span so Jaeger queries can filter
+        # by guardrail.passed / guardrail.violations.count without
+        # parsing logs. Falls through cleanly when OTel SDK isn't
+        # installed (_NoopSpan-style — set_attribute is a no-op).
+        if _tracer is not None:
+            span_cm = _tracer.start_as_current_span("inference.guardrail.check")
+        else:
+            span_cm = _NoopSpan()
+        with span_cm as sp:
+            result = self._check_inner(
+                answer=answer,
+                citation_map=citation_map,
+                retrieval_scores=retrieval_scores,
+            )
+            # Set span attributes from the result. ``set_attribute``
+            # is safe on real spans + the noop placeholder.
+            if sp is not None:
+                sp.set_attribute("guardrail.passed", result.passed)
+                sp.set_attribute("guardrail.confidence", result.confidence)
+                sp.set_attribute(
+                    "guardrail.violations.count", len(result.violations),
+                )
+                if result.violations:
+                    # Comma-joined string keeps cardinality bounded
+                    # (don't want one attribute per violation kind
+                    # exploding the span-attribute count). Operators
+                    # filter-contains on this in Jaeger.
+                    sp.set_attribute(
+                        "guardrail.violations",
+                        ",".join(result.violations[:10]),
+                    )
+                # Surface the two sub-signals so a single Jaeger row
+                # shows answer-quality posture without expansion.
+                sp.set_attribute(
+                    "guardrail.found_labels",
+                    int(result.details.get("found_labels", 0)),
+                )
+                sp.set_attribute(
+                    "guardrail.top_retrieval_score",
+                    float(result.details.get("top_retrieval_score", 0.0)),
+                )
+            # Structured log line — same data as the span attributes
+            # so operators pivot between Jaeger and log greps without
+            # losing context. Drilled below.
+            log.info(
+                "guardrail_check_completed passed=%s confidence=%.3f "
+                "violations=%s found_labels=%d top_score=%.3f",
+                result.passed,
+                result.confidence,
+                ",".join(result.violations) if result.violations else "-",
+                int(result.details.get("found_labels", 0)),
+                float(result.details.get("top_retrieval_score", 0.0)),
+            )
+            return result
+
+    def _check_inner(
+        self,
+        *,
+        answer: str,
+        citation_map: list[dict[str, Any]],
+        retrieval_scores: list[float],
+    ) -> GuardrailResult:
+        """Original body of check(). Split out so the public surface
+        wraps it in OTel + structured logging without cluttering
+        the core logic."""
         violations: list[str] = []
 
         # 1. Empty answer
@@ -103,3 +189,18 @@ class GuardrailChecker:
             violations=violations,
             details={"found_labels": len(found_labels), "top_retrieval_score": top_score},
         )
+
+
+class _NoopSpan:
+    """Stand-in for an OTel span when the SDK isn't installed.
+    Acts as a context manager that yields itself; set_attribute is
+    a no-op. Avoids ``if sp is not None`` chains everywhere."""
+
+    def __enter__(self) -> "_NoopSpan":
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+    def set_attribute(self, key: str, value: Any) -> None:  # noqa: ARG002
+        pass
