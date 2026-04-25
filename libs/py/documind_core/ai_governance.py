@@ -31,6 +31,36 @@ from .exceptions import PolicyViolationError, ValidationError
 log = logging.getLogger(__name__)
 
 
+# Prometheus counter for PII redactions — closes the convergence-
+# shortlist "PII redaction layer" item (3× cited across security,
+# enterprise, and AI-governance gap reviews). The counter labels
+# each redaction by its rule kind (ssn / email / phone_us / etc.)
+# so a flood of detections is graphable and an alert can fire on
+# unusual rates (e.g. an upstream change started leaking emails
+# into prompts).
+#
+# Cardinality bound: rule kinds are a finite enum — the cardinality
+# is the size of the _PII_RULES list (~8). No tenant or document_id
+# label per ADR-010.
+try:
+    from prometheus_client import Counter as _PromCounter
+
+    _pii_redactions_total = _PromCounter(
+        "documind_pii_redactions_total",
+        "PII patterns redacted, labelled by rule kind. One increment "
+        "per redaction call (not per pattern match — a string with "
+        "5 emails increments by 1).",
+        labelnames=["kind"],
+    )
+except ImportError:  # pragma: no cover — prometheus_client is optional
+    _pii_redactions_total = None
+
+
+def _bump_pii_redaction(kind: str) -> None:
+    if _pii_redactions_total is not None:
+        _pii_redactions_total.labels(kind=kind).inc()
+
+
 # ============================================================================
 # 1. PromptInjectionDetector — SECURE AI (input side)
 # ============================================================================
@@ -197,13 +227,52 @@ class PIIScanner:
         return findings
 
     def redact(self, text: str) -> str:
-        """Replace PII with `[REDACTED:{kind}]` placeholders."""
+        """
+        Replace PII with ``[REDACTED:{kind}]`` placeholders.
+
+        Increments ``documind_pii_redactions_total{kind}`` once per
+        kind that actually matched (so a string with 3 SSNs adds +1
+        to the ssn series, not +3 — operators want "did this kind
+        appear?" frequency, not match count).
+
+        Idempotent: re-running on already-redacted text is a no-op
+        because ``[REDACTED:ssn]`` etc. don't match any rule. The
+        drill proves this explicitly.
+        """
         if not text:
             return text
         redacted = text
         for kind, pat in self._rules:
-            redacted = pat.sub(f"[REDACTED:{kind}]", redacted)
+            new = pat.sub(f"[REDACTED:{kind}]", redacted)
+            if new != redacted:
+                _bump_pii_redaction(kind)
+                redacted = new
         return redacted
+
+    def redact_value(self, value: Any) -> Any:
+        """
+        Recursive redaction over JSON-shaped values.
+
+        Walks dicts and lists; redacts strings; passes through
+        numbers, bools, None, and exotic types unchanged. Useful for
+        scrubbing payloads before structured logging or before
+        persisting audit ``details`` (the latter requires policy
+        review — see planned ADR-013).
+
+        Cycle-safe: dicts and lists are walked once each via the
+        recursion stack, with no shared-state caching, so a cycle
+        would recurse forever. Caller's responsibility — JSON-
+        shaped data (no cycles) is the contract.
+        """
+        if isinstance(value, str):
+            return self.redact(value)
+        if isinstance(value, dict):
+            return {k: self.redact_value(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self.redact_value(v) for v in value]
+        if isinstance(value, tuple):
+            return tuple(self.redact_value(v) for v in value)
+        return value
 
 
 # ============================================================================
