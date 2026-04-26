@@ -197,8 +197,23 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   const male = englishVoices.filter((v) => classify(v.name) === '♂');
   const other = englishVoices.filter((v) => classify(v.name) === '·');
 
+  // Active = speaking or paused (NOT idle). Used to render filled
+  // button + highlighter overlay.
+  const isActive = state === 'speaking' || state === 'paused';
+  const filledBtn = (color: string): React.CSSProperties => ({
+    padding: '4px 10px',
+    background: color,
+    color: '#fff',
+    border: `1px solid ${color}`,
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 700,
+    boxShadow: '0 0 0 2px rgba(180, 83, 9, 0.25)',
+  });
+
   return (
-    <div style={{ display: compact ? 'inline-flex' : 'block', alignItems: 'center', gap: 8 }}>
+    <div style={{ display: compact ? 'inline-flex' : 'block', alignItems: 'center', gap: 8, position: 'relative' }}>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         {state === 'idle' && (
           <button type="button" onClick={speak} title="Read aloud" style={btnStyle('#1e3a8a')} aria-label="Read aloud">
@@ -207,15 +222,47 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
         )}
         {state === 'speaking' && (
           <>
-            <button type="button" onClick={pauseFn} title="Pause" style={btnStyle('#b45309')}>⏸ Pause</button>
-            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>⏹ Stop</button>
+            <button type="button" onClick={pauseFn} title="Pause (currently speaking)" style={filledBtn('#b45309')} aria-label="Speaking — click to pause">
+              🔊 Speaking · ⏸
+            </button>
+            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>⏹</button>
           </>
         )}
         {state === 'paused' && (
           <>
-            <button type="button" onClick={resumeFn} title="Resume" style={btnStyle('#16a34a')}>▶ Resume</button>
-            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>⏹ Stop</button>
+            <button type="button" onClick={resumeFn} title="Resume" style={filledBtn('#16a34a')}>▶ Resume</button>
+            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>⏹</button>
           </>
+        )}
+        {compact && englishVoices.length > 1 && (
+          <select
+            value={voiceName}
+            onChange={(e) => setVoiceName(e.target.value)}
+            style={{ ...selectStyle(), maxWidth: 130 }}
+            title="Voice (♀/♂)"
+          >
+            {female.length > 0 && (
+              <optgroup label="♀ Female">
+                {female.map((v) => (
+                  <option key={v.name} value={v.name}>♀ {v.name}{v.localService ? '' : ' ☁'}</option>
+                ))}
+              </optgroup>
+            )}
+            {male.length > 0 && (
+              <optgroup label="♂ Male">
+                {male.map((v) => (
+                  <option key={v.name} value={v.name}>♂ {v.name}{v.localService ? '' : ' ☁'}</option>
+                ))}
+              </optgroup>
+            )}
+            {other.length > 0 && (
+              <optgroup label="· Other">
+                {other.map((v) => (
+                  <option key={v.name} value={v.name}>{v.name}{v.localService ? '' : ' ☁'}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
         )}
         {compact && (
           <select
@@ -292,6 +339,55 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
             overflowY: 'auto',
           }}
         >
+          {spans.map((s, i) => {
+            const active = i === activeIdx;
+            return (
+              <span
+                key={i}
+                id={`speech-w-${idText}-${i}`}
+                style={{
+                  background: active ? '#fef08a' : 'transparent',
+                  fontWeight: active ? 700 : 400,
+                  borderRadius: 2,
+                  padding: active ? '1px 2px' : 0,
+                  transition: 'background 80ms linear',
+                }}
+              >
+                {s.word}
+                {' '}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {compact && isActive && (
+        // Floating highlighter overlay below the toolbar pill — shows
+        // which word is being read when invoked from the global page
+        // toolbar. Auto-scrolls active word into view.
+        <div
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            top: 56,
+            right: 16,
+            zIndex: 40,
+            width: 'min(640px, calc(100vw - 32px))',
+            maxHeight: 240,
+            overflowY: 'auto',
+            background: 'rgba(255,255,255,0.98)',
+            border: '1px solid #e5e7eb',
+            borderLeft: '4px solid #b45309',
+            borderRadius: 8,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+            padding: 12,
+            fontSize: 14,
+            lineHeight: 1.7,
+            color: '#000',
+          }}
+        >
+          <div style={{ fontSize: 11, color: '#b45309', fontWeight: 700, marginBottom: 6, letterSpacing: 0.5 }}>
+            🔊 SPEAKING — word being read is highlighted
+          </div>
           {spans.map((s, i) => {
             const active = i === activeIdx;
             return (
