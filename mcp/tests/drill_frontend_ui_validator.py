@@ -74,6 +74,7 @@ DEEP_DIVE_PAGES = [
     ("/admin/sso/deep",       2, 6),
     ("/admin/guardrails/deep", 2, 6),
     ("/admin/rbac/deep",      2, 6),
+    ("/admin/ai-orchestration/deep", 6, 6),
 ]
 
 

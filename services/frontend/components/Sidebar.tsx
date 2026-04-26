@@ -111,6 +111,15 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    heading: 'AI Orchestration (3-layer)',
+    items: [
+      { href: '/admin/ai-orchestration/deep', label: 'Architecture overview' },
+      { href: '/admin/ai-orchestration/deep#policy-layer', label: '🛡 Policy layer (OPA + Guardrails + Presidio)' },
+      { href: '/admin/ai-orchestration/deep#paperclip-manager', label: '🧠 Paperclip — Manager (planner)' },
+      { href: '/admin/ai-orchestration/deep#openclaw-workers', label: '✋ OpenClaw — Workers (executors)' },
+    ],
+  },
+  {
     heading: 'AI lifecycle',
     items: [
       { href: '/admin/llmops/deep#evaluation', label: 'Output evaluation (golden + sampling)' },
