@@ -56,6 +56,7 @@
  */
 
 import Mermaid from './Mermaid';
+import SpeechReader from './SpeechReader';
 
 export interface Topic {
   // ---- §1. Problem / Context (START HERE) ---------------------
@@ -238,6 +239,18 @@ function H({ n, t }: { n: number | string; t: string }) {
 }
 
 export default function UniversalDeepDive({ t }: { t: Topic }) {
+  // Compose the spoken text from the topic's most informative fields.
+  // The reader will get an audio briefing of the topic in ~30-60 seconds.
+  const spokenText = [
+    t.title,
+    t.coreConcept,
+    t.oneLiner,
+    t.businessContext,
+    t.interview30s,
+    t.finalScript || t.interviewLine,
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
     <article id={t.slug} className="card" style={{ marginBottom: 32 }}>
       {/* ====== §1. Problem / Context (START HERE) ====== */}
@@ -254,6 +267,10 @@ export default function UniversalDeepDive({ t }: { t: Topic }) {
             </span>
           )}
         </h2>
+        {/* Read-aloud button with per-word highlight + voice/speed picker */}
+        <div style={{ marginTop: 6, marginBottom: 10 }}>
+          <SpeechReader text={spokenText} compact />
+        </div>
         <H n={1} t="Problem / Context" />
         <p style={{ fontStyle: 'italic', color: '#000000' }}>{t.coreConcept}</p>
         {t.oneLiner && (

@@ -3,21 +3,23 @@
 /**
  * SpeechReader — click 🔊 to read text aloud with per-word highlighting.
  *
- * Uses the browser's SpeechSynthesis API (free, no backend dependency).
- * The onboundary event fires per word; we map event.charIndex back to
- * the originating word span and apply a yellow highlight that
- * auto-scrolls into view.
+ * Features:
+ * - Browser SpeechSynthesis API (free, no backend, offline-capable)
+ * - Per-word highlight via onboundary event (charIndex → span)
+ * - Voice picker (lists all OS-provided voices; pick high-quality)
+ * - Speed control (0.5× – 2.0×)
+ * - Pause / resume / stop controls
+ * - Long-text safe: no API length limit; chunks if needed
+ * - Hydration-safe: delays render until client mount (avoids React #418/#422)
  *
- * Why this and not a backend TTS roundtrip:
- * - Zero cost (no API calls)
- * - Zero latency to first audio
- * - Works offline / in air-gapped environments
- * - Same word-highlight UX users expect from accessibility tools
+ * Voice quality varies by OS:
+ *   macOS/iOS:  "Samantha", "Alex", "Karen" — high quality
+ *   Windows:    "Microsoft Zira", "Microsoft David" — decent
+ *   Chrome:     "Google US English", "Google UK English" — high quality
+ *   Linux:      espeak / festival defaults — robotic but functional
  *
- * For premium voice quality on a specific message, a separate "Hear
- * answer (premium)" button would call /api/v1/tts and stream back
- * audio — that's the architecture documented at /admin/audio/tts.
- * This component is the always-available baseline.
+ * For premium voice (ElevenLabs / Riva / OpenAI audio) the same UI swaps
+ * to a backend /api/v1/tts call — see /admin/audio/tts.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -60,16 +62,52 @@ function btnStyle(color: string): React.CSSProperties {
   };
 }
 
-export default function SpeechReader({ text, rate = 1.0, lang = 'en-US', compact = false }: Props) {
+function selectStyle(): React.CSSProperties {
+  return {
+    padding: '3px 6px',
+    background: '#fff',
+    color: '#1e3a8a',
+    border: '1px solid #e5e7eb',
+    borderRadius: 4,
+    fontSize: 12,
+    cursor: 'pointer',
+    maxWidth: 180,
+  };
+}
+
+export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US', compact = false }: Props) {
   const spans = useMemo(() => tokenize(text), [text]);
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const [state, setState] = useState<'idle' | 'speaking' | 'paused'>('idle');
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceName, setVoiceName] = useState<string>('');
+  const [rate, setRate] = useState<number>(rateProp);
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
-  // Delay until client mount to avoid hydration mismatch (window-dependent
-  // branch differs between SSR and client). On SSR/first render: null.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+  // Load voices (some browsers populate asynchronously via voiceschanged).
+  useEffect(() => {
+    if (!supported) return;
+    const refresh = () => {
+      const all = window.speechSynthesis.getVoices();
+      setVoices(all);
+      // Prefer high-quality default per OS
+      if (!voiceName && all.length) {
+        const preferred =
+          all.find((v) => /Google US English/i.test(v.name)) ||
+          all.find((v) => /Samantha/i.test(v.name)) ||
+          all.find((v) => v.lang.startsWith('en') && v.localService) ||
+          all.find((v) => v.lang.startsWith('en')) ||
+          all[0];
+        if (preferred) setVoiceName(preferred.name);
+      }
+    };
+    refresh();
+    window.speechSynthesis.addEventListener?.('voiceschanged', refresh);
+    return () => window.speechSynthesis.removeEventListener?.('voiceschanged', refresh);
+  }, [supported, voiceName]);
 
   const findSpanByCharIndex = useCallback((charIndex: number): number => {
     for (let i = 0; i < spans.length; i++) {
@@ -91,6 +129,10 @@ export default function SpeechReader({ text, rate = 1.0, lang = 'en-US', compact
     const utter = new SpeechSynthesisUtterance(text);
     utter.rate = rate;
     utter.lang = lang;
+    if (voiceName) {
+      const v = voices.find((x) => x.name === voiceName);
+      if (v) utter.voice = v;
+    }
     utter.onboundary = (e) => {
       if (e.name && e.name !== 'word') return;
       const idx = findSpanByCharIndex(e.charIndex);
@@ -109,7 +151,7 @@ export default function SpeechReader({ text, rate = 1.0, lang = 'en-US', compact
     };
     utterRef.current = utter;
     window.speechSynthesis.speak(utter);
-  }, [supported, text, rate, lang, findSpanByCharIndex]);
+  }, [supported, text, rate, lang, voiceName, voices, findSpanByCharIndex]);
 
   const pauseFn = useCallback(() => {
     if (!supported) return;
@@ -142,10 +184,22 @@ export default function SpeechReader({ text, rate = 1.0, lang = 'en-US', compact
   }
 
   const idText = cssId(text);
+  // Filter to English; classify by gender via name heuristic.
+  const englishVoices = voices.filter((v) => v.lang.startsWith('en'));
+  const FEMALE_HINTS = /samantha|karen|fiona|moira|tessa|veena|zira|susan|catherine|female|woman|allison|ava|joanna|kendra|kimberly|salli|amy|emma|lupe|joanna|raveena|aditi|mia|sophia|lilly/i;
+  const MALE_HINTS = /alex|daniel|fred|david|mark|tom|fellow|guy|matthew|brian|justin|joey|kevin|male|man|aaron|liam|oliver|ethan|noah|joshua|carlos|miguel|hans|leo/i;
+  const classify = (name: string): '♀' | '♂' | '·' => {
+    if (FEMALE_HINTS.test(name)) return '♀';
+    if (MALE_HINTS.test(name)) return '♂';
+    return '·';
+  };
+  const female = englishVoices.filter((v) => classify(v.name) === '♀');
+  const male = englishVoices.filter((v) => classify(v.name) === '♂');
+  const other = englishVoices.filter((v) => classify(v.name) === '·');
 
   return (
     <div style={{ display: compact ? 'inline-flex' : 'block', alignItems: 'center', gap: 8 }}>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         {state === 'idle' && (
           <button type="button" onClick={speak} title="Read aloud" style={btnStyle('#1e3a8a')} aria-label="Read aloud">
             🔊 {compact ? '' : 'Read'}
@@ -153,23 +207,60 @@ export default function SpeechReader({ text, rate = 1.0, lang = 'en-US', compact
         )}
         {state === 'speaking' && (
           <>
-            <button type="button" onClick={pauseFn} title="Pause" style={btnStyle('#b45309')}>
-              ⏸ Pause
-            </button>
-            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>
-              ⏹ Stop
-            </button>
+            <button type="button" onClick={pauseFn} title="Pause" style={btnStyle('#b45309')}>⏸ Pause</button>
+            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>⏹ Stop</button>
           </>
         )}
         {state === 'paused' && (
           <>
-            <button type="button" onClick={resumeFn} title="Resume" style={btnStyle('#16a34a')}>
-              ▶ Resume
-            </button>
-            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>
-              ⏹ Stop
-            </button>
+            <button type="button" onClick={resumeFn} title="Resume" style={btnStyle('#16a34a')}>▶ Resume</button>
+            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>⏹ Stop</button>
           </>
+        )}
+        {!compact && englishVoices.length > 1 && (
+          <select
+            value={voiceName}
+            onChange={(e) => setVoiceName(e.target.value)}
+            style={selectStyle()}
+            title="Pick voice (tone)"
+          >
+            {female.length > 0 && (
+              <optgroup label="♀ Female">
+                {female.map((v) => (
+                  <option key={v.name} value={v.name}>{v.name}{v.localService ? '' : ' ☁'}</option>
+                ))}
+              </optgroup>
+            )}
+            {male.length > 0 && (
+              <optgroup label="♂ Male">
+                {male.map((v) => (
+                  <option key={v.name} value={v.name}>{v.name}{v.localService ? '' : ' ☁'}</option>
+                ))}
+              </optgroup>
+            )}
+            {other.length > 0 && (
+              <optgroup label="· Other">
+                {other.map((v) => (
+                  <option key={v.name} value={v.name}>{v.name}{v.localService ? '' : ' ☁'}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        )}
+        {!compact && (
+          <select
+            value={String(rate)}
+            onChange={(e) => setRate(Number(e.target.value))}
+            style={selectStyle()}
+            title="Speech rate"
+          >
+            <option value="0.6">0.6× slow</option>
+            <option value="0.8">0.8×</option>
+            <option value="1">1× normal</option>
+            <option value="1.2">1.2×</option>
+            <option value="1.5">1.5× fast</option>
+            <option value="2">2× very fast</option>
+          </select>
         )}
       </div>
       {!compact && (
