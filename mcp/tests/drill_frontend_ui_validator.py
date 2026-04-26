@@ -68,6 +68,11 @@ DEEP_DIVE_PAGES = [
     ("/admin/techlead/deep",  2, 7),
     ("/admin/eng-manager/deep", 2, 7),
     ("/admin/technical-plan/deep", 2, 7),
+    # Identity + Security deep dives
+    ("/admin/pii/deep",       2, 6),
+    ("/admin/ldap/deep",      2, 6),
+    ("/admin/sso/deep",       2, 6),
+    ("/admin/guardrails/deep", 2, 6),
 ]
 
 

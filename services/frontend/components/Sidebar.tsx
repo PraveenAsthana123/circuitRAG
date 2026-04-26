@@ -78,7 +78,41 @@ const GROUPS: Group[] = [
     items: [
       { href: '/admin/rag/deep#chunking', label: 'RAG · Chunking' },
       { href: '/admin/rag/deep#hybrid-retrieval', label: 'RAG · Hybrid retrieval' },
+      { href: '/admin/rag/deep#embedding', label: 'RAG · Embedding + version' },
+      { href: '/admin/rag/deep#pre-retrieval', label: 'RAG · Pre-retrieval' },
+      { href: '/admin/rag/deep#post-retrieval', label: 'RAG · Post-retrieval' },
       { href: '/tools/rag-scenarios', label: 'RAG · 36 scenarios' },
+    ],
+  },
+  {
+    heading: 'Data quick-jump',
+    items: [
+      { href: '/admin/database/deep#postgres-rls', label: 'Relational · Postgres + RLS' },
+      { href: '/admin/database/deep#qdrant', label: 'Vector DB · Qdrant' },
+      { href: '/tools/neo4j', label: 'Graph DB · Neo4j' },
+      { href: '/admin/database/deep#redis', label: 'Cache DB · Redis' },
+      { href: '/admin/database/deep#kafka', label: 'Event log · Kafka' },
+      { href: '/admin/database/deep#clickhouse', label: 'Historical / time-series · ClickHouse' },
+      { href: '/admin/database/deep#object-storage', label: 'Object storage · MinIO/S3' },
+    ],
+  },
+  {
+    heading: 'Identity & Security',
+    items: [
+      { href: '/admin/sso/deep', label: 'SSO (SAML / OIDC)' },
+      { href: '/admin/ldap/deep', label: 'LDAP (enterprise sync)' },
+      { href: '/admin/pii/deep', label: 'PII (detect + redact)' },
+      { href: '/admin/guardrails/deep', label: 'AI Guardrails (in/out/behavior)' },
+    ],
+  },
+  {
+    heading: 'AI lifecycle',
+    items: [
+      { href: '/admin/llmops/deep#evaluation', label: 'Output evaluation' },
+      { href: '/admin/llmops/deep#prompt-registry', label: 'Prompt registry' },
+      { href: '/admin/llmops/deep#audit', label: 'Decision audit' },
+      { href: '/admin/llmops/deep#observability', label: 'AI observability' },
+      { href: '/admin/llmops/deep#deployment', label: 'Model deployment' },
     ],
   },
   {
