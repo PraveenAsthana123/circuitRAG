@@ -42,9 +42,10 @@ const GROUPS: Group[] = [
       { href: '/admin/python', label: 'Python (concepts + flow)' },
       { href: '/admin/python/deep', label: 'Python deep dive (interview)' },
       { href: '/admin/python/syllabus', label: 'Python syllabus (full catalog)' },
-      { href: '/admin/system-design/chatbot', label: 'System design · chatbot map' },
-      { href: '/admin/lang-family/rag', label: 'Lang family · RAG map' },
-      { href: '/admin/compiler-stack/rag', label: 'LLVM / MLIR · RAG fit' },
+      { href: '/admin/system-design/chatbot', label: '1. Chatbot design' },
+      { href: '/admin/lang-family/rag', label: '2. Lang family · RAG map' },
+      { href: '/admin/compiler-stack/rag', label: '3. LLVM / MLIR · RAG fit' },
+      { href: '/admin/audio/tts', label: '4. Audio / TTS for chatbot' },
       { href: '/admin/llmops', label: 'LLMOps scorecard' },
       { href: '/admin/llmops/deep', label: 'LLMOps deep dive (interview)' },
       { href: '/admin/database/deep', label: 'Database deep dive (interview)' },
@@ -123,6 +124,13 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    heading: 'Audio / TTS',
+    items: [
+      { href: '/admin/audio/tts/topics', label: '🔊 Topics — read-aloud catalog' },
+      { href: '/admin/audio/tts', label: 'Architecture (API contract + flow)' },
+    ],
+  },
+  {
     heading: 'Fine-tuning',
     items: [
       { href: '/admin/fine-tuning/deep', label: 'Overview (10 scenarios + decision)' },
@@ -153,9 +161,15 @@ const GROUPS: Group[] = [
   {
     heading: 'AI runtime / compiler',
     items: [
-      { href: '/admin/lang-family/rag', label: 'Lang family · RAG map' },
-      { href: '/admin/compiler-stack/rag', label: 'LLVM / MLIR · RAG fit' },
+      { href: '/admin/lang-family/rag', label: '2. Lang family · RAG map' },
+      { href: '/admin/compiler-stack/rag', label: '3. LLVM / MLIR · RAG fit' },
       { href: '/tools/ollama-vllm', label: 'Ollama / vLLM' },
+    ],
+  },
+  {
+    heading: 'Voice / audio',
+    items: [
+      { href: '/admin/audio/tts', label: '4. Audio / TTS for chatbot' },
     ],
   },
   {

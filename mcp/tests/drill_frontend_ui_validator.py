@@ -76,6 +76,7 @@ DEEP_DIVE_PAGES = [
     ("/admin/rbac/deep",      2, 6),
     ("/admin/ai-orchestration/deep", 6, 6),
     ("/admin/fine-tuning/deep",      8, 6),
+    ("/admin/audio/tts/topics",      0, 0),  # catalog page; mermaid not required
 ]
 
 
