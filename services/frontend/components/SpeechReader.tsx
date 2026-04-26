@@ -217,6 +217,20 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
             <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>⏹ Stop</button>
           </>
         )}
+        {compact && (
+          <select
+            value={String(rate)}
+            onChange={(e) => setRate(Number(e.target.value))}
+            style={{ ...selectStyle(), maxWidth: 70 }}
+            title="Speech rate"
+          >
+            <option value="0.5">0.5×</option>
+            <option value="0.75">0.75×</option>
+            <option value="1">1×</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+          </select>
+        )}
         {!compact && englishVoices.length > 1 && (
           <select
             value={voiceName}
@@ -254,10 +268,9 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
             style={selectStyle()}
             title="Speech rate"
           >
-            <option value="0.6">0.6× slow</option>
-            <option value="0.8">0.8×</option>
+            <option value="0.5">0.5× slow</option>
+            <option value="0.75">0.75×</option>
             <option value="1">1× normal</option>
-            <option value="1.2">1.2×</option>
             <option value="1.5">1.5× fast</option>
             <option value="2">2× very fast</option>
           </select>
