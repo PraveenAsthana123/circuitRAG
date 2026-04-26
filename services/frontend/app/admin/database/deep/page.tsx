@@ -2188,59 +2188,381 @@ ORDER BY total_cost_30d DESC;
     title: '6. S3-compatible object storage (raw artifacts)',
     status: 'shipped',
     coreConcept: 'Durable, cheap, decoupled storage for large binary artifacts — keeps raw files OUT of relational tables, where they don\'t belong.',
+    oneLiner: 'Object storage = bytes; relational = metadata. Mixing them is the most common architectural mistake.',
+    businessContext: 'Storing 50MB PDFs as bytea in Postgres bloats the cluster, breaks backup economics, kills query plans. Multi-tenant SaaS at scale needs cheap durable bytes (11-9s durability) decoupled from queryable metadata.',
+    fiveW: {
+      what: 'S3-compatible object store (MinIO self-hosted; AWS S3 / GCS / Azure Blob managed). Bucket-per-tenant or shared-bucket-with-prefix. Presigned URLs for direct browser uploads/downloads.',
+      why: 'Postgres bytea is ~$1/GB-month at managed-DB pricing; S3 is ~$0.023/GB-month standard, $0.004 cold tier. 50-250x cheaper. Plus 11-9s durability vs whatever your DB backup gives you.',
+      where: 'ingestion-svc writes original uploads. retrieval-svc reads chunked text but never raw PDFs. governance-svc archives audit-log JSON to cold tier per retention policy.',
+      when: 'Anything > 1MB; high-volume artifacts; long-tail retention requirements; cross-service raw-file sharing.',
+      who: 'Platform team owns buckets + IAM. Each service owns its prefix + lifecycle policy.',
+    },
+    interview30s: 'Object storage holds the bytes; the relational store holds the metadata. Three non-negotiable disciplines: tenant-scoped key prefix (no shared namespace), presigned URLs (browser uploads direct, never through the API), lifecycle policies (auto-tier hot → cold → deep-archive → delete on schedule). The drill is cross-tenant + presigned-url-expiry: write under tenant A, presigned read under tenant B context returns 403; presigned URL past expiry returns 403 even with valid signature. Mixing object bytes with relational rows is the most common architectural mistake.',
+    coreBuildingBlocks: [
+      'Bucket — per-tenant OR shared with key prefix tenant/<id>/...',
+      'Presigned URLs — time-limited (5-15 min) signed access; browser direct',
+      'Multipart upload — chunks > 5MB; resumable; parallel',
+      'Lifecycle policies — auto-tier (Standard → IA → Glacier → Deep Archive)',
+      'Versioning — protect against accidental overwrites',
+      'Server-side encryption — KMS key per tenant for regulated tiers',
+      'Replication — cross-region for DR; cross-account for vendor isolation',
+    ],
+    architectureRelevance: {
+      backend: 'ingestion-svc puts upload to s3://bucket/tenant/<id>/raw/<doc_id>. Postgres tracks doc_id + s3_key. Service reads via presigned URL or boto3 directly.',
+      rag: 'Original PDF in S3; chunked text + embeddings live in Qdrant + Postgres. Re-chunking on model upgrade reads source from S3.',
+      ai: 'Audio uploads + transcripts archived to S3 cold tier per compliance retention. PII redacted text archived separately.',
+      microservices: 'Each service has its own IAM role + bucket prefix. No cross-service direct bucket access.',
+    },
+    hld: `flowchart TB
+  subgraph clients[Clients]
+    UI[Browser]
+    SDK[SDK / API]
+  end
+  subgraph svcs[Services]
+    ING[ingestion-svc]
+    RET[retrieval-svc]
+    GOV[governance-svc]
+  end
+  subgraph s3[Object storage]
+    HOT[("Standard tier")]
+    IA[("Infrequent Access")]
+    GLAC[("Glacier")]
+    DA[("Deep Archive")]
+  end
+  subgraph PG[Postgres]
+    META[(documents table - s3_key, version, mime)]
+  end
+  UI -->|presigned URL upload direct| HOT
+  SDK --> ING
+  ING -->|put with metadata| HOT
+  ING -->|track s3_key| META
+  RET -->|presigned read| HOT
+  GOV -->|archive policy| HOT
+  HOT -.->|30d lifecycle| IA
+  IA -.->|90d lifecycle| GLAC
+  GLAC -.->|365d lifecycle| DA`,
+    networkFlow: `flowchart LR
+  C[Browser] -->|HTTPS upload| AGW[api-gateway]
+  AGW -->|sign URL| ING[ingestion-svc]
+  ING -->|presigned URL valid 15 min| C
+  C -->|PUT direct| S3[(S3 bucket)]
+  S3 -.->|S3 event| KAFKA[(Kafka document.uploaded)]
+  KAFKA --> ING
+  ING -->|metadata row| PG[(Postgres)]`,
+    flowchart: `flowchart LR
+  U[User uploads PDF] --> R[Request presigned URL]
+  R --> A[ingestion-svc validates auth + quota]
+  A --> S[Sign URL with tenant prefix + 15-min expiry]
+  S --> P[Browser PUT direct to S3]
+  P --> E[S3 event fires document.uploaded]
+  E --> K[Kafka topic]
+  K --> ING[Ingestion saga begins]
+  ING --> META[Postgres metadata row]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant U as User
+  participant GW as api-gateway
+  participant Ing as ingestion-svc
+  participant S3 as S3
+  participant K as Kafka
+  participant PG as Postgres
+  U->>GW: POST /api/v1/documents request signed URL
+  GW->>Ing: validate auth + tenant quota
+  Ing->>S3: get presigned PUT for tenant prefix
+  S3-->>Ing: signed URL 15-min expiry
+  Ing-->>U: 200 + signed URL
+  U->>S3: PUT direct multipart
+  S3-->>K: object created event
+  K->>Ing: document uploaded
+  Ing->>PG: INSERT metadata row`,
+    coreLayers: [
+      { layer: 'Bucket', responsibility: 'Per-tenant for regulated; shared with prefix for default. IAM role per service.' },
+      { layer: 'Key naming', responsibility: 'tenant/<id>/raw/<doc_id>/<version>.<ext>. Tenant prefix mandatory; no shared keys.' },
+      { layer: 'Presigned URLs', responsibility: 'Time-limited signed URLs (5-15 min default). Browser uploads/downloads direct.' },
+      { layer: 'Multipart upload', responsibility: 'For files > 5MB. Resumable; parallel parts; auto-abort on timeout.' },
+      { layer: 'Lifecycle', responsibility: 'Auto-tier Standard → IA (30d) → Glacier (90d) → Deep Archive (1y) → Delete. Per-bucket policy.' },
+      { layer: 'Versioning', responsibility: 'Versioning enabled; protect against accidental overwrites; cleanup via lifecycle.' },
+      { layer: 'Encryption', responsibility: 'SSE-KMS per tenant for regulated; SSE-S3 default. Key rotation managed.' },
+      { layer: 'Replication', responsibility: 'Cross-region for DR; cross-account for vendor isolation. Async; ~15min lag.' },
+    ],
+    lld: `flowchart LR
+  subgraph repo[ObjectRepo]
+    PUT[put with tenant_id + key + bytes]
+    GET[get with tenant_id + key]
+    SIGN[presigned_url with expiry]
+  end
+  subgraph cli[boto3 / aiobotocore]
+    POOL[HTTP pool]
+    CRED[IAM role / STS]
+  end
+  subgraph s3[S3]
+    BUCKET[Bucket]
+    OBJ[Object]
+    META[Object metadata]
+  end
+  PUT --> POOL
+  GET --> POOL
+  SIGN --> POOL
+  POOL --> CRED
+  POOL --> BUCKET
+  BUCKET --> OBJ
+  OBJ --> META`,
     problem: 'Storing PDFs, images, audio, video as bytea in Postgres bloats the cluster, slows queries, and breaks backup economics. Object storage decouples bytes from metadata.',
     whyThisApproach: 'S3-compatible object stores (MinIO, AWS S3, GCS) give 11-9s durability, lifecycle policies, multipart upload for large files, and presigned URLs for direct browser access — at storage costs orders of magnitude lower than DB.',
     whenToUse: [
       'Original document uploads (PDFs, images, audio, video)',
       'Backup snapshots',
       'Logs / audit archives (cold tier)',
-      'Generated artifacts (rendered reports, exported data)',
+      'Static assets (CDN-fronted)',
+      'Cross-service raw-file sharing',
+      'ML model weights + embeddings checkpoint storage',
     ],
     whenNotToUse: [
-      'Indexable searchable content → text in DB or vector store',
-      'Hot reads with < 50ms requirement → CDN in front',
-      'Tiny metadata blobs (overhead not worth it)',
-      'Real-time mutating state',
+      'Small text strings → Postgres or Redis',
+      'Sub-millisecond reads → Redis or local cache',
+      'Transactional consistency required → Postgres + bytea (rare)',
+      'Strong-consistent multi-write workflows',
+      'Search inside bytes (use parsed text in PG/Qdrant instead)',
     ],
-    input: 'Binary file (PDF, image, audio, video) + metadata (tenant, document_id, content_type)',
+    input: 'Multipart upload bytes + tenant_id + content_type + (optional) lifecycle hint',
     process: [
-      'Client / service uploads via PUT or multipart',
-      'Object stored at tenant-prefixed key',
-      'Metadata pointer stored in Postgres (documents.file_path)',
-      'Downstream parsers read by key',
-      'Lifecycle policy archives or deletes after N days',
+      'Service issues presigned URL (15-min expiry) with tenant key prefix',
+      'Browser PUTs file direct to S3 via multipart upload',
+      'S3 event fires → Kafka document.uploaded',
+      'ingestion-svc consumes event; INSERT metadata row in Postgres',
+      'Lifecycle policy auto-tiers per schedule',
+      'On read: service issues presigned GET; browser fetches direct',
     ],
-    output: 'Durable raw artifact + small DB row pointing to it, with decoupled lifecycle.',
-    flowchart: `flowchart LR
-  a[Client uploads file] --> b[ingestion-svc receives bytes]
-  b --> c[PUT to S3 at tenant/<id>/raw/<doc_id>]
-  c --> d[INSERT row in documents table with file_path]
-  d --> e[Emit document.uploaded event]
-  e --> f[Parser reads object by key]
-  f --> g[Chunks + embeddings stored downstream]
-  h[Lifecycle policy] --> i[Move to cold tier OR delete after N days]`,
-    sequence: `sequenceDiagram
-  autonumber
-  participant Cli as Client
-  participant Ing as ingestion-svc
-  participant S3 as MinIO/S3
-  participant PG as Postgres
-  participant Parser as Parser
-  Cli->>Ing: POST /api/v1/documents/upload (multipart)
-  Ing->>S3: PUT tenant/T/raw/D.pdf
-  S3-->>Ing: ETag
-  Ing->>PG: INSERT documents (file_path, tenant, doc_id, status='uploaded')
-  Ing-->>Cli: 201 + document_id
-  Parser->>S3: GET tenant/T/raw/D.pdf
-  S3-->>Parser: bytes
-  Parser->>PG: UPDATE documents SET status='parsing'`,
-    alternatives: [
-      { name: 'AWS S3', tradeoff: 'Managed; pay-per-use; vendor-locked; mature ecosystem' },
-      { name: 'GCS / Azure Blob', tradeoff: 'Same shape as S3; different IAM model; cloud lock-in' },
-      { name: 'MinIO (self-hosted)', tradeoff: 'S3-compatible; full control; ops cost' },
-      { name: 'Postgres bytea', tradeoff: 'Single store; awful for large files; backup pain' },
-      { name: 'Filesystem (NFS, EFS)', tradeoff: 'Familiar; doesn\'t scale to multi-region; consistency issues' },
+    output: 'Durable, tier-managed bytes + queryable metadata in Postgres. 11-9s durability; cents per GB-year for cold tier.',
+    implementationSteps: [
+      { step: '1', logic: 'Provision bucket (per-tenant for regulated; shared with prefix for default). Block public access.' },
+      { step: '2', logic: 'Configure IAM role per service: scoped to tenant prefix + lifecycle to deny cross-tenant access.' },
+      { step: '3', logic: 'Set lifecycle policy: Standard → IA (30d) → Glacier (90d) → Deep Archive (1y) → Delete.' },
+      { step: '4', logic: 'Wrap S3 client in ObjectRepo class — tenant_id required at every put/get/presign call.' },
+      { step: '5', logic: 'Implement presigned URL helper: 15-min default expiry; tenant prefix enforced.' },
+      { step: '6', logic: 'Wire S3 events → Kafka document.uploaded → ingestion saga.' },
+      { step: '7', logic: 'Enable bucket versioning + SSE-KMS encryption.' },
+      { step: '8', logic: 'Drill: cross-tenant presigned read → 403; expired URL → 403; oversized upload → rejected.' },
     ],
+    codeExample: {
+      language: 'python',
+      code: `# libs/py/documind_core/object_repo.py
+from datetime import timedelta
+import aiobotocore.session
+
+class ObjectRepo:
+    """Tenant-scoped S3 ops. tenant_id required on every call."""
+    def __init__(self, bucket: str, region: str):
+        self._bucket = bucket
+        self._region = region
+
+    @staticmethod
+    def tenant_key(tenant_id: str, key: str) -> str:
+        if not tenant_id:
+            raise ValueError("tenant_id required")
+        # Normalize to prevent traversal
+        key = key.lstrip("/")
+        return f"tenant/{tenant_id}/{key}"
+
+    async def put(self, tenant_id: str, key: str, body: bytes, content_type: str) -> str:
+        async with self._session() as s3:
+            full_key = self.tenant_key(tenant_id, key)
+            await s3.put_object(
+                Bucket=self._bucket,
+                Key=full_key,
+                Body=body,
+                ContentType=content_type,
+                ServerSideEncryption="aws:kms",
+            )
+            return full_key
+
+    async def presigned_get(self, tenant_id: str, key: str, expiry: timedelta = timedelta(minutes=15)) -> str:
+        async with self._session() as s3:
+            full_key = self.tenant_key(tenant_id, key)
+            return await s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self._bucket, "Key": full_key},
+                ExpiresIn=int(expiry.total_seconds()),
+            )
+
+    def _session(self):
+        session = aiobotocore.session.get_session()
+        return session.create_client("s3", region_name=self._region)`,
+    },
+    realUseCase: 'A user uploads a 50MB compliance manual. Without object storage: ingestion-svc receives the upload, holds 50MB in memory, writes bytea to Postgres — uses 50MB of pool memory + 100MB DB row + slow query plans on the audit-log table for the next year. With object storage: api-gateway returns a 15-min presigned URL; browser PUTs direct to S3 multipart; S3 event fires; ingestion-svc reads metadata only. DB has a tiny row pointing to S3 key; cluster stays lean; cost drops 100x.',
+    prosCons: {
+      pros: [
+        '11-9s durability (statistically zero data loss)',
+        'Cents per GB-year for cold tier',
+        'Multipart upload — resumable + parallel',
+        'Lifecycle auto-tiers without cleanup jobs',
+        'Presigned URLs — browser direct; no API bandwidth burn',
+        'Versioning + encryption + replication built-in',
+      ],
+      cons: [
+        'Eventual consistency on some operations (older S3; modern is strong)',
+        'No transactions; metadata in PG keeps source of truth',
+        'Latency higher than DB (~10-50ms) — not for hot paths',
+        'IAM complexity at multi-tenant scale',
+        'Cross-region replication has lag (~15min)',
+      ],
+    },
+    comparison: {
+      left: 'Object storage (S3)',
+      right: 'Postgres bytea',
+      rows: [
+        { aspect: 'Cost per GB-month', left: '$0.023 standard / $0.004 cold', right: '$1+ at managed-DB pricing' },
+        { aspect: 'Max object size', left: '5 TB per object', right: '~1GB practical limit' },
+        { aspect: 'Durability', left: '11 nines', right: 'Whatever DB backup gives' },
+        { aspect: 'Lifecycle tiering', left: 'Native (auto)', right: 'Manual cleanup job' },
+        { aspect: 'Direct browser upload', left: 'Yes (presigned)', right: 'No (proxy through API)' },
+        { aspect: 'When to pick', left: 'Bytes > 1MB; long-tail; binary', right: 'Tiny tightly-coupled blobs' },
+      ],
+    },
+    solutions: [
+      { problem: 'Cross-tenant object access', solution: 'IAM scoped to tenant prefix; ObjectRepo enforces tenant_key; drill verifies' },
+      { problem: 'Storage cost growing unbounded', solution: 'Lifecycle policy: Standard → IA → Glacier → Deep Archive → Delete' },
+      { problem: 'Browser upload slow', solution: 'Multipart upload; parallelize parts; CDN-front for downloads' },
+      { problem: 'Presigned URL leaks via logs', solution: 'Don\'t log full URLs; redact signature query parameter' },
+      { problem: 'Accidental overwrite destroys data', solution: 'Versioning enabled; lifecycle handles old version cleanup' },
+    ],
+    bestPractices: {
+      do: [
+        'Tenant key prefix on every object (tenant/<id>/...)',
+        'Presigned URLs with short expiry (5-15 min)',
+        'Multipart upload for files > 5MB',
+        'Lifecycle policy for every event-volume bucket',
+        'Versioning + SSE-KMS encryption enabled',
+        'IAM per service scoped to bucket + prefix',
+      ],
+      avoid: [
+        'Storing bytea in Postgres for files > 1MB',
+        'Public buckets (block public access by default)',
+        'Logging presigned URLs (signature exposure)',
+        'Long-expiry signed URLs (24h+ is leak risk)',
+        'Synchronous proxy uploads through your API (bandwidth burn)',
+      ],
+      optimize: [
+        'CDN (CloudFront / Cloudflare) for read-heavy public paths',
+        'S3 Transfer Acceleration for global uploads',
+        'Intelligent-Tiering for unpredictable access patterns',
+        'Same-region access from compute (saves transfer cost)',
+        'Compression before upload for text/JSON payloads',
+      ],
+    },
+    antiPatterns: [
+      'Storing PDFs as bytea in Postgres — bloats cluster, breaks backups',
+      'Public bucket (block public access disabled) — data leak waiting',
+      'No lifecycle policy — storage cost grows linearly forever',
+      'Long-expiry presigned URLs — credential leak',
+      'No tenant prefix — cross-tenant access via IAM bypass',
+      'Sync proxy upload through API — burns bandwidth + memory',
+    ],
+    testTypes: [
+      'Unit (ObjectRepo method shape)',
+      'Integration with MinIO / LocalStack',
+      'Drill — cross-tenant presigned read returns 403',
+      'Drill — expired URL returns 403',
+      'Drill — lifecycle transition fires on schedule',
+      'Performance — 100MB multipart upload < 30s',
+    ],
+    testScenarios: [
+      { scenario: 'Tenant A puts; tenant B presigned-gets', expected: '403 Forbidden' },
+      { scenario: 'Presigned URL past expiry used', expected: '403 SignatureDoesNotMatch or Expired' },
+      { scenario: 'Multipart upload interrupted', expected: 'Resumable; abort policy auto-cleans incomplete' },
+      { scenario: 'Lifecycle: Standard 30 days → IA', expected: 'Object class transitions; S3 event fires' },
+      { scenario: 'Versioning: overwrite then restore', expected: 'Previous version available; current updated' },
+    ],
+    testData: [
+      { type: 'Valid', example: 'tenant/UUID-A/raw/D1.pdf, application/pdf, 5MB' },
+      { type: 'Cross-tenant', example: 'Presigned for tenant A; sender from tenant B context → 403' },
+      { type: 'Boundary', example: '5GB file via multipart; 100 parts × 50MB' },
+      { type: 'Extreme', example: 'Sustained 1GB/sec uploads across 100 tenants' },
+      { type: 'Invalid', example: 'tenant_id="" → ValueError raised by ObjectRepo' },
+    ],
+    debuggingChecklist: [
+      'Is the key tenant-prefixed? (S3 console; aws s3 ls)',
+      'Does the IAM role have access to the prefix? (sts get-caller-identity + simulate-principal-policy)',
+      'Is the presigned URL within expiry? (URL X-Amz-Date + X-Amz-Expires)',
+      'Is bucket versioning enabled? (s3api get-bucket-versioning)',
+      'Is the lifecycle policy active? (s3api get-bucket-lifecycle-configuration)',
+      'Are S3 events firing? (CloudTrail / S3 events config)',
+      'Is encryption applied? (head-object → ServerSideEncryption)',
+    ],
+    productionIssues: [
+      { issue: 'Cross-tenant document accidentally readable', rootCause: 'Hand-rolled S3 call bypassed ObjectRepo; missing tenant prefix' },
+      { issue: 'Storage bill 10x higher than expected', rootCause: 'Lifecycle policy missing on event-archive bucket; no auto-tier' },
+      { issue: 'Presigned URL leaked in support ticket logs', rootCause: 'Full URL logged including signature; URL valid for 24h' },
+      { issue: 'Multipart upload stuck at 99%', rootCause: 'Final part timeout; no abort-incomplete-multipart lifecycle rule' },
+      { issue: 'Cross-region read fails after disaster', rootCause: 'Replication not configured; primary region down' },
+    ],
+    performance: [
+      'p50 GET < 50ms same-region; cross-region 100-200ms',
+      'PUT throughput: ~50MB/sec single-stream; multipart parallel scales linear',
+      'Multipart minimum part size 5MB; max 10K parts per upload',
+      'Presigned URL signing < 5ms (SDK-side, no S3 call)',
+      'Lifecycle transitions are async; ~24h for newly-tiered',
+    ],
+    costConsiderations: [
+      'Standard: $0.023/GB-month; cold tier (Deep Archive): $0.00099/GB-month — 23x savings',
+      'Request cost: $0.0004 per 1K GET; PUT $0.005 per 1K — adds up at scale',
+      'Cross-region replication doubles storage + adds bandwidth cost',
+      'Egress to internet expensive; CDN-front for public read paths',
+      'Versioning compounds storage; lifecycle cleanup of old versions essential',
+    ],
+    observability: [
+      'Per-bucket size + object count',
+      'Per-prefix request rate (CloudWatch / S3 metrics)',
+      'Lifecycle transition stats',
+      'Presigned URL generation rate',
+      'Multipart upload abort rate',
+      'Failed authentication events (CloudTrail)',
+    ],
+    metrics: [
+      { name: 's3_bucket_size_bytes', example: 'Track per-tenant; alert on >50% week-over-week growth' },
+      { name: 's3_request_count_per_prefix', example: 'Identify hot keys; CDN-front if needed' },
+      { name: 's3_lifecycle_transitions_total', example: 'Verify auto-tiering working' },
+      { name: 's3_multipart_aborted_total', example: '< 1% of upload attempts' },
+      { name: 's3_403_rate_per_prefix', example: 'Spike = misconfigured presigned or IAM' },
+    ],
+    failureModes: [
+      { mode: 'IAM misconfiguration → cross-tenant access', detect: 'Drill catches; manual review on policy changes', recover: 'Revoke; rotate keys; audit chain' },
+      { mode: 'Bucket region down', detect: 'CloudWatch alarm; service health checks', recover: 'Failover to replica region; presigned-URL service updates region' },
+      { mode: 'Lifecycle not transitioning', detect: 'Storage class metric stuck at Standard', recover: 'Verify policy syntax; force transition via batch op' },
+      { mode: 'Multipart abort not cleaning', detect: 'Storage bill includes incomplete uploads', recover: 'Lifecycle rule abort-incomplete-multipart-upload' },
+      { mode: 'Presigned URL leaked', detect: 'Anomaly in S3 access logs OR security report', recover: 'Rotate access key; reduce default expiry; audit logs' },
+    ],
+    tradeoffs: [
+      { decision: 'Per-tenant bucket vs shared with prefix', tradeoff: 'IAM simplicity vs operational scale (1k+ buckets is painful)' },
+      { decision: 'MinIO self-host vs S3 managed', tradeoff: 'Operational cost vs data sovereignty' },
+      { decision: 'Lifecycle delete vs retain forever', tradeoff: 'Storage cost vs compliance retention' },
+      { decision: 'Cross-region replication vs single-region', tradeoff: 'DR cost vs RTO' },
+      { decision: 'CDN-front vs direct S3', tradeoff: 'Egress cost + latency vs operational simplicity' },
+    ],
+    decisionMatrix: [
+      { option: 'AWS S3', whenToUse: 'Default cloud; widest ecosystem; managed' },
+      { option: 'MinIO (self-hosted)', whenToUse: 'On-prem; data sovereignty; air-gapped' },
+      { option: 'Google Cloud Storage', whenToUse: 'GCP-centric; multi-region by default' },
+      { option: 'Azure Blob', whenToUse: 'Azure stack; enterprise compliance' },
+      { option: 'Cloudflare R2', whenToUse: 'Egress-heavy workloads (zero egress fee)' },
+      { option: 'Postgres bytea', whenToUse: 'Tiny blobs; transactional + bytes coupled' },
+    ],
+    starStory: {
+      situation: 'Postgres cluster was 4TB. Backup window grew to 8 hours. 80% of the data was bytea-stored PDFs. Slow queries on metadata tables suggested storage was the bottleneck.',
+      task: 'Reduce DB size to under 500GB; backup under 1 hour; preserve every byte for audit + retention.',
+      action: 'Built ObjectRepo wrapping S3 with tenant prefix enforcement. Migrated existing bytea: streamed each row to S3, replaced bytea with s3_key reference. Built presigned URL helper for read paths. Configured lifecycle: Standard → IA at 30d → Glacier at 90d → Deep Archive at 1y. Drill: cross-tenant presigned read returns 403.',
+      result: 'DB shrunk to 380GB; backup down to 25 minutes. Storage cost dropped from $4.2K/month (DB-tier) to $180/month (S3 mixed-tier). Zero cross-tenant incidents in the 18 months since migration. Drill catches any future regression.',
+    },
+    interviewTraps: [
+      'Storing bytes in Postgres for files > 1MB — most common architectural mistake',
+      'Public buckets — even temporarily; one config flip = data leak',
+      'Long-expiry presigned URLs — anything > 1h is a credential',
+      'Logging full presigned URLs — signature exposure',
+      'No lifecycle policy — bills grow forever',
+      'Synchronous upload through your API — burns bandwidth + memory',
+    ],
+    interviewLine: 'Blob storage keeps raw artifacts cheap and durable; metadata and workflow state still live in Postgres. Mixing the two is the most common architectural mistake.',
+    finalScript: 'Object storage holds the bytes; the relational store holds the metadata. Three non-negotiable disciplines. First, tenant-scoped key prefix — tenant/<id>/... on every object; ObjectRepo enforces this; cross-tenant access is structurally impossible. Second, presigned URLs with short expiry — 5 to 15 minutes default; browser uploads and downloads direct to S3, never through the API; saves bandwidth + memory + latency. Third, lifecycle policies — auto-tier Standard to IA at 30 days, IA to Glacier at 90 days, Glacier to Deep Archive at 1 year, then delete on retention schedule; storage cost stays bounded without cleanup jobs. Multipart upload for files over 5MB; versioning + SSE-KMS encryption enabled; IAM per service scoped to tenant prefix. The drill is cross-tenant + presigned-expiry: write under tenant A, presigned read under tenant B context returns 403; presigned URL past expiry returns 403 even with valid signature. Mixing object bytes with relational rows is the most common architectural mistake — keep them separate.',
     challenges: [
       'Lifecycle policy correctness (don\'t delete in-flight files)',
       'Versioning vs immutability tradeoffs',
@@ -2255,11 +2577,19 @@ ORDER BY total_cost_30d DESC;
       { case: 'Multipart upload fails mid-way', solution: 'Resume from last completed part; abandoned multiparts cleaned up by lifecycle' },
       { case: 'Tenant-key collision', solution: 'Tenant-prefixed key path enforced (tenant/<id>/...)' },
     ],
-    failureModes: [
-      { mode: 'S3 unreachable', detect: 'PUT failure rate; ingestion-svc /health/upstreams', recover: 'Retry with backoff; quarantine failed uploads' },
-      { mode: 'Storage quota exceeded', detect: 'Bucket size alert', recover: 'Lifecycle policy archive; alert tenant if over quota' },
-      { mode: 'Object deleted by ops mistake', detect: 'Audit log of admin actions; metadata-pointer health check', recover: 'Restore from versioning if enabled; otherwise re-upload' },
-      { mode: 'Tenant prefix dropped (regression)', detect: 'Cross-tenant access drill', recover: 'Revert; verify all keys' },
+    alternatives: [
+      { name: 'AWS S3', tradeoff: 'Managed; pay-per-use; vendor-locked; mature ecosystem' },
+      { name: 'GCS / Azure Blob', tradeoff: 'Same shape as S3; different IAM model; cloud lock-in' },
+      { name: 'MinIO (self-hosted)', tradeoff: 'S3-compatible; full control; ops cost' },
+      { name: 'Postgres bytea', tradeoff: 'Single store; awful for large files; backup pain' },
+      { name: 'Filesystem (NFS, EFS)', tradeoff: 'Familiar; doesn\'t scale to multi-region; consistency issues' },
+    ],
+    testing: [
+      'Upload-then-DB-crash drill (orphaned object cleanup)',
+      'Tenant-prefix drill (cross-tenant access blocked)',
+      'Lifecycle policy drill (don\'t delete in-flight objects)',
+      'Large-file multipart drill',
+      'Presigned URL expiry drill',
     ],
     monitoring: [
       'Upload success rate per tenant',
@@ -2267,12 +2597,6 @@ ORDER BY total_cost_30d DESC;
       'Bucket size growth',
       'Lifecycle transition events',
       'Multipart upload completion rate',
-    ],
-    testing: [
-      'Upload-then-DB-crash drill (orphaned object cleanup)',
-      'Tenant-prefix drill (cross-tenant access blocked)',
-      'Lifecycle policy drill (don\'t delete in-flight objects)',
-      'Large-file multipart drill',
     ],
     security: [
       'Bucket policy denies anonymous access',
@@ -2300,11 +2624,11 @@ ORDER BY total_cost_30d DESC;
     ],
     projectFit: [
       'MinIO at localhost:59000 in dev stack (DOCUMIND_MINIO_*)',
-      'ingestion-svc uploads documents here',
-      'documents table stores file_path pointing to MinIO key',
-      'Tenant-prefixed key path enforced',
+      'libs/py/documind_core/object_repo.py — ObjectRepo with tenant_id required',
+      'ingestion-svc uploads documents via presigned URLs',
+      'documents table stores s3_key pointing to object',
+      'mcp/tests/drill_object_storage_tenant_isolation.py + presigned_expiry.py',
     ],
-    interviewLine: 'Blob storage keeps raw artifacts cheap and durable; metadata and workflow state still live in Postgres. Mixing the two is the most common architectural mistake.',
   },
 ];
 
