@@ -73,6 +73,7 @@ DEEP_DIVE_PAGES = [
     ("/admin/ldap/deep",      2, 6),
     ("/admin/sso/deep",       2, 6),
     ("/admin/guardrails/deep", 2, 6),
+    ("/admin/rbac/deep",      2, 6),
 ]
 
 

@@ -98,8 +98,12 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    heading: 'Identity & Security',
+    heading: 'Edge & Identity',
     items: [
+      { href: '/tools/api-gateway', label: 'API Gateway (Go)' },
+      { href: '/tools/nginx-cdn', label: 'CDN (NGINX edge)' },
+      { href: '/tools/nginx-cdn', label: 'Load balancer (NGINX)' },
+      { href: '/admin/rbac/deep', label: 'RBAC + ABAC (3-layer)' },
       { href: '/admin/sso/deep', label: 'SSO (SAML / OIDC)' },
       { href: '/admin/ldap/deep', label: 'LDAP (enterprise sync)' },
       { href: '/admin/pii/deep', label: 'PII (detect + redact)' },
@@ -109,11 +113,13 @@ const GROUPS: Group[] = [
   {
     heading: 'AI lifecycle',
     items: [
-      { href: '/admin/llmops/deep#evaluation', label: 'Output evaluation' },
+      { href: '/admin/llmops/deep#evaluation', label: 'Output evaluation (golden + sampling)' },
       { href: '/admin/llmops/deep#prompt-registry', label: 'Prompt registry' },
       { href: '/admin/llmops/deep#audit', label: 'Decision audit' },
       { href: '/admin/llmops/deep#observability', label: 'AI observability' },
       { href: '/admin/llmops/deep#deployment', label: 'Model deployment' },
+      { href: '/admin/llmops/deep#experiment-tracking', label: 'Experiment tracking' },
+      { href: '/admin/llmops/deep#model-management', label: 'Model registry' },
     ],
   },
   {
