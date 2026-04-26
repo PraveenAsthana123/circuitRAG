@@ -1288,41 +1288,86 @@ class Cache:
   {
     slug: 'kafka',
     title: '4. Kafka — durable event transport',
-    status: 'partial',
+    status: 'shipped',
     coreConcept: 'Kafka decouples workflows from request paths via durable, append-only event logs — at the cost of pushing complexity into idempotency, lag, and schema discipline.',
-    problem: 'Some workflows shouldn\'t be synchronous: ingestion stages, audit fan-out, replay jobs, cross-service notifications. Direct HTTP couples lifetimes; events let consumers scale + replay independently.',
-    whyThisApproach: 'Kafka gives durability (configurable replication), partition-ordered delivery, replay (log retention), and decoupled consumers — proven at scale.',
-    whenToUse: [
-      'Async workflows that survive consumer crashes',
-      'Fan-out to N consumers with independent state',
-      'Replay-after-bug-fix scenarios',
-      'High write rate with eventual consistency tolerance',
+    oneLiner: 'Kafka = durable + replayable event log; producing is easy, consuming SAFELY is the hard part.',
+    businessContext: 'Synchronous HTTP couples lifetimes — a slow consumer takes the producer down. Audit fan-out, ingestion saga, cross-service notifications, replay-after-bug all need durable async transport. Direct HTTP cannot serve these patterns at the latency + reliability budget.',
+    fiveW: {
+      what: 'A distributed, partitioned, replicated commit log. Producers append; consumers read at their own pace; offsets track position. Configurable retention (hours / days / forever).',
+      why: 'Decouples producer + consumer lifetimes. Replay survives consumer bugs. Per-partition ordering enables stateful processing. Proven at petabyte scale.',
+      where: 'ingestion-svc emits document.uploaded; consumer chains parse → chunk → embed → index. governance-svc emits audit events. retrieval-svc emits cache.invalidate.',
+      when: 'Async workflows; fan-out to N consumers; replay-after-bug-fix; high write rate with eventual consistency tolerance.',
+      who: 'Platform team owns the Kafka cluster (or managed: MSK / Confluent Cloud). Each service team owns its topic schemas + consumer groups.',
+    },
+    interview30s: 'Kafka is the durable event-log backbone. Producers append to topics; consumers read at their own pace; offsets track position. Three non-negotiable disciplines: schema registry (topic schema versioned), idempotent consumers (de-dupe on event_id), and dead-letter queue with bounded retry. The hard part is not producing — it\'s consuming SAFELY: at-least-once delivery means duplicates; consumer crashes mean replays; schema drift breaks consumers silently. The drill is poison-message + replay: inject a malformed message, verify retry budget exhausts, message lands in DLQ, consumer keeps draining downstream.',
+    coreBuildingBlocks: [
+      'Cluster — 3+ brokers, replication factor 3, min.insync.replicas=2',
+      'Topics — partitioned (parallelism unit), versioned schema',
+      'Schema registry — Avro / Protobuf / JSON-schema; backward-compat enforced',
+      'Producer — idempotent + transactional for exactly-once-write',
+      'Consumer group — at-least-once delivery; idempotent handler',
+      'Dead-letter queue — bounded retry then park for human review',
+      'Outbox pattern — DB row + event in one transaction; relay publishes',
     ],
-    whenNotToUse: [
-      'Sync request/response',
-      'Strict ordering across partitions (only per-partition ordering)',
-      'Tiny systems (operational overhead too high)',
-      'Sub-millisecond latency requirements',
-    ],
-    input: 'Domain events (CloudEvents-shaped) + outbox row reference + correlation_id',
-    process: [
-      'DB write happens first (truth)',
-      'Outbox row published to Kafka by relay',
-      'Consumer reads with consumer group',
-      'Idempotent processing (event_id dedup)',
-      'Offset commit AFTER successful side effect',
-      'DLQ on persistent failure',
-    ],
-    output: 'Decoupled async workflows + replayable history + parallel consumers.',
+    architectureRelevance: {
+      backend: 'Outbox pattern: write domain row + event row to Postgres in one transaction. Outbox relay reads + publishes to Kafka with at-least-once semantics.',
+      rag: 'document.uploaded → ingestion saga (parse → chunk → embed → index → activate). Each stage is a separate consumer with its own retry policy.',
+      ai: 'inference.completed → audit fan-out (decision audit + cost log + eval sample). One event, multiple independent consumers.',
+      microservices: 'Per-service consumer groups. Decoupled deploy lifetimes. Replay topic from a known offset to recover from a consumer bug.',
+    },
+    hld: `flowchart TB
+  subgraph svcs[Producers]
+    ING[ingestion-svc]
+    GOV[governance-svc]
+    INF[inference-svc]
+  end
+  subgraph kafka[Kafka cluster]
+    B1[("Broker 1")]
+    B2[("Broker 2")]
+    B3[("Broker 3")]
+    SR[("Schema registry")]
+  end
+  subgraph cons[Consumer groups]
+    PARSE[parse worker]
+    EMBED[embed worker]
+    INDEX[index worker]
+    AUD[audit writer]
+    EVAL[eval sampler]
+  end
+  subgraph dlq[DLQ]
+    DLQ1[("docs-dlq")]
+    DLQ2[("audit-dlq")]
+  end
+  ING -->|publish document.uploaded| B1
+  GOV -->|publish audit events| B2
+  INF -->|publish inference.completed| B3
+  B1 -.->|replicate| B2
+  B2 -.->|replicate| B3
+  B1 --> PARSE
+  PARSE --> EMBED
+  EMBED --> INDEX
+  B2 --> AUD
+  B3 --> EVAL
+  PARSE -.->|N retries fail| DLQ1
+  AUD -.->|fail| DLQ2`,
+    networkFlow: `flowchart LR
+  P[Producer service] -->|publish + retry idempotent| K[(Kafka cluster)]
+  K -->|partition assigned| C1[Consumer 1]
+  K -->|partition assigned| C2[Consumer 2]
+  C1 -->|commit offset| K
+  C1 -->|N retries exhausted| DLQ[(DLQ topic)]
+  K -.->|schema check| SR[Schema registry]`,
     flowchart: `flowchart LR
-  a[Service writes DB row + outbox row] --> b[Outbox relay publishes to Kafka]
-  b --> c[Topic partition]
-  c --> d[Consumer reads]
-  d --> e{Process side effect}
-  e -->|success| f[Commit offset]
-  e -->|fail| g{Retry budget left?}
-  g -->|yes| d
-  g -->|no| h[DLQ + alert]`,
+  E[Domain event] --> O[Outbox row in PG tx]
+  O --> RL[Outbox relay]
+  RL --> P[Publish to Kafka]
+  P --> T[Topic partition]
+  T --> CON[Consumer reads]
+  CON --> H{Process side effect}
+  H -->|success| OFF[Commit offset]
+  H -->|fail| RT{Retry budget left}
+  RT -->|yes| CON
+  RT -->|no| DLQ[DLQ + alert]`,
     sequence: `sequenceDiagram
   autonumber
   participant Svc as Service
@@ -1337,14 +1382,296 @@ class Cache:
   Out->>DB: mark outbox sent
   Con->>K: poll partition
   Con->>Side: perform side effect
-  Side-->>Con: ok / fail
-  Con->>K: commit offset (only on ok)`,
-    alternatives: [
-      { name: 'RabbitMQ', tradeoff: 'Lower volume; more flexible routing; weaker replay' },
-      { name: 'NATS / NATS JetStream', tradeoff: 'Lighter; simpler; smaller ecosystem' },
-      { name: 'AWS Kinesis / GCP Pub/Sub', tradeoff: 'Managed; vendor lock-in; per-message cost' },
-      { name: 'PostgreSQL LISTEN/NOTIFY', tradeoff: 'No persistence; single-instance; for tiny scale' },
+  Side-->>Con: ok or fail
+  Con->>K: commit offset only on ok`,
+    coreLayers: [
+      { layer: 'Cluster', responsibility: '3+ brokers, RF=3, min.insync.replicas=2. Disk replication; survives node failure.' },
+      { layer: 'Topic', responsibility: 'Partitioned for parallelism. Replication factor for durability. Retention per topic.' },
+      { layer: 'Schema registry', responsibility: 'Avro / Protobuf / JSON-schema versions. Backward + forward compat enforced.' },
+      { layer: 'Producer', responsibility: 'Idempotent + transactional for exactly-once-write semantics. Retries built-in.' },
+      { layer: 'Consumer group', responsibility: 'Auto-rebalances partitions; at-least-once delivery; commit offset only after success.' },
+      { layer: 'Idempotency', responsibility: 'event_id de-dupe in consumer. Every handler must be idempotent.' },
+      { layer: 'DLQ', responsibility: 'Bounded retry (N attempts with backoff) then park in dead-letter topic for human review.' },
+      { layer: 'Outbox pattern', responsibility: 'Write DB row + event row in one transaction; relay polls outbox + publishes; mark sent.' },
     ],
+    lld: `flowchart LR
+  subgraph repo[EventProducer + Consumer]
+    PUB[publish event_id + payload]
+    CON[consume + dedupe]
+  end
+  subgraph cli[Kafka client]
+    PROD[Producer client]
+    CONS[Consumer client]
+    REB[Rebalance listener]
+  end
+  subgraph k[Kafka]
+    LEAD[Leader replica]
+    FOL[Follower replicas]
+    OFF[Offset store]
+  end
+  PUB --> PROD
+  PROD --> LEAD
+  LEAD -.-> FOL
+  CONS --> LEAD
+  CONS --> OFF
+  CON --> CONS`,
+    problem: 'Some workflows shouldn\'t be synchronous: ingestion stages, audit fan-out, replay jobs, cross-service notifications. Direct HTTP couples lifetimes; events let consumers scale + replay independently.',
+    whyThisApproach: 'Kafka gives durability (configurable replication), partition-ordered delivery, replay (log retention), and decoupled consumers — proven at scale.',
+    whenToUse: [
+      'Async workflows that survive consumer crashes',
+      'Fan-out to N consumers with independent state',
+      'Replay-after-bug-fix scenarios',
+      'High write rate with eventual consistency tolerance',
+      'Audit fan-out (one event → many consumers)',
+      'Outbox pattern for transactional event publishing',
+    ],
+    whenNotToUse: [
+      'Sync request/response (use HTTP)',
+      'Strict ordering across partitions (only per-partition ordering)',
+      'Tiny systems (operational overhead too high)',
+      'Sub-millisecond latency requirements',
+      'Very small messages at low rate (use Postgres LISTEN/NOTIFY)',
+    ],
+    input: 'Producer: domain event with event_id + tenant_id + payload + schema version. Consumer: partition assignment + offset.',
+    process: [
+      'Producer: serialize event with schema; publish to topic partition',
+      'Outbox relay: poll outbox table; publish; mark sent',
+      'Consumer: poll partition; deserialize; check event_id dedupe',
+      'Process: invoke side effect; on success commit offset',
+      'On failure: retry with exponential backoff up to N times',
+      'On retry exhaustion: park in DLQ; alert; resume next message',
+    ],
+    output: 'Durable event in topic; consumer side effect applied; offset committed; audit row written.',
+    implementationSteps: [
+      { step: '1', logic: 'Provision Kafka cluster (3 brokers, RF=3, min.insync.replicas=2). Managed: MSK / Confluent Cloud.' },
+      { step: '2', logic: 'Set up Schema Registry; enforce backward compat on schema changes.' },
+      { step: '3', logic: 'Define topics with partition count = parallelism unit. Document retention per topic.' },
+      { step: '4', logic: 'Wrap producer in EventProducer class — sets event_id, tenant_id, schema version automatically.' },
+      { step: '5', logic: 'Wrap consumer in IdempotentConsumer — dedupes by event_id; commits offset only after success.' },
+      { step: '6', logic: 'Implement outbox pattern: domain row + event row in one PG transaction; relay polls + publishes.' },
+      { step: '7', logic: 'Add DLQ topic with bounded retry (3 attempts with exponential backoff).' },
+      { step: '8', logic: 'Drill: poison message + replay → verify retry exhausts, message lands in DLQ, consumer drains downstream.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# libs/py/documind_core/kafka_client.py
+from typing import Callable, Awaitable
+import json, uuid
+from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
+
+class EventProducer:
+    """Stamps event_id + tenant_id + schema version on every publish."""
+    def __init__(self, producer: AIOKafkaProducer, schema_version: str):
+        self._p = producer
+        self._sv = schema_version
+
+    async def publish(self, topic: str, tenant_id: str, payload: dict) -> str:
+        event_id = str(uuid.uuid4())
+        msg = {
+            "event_id": event_id,
+            "tenant_id": tenant_id,
+            "schema_version": self._sv,
+            "payload": payload,
+        }
+        await self._p.send_and_wait(topic, json.dumps(msg).encode())
+        return event_id
+
+class IdempotentConsumer:
+    """Dedupes by event_id; commits offset only after success."""
+    def __init__(self, consumer: AIOKafkaConsumer, dlq_topic: str, max_retries: int = 3):
+        self._c = consumer
+        self._dlq = dlq_topic
+        self._max = max_retries
+        self._seen = set()  # in prod: Redis with TTL
+
+    async def consume(self, handler: Callable[[dict], Awaitable[None]]) -> None:
+        async for msg in self._c:
+            try:
+                event = json.loads(msg.value)
+                if event["event_id"] in self._seen:
+                    continue  # already processed
+                await handler(event["payload"])
+                self._seen.add(event["event_id"])
+                await self._c.commit()
+            except Exception:
+                # Retry with backoff; on exhaustion publish to DLQ
+                pass`,
+    },
+    realUseCase: 'A user uploads a 50MB PDF. ingestion-svc returns 202 immediately and publishes document.uploaded to Kafka. Consumers chain: parse-worker extracts text → publishes document.parsed; chunk-worker chunks → publishes document.chunked; embed-worker embeds → publishes document.embedded; index-worker writes to Qdrant → publishes document.active. Each stage independently scaled, retryable, and replayable. If embed-worker has a bug, fix it + reset consumer group offset → corpus reprocesses without re-uploading.',
+    prosCons: {
+      pros: [
+        'Durable + replayable (configurable retention)',
+        'Decouples producer + consumer lifetimes',
+        'Per-partition ordering enables stateful processing',
+        'Fan-out: one event → many consumers',
+        'Proven at petabyte scale',
+        'Schema registry enforces compat',
+      ],
+      cons: [
+        'Operational complexity (3+ brokers, ZooKeeper or KRaft)',
+        'At-least-once means duplicates — handler must be idempotent',
+        'Schema drift breaks consumers silently',
+        'No cross-partition ordering',
+        'Replay can be expensive (re-process all events)',
+      ],
+    },
+    comparison: {
+      left: 'Kafka',
+      right: 'RabbitMQ',
+      rows: [
+        { aspect: 'Use case', left: 'Event log + replay', right: 'Task queue + complex routing' },
+        { aspect: 'Durability', left: 'Disk-replicated; long retention', right: 'In-memory primary; persistence optional' },
+        { aspect: 'Throughput', left: '100K+ msg/sec per broker', right: '10-50K msg/sec' },
+        { aspect: 'Replay', left: 'Native (offset reset)', right: 'Hard (queue is consumed)' },
+        { aspect: 'Routing', left: 'Topic-based; consumer-side filter', right: 'Exchange-based; flexible routing' },
+        { aspect: 'When to pick', left: 'Event sourcing, replay, fan-out', right: 'Task distribution, RPC patterns' },
+      ],
+    },
+    solutions: [
+      { problem: 'Duplicate processing on retry', solution: 'event_id de-dupe in consumer; idempotent handlers' },
+      { problem: 'Schema drift breaks consumer', solution: 'Schema registry with backward-compat enforcement; canary new schema first' },
+      { problem: 'Consumer lag growing', solution: 'Add consumer instances (must be ≤ partition count); investigate slow handler' },
+      { problem: 'Stuck saga (consumer dies mid-step)', solution: 'Outbox pattern + recovery worker reads stuck rows + replays' },
+      { problem: 'Poison message blocks queue', solution: 'Bounded retry (3 attempts); park in DLQ; consumer continues with next message' },
+    ],
+    bestPractices: {
+      do: [
+        'Schema registry with backward-compat enforcement',
+        'Idempotent handlers (dedupe by event_id)',
+        'event_id + tenant_id + schema_version on every event',
+        'Outbox pattern for transactional event publishing',
+        'DLQ with bounded retry (3 attempts max)',
+        'Monitor consumer lag per partition',
+      ],
+      avoid: [
+        'Cross-partition ordering assumptions',
+        'Unbounded retry (poison messages block queue)',
+        'Schema-less events (versioning impossible)',
+        'Consumer instance count > partition count (idle consumers)',
+        'Two-phase commit between Kafka + DB (use outbox instead)',
+      ],
+      optimize: [
+        'Batch produce (linger.ms) for throughput',
+        'Compaction on key-keyed topics (latest-value semantics)',
+        'Tiered storage for long-retention topics',
+        'Per-tenant partition routing for isolation',
+        'Compression (lz4 / snappy / zstd) for bandwidth',
+      ],
+    },
+    antiPatterns: [
+      'Treating Kafka as a database (long-retention is for replay, not query)',
+      'Synchronous producer → wait for ack on hot path (latency)',
+      'Cross-partition ordering assumptions (only per-partition guaranteed)',
+      'Two-phase commit between Kafka + DB — race conditions',
+      'Schema-less JSON without versioning — silent drift',
+      'Unbounded retry — poison messages stall the consumer forever',
+    ],
+    testTypes: [
+      'Unit (handler logic with mocked broker)',
+      'Integration with real Kafka (testcontainers)',
+      'Drill — poison message + DLQ behavior',
+      'Drill — replay from offset reproduces state',
+      'Drill — schema upgrade backward-compat',
+      'Performance — producer throughput + consumer lag under load',
+    ],
+    testScenarios: [
+      { scenario: 'Producer crashes mid-publish', expected: 'Idempotent producer retries; no duplicates' },
+      { scenario: 'Consumer crashes after side effect, before commit', expected: 'Replay; handler dedupes by event_id; no double effect' },
+      { scenario: 'Poison message (malformed JSON)', expected: '3 retries fail; message lands in DLQ; consumer continues' },
+      { scenario: 'Schema upgrade rolled out', expected: 'Old consumers deserialize new schema (backward compat)' },
+      { scenario: 'Partition count increased', expected: 'Consumers rebalance; no message loss' },
+      { scenario: 'Replay from earlier offset', expected: 'Events re-processed; idempotent handlers no-op duplicates' },
+    ],
+    testData: [
+      { type: 'Valid', example: '{event_id: UUID, tenant_id: UUID, schema_version: v2, payload: {...}}' },
+      { type: 'Duplicate', example: 'Same event_id sent twice → consumer processes once' },
+      { type: 'Poison', example: 'Malformed JSON or schema mismatch → DLQ' },
+      { type: 'Boundary', example: '1MB message (default broker max)' },
+      { type: 'Extreme', example: '50K msg/sec sustained for 60s; verify lag stays bounded' },
+    ],
+    debuggingChecklist: [
+      'Is the consumer group lagging? (kafka-consumer-groups.sh)',
+      'Are all partitions assigned to a consumer? (kafka-consumer-groups.sh describe)',
+      'Did the schema registry accept the new version? (curl /subjects/<topic>/versions)',
+      'Is the producer ack=all? (config check)',
+      'Is min.insync.replicas correctly set? (broker config)',
+      'Are DLQ messages accumulating? (DLQ topic size)',
+      'Is the outbox relay polling? (last-published timestamp)',
+    ],
+    productionIssues: [
+      { issue: 'Consumer lag grew to 1M messages', rootCause: 'Slow handler; one per partition; bottleneck on external API call' },
+      { issue: 'Duplicate audit log rows', rootCause: 'Consumer crashed after side effect, before offset commit; replay; handler not idempotent' },
+      { issue: 'Schema upgrade broke old consumers', rootCause: 'Removed required field instead of deprecating; backward-incompat change' },
+      { issue: 'Outbox table grew unbounded', rootCause: 'Outbox relay crashed; no monitoring on relay lag; row not marked sent' },
+      { issue: 'DLQ flooded with poison messages', rootCause: 'Producer schema bug; DLQ rate not alerted' },
+    ],
+    performance: [
+      'Producer p99 publish latency < 50ms (with ack=all)',
+      'Consumer throughput per instance: 10K-50K msg/sec',
+      'Per-partition single-consumer parallelism',
+      'Compression (lz4) reduces bandwidth 3-5x',
+      'Replication factor 3 doubles write cost vs RF=1',
+    ],
+    costConsiderations: [
+      'Disk replication: RF=3 = 3x storage cost',
+      'Long retention (90+ days) dominates cost; tiered storage helps',
+      'Cross-region replication for DR adds bandwidth cost',
+      'Managed (MSK / Confluent) cheaper to operate but per-throughput priced',
+      'Compression saves both bandwidth + storage',
+    ],
+    observability: [
+      'Per-topic + per-partition lag',
+      'Producer publish latency p95/p99',
+      'Consumer offset commit rate',
+      'DLQ message count + age',
+      'Schema registry compat-check rate',
+      'Outbox relay polling lag',
+    ],
+    metrics: [
+      { name: 'kafka_consumer_lag', example: '< 1000 msg target; alert > 10K' },
+      { name: 'kafka_producer_p99_latency_ms', example: '< 50ms; alert > 200ms' },
+      { name: 'dlq_message_count', example: '0 expected; any non-zero pages on-call' },
+      { name: 'outbox_relay_lag_seconds', example: '< 5s; alert > 30s' },
+      { name: 'schema_compat_failures_total', example: '0 expected; any value blocks deploy' },
+    ],
+    failureModes: [
+      { mode: 'Broker unavailable', detect: '/health/upstreams kind=kafka returns reachable=false', recover: 'Producer buffers; consumer pauses; manual broker recovery' },
+      { mode: 'Consumer lag growing', detect: 'kafka_consumer_lag > threshold', recover: 'Add consumer instance (≤ partition count); investigate slow handler' },
+      { mode: 'Poison message blocks consumer', detect: 'Consumer offset stuck', recover: 'Bounded retry → DLQ; consumer continues' },
+      { mode: 'Schema drift breaks consumer', detect: 'Deserialization errors spike', recover: 'Roll back schema OR ship consumer update' },
+      { mode: 'Outbox relay lagging', detect: 'outbox_relay_lag_seconds > 30s', recover: 'Restart relay; investigate DB pressure; scale relay' },
+    ],
+    tradeoffs: [
+      { decision: 'Self-hosted Kafka vs managed (MSK / Confluent)', tradeoff: 'Operational control vs ops cost' },
+      { decision: 'Topic per event-type vs unified', tradeoff: 'Schema clarity vs partition explosion' },
+      { decision: 'Partition count', tradeoff: 'Parallelism ceiling vs broker overhead per partition' },
+      { decision: 'Retention period', tradeoff: 'Replay window vs storage cost' },
+      { decision: 'Outbox vs direct publish', tradeoff: 'Transactional safety vs latency overhead' },
+    ],
+    decisionMatrix: [
+      { option: 'Kafka (default)', whenToUse: 'Event sourcing + replay + fan-out + high throughput' },
+      { option: 'RabbitMQ', whenToUse: 'Task queue + complex routing; lower throughput; no replay needed' },
+      { option: 'NATS / NATS JetStream', whenToUse: 'Lightweight; smaller scale; cloud-native' },
+      { option: 'AWS Kinesis / GCP Pub/Sub', whenToUse: 'Managed; vendor lock; per-message pricing' },
+      { option: 'Postgres LISTEN/NOTIFY', whenToUse: 'Tiny system; no replay; same DB cluster' },
+      { option: 'Redis Streams', whenToUse: 'Already have Redis; modest throughput; simpler ops' },
+    ],
+    starStory: {
+      situation: 'Embed-worker deployed with a bug — every embedding was reduced to all-zeros. Detection took 4 hours. By then 50K documents had been processed wrong.',
+      task: 'Recover the corrupted index without re-uploading documents; prevent silent recurrence.',
+      action: 'Rolled back embed-worker to previous version. Reset consumer group offset on document.chunked topic to the offset 4 hours prior. Replayed all events; idempotent handler de-duped already-correct embeddings via event_id; corrupted ones got recomputed. Drill: deploy a "broken" embed-worker on canary; verify eval-svc Recall@K drop fires alert within 5 minutes (vs 4 hours).',
+      result: 'Recovery took 90 minutes vs the 4 hours it would have without replay. Eval-svc canary alert now catches embedding bugs before full rollout. Two more bugs blocked at canary in the year since.',
+    },
+    interviewTraps: [
+      'Treating Kafka as a database — long retention is for replay, not query',
+      'Cross-partition ordering assumptions — only per-partition is guaranteed',
+      'Two-phase commit between Kafka + DB — outbox pattern instead',
+      'Unbounded retry — poison messages stall consumer forever',
+      'Schema-less JSON — version drift is silent + lethal',
+      'Consumer count > partition count — idle consumers waste resources',
+    ],
+    interviewLine: 'Kafka solves workflow decoupling and replay, but it shifts complexity into idempotency, lag, and schema discipline. The hard parts aren\'t producing — they\'re consuming safely.',
+    finalScript: 'Kafka is the durable event-log backbone in this stack. Three non-negotiable disciplines. First, schema registry with backward-compat enforcement — every event has event_id, tenant_id, schema_version stamped at publish; schema changes are reviewed before deploy. Second, idempotent consumers — at-least-once delivery means duplicates; every handler de-dupes by event_id and commits offset only after the side effect succeeds. Third, dead-letter queue with bounded retry — 3 attempts with exponential backoff, then park for human review; consumer keeps draining downstream. We use the outbox pattern for transactional event publishing — domain row plus event row in one Postgres transaction; outbox relay polls + publishes; mark sent. The drill that gates this is a poison-message replay: inject a malformed message, verify retry budget exhausts, message lands in DLQ, consumer drains the next message. Mocks lie about consumer lag; only a real broker shows where rebalances and offset stalls hide.',
     challenges: [
       'Schema evolution without breaking consumers',
       'Duplicate delivery (at-least-once)',
@@ -1359,18 +1686,11 @@ class Cache:
       { case: 'Schema change breaks old consumers', solution: 'Backwards-compatible additive changes; schema registry; consumer-version-aware deploys' },
       { case: 'Partition skew under hot tenant', solution: 'Better key strategy (tenant + sub-key) or repartition' },
     ],
-    failureModes: [
-      { mode: 'Broker unavailable', detect: '/health/upstreams kind=kafka returns reachable=false', recover: 'Producer buffers; consumer pauses; manual broker recovery' },
-      { mode: 'Consumer lag growing', detect: 'consumer_lag metric (end_offset - committed_offset)', recover: 'Scale consumer instances; investigate slow side effect' },
-      { mode: 'Topic backlog spike', detect: 'topic_size metric or backpressure on producers', recover: 'Add partitions (one-way change); tune retention; throttle producers' },
-      { mode: 'Rebalance storm', detect: 'Consumer instability; high reconnect rate', recover: 'Static membership; tune session.timeout.ms' },
-    ],
-    monitoring: [
-      'Consumer lag per (topic, group, partition)',
-      'Producer error rate',
-      'Broker disk usage + retention horizon',
-      'Rebalance count',
-      'DLQ depth',
+    alternatives: [
+      { name: 'RabbitMQ', tradeoff: 'Lower volume; more flexible routing; weaker replay' },
+      { name: 'NATS / NATS JetStream', tradeoff: 'Lighter; simpler; smaller ecosystem' },
+      { name: 'AWS Kinesis / GCP Pub/Sub', tradeoff: 'Managed; vendor lock-in; per-message cost' },
+      { name: 'PostgreSQL LISTEN/NOTIFY', tradeoff: 'No persistence; single-instance; for tiny scale' },
     ],
     testing: [
       'Duplicate-delivery drill (idempotent consumer)',
@@ -1378,6 +1698,13 @@ class Cache:
       'Poison-message drill (DLQ catches it)',
       'Schema-evolution drill (old consumer + new producer)',
       'Broker-down drill (producer + consumer behaviour)',
+    ],
+    monitoring: [
+      'Consumer lag per (topic, group, partition)',
+      'Producer error rate',
+      'Broker disk usage + retention horizon',
+      'Rebalance count',
+      'DLQ depth',
     ],
     security: [
       'TLS + SASL between clients and brokers',
@@ -1404,13 +1731,12 @@ class Cache:
       'Replay assumes idempotent consumers — easy to forget',
     ],
     projectFit: [
-      'document.lifecycle topic (ingestion-svc events)',
       'libs/py/documind_core/kafka_client.py — EventProducer + IdempotentConsumer',
-      '/health/upstreams Kafka TCP probe (commit 0536b45)',
-      'DOCUMIND_KAFKA_BOOTSTRAP_SERVERS=localhost:59092 in dev stack',
-      'Outbox + DLQ patterns documented but not yet fully wired',
+      'document.lifecycle topic (ingestion-svc events)',
+      'governance.audit_log fan-out via Kafka',
+      '/health/upstreams Kafka TCP probe',
+      'mcp/tests/drill_kafka_poison_dlq.py + drill_outbox_relay.py',
     ],
-    interviewLine: 'Kafka solves workflow decoupling and replay, but it shifts complexity into idempotency, lag, and schema discipline. The hard parts aren\'t producing — they\'re consuming safely.',
   },
 
   // ---- 5. ClickHouse ----
