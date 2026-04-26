@@ -43,6 +43,8 @@ const GROUPS: Group[] = [
       { href: '/admin/python/deep', label: 'Python deep dive (interview)' },
       { href: '/admin/python/syllabus', label: 'Python syllabus (full catalog)' },
       { href: '/admin/system-design/chatbot', label: 'System design · chatbot map' },
+      { href: '/admin/lang-family/rag', label: 'Lang family · RAG map' },
+      { href: '/admin/compiler-stack/rag', label: 'LLVM / MLIR · RAG fit' },
       { href: '/admin/llmops', label: 'LLMOps scorecard' },
       { href: '/admin/llmops/deep', label: 'LLMOps deep dive (interview)' },
       { href: '/admin/database/deep', label: 'Database deep dive (interview)' },
@@ -123,11 +125,17 @@ const GROUPS: Group[] = [
   {
     heading: 'Fine-tuning',
     items: [
-      { href: '/admin/fine-tuning/deep', label: 'Overview (3 scenarios + decision rule)' },
+      { href: '/admin/fine-tuning/deep', label: 'Overview (10 scenarios + decision)' },
       { href: '/admin/fine-tuning/deep#supervised-fine-tuning', label: 'Supervised (SFT) — format + tone' },
       { href: '/admin/fine-tuning/deep#unsupervised-fine-tuning', label: 'Unsupervised — domain language' },
       { href: '/admin/fine-tuning/deep#semi-supervised-fine-tuning', label: 'Semi-supervised — pseudo-label + SME' },
       { href: '/admin/fine-tuning/deep#rag-vs-fine-tuning', label: 'RAG vs Fine-tuning (decision)' },
+      { href: '/admin/fine-tuning/deep#alignment-training', label: 'Alignment — RLHF / DPO / ORPO / KTO / RLAIF' },
+      { href: '/admin/fine-tuning/deep#peft-techniques', label: 'PEFT — LoRA / QLoRA / DoRA / Adapters' },
+      { href: '/admin/fine-tuning/deep#raft-retrieval-augmented-ft', label: 'RAFT — Retrieval-Augmented FT' },
+      { href: '/admin/fine-tuning/deep#tool-use-fine-tuning', label: 'Tool-use / function-calling FT' },
+      { href: '/admin/fine-tuning/deep#knowledge-distillation', label: 'Knowledge distillation (teacher → student)' },
+      { href: '/admin/fine-tuning/deep#full-fine-tuning', label: 'Full fine-tuning (all params)' },
     ],
   },
   {
@@ -140,6 +148,14 @@ const GROUPS: Group[] = [
       { href: '/admin/llmops/deep#deployment', label: 'Model deployment' },
       { href: '/admin/llmops/deep#experiment-tracking', label: 'Experiment tracking' },
       { href: '/admin/llmops/deep#model-management', label: 'Model registry' },
+    ],
+  },
+  {
+    heading: 'AI runtime / compiler',
+    items: [
+      { href: '/admin/lang-family/rag', label: 'Lang family · RAG map' },
+      { href: '/admin/compiler-stack/rag', label: 'LLVM / MLIR · RAG fit' },
+      { href: '/tools/ollama-vllm', label: 'Ollama / vLLM' },
     ],
   },
   {
