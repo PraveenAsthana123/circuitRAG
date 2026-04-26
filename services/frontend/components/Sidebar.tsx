@@ -42,6 +42,7 @@ const GROUPS: Group[] = [
       { href: '/admin/python', label: 'Python (concepts + flow)' },
       { href: '/admin/python/deep', label: 'Python deep dive (interview)' },
       { href: '/admin/python/syllabus', label: 'Python syllabus (full catalog)' },
+      { href: '/admin/system-design/chatbot', label: 'System design · chatbot map' },
       { href: '/admin/llmops', label: 'LLMOps scorecard' },
       { href: '/admin/llmops/deep', label: 'LLMOps deep dive (interview)' },
       { href: '/admin/database/deep', label: 'Database deep dive (interview)' },
@@ -117,6 +118,16 @@ const GROUPS: Group[] = [
       { href: '/admin/ai-orchestration/deep#policy-layer', label: '🛡 Policy layer (OPA + Guardrails + Presidio)' },
       { href: '/admin/ai-orchestration/deep#paperclip-manager', label: '🧠 Paperclip — Manager (planner)' },
       { href: '/admin/ai-orchestration/deep#openclaw-workers', label: '✋ OpenClaw — Workers (executors)' },
+    ],
+  },
+  {
+    heading: 'Fine-tuning',
+    items: [
+      { href: '/admin/fine-tuning/deep', label: 'Overview (3 scenarios + decision rule)' },
+      { href: '/admin/fine-tuning/deep#supervised-fine-tuning', label: 'Supervised (SFT) — format + tone' },
+      { href: '/admin/fine-tuning/deep#unsupervised-fine-tuning', label: 'Unsupervised — domain language' },
+      { href: '/admin/fine-tuning/deep#semi-supervised-fine-tuning', label: 'Semi-supervised — pseudo-label + SME' },
+      { href: '/admin/fine-tuning/deep#rag-vs-fine-tuning', label: 'RAG vs Fine-tuning (decision)' },
     ],
   },
   {
