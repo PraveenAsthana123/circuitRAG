@@ -63,6 +63,11 @@ DEEP_DIVE_PAGES = [
     ("/admin/rag/deep",       4, 7),
     ("/admin/microservices/deep", 4, 7),
     ("/admin/data/deep",      6, 7),
+    # Role-based deep dives (1 topic each, master template)
+    ("/admin/architect/deep", 4, 7),
+    ("/admin/techlead/deep",  2, 7),
+    ("/admin/eng-manager/deep", 2, 7),
+    ("/admin/technical-plan/deep", 2, 7),
 ]
 
 

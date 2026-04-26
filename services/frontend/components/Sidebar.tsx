@@ -81,6 +81,15 @@ const GROUPS: Group[] = [
       { href: '/tools/rag-scenarios', label: 'RAG · 36 scenarios' },
     ],
   },
+  {
+    heading: 'Roles (interview lens)',
+    items: [
+      { href: '/admin/architect/deep', label: 'Architect — system + ADRs' },
+      { href: '/admin/techlead/deep', label: 'Tech Lead — API contract' },
+      { href: '/admin/eng-manager/deep', label: 'Eng Manager — roadmap + risk' },
+      { href: '/admin/technical-plan/deep', label: 'Technical Plan — BRD-to-code' },
+    ],
+  },
 ];
 
 /** Left-menu nav. Grouped so the 10+ links are scannable. */
