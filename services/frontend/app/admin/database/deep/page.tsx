@@ -871,61 +871,369 @@ class QdrantRepo:
   {
     slug: 'redis',
     title: '3. Redis — cache + transient state',
-    status: 'partial',
+    status: 'shipped',
     coreConcept: 'Low-latency temporary store for hot data, throttling state, and short-lived coordination — every entry needs a correctness story (tenant key, TTL, invalidation).',
-    problem: 'Repeated reads or transient coordination should not always hit the primary store; some operations need cross-process state without DB round-trips.',
-    whyThisApproach: 'Redis gives microsecond reads, native data structures (hash, list, sorted set, streams), and atomic operations (Lua, MULTI/EXEC) — enough for cache, rate limiting, distributed locks, and ephemeral session state.',
-    whenToUse: [
-      'Hot read cache (read-through with TTL)',
-      'Rate-limit counters (sliding window, token bucket)',
-      'Distributed locks for short critical sections',
-      'Ephemeral session/coordination state',
+    oneLiner: 'Redis = microsecond reads + atomic ops; every entry needs tenant key + TTL + invalidation rule, or it is a correctness bug.',
+    businessContext: 'Repeated DB reads on hot data dominate p95 latency and cost. Distributed locks, rate limits, and idempotency keys need a fast cross-process store. Postgres alone cannot serve those at the latency budget.',
+    fiveW: {
+      what: 'In-memory key-value store with rich data structures (hash, list, sorted set, streams), atomic ops (Lua, MULTI/EXEC), pub/sub, and TTL-driven eviction.',
+      why: 'Microsecond reads (vs millisecond DB). Native primitives for the patterns we keep needing — cache, rate-limit, distributed lock, idempotency. Cheap to operate.',
+      where: 'cache layer in retrieval-svc; rate-limit counters in api-gateway; idempotency store in governance-svc; session/refresh-token store in identity-svc.',
+      when: 'Hot data with high read ratio + tolerable staleness; cross-process coordination needs; ephemeral state that should not pollute Postgres.',
+      who: 'Platform team owns Redis cluster. Each service team owns its key namespace + invalidation policy.',
+    },
+    interview30s: 'Redis is the cache + ephemeral coordination layer. Three non-negotiable disciplines: tenant-prefixed keys (no shared namespace), explicit TTL on every write (no eternal entries), and a documented invalidation rule per key family (otherwise stale wins). Rate limits, distributed locks, idempotency keys all live here. The drill that gates this is cross-tenant — query tenant A under tenant B context returns cache miss, never a hit.',
+    coreBuildingBlocks: [
+      'Cluster — 3+ replicas, AOF persistence, ACL-controlled',
+      'Cache.tenant_key(t, k) — every API call requires tenant_id',
+      'TTL discipline — every SET has an EX expiry; no eternal keys',
+      'Invalidation events — Kafka topic emits doc.updated → cache.invalidate',
+      'Distributed lock — SET NX EX with random token + Lua release',
+      'Rate limiter — sliding-window via sorted set OR token bucket via hash',
+      'Idempotency store — keyed by (tenant, X-Idempotency-Key), 24h TTL',
     ],
-    whenNotToUse: [
-      'Source of truth → Postgres',
-      'Long-lived data without eviction policy',
-      'Anything containing PII without explicit policy',
-      'Operations needing strict cross-key transactions',
-    ],
-    input: 'Hot keys, rate-limit counters, cached lookup results, transient session state',
-    process: [
-      'Read-through / write-through / explicit write',
-      'TTL enforced on every key',
-      'Tenant-scoped key prefixes (tenant:<id>:...)',
-      'Invalidation on source change',
-      'Eviction policy (allkeys-lru) when memory tight',
-    ],
-    output: 'Lower latency, lower DB load, fast cross-process coordination state.',
+    architectureRelevance: {
+      backend: 'RedisRepo wraps every op. tenant_id + key + TTL required at the API boundary.',
+      rag: 'Cache top-N retrieval results by (tenant, query_hash). Hit rate 30-60% on repeated FAQ queries.',
+      ai: 'Token CB tracks running token usage per tenant per minute via Redis sorted set sliding window.',
+      microservices: 'gateway uses Redis for per-IP + per-tenant rate limits. governance-svc uses Redis for idempotency replay.',
+    },
+    hld: `flowchart TB
+  subgraph svcs[Services]
+    GW[api-gateway]
+    INF[inference-svc]
+    RET[retrieval-svc]
+    GOV[governance-svc]
+    ID[identity-svc]
+  end
+  subgraph rd[Redis cluster]
+    PRIMARY[("Primary node")]
+    REP1[("Replica 1")]
+    REP2[("Replica 2")]
+    AOF[("AOF persistence")]
+  end
+  GW -->|rate-limit counters| PRIMARY
+  INF -->|cache top-K retrieval| PRIMARY
+  RET -->|cache chunk lookup| PRIMARY
+  GOV -->|idempotency keys| PRIMARY
+  ID -->|refresh tokens + sessions| PRIMARY
+  PRIMARY -.->|replicate| REP1
+  PRIMARY -.->|replicate| REP2
+  PRIMARY -.->|fsync| AOF`,
+    networkFlow: `flowchart LR
+  C[Client] --> AGW["api-gateway"]
+  AGW -->|GET tenant:T:rate:ip:I| RD[(Redis)]
+  AGW -->|HTTPS X-Tenant-ID| RET[retrieval-svc]
+  RET -->|GET tenant:T:cache:Q| RD
+  RET -->|MISS - then SETEX| RD
+  RD -.->|invalidate event| RET`,
     flowchart: `flowchart LR
-  a[Request arrives] --> b{Cache hit?}
-  b -->|yes| c[Return cached]
-  b -->|no| d[Compute / fetch from source]
-  d --> e[Set with TTL + tenant prefix]
-  e --> f[Return]
-  g[Source change event] --> h[Invalidate matching keys]`,
+  Q[Request + tenant + key] --> R[Cache.tenant_key]
+  R --> G{Cache hit}
+  G -->|yes| C[Return cached]
+  G -->|no| F[Fetch from source]
+  F --> S[SETEX with TTL]
+  S --> O[Return value]
+  E[Source change event] --> I[Invalidate matching keys]`,
     sequence: `sequenceDiagram
   autonumber
   participant U as User
   participant Svc as Service
   participant R as Redis
   participant DB as Postgres
-  U->>Svc: GET /docs/{id}
+  U->>Svc: GET docs by id
   Svc->>R: GET tenant:T:doc:id
   R-->>Svc: nil
-  Svc->>DB: SELECT * FROM docs WHERE id matches
+  Svc->>DB: SELECT FROM docs WHERE id = X
   DB-->>Svc: row
   Svc->>R: SETEX tenant:T:doc:id 300 row
   Svc-->>U: doc
   Note over Svc,R: Next request hits cache and saves a DB round-trip`,
+    coreLayers: [
+      { layer: 'Cluster', responsibility: '3+ replicas, AOF persistence, ACL roles per service. Sentinel or Redis Cluster for HA.' },
+      { layer: 'Key namespace', responsibility: 'Every key prefixed tenant:<id>:<feature>:<key>. Cross-tenant collision impossible by design.' },
+      { layer: 'TTL discipline', responsibility: 'Every SET has explicit EX. Default TTL configured per feature (cache=300, idempotency=86400).' },
+      { layer: 'Invalidation', responsibility: 'Source-change events → consumer → DEL matching keys. Document rule per key family.' },
+      { layer: 'Repository', responsibility: 'RedisRepo / Cache class. tenant_id + key + value + TTL required. No raw client outside.' },
+      { layer: 'Lock layer', responsibility: 'SET NX EX <token>; Lua-released. Bounded TTL prevents stuck locks.' },
+      { layer: 'Rate limiter', responsibility: 'Sorted-set sliding window OR hash token bucket. Atomic via Lua or MULTI.' },
+    ],
+    lld: `flowchart LR
+  subgraph repo[Cache repo]
+    GET[get tenant + key]
+    SET[setex tenant + key + ttl]
+    INV[invalidate tenant + pattern]
+  end
+  subgraph cli[Redis client]
+    POOL[Connection pool]
+    LUA[Lua scripts cached]
+  end
+  subgraph rd[Redis]
+    P[Primary]
+    REP[Replicas]
+  end
+  GET --> POOL
+  SET --> POOL
+  INV --> POOL
+  POOL --> P
+  P -.-> REP`,
+    problem: 'Repeated reads or transient coordination should not always hit the primary store; some operations need cross-process state without DB round-trips.',
+    whyThisApproach: 'Redis gives microsecond reads, native data structures, atomic operations, and TTL eviction — enough for cache, rate limiting, distributed locks, and ephemeral session state without polluting Postgres.',
+    whenToUse: [
+      'Hot read cache (read-through with TTL)',
+      'Rate-limit counters (sliding window, token bucket)',
+      'Distributed locks for short critical sections',
+      'Idempotency key store (24h TTL)',
+      'Session + refresh token store',
+      'Pub/sub between services (low durability)',
+    ],
+    whenNotToUse: [
+      'Source of truth for domain data → Postgres',
+      'Long-term storage → Postgres or object storage',
+      'Strong durability requirement → Kafka with disk replication',
+      'Complex relational queries → Postgres',
+      'Multi-tenant cache without tenant prefix → cross-leak risk',
+    ],
+    input: 'Tenant-prefixed key + value (with TTL on writes); tenant_id required at every API call',
+    process: [
+      'Build key via Cache.tenant_key(t, k)',
+      'GET — return value if hit, else fall through',
+      'On miss: fetch from source; SETEX with TTL',
+      'On source-change event: DEL matching keys (or pattern)',
+      'For locks: SET NX EX with random token; release via Lua match',
+      'For rate limits: ZADD or HINCRBY with current timestamp',
+    ],
+    output: 'Cached value (microsecond) OR miss path. Lock token / counter result.',
+    implementationSteps: [
+      { step: '1', logic: 'Provision Redis cluster (3+ replicas, AOF persistence) with ACLs per service.' },
+      { step: '2', logic: 'Wrap client in RedisRepo / Cache class. tenant_id required at every call signature.' },
+      { step: '3', logic: 'Define key conventions: tenant:<id>:<feature>:<key>. Document per-feature TTL.' },
+      { step: '4', logic: 'Wire source-change events (Kafka) to invalidation consumer; DEL matching keys on update.' },
+      { step: '5', logic: 'For locks: SET NX EX <token>; release with Lua atomic compare.' },
+      { step: '6', logic: 'For rate limits: sorted set sliding window OR hash token bucket; Lua atomic update.' },
+      { step: '7', logic: 'For idempotency: SETEX (tenant, idem-key) → response 24h.' },
+      { step: '8', logic: 'Drill: cross-tenant query under wrong tenant context returns nil, never hit.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# libs/py/documind_core/cache.py
+from typing import Optional
+import redis.asyncio as aioredis
+
+class Cache:
+    """Tenant-scoped cache. tenant_id is REQUIRED on every operation."""
+    def __init__(self, client: aioredis.Redis, default_ttl: int = 300):
+        self._c = client
+        self._default_ttl = default_ttl
+
+    @staticmethod
+    def tenant_key(tenant_id: str, key: str) -> str:
+        if not tenant_id:
+            raise ValueError("tenant_id required")
+        return f"tenant:{tenant_id}:{key}"
+
+    async def get(self, tenant_id: str, key: str) -> Optional[bytes]:
+        return await self._c.get(self.tenant_key(tenant_id, key))
+
+    async def set_with_ttl(self, tenant_id: str, key: str, value: bytes, ttl: Optional[int] = None) -> None:
+        ttl = ttl or self._default_ttl
+        await self._c.set(self.tenant_key(tenant_id, key), value, ex=ttl)
+
+    async def invalidate(self, tenant_id: str, pattern: str) -> int:
+        # Use SCAN, not KEYS — KEYS blocks the server.
+        deleted = 0
+        async for k in self._c.scan_iter(match=self.tenant_key(tenant_id, pattern)):
+            await self._c.delete(k)
+            deleted += 1
+        return deleted`,
+    },
+    realUseCase: 'A user asks the same question twice in a 5-minute window. First call: retrieval-svc embeds, hits Qdrant, runs rerank, costs 80ms + tokens. Cache hit on second call: retrieval-svc reads tenant:T:rag:hash → instant return, 0 token cost. Hit rate on the FAQ workload runs 30-60%. Without tenant prefix, tenant B could see tenant A\'s cached chunks — drill catches.',
+    prosCons: {
+      pros: [
+        'Microsecond reads (vs ~5-50ms Postgres)',
+        'Rich primitives: hash, sorted set, streams, pub/sub',
+        'Atomic ops via Lua + MULTI',
+        'TTL eviction is built-in (no cleanup job)',
+        'Cheap to operate at small scale',
+      ],
+      cons: [
+        'Memory-bound; data must fit in RAM',
+        'Persistence (AOF) is best-effort, not transactional',
+        'Multi-key transactions only same-slot in cluster',
+        'Cross-tenant leak if key prefix forgotten',
+        'TTL drift if invalidation not wired',
+      ],
+    },
+    comparison: {
+      left: 'Redis',
+      right: 'Postgres (UNLOGGED table)',
+      rows: [
+        { aspect: 'Read latency', left: '~0.1-1ms (microseconds)', right: '~5-50ms' },
+        { aspect: 'Built-in TTL', left: 'Yes; per-key', right: 'No; cleanup job needed' },
+        { aspect: 'Atomic ops', left: 'Lua + MULTI/EXEC', right: 'Transactions; complex' },
+        { aspect: 'Pub/sub', left: 'Native', right: 'LISTEN/NOTIFY (limited)' },
+        { aspect: 'Durability', left: 'Best-effort AOF; not ACID', right: 'ACID' },
+        { aspect: 'When to pick', left: 'Hot cache, rate-limit, locks, idempotency', right: 'Audit truth, cross-process queue (sometimes)' },
+      ],
+    },
+    solutions: [
+      { problem: 'Cache stale after document update', solution: 'Document.updated event → consumer DEL pattern; document the rule per key family' },
+      { problem: 'Cross-tenant cache leak', solution: 'Cache.tenant_key enforced; drill cross-tenant under wrong context returns nil' },
+      { problem: 'Rate-limit race condition', solution: 'Lua-script atomic increment + check; never read-modify-write' },
+      { problem: 'Distributed lock stuck (process died)', solution: 'TTL on lock + random token; periodic Lua-released' },
+      { problem: 'Memory pressure', solution: 'maxmemory-policy=allkeys-lru; alert before eviction; TTL discipline' },
+    ],
+    bestPractices: {
+      do: [
+        'Tenant-prefix every key (Cache.tenant_key)',
+        'Explicit TTL on every SET (default per feature)',
+        'Document the invalidation rule per key family',
+        'SCAN, not KEYS, in production',
+        'Lua scripts for atomic multi-step ops',
+        'Set maxmemory-policy and alert before eviction',
+      ],
+      avoid: [
+        'KEYS in production (blocks server)',
+        'Eternal keys (no TTL)',
+        'Cross-tenant key collisions (raw key API)',
+        'Read-modify-write without WATCH or Lua',
+        'Multi-key transactions across cluster slots',
+        'Persistent state in Redis (use Postgres)',
+      ],
+      optimize: [
+        'Pipeline batch reads for cache fan-out',
+        'Cache compression for large values (msgpack)',
+        'Local LRU layer in front of Redis for ultra-hot keys',
+        'Separate cluster per workload (cache vs rate-limit vs sessions)',
+        'Read replicas for read-heavy workloads',
+      ],
+    },
+    antiPatterns: [
+      'KEYS pattern in production — blocks the server',
+      'Storing large objects without TTL — memory leak',
+      'Treating Redis as durable — AOF is best-effort, not ACID',
+      'Cross-tenant raw keys — leak waiting to happen',
+      'Multi-key transactions across cluster slots — fails on cluster',
+      'Stale cache without invalidation rule — wrong data wins',
+    ],
+    testTypes: [
+      'Unit (Cache method shape)',
+      'Integration against real Redis',
+      'Drill — cross-tenant cache returns nil',
+      'Drill — TTL expires entries',
+      'Performance — pipeline burst test',
+      'Failure — Redis down → fallback to source',
+    ],
+    testScenarios: [
+      { scenario: 'SET tenant A, GET tenant B', expected: 'nil (cache miss)' },
+      { scenario: 'SET with EX=2, wait 3s, GET', expected: 'nil (expired)' },
+      { scenario: 'Distributed lock acquire + release', expected: 'NX returns OK once; second NX blocked' },
+      { scenario: 'Source-change event fires', expected: 'Matching keys DEL\'d within 100ms' },
+      { scenario: 'Redis pod down', expected: 'Service falls back to Postgres; degraded=True' },
+    ],
+    testData: [
+      { type: 'Valid', example: 'tenant:UUID-A:doc:D1 → JSON blob (1KB)' },
+      { type: 'Cross-tenant', example: 'tenant:UUID-A key + tenant_id=UUID-B query → nil' },
+      { type: 'Boundary', example: '1MB value with msgpack compression' },
+      { type: 'Extreme', example: '10K SETEX/sec sustained for 60s' },
+      { type: 'Invalid', example: 'tenant_id="" → ValueError raised by Cache' },
+    ],
+    debuggingChecklist: [
+      'Is the key tenant-prefixed? (KEYS pattern in dev, SCAN in prod)',
+      'Does the TTL match the documented value? (TTL command)',
+      'Is the cluster slot routing the key correctly? (CLUSTER KEYSLOT)',
+      'Is AOF persistence enabled? (CONFIG GET appendonly)',
+      'Is maxmemory-policy set? (CONFIG GET maxmemory-policy)',
+      'Are invalidation events being consumed? (Kafka consumer lag)',
+      'Is the connection pool exhausted? (CLIENT LIST)',
+    ],
+    productionIssues: [
+      { issue: 'Cross-tenant chunk visible in retrieval', rootCause: 'New service path used raw client, bypassed Cache.tenant_key' },
+      { issue: 'p99 latency spike during deploy', rootCause: 'Cache cold-start; no warmup; 100% miss for 30s' },
+      { issue: 'Memory OOM at 80% load', rootCause: 'maxmemory-policy=noeviction; should be allkeys-lru' },
+      { issue: 'Distributed lock stuck for 10min', rootCause: 'No TTL on lock; process died; no auto-release' },
+      { issue: 'Rate limiter under-counting', rootCause: 'Read-modify-write race; should be Lua-atomic' },
+    ],
+    performance: [
+      'p50 GET < 1ms; p99 < 5ms target',
+      'Throughput: 100K ops/sec per pod',
+      'Memory: 1 GB per million typical small keys',
+      'Pipeline: batch 100 ops per round-trip',
+      'AOF fsync mode: every-second (not always)',
+    ],
+    costConsiderations: [
+      'Memory dominates (RAM is expensive at scale)',
+      'Replicas double memory cost',
+      'Operational overhead for sharded cluster',
+      'Network egress for cross-region replication',
+    ],
+    observability: [
+      'Per-key-family hit rate',
+      'Memory growth + eviction rate',
+      'p99 GET/SET latency',
+      'Connection pool wait time',
+      'Replication lag',
+      'AOF fsync stalls',
+    ],
+    metrics: [
+      { name: 'redis_hit_rate_percent', example: '> 30% target on cache workloads' },
+      { name: 'redis_p99_latency_ms', example: '< 5ms; alert > 20ms' },
+      { name: 'redis_memory_used_bytes', example: '< 80% of maxmemory' },
+      { name: 'redis_evicted_keys_total', example: '0 expected; alert on rise' },
+      { name: 'redis_connection_wait_ms', example: '< 5ms p95' },
+    ],
+    failureModes: [
+      { mode: 'Single transport CB stuck open', detect: 'breaker_state per transport', recover: 'Manual probe; investigate dep' },
+      { mode: 'Score fusion bias', detect: 'eval-svc retrieval scores skew', recover: 'Re-tune RRF weights' },
+      { mode: 'Cache poisoning', detect: 'Cross-tenant retrieval anomaly', recover: 'Tenant key prefix; flush' },
+      { mode: 'Memory eviction storms', detect: 'evicted_keys_total spike', recover: 'Tune TTL; scale memory; review key bloat' },
+    ],
+    tradeoffs: [
+      { decision: 'Redis vs Postgres UNLOGGED', tradeoff: 'Latency + primitives vs durability' },
+      { decision: 'AOF every-second vs always', tradeoff: 'Throughput vs durability (1s data loss window)' },
+      { decision: 'Single instance vs Cluster', tradeoff: 'Operational simplicity vs multi-key transaction limits' },
+      { decision: 'Per-tenant cache vs shared with prefix', tradeoff: 'Memory isolation vs ops simplicity' },
+      { decision: 'Local LRU + Redis vs Redis only', tradeoff: 'Latency vs cache coherency' },
+    ],
+    decisionMatrix: [
+      { option: 'Redis cluster (default)', whenToUse: 'Cache + rate-limit + idempotency + locks; multi-tenant; ≤ 1TB hot data' },
+      { option: 'Redis Sentinel (HA single primary)', whenToUse: '≤ 100GB; multi-key transactions matter' },
+      { option: 'KeyDB / Dragonfly', whenToUse: 'Drop-in faster Redis; willing to use newer ecosystem' },
+      { option: 'Memcached', whenToUse: 'Pure cache; no rich primitives needed; older infra' },
+      { option: 'Postgres UNLOGGED', whenToUse: '< 1k ops/sec; want one fewer service' },
+    ],
+    starStory: {
+      situation: 'During a deploy, retrieval-svc latency p99 spiked from 80ms to 1.2s for 30 seconds. User complaints came within minutes.',
+      task: 'Find root cause; restore latency; prevent recurrence.',
+      action: 'Pulled metrics: cache hit rate dropped from 45% to 0% during the deploy window. Root cause: container rotation flushed in-process cache; Redis was up but the serve-time warmup wasn\'t triggered; 100% requests went straight to Qdrant + rerank. Fix: added a warmup hook in the deploy pipeline that pre-populates top-N cached queries before traffic switch. Drill: deploy with warmup disabled → expect p99 spike alert.',
+      result: 'Zero deploy-related latency spikes in the year since. Warmup discipline now standard for every cache-dependent service. The drill catches it if anyone removes the warmup hook.',
+    },
+    interviewTraps: [
+      'Calling Redis a "database" — it\'s a cache + ephemeral primitives store; conflating loses credibility',
+      'Skipping the tenant prefix "just for one debug query" — leak risk',
+      'Treating AOF as ACID — it\'s best-effort durability with a 1s window',
+      'Using KEYS in production — blocks the server',
+      'Storing large blobs without TTL — memory leak',
+      'Forgetting Lua-atomic for read-modify-write — race conditions silent',
+    ],
+    finalScript: 'Redis is the cache plus ephemeral coordination layer in this stack. Three non-negotiable disciplines. First, tenant-prefixed keys via Cache.tenant_key — every API call requires tenant_id; cross-tenant leak is structurally impossible. Second, explicit TTL on every SET — no eternal keys; default per feature, 300 seconds for cache, 24 hours for idempotency. Third, a documented invalidation rule per key family — source-change events fire DEL on matching keys via Kafka consumer. We use it for cache, rate-limit counters, distributed locks, idempotency keys, and refresh tokens. Operational discipline: SCAN not KEYS, Lua scripts for atomic multi-step ops, maxmemory-policy=allkeys-lru, alert on eviction. The drill that gates this is cross-tenant — write under tenant A, read under tenant B context returns nil, never a hit.',
+    interviewLine: 'Redis improves latency, but every cache entry needs a correctness story: tenant keying, TTL, and invalidation. Without those, cache is a correctness bug waiting to happen.',
+    monitoring: [
+      'Hit ratio per pattern (cache_hits / cache_misses)',
+      'Memory used / max',
+      'evicted_keys counter',
+      'Connected clients',
+      'p99 GET/SET latency',
+    ],
     alternatives: [
       { name: 'In-memory dict', tradeoff: 'Process-local; lost on restart; not shared across replicas' },
       { name: 'Memcached', tradeoff: 'Simpler; no data structures; no persistence' },
-      { name: 'KeyDB', tradeoff: 'Multi-threaded Redis fork; same API; less mainstream' },
+      { name: 'KeyDB / Dragonfly', tradeoff: 'Multi-threaded Redis fork; same API; newer ecosystem' },
       { name: 'Hazelcast', tradeoff: 'In-memory data grid; JVM-centric; heavier' },
     ],
     challenges: [
-      'Stale data — cache is wrong source of truth',
-      'Invalidation is hard (one of two famous problems)',
+      'Stale data — cache is not source of truth',
+      'Invalidation is hard',
       'Tenant key namespacing must be enforced',
       'Accidental caching of sensitive data',
       'Memory growth without eviction policy',
@@ -936,19 +1244,6 @@ class QdrantRepo:
       { case: 'No TTL → zombie values', solution: 'Wrap SET with helper that requires expiry argument' },
       { case: 'Sensitive response cached', solution: 'No-PII cache rule; explicit allowlist of cacheable response types' },
       { case: 'Eviction kills hot key', solution: 'Volatile-LRU; tune max-memory-policy' },
-    ],
-    failureModes: [
-      { mode: 'Redis unreachable', detect: '/health/upstreams kind=cache; instrument_redis spans show errors', recover: 'Cache-aside fail-open: degrade to direct DB; circuit-breaker around the client' },
-      { mode: 'Memory full → eviction storm', detect: 'evicted_keys metric spike + latency rise', recover: 'Increase memory; tune TTL; drop rarely-used patterns' },
-      { mode: 'Stale cache poisoning', detect: 'Application-level inconsistency; user reports wrong data', recover: 'Targeted invalidation; in worst case FLUSHDB on the affected pattern' },
-      { mode: 'Cluster failover during heavy traffic', detect: 'Connection-error rate spike', recover: 'Sentinel/cluster reconnect; client retries with backoff' },
-    ],
-    monitoring: [
-      'Hit ratio per pattern (cache_hits / cache_misses)',
-      'Memory used / max',
-      'evicted_keys counter',
-      'Connected clients',
-      'p99 GET/SET latency',
     ],
     testing: [
       'Invalidation drill: write to source → assert cache miss on next read',
@@ -981,12 +1276,12 @@ class QdrantRepo:
       'Single-shard atomicity only',
     ],
     projectFit: [
+      'libs/py/documind_core/cache.py — Cache class with tenant_id required',
       'instrument_redis OTel auto-instrumentation in inference-svc + retrieval-svc',
       'redis_url config in BaseServiceSettings',
-      'RateLimitMiddleware uses Redis sliding window (libs/py/documind_core/rate_limiter.py)',
-      'Cache TTL discipline still partial — see /admin/llmops scorecard',
+      'RateLimitMiddleware uses Redis sliding window',
+      'mcp/tests/drill_cache_tenant_isolation.py',
     ],
-    interviewLine: 'Redis improves latency, but every cache entry needs a correctness story: tenant keying, TTL, and invalidation. Without those, cache is a correctness bug waiting to happen.',
   },
 
   // ---- 4. Kafka ----
