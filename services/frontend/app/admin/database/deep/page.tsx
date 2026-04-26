@@ -457,7 +457,112 @@ class AuditRepo:
     slug: 'qdrant',
     title: '2. Qdrant — vector DB (semantic retrieval)',
     status: 'shipped',
-    coreConcept: 'Qdrant is a retrieval accelerator for embedding-based nearest-neighbor search — NOT a transactional source of truth.',
+    coreConcept: 'Qdrant is a retrieval accelerator for embedding-based nearest-neighbor search — NOT a transactional source of truth. HNSW gives sub-100ms ANN; payload filter on tenant_id makes isolation inescapable.',
+    oneLiner: 'Qdrant = sub-100ms semantic search with per-tenant payload filter. Not a database; a retrieval accelerator.',
+    businessContext: 'We need sub-second semantic search across millions of chunks with strict per-tenant isolation. Keyword search misses meaning; pure vector misses exact terms; pgvector can\'t scale at our query volume without locking writes.',
+    fiveW: {
+      what: 'A vector database with HNSW index for approximate nearest-neighbor search, scalar quantization for memory reduction, and payload filtering to enforce tenant_id at query time.',
+      why: 'RAG retrieval is bottlenecked on recall × latency. Postgres + pgvector can\'t hit p99 < 100ms above ~1M vectors without locking writes during index rebuild. Qdrant\'s HNSW + quantization + payload filter solves all three simultaneously.',
+      where: 'retrieval-svc queries Qdrant via QdrantRepo. Per-tenant collection for regulated customers; shared collection with tenant_id filter for the rest. Rebuilds happen via shadow-collection pattern.',
+      when: '≥ 100K chunks per tenant, sub-200ms p99 latency required, hybrid retrieval (vector + keyword) needed, embedding-model upgrade discipline.',
+      who: 'Retrieval team owns QdrantRepo. Platform owns Qdrant cluster. Eval team owns recall benchmarks. SRE owns memory + p99 alerts.',
+    },
+    interview30s: 'Qdrant is our semantic retrieval accelerator — not a database, a search engine. We use HNSW for sub-linear ANN, scalar quantization for ~4x memory reduction, and a mandatory tenant_id payload filter so cross-tenant leak is structurally impossible. Embedding model upgrades use a shadow-collection pattern: build new collection in background, run eval gate, flip read traffic via feature flag, drop old. The non-negotiable test is drill_retrieval_tenant_isolation — write under tenant A, query under tenant B, assert zero results against the live cluster.',
+    coreBuildingBlocks: [
+      'HNSW index — sub-linear ANN search, M=16 default',
+      'Scalar quantization — int8 for vectors, ~4x memory reduction with ~1% recall loss',
+      'Payload — tenant_id, doc_id, chunk_id, embedding_model, embedding_version per point',
+      'Filter — must.tenant_id mandatory on every query (enforced in QdrantRepo)',
+      'Collection alias — for shadow-index zero-downtime model upgrade',
+      'gRPC client — async Python client wrapped in QdrantRepo',
+      'Per-tenant collection (optional) — for regulated customers requiring physical isolation',
+    ],
+    architectureRelevance: {
+      backend: 'QdrantRepo wraps every search/upsert. No raw client in services — all calls go through the repo with tenant_id explicit at API.',
+      rag: 'Step 2 of retrieval (after embed): ANN search top-20 with payload filter. Result feeds reranker → top-5 → grounded LLM call.',
+      ai: 'Embedding-model versioned per point. Upgrade workflow: shadow collection → re-embed → eval gate → flip traffic → drop old.',
+      microservices: 'retrieval-svc is the only service holding Qdrant client. Inference + governance go through retrieval. Transport breaker per Qdrant call.',
+    },
+    hld: `flowchart TB
+  subgraph svcs[Services]
+    ING[ingestion-svc]
+    RET[retrieval-svc]
+    INF[inference-svc]
+    EVAL[eval-svc]
+  end
+  subgraph qd[Qdrant cluster]
+    HNSW[("HNSW index — M=16 + scalar quant")]
+    PAYLOAD[("Payload — tenant_id + doc_id + chunk_id")]
+    SHADOW[("Shadow collection — for model upgrade")]
+  end
+  ING -->|upsert vectors + payload| HNSW
+  RET -->|search + filter tenant_id| HNSW
+  EVAL -->|recall benchmark| HNSW
+  INF --> RET
+  HNSW -.->|alias swap on upgrade| SHADOW`,
+    networkFlow: `flowchart LR
+  C[Client] --> AGW["api-gateway — JWT + tenant_id"]
+  AGW -->|HTTPS X-Tenant-ID| INF[inference-svc]
+  INF -->|gRPC X-Tenant-ID| RET[retrieval-svc]
+  RET -->|gRPC search payload-filter| Q["Qdrant — HNSW + quant"]
+  RET -->|HTTP cross-encoder| RR[Reranker]
+  Q -.->|admin API| OPS[Qdrant operator]
+  Q -.->|metrics| PROM[Prometheus]`,
+    flowchart: `flowchart LR
+  a[Document chunks] --> b[Embed]
+  b --> c[Upsert to Qdrant + payload]
+  d[User query] --> e[Embed query]
+  e --> f[ANN search top-K + filter tenant_id]
+  f --> g[Top-20 chunks with scores]
+  g --> h[Cross-encoder rerank]
+  h --> i[Top-5 chunks]
+  i --> j[Pass to inference for grounded answer]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant Ing as ingestion-svc
+  participant Emb as Embedder
+  participant Q as Qdrant
+  participant Ret as retrieval-svc
+  participant Inf as inference-svc
+  Ing->>Emb: chunks
+  Emb-->>Ing: vectors
+  Ing->>Q: upsert(vectors, payload tenant_id+doc_id)
+  Inf->>Ret: query "What is the leave policy?"
+  Ret->>Emb: embed query
+  Ret->>Q: search vector with filter tenant_id
+  Q-->>Ret: top-K with scores
+  Ret-->>Inf: chunks
+  Inf-->>Inf: assemble prompt and generate`,
+    coreLayers: [
+      { layer: 'Index layer', responsibility: 'HNSW with M=16, ef_construct=200, ef=100 default. Tunable per workload.' },
+      { layer: 'Quantization layer', responsibility: 'Scalar (int8) by default. Binary for ultra-high-volume tenants. ~1-3% recall loss vs flat.' },
+      { layer: 'Payload layer', responsibility: 'tenant_id (UUID), doc_id, chunk_id, embedding_model, embedding_version per point. Indexed for filter performance.' },
+      { layer: 'Filter layer', responsibility: 'must.tenant_id required on every search. QdrantRepo API has no path to query without it.' },
+      { layer: 'Collection layer', responsibility: 'Shared collection with payload-filter for default tenants; per-tenant collection for regulated customers.' },
+      { layer: 'Alias layer', responsibility: 'Collection alias enables shadow-collection model upgrade without read interruption.' },
+      { layer: 'Repository layer', responsibility: 'QdrantRepo: all ops require tenant_id parameter. No raw client outside this layer.' },
+    ],
+    lld: `flowchart LR
+  subgraph repo[QdrantRepo]
+    Search[search by tenant_id, query_vec]
+    Upsert[upsert by tenant_id, points]
+    Embed[embed_version stamping]
+  end
+  subgraph qc[Qdrant client]
+    GRPC[gRPC channel]
+    POOL[Connection pool]
+  end
+  subgraph cluster[Qdrant cluster]
+    SHARD0[Shard 0]
+    SHARD1[Shard 1]
+    REPL[Replicas]
+  end
+  Search --> GRPC
+  Upsert --> GRPC
+  GRPC --> POOL
+  POOL --> SHARD0
+  POOL --> SHARD1
+  SHARD0 -.->|replicate| REPL`,
     problem: 'Keyword search misses semantic similarity. RAG quality depends on retrieving relevant chunks based on meaning, not exact match.',
     whyThisApproach: 'Qdrant gives sub-100ms ANN search at scale, supports per-tenant collections + metadata filtering, and is straightforward to self-host.',
     whenToUse: [
@@ -481,30 +586,6 @@ class AuditRepo:
       'Return chunks for prompt assembly',
     ],
     output: 'Top-K relevant chunks with similarity scores for grounded context.',
-    flowchart: `flowchart LR
-  a[Document chunks] --> b[Embed]
-  b --> c[Store in Qdrant + metadata]
-  d[User query] --> e[Embed query]
-  e --> f[ANN search with tenant filter]
-  f --> g[Top-K chunks]
-  g --> h[Optional rerank]
-  h --> i[Pass to inference for grounded answer]`,
-    sequence: `sequenceDiagram
-  autonumber
-  participant Ing as ingestion-svc
-  participant Emb as Embedder
-  participant Q as Qdrant
-  participant Ret as retrieval-svc
-  participant Inf as inference-svc
-  Ing->>Emb: chunks
-  Emb-->>Ing: vectors
-  Ing->>Q: upsert(vectors, metadata{tenant_id, doc_id})
-  Inf->>Ret: query "What is the leave policy?"
-  Ret->>Emb: embed query
-  Ret->>Q: search(vector, filter={tenant_id})
-  Q-->>Ret: top-K with scores
-  Ret-->>Inf: chunks
-  Inf-->>Inf: assemble prompt + generate`,
     alternatives: [
       { name: 'Weaviate', tradeoff: 'Built-in modules (multi-modal, hybrid); higher operational complexity' },
       { name: 'Milvus', tradeoff: 'Massive scale (billions); heavier to deploy' },
@@ -574,6 +655,215 @@ class AuditRepo:
       'drill_retrieval_tenant_isolation locks tenant boundary',
       'drill_retrieval_transport_breaker locks CB behaviour',
     ],
+    implementationSteps: [
+      { step: '1', logic: 'Provision Qdrant cluster (self-hosted or managed) with 3+ replicas. Configure scalar quantization on collection creation.' },
+      { step: '2', logic: 'Create collection with HNSW config (M=16, ef_construct=200) and payload schema (tenant_id keyword + doc_id keyword).' },
+      { step: '3', logic: 'Wrap Qdrant client in QdrantRepo class — every method takes tenant_id as required parameter; no raw search exposed.' },
+      { step: '4', logic: 'On ingestion: chunk → embed → upsert to Qdrant with payload (tenant_id, doc_id, chunk_id, embedding_model, embedding_version).' },
+      { step: '5', logic: 'On query: embed query → QdrantRepo.search(tenant_id, vector) → top-20 → cross-encoder rerank → top-5.' },
+      { step: '6', logic: 'For embedding model upgrade: create shadow collection → re-embed corpus in background → run eval → flip alias if recall holds → drop old.' },
+      { step: '7', logic: 'Drill: write under tenant A, search under tenant B → assert empty (real Qdrant, not mock).' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# libs/py/documind_core/qdrant_repo.py
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+class QdrantRepo:
+    """Tenant-scoped vector ops. tenant_id is REQUIRED; there is no
+    path to query Qdrant without it from this layer."""
+    def __init__(self, client: AsyncQdrantClient, collection: str):
+        self._c = client
+        self._coll = collection
+
+    async def search(self, tenant_id: str, vector: list[float], top_k: int = 20):
+        return await self._c.search(
+            collection_name=self._coll,
+            query_vector=vector,
+            query_filter=Filter(
+                must=[FieldCondition(
+                    key="tenant_id",
+                    match=MatchValue(value=tenant_id),
+                )]
+            ),
+            limit=top_k,
+        )
+
+    async def upsert(self, tenant_id: str, points: list):
+        # Caller passes points already stamped with tenant_id payload.
+        # Defensive: verify here too.
+        for p in points:
+            if p.payload.get("tenant_id") != tenant_id:
+                raise ValueError(f"point tenant_id mismatch: {p.id}")
+        return await self._c.upsert(self._coll, points)
+`,
+    },
+    realUseCase: 'Tenant A uploads a confidential PDF. Chunks are embedded with text-embedding-ada-002 v2, stamped with embedding_version=v2 + tenant_id=A, upserted to the shared collection. Six months later, we upgrade to text-embedding-3-large. Without shadow-collection discipline, the cluster is half v2 / half v3 — recall collapses. With shadow: build new collection, re-embed corpus (~6 GPU-hours), eval against benchmark, flip alias, drop v2. Zero downtime, recall preserved.',
+    prosCons: {
+      pros: [
+        'Sub-100ms ANN at 100M+ vector scale',
+        'Native payload filter — tenant_id enforced at query time',
+        'Self-hostable; no vendor lock-in',
+        'Scalar/binary quantization — 4-32x memory reduction',
+        'Collection alias — zero-downtime model upgrade',
+        'gRPC + REST clients in every major language',
+      ],
+      cons: [
+        'Not a database — no ACID, no joins',
+        'Index rebuild on quantization config change',
+        'HNSW recall depends on ef_search — needs tuning',
+        'Per-tenant collection at high tenant count = operational pain',
+        'Memory cost grows linearly with vector count',
+      ],
+    },
+    comparison: {
+      left: 'Qdrant',
+      right: 'pgvector',
+      rows: [
+        { aspect: 'Query latency p99 at 1M vectors', left: '~50ms', right: '~200ms (sequential scan possible)' },
+        { aspect: 'Index rebuild', left: 'Live; no write block', right: 'Locks writes for minutes' },
+        { aspect: 'Scaling cost', left: 'Higher (separate cluster)', right: 'Lower (Postgres extension)' },
+        { aspect: 'Operational simplicity', left: 'One more service to operate', right: 'Same Postgres you already run' },
+        { aspect: 'Tenant filter', left: 'Native payload filter', right: 'WHERE clause (easy to forget)' },
+        { aspect: 'When to pick', left: '≥ 100K chunks/tenant, p99 < 100ms required', right: '< 100K chunks/tenant, ACID semantics' },
+      ],
+    },
+    solutions: [
+      { problem: 'Search returns wrong tenant\'s chunk', solution: 'QdrantRepo enforces filter; drill_retrieval_tenant_isolation runs in CI' },
+      { problem: 'Recall drops after embedding model change', solution: 'Shadow-collection pattern + eval gate + alias flip; never re-embed in place' },
+      { problem: 'p99 latency spikes', solution: 'Profile ef_search per query; tune; consider per-tenant collection for biggest tenants' },
+      { problem: 'Memory pressure on cluster', solution: 'Enable scalar quantization; alternatively binary for ultra-high-volume cold corpora' },
+      { problem: 'Duplicate content floods retrieval', solution: 'Dedupe by content_hash on ingest; one chunk = one point' },
+    ],
+    bestPractices: {
+      do: [
+        'tenant_id as required parameter in QdrantRepo signature',
+        'Stamp embedding_model + embedding_version on every point',
+        'Use collection alias for zero-downtime upgrades',
+        'Index payload fields used in filters (tenant_id, doc_id)',
+        'Real-Qdrant integration tests for tenant isolation',
+      ],
+      avoid: [
+        'Raw qdrant_client outside QdrantRepo',
+        'In-place re-embedding (always shadow + alias flip)',
+        'Sequential search without filter (forget tenant_id = leak)',
+        'Mixing embedding model versions in one collection',
+        'Per-tenant collection without operational tooling',
+      ],
+      optimize: [
+        'ef_search tuning per workload (recall vs latency curve)',
+        'Scalar quantization for warm corpora; binary for cold',
+        'Per-tenant collection only for top 1% by query volume',
+        'Cross-encoder rerank top-20 → top-5 (cuts LLM tokens 4x)',
+        'Cache top-N retrieval results in Redis for repeat queries',
+      ],
+    },
+    antiPatterns: [
+      'Treating Qdrant as a database — it has no ACID, no joins',
+      'Skipping the payload filter "just for one debug query" — leaks',
+      'In-place embedding model swap — destroys recall',
+      'One collection per tenant for 1000+ tenants — operational nightmare',
+      'Forgetting embedding_version on points — upgrade becomes impossible',
+      'Storing ground-truth (e.g., user PII) in payload — wrong store',
+    ],
+    testTypes: [
+      'Unit (QdrantRepo method shape, mocked client)',
+      'Integration against real Qdrant (tenant isolation)',
+      'Drill — multi-tenant write/read with negative assertion',
+      'Eval — Recall@K against benchmark dataset',
+      'Performance — concurrent search load test',
+    ],
+    testScenarios: [
+      { scenario: 'Write under tenant A; search under tenant B', expected: 'Zero results returned' },
+      { scenario: 'Search without tenant_id parameter (call repo)', expected: 'TypeError at function signature' },
+      { scenario: 'Upsert point with mismatched tenant_id payload', expected: 'ValueError raised by repo' },
+      { scenario: 'ef_search=500 vs 100', expected: 'Higher recall (~+2%), higher latency (~+30ms)' },
+      { scenario: 'Embedding model bump without shadow', expected: 'Recall collapses on benchmark — caught by eval gate' },
+      { scenario: 'Drop collection + recreate', expected: 'Service degraded; transport breaker opens; alert fires' },
+    ],
+    testData: [
+      { type: 'Valid', example: 'point: {id: UUID, vector: [768 floats], payload: {tenant_id: UUID-A, doc_id: D1, embedding_version: v2}}' },
+      { type: 'Cross-tenant', example: 'tenant A points + tenant B query → empty result set' },
+      { type: 'Boundary', example: '10K vectors per upsert batch (max throughput)' },
+      { type: 'Extreme', example: '50 concurrent searches, p99 < 100ms target' },
+      { type: 'Invalid', example: 'vector dim mismatch (got 512, collection expects 768) → 400 from cluster' },
+    ],
+    debuggingChecklist: [
+      'Is tenant_id passed in the search call? (grep callsite for QdrantRepo.search)',
+      'Is the collection name correct? (vs alias, vs old shadow)',
+      'Is embedding_model_version in payload matching query embedder?',
+      'Is ef_search default appropriate for this workload? (try doubling)',
+      'Is HNSW index complete? (status endpoint should report green)',
+      'Is the transport breaker state closed? (/health/upstreams)',
+      'Are points stamped with current embedding_version?',
+    ],
+    productionIssues: [
+      { issue: 'Recall drops after deploy', rootCause: 'New embedding model deployed without shadow-collection — old vectors incomparable' },
+      { issue: 'p99 latency 3x higher overnight', rootCause: 'ef_search default raised "for better recall"; no perf test before deploy' },
+      { issue: 'Memory OOM on Qdrant pod', rootCause: 'Scalar quantization disabled "for accuracy"; vector count crossed RAM limit' },
+      { issue: 'Cross-tenant chunk visible in admin UI', rootCause: 'Admin endpoint used raw qdrant_client outside repo; bypassed payload filter' },
+      { issue: 'Silent ingestion drift', rootCause: 'embedding_model upgrade rolled out without re-embedding existing corpus; results mixed' },
+    ],
+    performance: [
+      'p50 search latency < 30ms target on indexed payload filters',
+      'p99 search < 100ms with ef_search=100 default',
+      'Throughput: 1000 QPS per Qdrant pod (3-replica cluster)',
+      'Memory: 4 GB per million vectors with scalar quantization',
+      'Cross-encoder rerank adds ~50ms; only on top-20 → top-5',
+    ],
+    costConsiderations: [
+      'Memory dominates — scalar quantization is non-optional at scale',
+      'Per-tenant collection has fixed memory overhead (HNSW per coll)',
+      'Re-embed cost on model upgrade: ~$0.10/1K chunks for cloud embedders',
+      'Network egress for cross-region replication',
+      'Cross-encoder rerank GPU/CPU cost vs LLM token savings tradeoff',
+    ],
+    observability: [
+      'Metrics: per-collection p50/p95/p99 query latency, QPS, memory growth',
+      'Recall@K from eval-svc — alert on > 5% drop',
+      'Transport breaker state for Qdrant — alert on open events',
+      'HNSW index size + indexing lag',
+      'Per-tenant query rate (top-N tenants by volume)',
+      'Trace span attribute db.qdrant.tenant_id on every search',
+    ],
+    metrics: [
+      { name: 'qdrant_p99_latency_ms', example: '< 100ms; alert > 200ms' },
+      { name: 'qdrant_recall_at_k', example: 'Eval-svc reports per benchmark; alert > 5% drop' },
+      { name: 'qdrant_memory_gb', example: 'Track growth; alert at 80% pod limit' },
+      { name: 'qdrant_breaker_state', example: 'closed expected; open events page on-call' },
+      { name: 'qdrant_query_rate_per_tenant', example: 'Top-10 tenants reviewed weekly' },
+    ],
+    tradeoffs: [
+      { decision: 'Qdrant vs pgvector', tradeoff: 'Performance + operational footprint vs single-store simplicity' },
+      { decision: 'Per-tenant collection vs payload filter', tradeoff: 'Physical isolation vs operational complexity at high tenant count' },
+      { decision: 'Scalar vs binary quantization', tradeoff: 'Recall vs memory (binary 32x reduction, 5-10% recall loss)' },
+      { decision: 'Cross-encoder rerank vs raw top-K', tradeoff: 'Quality vs latency + cost' },
+      { decision: 'Shadow collection vs in-place re-embed', tradeoff: 'Zero downtime + double storage during migration vs simpler ops + downtime risk' },
+    ],
+    decisionMatrix: [
+      { option: 'Qdrant + scalar quant + payload filter', whenToUse: 'Default for ≥ 100K chunks/tenant, ≤ 1000 tenants total' },
+      { option: 'Qdrant + per-tenant collection', whenToUse: 'Top 1% tenants by volume OR regulated customers requiring physical isolation' },
+      { option: 'pgvector', whenToUse: '< 100K chunks/tenant; ACID semantics needed; ops simplicity > p99 perf' },
+      { option: 'Pinecone (managed)', whenToUse: 'Pre-Series-A; zero-ops priority; willing to take vendor lock-in' },
+      { option: 'Weaviate', whenToUse: 'Multi-modal corpora; built-in modules for hybrid' },
+      { option: 'Milvus', whenToUse: 'Billions of vectors; willing to absorb operational complexity' },
+    ],
+    starStory: {
+      situation: 'Recall on the prod RAG benchmark dropped 18% overnight after a quiet deploy. Customer complaints about "wrong answers" started 36 hours later.',
+      task: 'Find the cause, restore recall, ship a regression-prevention discipline.',
+      action: 'Pulled deploy diff: a "small" upgrade from text-embedding-ada-002 v1 to v2 was rolled out without re-embedding the existing corpus. New queries embedded with v2; existing vectors stamped v1. Recall collapsed because the embedding spaces are not comparable. Recovery: rolled back to v1 embedder, then implemented shadow-collection pattern with eval gate. drill_embedding_version_coupling now runs in CI: an upsert with mismatched embedding_version vs collection metadata is rejected.',
+      result: 'Zero recall regressions in the year since. Two more upgrade attempts were blocked by the drill before reaching prod (one was a similar oversight, one was an actual model bug caught by eval gate). The shadow-collection runbook is now standard for every embedder swap.',
+    },
+    interviewTraps: [
+      'Calling Qdrant a "database" — it\'s a search engine; conflating loses you credibility',
+      'Skipping the embedding-version field — upgrade becomes impossible after a year',
+      'Saying "we tested with mocks" for tenant isolation — only real cluster catches the leak',
+      'Per-tenant-collection-for-everyone — doesn\'t scale operationally past ~100 tenants',
+      'Ignoring the rerank step — top-K alone gives noisy LLM context',
+      'Treating quantization as a free win — 5-10% recall loss matters for some use cases',
+    ],
+    finalScript: 'Qdrant is our semantic retrieval accelerator — not a database. We use HNSW for sub-linear ANN, scalar quantization for 4x memory reduction, and a mandatory tenant_id payload filter so cross-tenant leak is structurally impossible. The QdrantRepo wrapper has tenant_id as a required parameter — no raw client outside that layer. Embedding model upgrades use a shadow-collection pattern: build new collection, run eval gate, flip alias if recall holds, drop the old. Top-20 ANN results go through a cross-encoder rerank to top-5 before reaching the LLM — cuts token cost 4x. The non-negotiable test is drill_retrieval_tenant_isolation against the live cluster: write under tenant A, query under tenant B, assert zero results. Mocks lie about isolation; only real Qdrant enforces the filter.',
     interviewLine: 'Vector DB is a retrieval accelerator, not a transactional source of truth. The hardest discipline is embedding/index version coupling — silent drift here destroys recall.',
   },
 
