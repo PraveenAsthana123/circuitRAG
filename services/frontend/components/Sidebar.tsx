@@ -54,6 +54,33 @@ const GROUPS: Group[] = [
       { href: '/admin/client-errors', label: 'Client errors (F12 capture)' },
     ],
   },
+  {
+    heading: 'Stack (tools)',
+    items: [
+      { href: '/tools/otel-stack', label: 'Observability (OTel + Prom + Jaeger)' },
+      { href: '/tools/elk', label: 'ELK (logs)' },
+      { href: '/tools/ollama-vllm', label: 'Ollama / vLLM' },
+      { href: '/tools/postgres-rls', label: 'Postgres + RLS' },
+      { href: '/tools/qdrant', label: 'Qdrant (vector DB)' },
+      { href: '/tools/neo4j', label: 'Neo4j (graph DB)' },
+      { href: '/tools/redis', label: 'Redis (cache)' },
+      { href: '/tools/kafka', label: 'Kafka (event log)' },
+      { href: '/tools/istio', label: 'Istio (service mesh)' },
+      { href: '/tools/api-gateway', label: 'API Gateway' },
+      { href: '/tools/nginx-cdn', label: 'NGINX (edge / CDN)' },
+      { href: '/tools/circuit-breakers', label: 'Circuit Breakers (×5)' },
+      { href: '/tools/ccb', label: 'Cognitive Circuit Breaker' },
+      { href: '/tools/code-governance', label: 'Code governance' },
+    ],
+  },
+  {
+    heading: 'RAG quick-jump',
+    items: [
+      { href: '/admin/rag/deep#chunking', label: 'RAG · Chunking' },
+      { href: '/admin/rag/deep#hybrid-retrieval', label: 'RAG · Hybrid retrieval' },
+      { href: '/tools/rag-scenarios', label: 'RAG · 36 scenarios' },
+    ],
+  },
 ];
 
 /** Left-menu nav. Grouped so the 10+ links are scannable. */
