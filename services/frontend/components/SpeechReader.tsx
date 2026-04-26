@@ -29,6 +29,7 @@ type Props = {
   rate?: number;
   lang?: string;
   compact?: boolean;
+  showSettingsHint?: boolean;
 };
 
 type Span = { word: string; start: number; end: number; sentenceIdx: number };
@@ -142,7 +143,14 @@ function selectStyle(): React.CSSProperties {
   };
 }
 
-export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US', compact = false }: Props) {
+const LS_KEYS = {
+  voice: 'documind.speech.voice',
+  rate: 'documind.speech.rate',
+  pitch: 'documind.speech.pitch',
+  volume: 'documind.speech.volume',
+} as const;
+
+export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US', compact = false, showSettingsHint = false }: Props) {
   const spans = useMemo(() => tokenize(text), [text]);
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const [state, setState] = useState<'idle' | 'speaking' | 'paused'>('idle');
@@ -157,6 +165,47 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedVoice = window.localStorage.getItem(LS_KEYS.voice);
+    const savedRate = window.localStorage.getItem(LS_KEYS.rate);
+    const savedPitch = window.localStorage.getItem(LS_KEYS.pitch);
+    const savedVolume = window.localStorage.getItem(LS_KEYS.volume);
+    if (savedVoice) setVoiceName(savedVoice);
+    if (savedRate) {
+      const parsed = Number(savedRate);
+      if (!Number.isNaN(parsed)) setRate(parsed);
+    }
+    if (savedPitch) {
+      const parsed = Number(savedPitch);
+      if (!Number.isNaN(parsed)) setPitch(parsed);
+    }
+    if (savedVolume) {
+      const parsed = Number(savedVolume);
+      if (!Number.isNaN(parsed)) setVolume(parsed);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !voiceName) return;
+    window.localStorage.setItem(LS_KEYS.voice, voiceName);
+  }, [voiceName]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(LS_KEYS.rate, String(rate));
+  }, [rate]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(LS_KEYS.pitch, String(pitch));
+  }, [pitch]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(LS_KEYS.volume, String(volume));
+  }, [volume]);
 
   // Load voices (some browsers populate asynchronously via voiceschanged).
   useEffect(() => {
@@ -290,13 +339,115 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     return () => document.removeEventListener('keydown', handler);
   }, [supported, state, stop]);
 
-  // Watch for text selection on the page; show "Read selection" button.
+  // In-place highlighting on the actual page content via the CSS
+  // Highlight API. Walking <main>'s text nodes and building Range
+  // objects keyed by word index; activeIdx selects which range is
+  // currently registered as the ::highlight(speech-active) target.
+  // No DOM mutation — Range + CSS::highlight is non-invasive.
+  const domRangesRef = useRef<Range[]>([]);
+  const buildDomRanges = useCallback((): Range[] => {
+    if (typeof document === 'undefined') return [];
+    const root =
+      (document.querySelector('main') as HTMLElement | null) ||
+      (document.querySelector('article') as HTMLElement | null) ||
+      document.body;
+    if (!root) return [];
+    const ranges: Range[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      // Skip text inside controls (the toolbar speaks the page, not itself).
+      let p: Node | null = node.parentNode;
+      let inControl = false;
+      while (p && p !== root) {
+        const el = p as HTMLElement;
+        const tag = el.tagName;
+        if (tag && /^(BUTTON|SELECT|INPUT|TEXTAREA|LABEL|OPTION)$/i.test(tag)) {
+          inControl = true;
+          break;
+        }
+        if (el.dataset && el.dataset.speechSkip === '1') {
+          inControl = true;
+          break;
+        }
+        p = p.parentNode;
+      }
+      if (inControl) continue;
+      const t = (node as Text).nodeValue || '';
+      const re = /\S+/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(t)) !== null) {
+        const r = document.createRange();
+        r.setStart(node, m.index);
+        r.setEnd(node, m.index + m[0].length);
+        ranges.push(r);
+      }
+    }
+    return ranges;
+  }, []);
+
+  // Update the CSS Highlight registration whenever activeIdx changes.
   useEffect(() => {
-    if (!compact) return; // only in toolbar mode
+    if (typeof window === 'undefined') return;
+    // CSS.highlights is the standard API (Chrome 105+, Safari 17.2+,
+    // Firefox 140+). If unavailable, fall back to no-op (still speaks).
+    const ANY_CSS = (window as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS;
+    const reg = ANY_CSS?.highlights;
+    if (!reg) return;
+    if (activeIdx < 0) {
+      reg.delete?.('speech-active');
+      reg.delete?.('speech-sentence');
+      return;
+    }
+    const ranges = domRangesRef.current;
+    const target = ranges[activeIdx];
+    if (!target) return;
+    // Active word
+    const ActiveCtor = (window as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
+    if (ActiveCtor) {
+      reg.set?.('speech-active', new ActiveCtor(target));
+      // Sentence highlight: collect siblings sharing sentenceIdx
+      const sIdx = spans[activeIdx]?.sentenceIdx;
+      if (sIdx !== undefined) {
+        const sentenceRanges = spans
+          .map((s, i) => (s.sentenceIdx === sIdx && i !== activeIdx ? ranges[i] : null))
+          .filter((r): r is Range => !!r);
+        if (sentenceRanges.length) {
+          reg.set?.('speech-sentence', new ActiveCtor(...sentenceRanges));
+        } else {
+          reg.delete?.('speech-sentence');
+        }
+      }
+    }
+    // Scroll into view
+    try {
+      const rect = target.getBoundingClientRect();
+      if (rect.top < 80 || rect.bottom > window.innerHeight - 60) {
+        target.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    } catch (_e) {
+      // ignore
+    }
+  }, [activeIdx, spans]);
+
+  // (Re)build DOM ranges whenever speech becomes active.
+  useEffect(() => {
+    if (state === 'speaking' && domRangesRef.current.length === 0) {
+      domRangesRef.current = buildDomRanges();
+    }
+    if (state === 'idle') {
+      domRangesRef.current = [];
+    }
+  }, [state, buildDomRanges]);
+
+  // Watch for text selection — but DON'T pop up a giant panel. Just
+  // keep the trimmed selection text in state so the toolbar can show
+  // a small "Read selection" button only when ≥3 words are selected.
+  useEffect(() => {
+    if (!compact) return;
     const handler = () => {
       const sel = typeof window !== 'undefined' ? window.getSelection() : null;
       const txt = sel ? sel.toString().trim() : '';
-      // Only show selection if it's >= 3 words and < 5000 chars
       if (txt.split(/\s+/).length >= 3 && txt.length < 5000) {
         setSelectionText(txt);
       } else {
@@ -320,6 +471,8 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   const idText = cssId(text);
   // Filter to English; classify by gender via name heuristic.
   const englishVoices = voices.filter((v) => v.lang.startsWith('en'));
+  const hasLoadedVoices = voices.length > 0;
+  const hasEnglishVoices = englishVoices.length > 0;
   const FEMALE_HINTS = /samantha|karen|fiona|moira|tessa|veena|zira|susan|catherine|female|woman|allison|ava|joanna|kendra|kimberly|salli|amy|emma|lupe|joanna|raveena|aditi|mia|sophia|lilly/i;
   const MALE_HINTS = /alex|daniel|fred|david|mark|tom|fellow|guy|matthew|brian|justin|joey|kevin|male|man|aaron|liam|oliver|ethan|noah|joshua|carlos|miguel|hans|leo/i;
   const classify = (name: string): '♀' | '♂' | '·' => {
@@ -467,7 +620,40 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
           </select>
         )}
       </div>
+      {!hasLoadedVoices && (
+        <div
+          style={{
+            marginTop: compact ? 0 : 8,
+            fontSize: 12,
+            color: '#991b1b',
+            maxWidth: compact ? 280 : 'none',
+          }}
+        >
+          No browser speech voices were detected. Read-aloud may stay silent until browser or OS voices are installed and available.
+        </div>
+      )}
+      {hasLoadedVoices && !hasEnglishVoices && (
+        <div
+          style={{
+            marginTop: compact ? 0 : 8,
+            fontSize: 12,
+            color: '#92400e',
+            maxWidth: compact ? 280 : 'none',
+          }}
+        >
+          Browser speech is available, but no English voice was detected.
+        </div>
+      )}
       {!compact && (
+        <>
+        <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280' }}>
+          Browser speech status: {supported ? 'supported' : 'unsupported'} · voices loaded {voices.length} · English voices {englishVoices.length}
+        </div>
+        {showSettingsHint && (
+          <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280' }}>
+            Current settings: {voiceName || 'default voice'} · {rate}x · pitch {pitch} · volume {volume}
+          </div>
+        )}
         <div
           aria-live="polite"
           style={{
@@ -503,85 +689,21 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
             );
           })}
         </div>
+        </>
       )}
-      {compact && isActive && (
-        <div
-          aria-live="polite"
-          style={{
-            position: 'fixed',
-            top: 56,
-            right: 16,
-            zIndex: 40,
-            width: 'min(720px, calc(100vw - 32px))',
-            maxHeight: 320,
-            overflowY: 'auto',
-            background: 'rgba(255,255,255,0.98)',
-            border: '1px solid #e5e7eb',
-            borderLeft: '4px solid #b45309',
-            borderRadius: 8,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-            padding: 12,
-            fontSize: 14,
-            lineHeight: 1.7,
-            color: '#000',
-          }}
-        >
-          <div style={{ fontSize: 11, color: '#b45309', fontWeight: 700, marginBottom: 8, letterSpacing: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>🔊 SPEAKING — click any word to jump · Space=pause · Esc=stop</span>
-          </div>
-          {/* Pitch + volume sliders inline above the text */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 11, color: '#374151' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              Pitch
-              <input
-                type="range" min="0.5" max="2" step="0.1" value={pitch}
-                onChange={(e) => setPitch(Number(e.target.value))}
-                style={{ width: 80 }}
-              />
-              <span>{pitch.toFixed(1)}</span>
-            </label>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              Vol
-              <input
-                type="range" min="0" max="1" step="0.05" value={volume}
-                onChange={(e) => setVolume(Number(e.target.value))}
-                style={{ width: 80 }}
-              />
-              <span>{Math.round(volume * 100)}%</span>
-            </label>
-          </div>
-          {/* Word + sentence highlight; click any word to jump */}
-          <div>
-            {spans.map((s, i) => {
-              const active = i === activeIdx;
-              const inActiveSentence = activeIdx >= 0 && s.sentenceIdx === spans[activeIdx]?.sentenceIdx;
-              return (
-                <span
-                  key={i}
-                  id={`speech-w-${idText}-${i}`}
-                  onClick={() => speakFrom(i)}
-                  style={{
-                    background: active ? '#fef08a' : 'transparent',
-                    fontWeight: active ? 700 : 400,
-                    borderRadius: 2,
-                    padding: active ? '1px 2px' : 0,
-                    cursor: 'pointer',
-                    textDecoration: inActiveSentence && !active ? 'underline' : 'none',
-                    textDecorationColor: '#fbbf24',
-                    textDecorationThickness: '2px',
-                    textUnderlineOffset: '3px',
-                    transition: 'background 80ms linear',
-                  }}
-                  title={active ? 'reading this word' : 'click to jump here'}
-                >
-                  {s.word}
-                  {' '}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* CSS Highlight rules — applied to the actual page text via
+          Range objects registered in the activeIdx effect. No DOM
+          mutation, no floating overlay. */}
+      <style>{`
+        ::highlight(speech-active) {
+          background-color: #fef08a;
+          color: #000;
+        }
+        ::highlight(speech-sentence) {
+          text-decoration: underline 2px #fbbf24;
+          text-underline-offset: 3px;
+        }
+      `}</style>
     </div>
   );
 }

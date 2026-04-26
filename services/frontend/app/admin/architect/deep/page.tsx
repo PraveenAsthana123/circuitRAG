@@ -240,6 +240,231 @@ const TOPICS: Topic[] = [
       'mcp/tests/drill_*.py — drill suite for every architectural invariant',
     ],
     interviewLine: 'A multi-tenant RAG architecture is not one decision — it\'s six: where tenant isolation lives (Postgres FORCE RLS), how retrieval fuses three stores (vector + graph + keyword), how the mesh contains failure (transport breakers per backend), how cost is bounded (Token CB), how audit is reconstructible (hash-chained log), and how the embedding model upgrades without taking the index down (shadow index). Each is independently defensible. Together they ship.',
+    implementationSteps: [
+      { step: 'Decide isolation primitive', logic: 'FORCE RLS on every tenant-owned table; app role NOBYPASSRLS; ops role BYPASSRLS but audited.' },
+      { step: 'Schema-per-service grants', logic: 'Each service gets least-privilege grants on its own schema only; cross-service traffic via API not DB.' },
+      { step: 'Define retrieval fusion', logic: 'Vector top-K + graph hop top-K + keyword fallback → reciprocal-rank fuse → cross-encoder rerank top-5.' },
+      { step: 'Wire transport breakers', logic: 'One breaker per (caller, target) pair: Retrieval→Qdrant, Retrieval→Neo4j, Inference→Ollama, Inference→Postgres.' },
+      { step: 'Mesh policy', logic: 'PeerAuthentication=STRICT; AuthorizationPolicy explicit per service; VirtualService canary 90/10 for new revisions.' },
+      { step: 'Audit chain', logic: 'audit_log table with HMAC chain per tenant; fail_closed write — if audit DB is down, return 503, not silent 200.' },
+      { step: 'Cost gate', logic: 'Token CB with per-tenant budget; on breach return 429 + Retry-After; daily budget reset cron.' },
+      { step: 'Embedding upgrade pattern', logic: 'Add embedding_version column; shadow-index new model; eval gate on golden set; feature-flag flip.' },
+      { step: 'Drill suite', logic: 'One drill per architectural invariant: tenant isolation, breaker transitions, audit seal, token budget, RLS forced.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# libs/py/documind_core/db.py — tenant-scoped connection
+import contextlib
+from asyncpg import Connection
+from .audit import audit_chain_write
+
+@contextlib.asynccontextmanager
+async def tenant_connection(pool, tenant_id: str, *, role: str = "app"):
+    """Acquire a pool conn, set the tenant invariant, yield.
+
+    The RLS policy reads current_setting('app.current_tenant_id'), so
+    forgetting to call SET LOCAL is the same as a missing WHERE — the
+    runtime rejects the query rather than leaking rows.
+    """
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(f"SET LOCAL ROLE {role}")
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                tenant_id,
+            )
+            try:
+                yield conn
+            finally:
+                # transaction commit/rollback handles cleanup; SET LOCAL
+                # is scoped to the txn so no manual reset needed.
+                pass
+
+# Usage in retrieval-svc/repository.py
+async def list_chunks(pool, tenant_id: str, doc_id: str):
+    async with tenant_connection(pool, tenant_id) as conn:
+        return await conn.fetch(
+            "SELECT id, text, embedding FROM chunks WHERE doc_id = $1",
+            doc_id,
+        )  # RLS policy adds AND tenant_id = current_setting(...)
+
+# Admin ops with audit: BYPASSRLS forbidden in runtime path.
+async def admin_purge_tenant(pool, tenant_id: str, actor_id: str):
+    async with tenant_connection(pool, tenant_id, role="documind_ops") as conn:
+        deleted = await conn.fetchval(
+            "DELETE FROM chunks WHERE tenant_id = $1 RETURNING count(*)",
+            tenant_id,
+        )
+        await audit_chain_write(
+            conn, tenant_id=tenant_id, actor_id=actor_id,
+            action="admin_purge_tenant", payload={"deleted": deleted},
+        )
+        return deleted`,
+    },
+    realUseCase: 'A new compliance customer onboards with 2M chunks. Day 1: shadow-indexed under embedding-version=v3 while v2 serves live. Day 2: eval-svc reports Recall@10 within 0.5pp of v2 on the customer\'s golden set. Day 3: feature-flag flip. Live retrieval moves to v3 in 30 seconds; old v2 vectors evicted by retention job at week 1. Zero query downtime. Zero index rebuild. The architectural invariant — embedding_version per row + shadow index — made this routine, not an outage.',
+    prosCons: {
+      pros: [
+        'Tenant isolation is a database invariant, not an app discipline',
+        'Per-backend breakers contain failure to one transport',
+        'Audit chain makes admin ops reconstructible for compliance',
+        'Schema-per-service supports parallel team velocity',
+        'Shadow-index pattern enables zero-downtime model upgrades',
+      ],
+      cons: [
+        'Six datastores = six SREs of operational surface',
+        'Per-tenant Qdrant collection inflates ops cost at high tenant count',
+        'Hash-chained audit adds write latency vs fire-and-forget log',
+        'Mesh adds ~5–8 ms p50 overhead per hop vs direct calls',
+        'Cross-tenant analytics (e.g., aggregate metrics) needs explicit BYPASSRLS path',
+      ],
+    },
+    comparison: {
+      left: 'Single-store / vendor-managed (e.g., Pinecone or pgvector-only)',
+      right: 'This architecture (PG + Qdrant + Neo4j + mesh + breakers)',
+      rows: [
+        { aspect: 'Tenant isolation', left: 'API key or app-layer WHERE — easy to miss', right: 'Postgres FORCE RLS — database invariant' },
+        { aspect: 'Failure containment', left: 'Vendor-managed or none', right: 'Per-(caller,target) transport breakers' },
+        { aspect: 'Multi-store fusion', left: 'Vector only or vector+keyword', right: 'Vector + graph + keyword + cache' },
+        { aspect: 'Audit', left: 'Vendor logs (limited) or manual logging', right: 'Hash-chained per tenant; tamper-evident' },
+        { aspect: 'Cost predictability', left: 'Per-vector or per-query vendor billing', right: 'Self-host + Token CB per-tenant cap' },
+        { aspect: 'Time to MVP', left: '1–2 weeks', right: '4–6 weeks' },
+        { aspect: 'Recall@10 ceiling', left: '~85–90% on multi-hop questions', right: '95%+ via fusion + rerank' },
+      ],
+    },
+    solutions: [
+      { problem: 'Cross-tenant leak risk', solution: 'FORCE RLS + drill_retrieval_tenant_isolation in CI' },
+      { problem: 'Slow backend cascading', solution: 'Transport breaker per (caller, target) pair' },
+      { problem: 'Audit DB outage', solution: 'fail_closed: return 503 not silent 200' },
+      { problem: 'Embedding model drift', solution: 'Shadow index + eval gate + feature flag' },
+      { problem: 'Token budget surprise', solution: 'Daily-reset Token CB with 429+Retry-After' },
+      { problem: 'Stale Qdrant after deletes', solution: 'Reconcile worker compares PG truth vs Qdrant payload' },
+    ],
+    bestPractices: {
+      do: [
+        'FORCE RLS on every tenant-owned table',
+        'tenant_connection() context manager at every repo call',
+        'One transport breaker per (caller, target) pair',
+        'Audit hash-chain per tenant with periodic seal verification',
+        'Schema-per-service grants — least privilege',
+        'Shadow-index any embedding-model upgrade',
+        'Eval gate on every retrieval/inference change',
+      ],
+      avoid: [
+        'BYPASSRLS in runtime path (admin only, audited)',
+        'Cross-service joins in DB — go through APIs',
+        'One global breaker for all backends',
+        'Logging audit to file before chain write completes',
+        'Embedding upgrade without shadow index',
+      ],
+      optimize: [
+        'Read replicas for governance + eval queries',
+        'Per-tenant Qdrant collections only for hot tenants; shared collection w/ filter for cold',
+        'Cache rerank scores at (query_hash, embedding_version) key',
+        'Async audit batch flush ≤ 200 ms behind transaction commit',
+        'Cross-encoder rerank only on top-20, not full corpus',
+      ],
+    },
+    antiPatterns: [
+      'App-layer tenant filter as the only isolation (one missed JOIN = leak)',
+      'Single circuit breaker covering all backends (one slow transport opens everything)',
+      'Audit log as fire-and-forget (loses entries during DB blip)',
+      'Embedding upgrade by re-indexing in place (downtime + rollback impossible)',
+      'BYPASSRLS in the user-facing service role (compliance violation)',
+      'Per-tenant Qdrant collection for every tenant from day 1 (ops explosion)',
+    ],
+    testTypes: [
+      'Unit: each service in isolation with mocked stores',
+      'Integration: real Postgres + Qdrant + Neo4j via docker-compose',
+      'Drill: end-to-end invariant proofs (tenant isolation, breaker, audit)',
+      'Eval: golden-set Recall@K + hallucination rate, gates CI',
+      'Chaos: kill Qdrant/Neo4j/Redis randomly, verify breaker + degraded path',
+      'Load: per-tenant rate ladder up to budget breach',
+      'Pen: cross-tenant probe via leaked JWT — must 403 + audit',
+    ],
+    testScenarios: [
+      { scenario: 'Tenant A ingests doc; Tenant B queries it', expected: 'Zero rows + audit row noting cross-tenant denial' },
+      { scenario: 'Qdrant returns 500 on retrieval', expected: 'Breaker opens at N consecutive; degraded=true to client' },
+      { scenario: 'Embedding model upgraded mid-traffic', expected: 'Live queries served by old model until flag flip' },
+      { scenario: 'Token budget exhausted at 90% of day', expected: '429 + Retry-After until tomorrow midnight UTC' },
+      { scenario: 'Audit DB unreachable', expected: 'Write returns 503, no silent success' },
+    ],
+    testData: [
+      { type: 'Multi-tenant fixture', example: '4 tenants × 50 docs × 200 chunks each; one cross-tenant duplicate phrase to flush leaks' },
+      { type: 'Slow-backend mock', example: 'Toxiproxy in front of Qdrant adds 5s latency to N% of requests' },
+      { type: 'Golden eval set', example: '500 (query, expected-doc-id, expected-section) tuples scored on recall@10' },
+      { type: 'Audit chain seed', example: '1 sealed window per tenant with 10K rows each — verifier must accept all' },
+    ],
+    debuggingChecklist: [
+      'Is the JWT decode dropping tenant_id? Check api-gateway logs for "no tenant claim"',
+      'Did SET LOCAL run? Check pg_stat_activity for session app.current_tenant_id',
+      'Is the breaker open? GET /admin/breakers → state per (caller, target)',
+      'Is Qdrant healthy? GET /health/upstreams kind=qdrant → reachable + p95',
+      'Is audit chain valid? Run drill_audit_seal — verifies HMAC chain per tenant',
+      'Is embedding_version mismatched? SELECT DISTINCT embedding_version FROM chunks WHERE tenant=$1',
+      'Token budget? GET /admin/cost/budget tenant=$1 → today_used / daily_cap',
+    ],
+    productionIssues: [
+      { issue: 'Cross-tenant rows returned during a recall@10 sweep', rootCause: 'New endpoint missed tenant_connection() context manager. RLS skipped because session role was set globally.' },
+      { issue: 'Inference latency p99 spike from 1.2s → 9s', rootCause: 'Qdrant pod OOM-killed. No transport breaker on Inference→Retrieval; cascade.' },
+      { issue: 'Audit gap — 12 minutes of decisions missing', rootCause: 'Audit DB write timeout configured 50ms; bursty writes silently dropped instead of 503.' },
+      { issue: 'Embedding upgrade dropped recall by 18pp', rootCause: 'Shadow-index built but eval gate not enforced; flag flipped before recall regression caught.' },
+    ],
+    performance: [
+      'p50 latency: gateway 2ms + retrieval 80ms + rerank 25ms + LLM stream first-token 350ms = ~457ms',
+      'p95: 850ms (LLM dominates); breaker open path ~120ms (degraded)',
+      'Throughput per inference pod: 30 req/s sustained; 60 req/s burst',
+      'Cache hit ratio: 35% on retrieval (query→chunks), 60% on rerank',
+      'Storage: ~120 KB per chunk (text + 768-d float32 + metadata) → 24 GB per 200K chunks',
+    ],
+    costConsiderations: [
+      'Qdrant memory: ~1.5 KB per vector @ 768-d quantized → 300 MB per 200K chunks per tenant',
+      'LLM tokens: ~80% of cost at scale; gate via Token CB per-tenant daily cap',
+      'Postgres I/O: WAL-heavy from audit chain; reserve r6i.xlarge minimum',
+      'Neo4j: ~50% memory overhead vs vector store; only justified if multi-hop queries are common',
+      'Mesh overhead: Istio sidecar adds ~50 MB RAM per pod and ~5ms p50',
+    ],
+    observability: [
+      'Trace: OTel from edge → mesh → service → store; correlation_id propagated as W3C TraceParent',
+      'Metrics: per-service histogram (latency p50/p95/p99), CB state gauge, pool wait time',
+      'Logs: JSON structured with correlation_id, tenant_id, request_id; ship to Loki/CloudWatch',
+      'Decision audit: per-request_id row with input + chunks + score + final answer',
+      'Cost log: per-request token count + USD cost; aggregate by tenant + day',
+    ],
+    metrics: [
+      { name: 'documind_request_duration_seconds', example: 'histogram_quantile(0.95, sum(rate(...[5m])) by (le, service))' },
+      { name: 'documind_circuit_breaker_state', example: '1 = open, 0 = closed; alert if open > 5min for any (caller,target)' },
+      { name: 'documind_tenant_isolation_violations_total', example: 'Counter; alert at any value > 0 (page on-call)' },
+      { name: 'documind_audit_write_failures_total', example: 'Counter; alert if rate(5m) > 0.1/min' },
+      { name: 'documind_eval_recall_at_10', example: 'Gauge per embedding_version; alert on regression > 2pp' },
+      { name: 'documind_token_budget_exhausted_total', example: 'Counter by tenant; weekly review of top breaches' },
+    ],
+    tradeoffs: [
+      { decision: 'FORCE RLS vs app-layer filter', tradeoff: 'Invariant but adds 2–4% query overhead from policy eval' },
+      { decision: 'Per-tenant Qdrant vs shared+filter', tradeoff: 'Isolation + tuning but Nx ops cost at high tenant count' },
+      { decision: 'Shadow index vs in-place upgrade', tradeoff: 'Zero downtime but 2x storage during transition window' },
+      { decision: 'Hash-chain audit vs append-only log', tradeoff: 'Tamper-evident but write-amplification ~1.3x' },
+      { decision: 'Mesh vs direct gRPC', tradeoff: 'Policy + observability but 5–8ms p50 hop overhead' },
+    ],
+    decisionMatrix: [
+      { option: 'Pinecone managed', whenToUse: 'Single-tenant POC, no audit needs, time-to-MVP critical' },
+      { option: 'pgvector only', whenToUse: '< 100K total chunks, no graph queries, single team' },
+      { option: 'This (PG+Qdrant+Neo4j+mesh)', whenToUse: 'Multi-tenant SaaS ≥ 10 tenants, compliance, recall + latency both matter' },
+      { option: 'Custom sharded ANN + own rerank', whenToUse: '100M+ chunks, < 100ms p99 retrieval, infra team can operate' },
+    ],
+    starStory: {
+      situation: 'A new compliance customer flagged that our admin "purge-tenant" endpoint could theoretically read another tenant\'s data — even though it never had in production — because it ran with BYPASSRLS implicitly.',
+      task: 'Eliminate the implicit BYPASSRLS path while keeping admin operability. Prove the fix with a drill that fails closed if the discipline regresses.',
+      action: 'Split the DB role into app (NOBYPASSRLS) and documind_ops (BYPASSRLS, audited). Wrapped admin paths in a context manager that switches role + writes a hash-chained audit row before every BYPASSRLS query. Wrote drill_admin_audit that asserts: (1) admin op without audit fails 503, (2) the chain HMAC verifies post-op.',
+      result: 'Compliance customer accepted the architecture. drill_admin_audit added to CI; gates main. Zero compliance findings in subsequent quarterly review. Pattern documented as ADR-007 and adopted by three other internal services.',
+    },
+    interviewTraps: [
+      'Saying "we use RLS" without explaining FORCE — non-FORCE leaks via superuser path',
+      'Claiming "circuit breakers" without specifying per-(caller,target) — one global CB is half a CB',
+      'Conflating audit with logging — audit is hash-chained, append-only, fail-closed',
+      'Treating embedding upgrade as a deploy — it\'s a data migration with eval gate',
+      'Saying "Pinecone is the same" — it\'s not; vendor-trust ≠ DB invariant',
+      'Forgetting the cold-tenant degrade path — silent hallucination is the failure mode',
+    ],
     finalScript: 'A multi-tenant RAG platform is six decisions stitched into one architecture. First, tenant isolation lives in the database via FORCE RLS — not in the app layer where it\'s one missed JOIN from a leak. Second, retrieval fuses three stores: Qdrant for semantic, Neo4j for graph, and a keyword fallback. Third, every transport gets its own circuit breaker so a slow Qdrant doesn\'t take inference down. Fourth, cost is bounded by a Token CB enforcing per-tenant FinOps budgets. Fifth, every BYPASSRLS operation writes a hash-chained audit row — admin ops are reconstructible. Sixth, embedding upgrades use a shadow index with feature-flag flip after eval gate — zero downtime. Each decision is independently defensible. The non-negotiable test is a real-Postgres drill that writes under tenant A and reads under tenant B and asserts zero rows.',
   },
 ];
