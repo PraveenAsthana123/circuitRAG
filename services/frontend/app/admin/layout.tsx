@@ -1,18 +1,12 @@
 /**
- * Admin route-level layout — adds a sticky download toolbar at the top
- * of every admin page. Reads the page's <h1 class="section-title"> for
- * the export filename and Word document title.
+ * Admin route-level layout — passthrough.
  *
- * Skips render gracefully when no section-title is on the page.
+ * The PageDownloadBar (download formats + 🔊 Read) is mounted in the
+ * root layout (app/layout.tsx) so it covers every page in the app, not
+ * just admin. Keeping this file as a passthrough so future admin-only
+ * concerns can land here without restructuring.
  */
 
-import PageDownloadBar from '../../components/PageDownloadBar';
-
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <PageDownloadBar />
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }

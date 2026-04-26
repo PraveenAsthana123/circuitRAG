@@ -5,6 +5,7 @@ import '../styles/globals.css';
 import Sidebar from '../components/Sidebar';
 import ClientErrorReporter from '../components/ClientErrorReporter';
 import ErrorBoundary from '../components/ErrorBoundary';
+import PageDownloadBar from '../components/PageDownloadBar';
 
 export const metadata: Metadata = {
   title: 'DocuMind',
@@ -51,7 +52,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Link href="/admin" className="topbar-link">Admin</Link>
             </header>
             <main className="content" id="main-content">
-              <div className="content-inner">{children}</div>
+              <div className="content-inner">
+                {/* Sticky toolbar: PDF / Word / Text / HTML / PPT + 🔊 Read.
+                    Auto-hides if no <h1> is found on the page. */}
+                <PageDownloadBar />
+                {children}
+              </div>
             </main>
           </div>
         </ErrorBoundary>
