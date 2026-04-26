@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Mermaid from '../../../../components/Mermaid';
 
 export const metadata = { title: 'Python syllabus — DocuMind' };
 
@@ -17,9 +18,6 @@ type Category = {
   topics: Topic[];
 };
 
-// Status mapping: where the deeper content lives, or TODO if not yet
-// covered. Anchors point at /admin/python/deep#<slug> where they
-// already exist; otherwise to the closest related deep dive.
 const CATEGORIES: Category[] = [
   {
     heading: 'Intermediate Python concepts',
@@ -229,12 +227,437 @@ const CATEGORIES: Category[] = [
   },
 ];
 
+function statusStyle(status: Status) {
+  if (status === 'shipped') return { label: 'shipped', bg: '#16a34a' };
+  if (status === 'partial') return { label: 'partial', bg: '#d97706' };
+  return { label: 'todo', bg: '#6b7280' };
+}
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+function coreConcept(topic: Topic, heading: string): string {
+  if (heading.includes('RAG')) return `${topic.name} is a RAG pipeline building block that affects retrieval quality, answer quality, or operational latency.`;
+  if (heading.includes('Backend')) return `${topic.name} is a backend implementation pattern used to keep service code reliable, observable, and maintainable.`;
+  if (heading.includes('Typing')) return `${topic.name} is part of the contract layer that keeps Python code understandable at both lint time and runtime.`;
+  if (heading.includes('Dunder')) return `${topic.name} is part of Python's protocol model, which lets your objects participate in built-in language behavior.`;
+  if (heading.includes('runtime') || heading.includes('advanced')) return `${topic.name} is a runtime-level concept that controls how Python executes work, schedules tasks, or resolves behavior.`;
+  return `${topic.name} is a Python language concept that shapes how you write clear, correct, and reusable code.`;
+}
+
+function fiveW(topic: Topic, heading: string) {
+  const location = topic.href ? `Explained in ${topic.href}` : `Tracked in the ${heading.toLowerCase()} syllabus section`;
+  return {
+    what: topic.blurb,
+    why: `It matters because ${topic.name.toLowerCase()} affects correctness, readability, and interview depth in this codebase.`,
+    when: `Use it whenever the code path genuinely needs ${topic.name.toLowerCase()}, not just because the feature exists in Python.`,
+    where: location,
+    who: heading.includes('RAG') ? 'Backend / RAG engineers, platform engineers, and interviewers probing production AI depth.' : 'Backend engineers, platform engineers, reviewers, and interviewers for senior Python roles.',
+  };
+}
+
+function interviewExplanation(topic: Topic, heading: string): string {
+  if (heading.includes('RAG')) {
+    return `Explain where ${topic.name} sits in the ingest -> retrieve -> generate flow, what quality or latency risk it controls, and how you would observe failures in production.`;
+  }
+  if (heading.includes('Backend')) {
+    return `Explain the boundary where ${topic.name} belongs, the failure mode it prevents, and how it interacts with retries, timeouts, observability, or service layering.`;
+  }
+  if (heading.includes('Typing')) {
+    return `Explain the difference between static understanding and runtime enforcement, and show how ${topic.name} reduces ambiguity at API boundaries.`;
+  }
+  if (heading.includes('Dunder')) {
+    return `Explain which Python protocol ${topic.name} participates in, when you would implement it yourself, and what surprises it can create if done poorly.`;
+  }
+  return `Explain the core rule of ${topic.name}, the most common misuse, and how it shows up in real production Python instead of toy examples.`;
+}
+
+function sampleCode(topic: Topic): string {
+  const key = topic.name.toLowerCase();
+
+  if (key.includes('decorator')) {
+    return `import functools
+
+def traced(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        print(f"start {fn.__name__}")
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            print(f"end {fn.__name__}")
+    return wrapper`;
+  }
+  if (key.includes('context manager')) {
+    return `from contextlib import contextmanager
+
+@contextmanager
+def tenant_connection(pool, tenant_id: str):
+    conn = pool.acquire()
+    try:
+        yield conn
+    finally:
+        pool.release(conn)`;
+  }
+  if (key.includes('async / await') || key === 'asyncio' || key.includes('coroutine') || key.includes('event loop')) {
+    return `async def fetch_user(client, user_id: str):
+    resp = await client.get(f"/users/{user_id}")
+    return resp.json()`;
+  }
+  if (key.includes('asyncio task orchestration') || key.includes('fan-out')) {
+    return `results = await asyncio.gather(
+    fetch_vector_hits(query),
+    fetch_graph_hits(query),
+    fetch_cache_hits(query),
+)`;
+  }
+  if (key.includes('generator') || key.includes('__iter__') || key.includes('__next__')) {
+    return `def iter_chunks(text: str, size: int):
+    for i in range(0, len(text), size):
+        yield text[i:i + size]`;
+  }
+  if (key.includes('pydantic')) {
+    return `from pydantic import BaseModel
+
+class AskRequest(BaseModel):
+    question: str
+    tenant_id: str`;
+  }
+  if (key.includes('fastapi')) {
+    return `@router.post("/ask", response_model=AskResponse)
+async def ask(req: AskRequest, svc: AskService = Depends(get_ask_service)):
+    return await svc.run(req)`;
+  }
+  if (key.includes('retry') || key.includes('breaker') || key.includes('timeout')) {
+    return `async with asyncio.timeout(3):
+    if not breaker.allow():
+        raise CircuitOpenError("dependency unavailable")
+    result = await client.get("/health")`;
+  }
+  if (key.includes('logging')) {
+    return `logger.info("request_complete", correlation_id=cid, tenant_id=tenant_id, route="/ask")`;
+  }
+  if (key.includes('trace')) {
+    return `with tracer.start_as_current_span("ask.run") as span:
+    span.set_attribute("tenant.id", tenant_id)
+    answer = await svc.run(req)`;
+  }
+  if (key.includes('metric')) {
+    return `REQUEST_LATENCY.labels(route="/ask").observe(duration_s)`;
+  }
+  if (key.includes('chunk')) {
+    return `def chunk_text(tokens: list[str], size: int = 512, overlap: int = 64):
+    for start in range(0, len(tokens), size - overlap):
+        yield tokens[start:start + size]`;
+  }
+  if (key.includes('embedding')) {
+    return `vectors = await embedder.embed_batch(chunks, model="text-embed-v1")`;
+  }
+  if (key.includes('vector db') || key.includes('qdrant')) {
+    return `hits = await qdrant.search(
+    collection_name="chunks",
+    query_vector=query_vec,
+    query_filter={"must": [{"key": "tenant_id", "match": {"value": tenant_id}}]},
+)`;
+  }
+  if (key.includes('cache')) {
+    return `cache_key = f"{tenant_id}:answer:{question_hash}"
+cached = await redis.get(cache_key)`;
+  }
+  if (key.includes('dataclass')) {
+    return `from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class ChunkRef:
+    doc_id: str
+    page: int`;
+  }
+  if (key.includes('property')) {
+    return `class Config:
+    @property
+    def is_prod(self) -> bool:
+        return self.env == "prod"`;
+  }
+  if (key.includes('classmethod')) {
+    return `class User:
+    @classmethod
+    def from_row(cls, row: dict):
+        return cls(**row)`;
+  }
+  if (key.includes('abc') || key.includes('abstract base classes')) {
+    return `from abc import ABC, abstractmethod
+
+class Embedder(ABC):
+    @abstractmethod
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        ...`;
+  }
+  if (key.includes('protocol')) {
+    return `from typing import Protocol
+
+class Cache(Protocol):
+    async def get(self, key: str) -> str | None: ...`;
+  }
+  if (key.includes('typeddict')) {
+    return `class ChunkMeta(TypedDict):
+    doc_id: str
+    tenant_id: str`;
+  }
+  if (key.includes('__call__')) {
+    return `class Scorer:
+    def __call__(self, score: float) -> bool:
+        return score > 0.8`;
+  }
+  if (key.includes('__enter__') || key.includes('__exit__')) {
+    return `class Session:
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc, tb):
+        self.close()`;
+  }
+  if (key.includes('__aenter__') || key.includes('__aexit__')) {
+    return `class AsyncSession:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.close()`;
+  }
+  if (key.includes('__getitem__')) {
+    return `class Row:
+    def __getitem__(self, key: str):
+        return self.data[key]`;
+  }
+  if (key.includes('__setitem__')) {
+    return `class Row:
+    def __setitem__(self, key: str, value):
+        self.data[key] = value`;
+  }
+  if (key.includes('__len__')) {
+    return `class Batch:
+    def __len__(self) -> int:
+        return len(self.items)`;
+  }
+  if (key.includes('__bool__')) {
+    return `class Result:
+    def __bool__(self) -> bool:
+        return self.ok`;
+  }
+  if (key.includes('equality') || key.includes('hash')) {
+    return `class ChunkRef:
+    def __eq__(self, other):
+        return (self.doc_id, self.page) == (other.doc_id, other.page)
+    def __hash__(self):
+        return hash((self.doc_id, self.page))`;
+  }
+  if (key.includes('list / dict / set comprehensions')) {
+    return `filenames = [doc.filename for doc in docs if doc.state == "ready"]`;
+  }
+  if (key.includes('iterator')) {
+    return `class Counter:
+    def __iter__(self):
+        return self
+    def __next__(self):
+        raise StopIteration`;
+  }
+  if (key.includes('lambda')) {
+    return `sorted_docs = sorted(docs, key=lambda d: d.updated_at)`;
+  }
+  if (key.includes('closure')) {
+    return `def make_prefixer(prefix: str):
+    def add_prefix(value: str) -> str:
+        return f"{prefix}{value}"
+    return add_prefix`;
+  }
+  if (key.includes('*args') || key.includes('**kwargs')) {
+    return `def wrapper(*args, **kwargs):
+    return target(*args, **kwargs)`;
+  }
+  if (key.includes('unpacking')) {
+    return `first, *rest = values
+payload = {**base_meta, **extra_meta}`;
+  }
+  if (key.includes('enumerate') || key.includes('zip') || key.includes('map') || key.includes('filter')) {
+    return `for idx, (question, answer) in enumerate(zip(questions, answers), start=1):
+    print(idx, question, answer)`;
+  }
+  if (key.includes('type hints')) {
+    return `def normalize(text: str) -> str:
+    return text.strip().lower()`;
+  }
+  if (key.includes('union')) {
+    return `def parse_value(value: str | int) -> int:
+    return int(value)`;
+  }
+  if (key.includes('optional')) {
+    return `def title_or_default(title: str | None) -> str:
+    return title or "untitled"`;
+  }
+  if (key.includes('generic')) {
+    return `T = TypeVar("T")
+
+def first(items: list[T]) -> T:
+    return items[0]`;
+  }
+  if (key.includes('memory') || key.includes('gc') || key.includes('weak')) {
+    return `import weakref
+
+cache = weakref.WeakValueDictionary()`;
+  }
+  if (key.includes('import system')) {
+    return `# Avoid circular imports by moving shared contracts to a lower-level module.
+from app.schemas import AskRequest`;
+  }
+
+  return `# ${topic.name}
+# ${topic.blurb}
+def example():
+    pass`;
+}
+
+// Mermaid v11 strict-mode-safe label sanitizer: drops chars that
+// break the parser inside [node] labels.
+function safe(s: string): string {
+  return s.replace(/[`"|;<>(){}[\]\\]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function flowchart(topic: Topic, heading: string): string {
+  const t = safe(topic.name).slice(0, 40);
+  const h = safe(heading).slice(0, 30);
+  return `flowchart LR
+  i[Input ${t}] --> p[Process ${h}]
+  p --> c{Decision ok}
+  c -->|yes| o[Output applied]
+  c -->|no| f[Fallback or raise]
+  o --> v[Verify with drill]
+  f --> v`;
+}
+
+function sequence(topic: Topic): string {
+  const t = safe(topic.name).slice(0, 30);
+  return `sequenceDiagram
+  autonumber
+  participant Cli as Caller
+  participant Mod as Module
+  participant Dep as Dependency
+  Cli->>Mod: invoke ${t}
+  Mod->>Dep: prepare context
+  Dep-->>Mod: bound resource
+  Mod-->>Cli: result OR exception
+  Note over Mod,Dep: drill verifies success and failure paths`;
+}
+
+function implementationSteps(topic: Topic, heading: string): string[] {
+  const k = topic.name.toLowerCase();
+  if (k.includes('decorator')) return [
+    'Define wrapper function that takes the target function as input',
+    'Use functools.wraps to preserve metadata',
+    'Add cross-cutting logic before and after the target call',
+    'Return the wrapper; apply via @decorator syntax',
+    'Test the decorated and undecorated paths',
+  ];
+  if (k.includes('context manager')) return [
+    'Implement __enter__ to acquire the resource',
+    'Implement __exit__ to release; handle exception types',
+    'OR use @contextmanager + yield for the same shape',
+    'Wrap usage in `with` block to guarantee teardown',
+    'Test that __exit__ runs even when the body raises',
+  ];
+  if (k.includes('async / await') || k.includes('asyncio')) return [
+    'Mark the function as async def',
+    'await any IO-bound call; never block the event loop',
+    'Use asyncio.gather for fan-out, asyncio.wait_for for timeouts',
+    'Run via asyncio.run or under FastAPI lifespan',
+    'Test under concurrency to catch race conditions',
+  ];
+  if (k.includes('iterator') || k.includes('generator')) return [
+    'Implement __iter__ returning self (or use yield in a function)',
+    'Implement __next__ producing one value at a time, raising StopIteration when done',
+    'Consume via for loop or list comprehension',
+    'Memory profile vs eager-list approach',
+  ];
+  return [
+    'Identify input and required preconditions',
+    `Apply ${heading} idiom with explicit types`,
+    'Handle the edge case (empty, None, invalid)',
+    'Wire into the surrounding control flow',
+    'Add a unit test covering success + failure',
+  ];
+}
+
+function TopicDetail({ topic, heading }: { topic: Topic; heading: string }) {
+  const fivew = fiveW(topic, heading);
+  const steps = implementationSteps(topic, heading);
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        border: '1px solid #e5e7eb',
+        borderRadius: 8,
+        background: '#fff',
+        padding: '12px 14px',
+      }}
+    >
+      <div>
+        <strong>§1. Core concept</strong>
+        <div style={{ marginTop: 4, fontSize: 14, color: '#111827' }}>{coreConcept(topic, heading)}</div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <strong>§2. 5W</strong>
+        <ul style={{ marginTop: 6, paddingLeft: 18, fontSize: 14, lineHeight: 1.6, color: '#111827' }}>
+          <li><strong>What:</strong> {fivew.what}</li>
+          <li><strong>Why:</strong> {fivew.why}</li>
+          <li><strong>When:</strong> {fivew.when}</li>
+          <li><strong>Where:</strong> {fivew.where}</li>
+          <li><strong>Who:</strong> {fivew.who}</li>
+        </ul>
+      </div>
+
+      <div style={{ marginTop: 14, padding: 12, background: '#dbeafe', borderRadius: 6, borderLeft: '4px solid #1e3a8a' }}>
+        <strong>§3. Interview point</strong>
+        <div style={{ marginTop: 4, fontSize: 14, color: '#111827', fontStyle: 'italic' }}>
+          {interviewExplanation(topic, heading)}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <strong>§4. Flowchart</strong>
+        <Mermaid chart={flowchart(topic, heading)} />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <strong>§5. Sequence chart</strong>
+        <Mermaid chart={sequence(topic)} />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <strong>§6. Implementation steps</strong>
+        <ol style={{ marginTop: 6, paddingLeft: 22, fontSize: 14, lineHeight: 1.6, color: '#111827' }}>
+          {steps.map((s, i) => <li key={i}>{s}</li>)}
+        </ol>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <strong>§7. Sample code</strong>
+        <pre className="md-pre" style={{ marginTop: 6 }}>
+          <code>{sampleCode(topic)}</code>
+        </pre>
+      </div>
+
+      {topic.href ? (
+        <div style={{ marginTop: 12 }}>
+          <Link href={topic.href} style={{ color: '#1d4ed8', fontWeight: 600 }}>
+            Open deeper linked explanation →
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: Status }) {
-  const cfg = {
-    shipped: { label: 'shipped', bg: '#16a34a' },
-    partial: { label: 'partial', bg: '#eab308' },
-    todo:    { label: 'todo',    bg: '#6b7280' },
-  }[status];
+  const cfg = statusStyle(status);
   return (
     <span
       style={{
@@ -258,16 +681,17 @@ export default function PythonSyllabusPage() {
     {} as Record<Status, number>,
   );
   const total = counts.shipped + counts.partial + counts.todo;
+
   return (
     <div className="design-areas-page">
       <header className="design-areas-header">
         <h1 className="section-title">Python — Syllabus</h1>
         <p className="design-areas-sub">
-          Complete topic catalog organized by category. Each topic links to its deeper
-          content (deep-dive page or anchor) where shipped or partial; <code>todo</code>
-          items are tracked here as the next-iteration backlog.
+          Complete topic catalog organized by category. Each topic now includes a compact
+          detailed explanation surface with core concept, 5W, interview framing, and sample code.
+          <code> shipped</code> and <code>partial</code> topics also link to the deeper pages.
         </p>
-        <div style={{ marginTop: 12, display: 'flex', gap: 16, fontSize: 14, color: '#000' }}>
+        <div style={{ marginTop: 12, display: 'flex', gap: 16, fontSize: 14, color: '#000', flexWrap: 'wrap' }}>
           <span><strong>Total:</strong> {total}</span>
           <span style={{ color: '#16a34a' }}><strong>shipped:</strong> {counts.shipped}</span>
           <span style={{ color: '#b45309' }}><strong>partial:</strong> {counts.partial}</span>
@@ -277,7 +701,7 @@ export default function PythonSyllabusPage() {
           {CATEGORIES.map((c) => (
             <a
               key={c.heading}
-              href={`#${c.heading.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`}
+              href={`#${slugify(c.heading)}`}
               className="scen-toc-link"
             >
               {c.heading} <span className="scen-toc-count">({c.topics.length})</span>
@@ -286,30 +710,28 @@ export default function PythonSyllabusPage() {
         </nav>
       </header>
 
-      {CATEGORIES.map((cat) => {
-        const slug = cat.heading.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        return (
-          <section key={cat.heading} id={slug} className="design-areas-group">
-            <h2 className="design-areas-group-title">{cat.heading}</h2>
-            <p style={{ color: '#000', marginBottom: 12, fontStyle: 'italic' }}>{cat.intro}</p>
-            <ul style={{ paddingLeft: 18, color: '#000' }}>
-              {cat.topics.map((t) => (
-                <li key={t.name} style={{ marginBottom: 6 }}>
-                  {t.href ? (
-                    <Link href={t.href} style={{ color: '#1e3a8a', fontWeight: 600 }}>
-                      {t.name}
-                    </Link>
-                  ) : (
-                    <strong>{t.name}</strong>
-                  )}
-                  <StatusBadge status={t.status} />
-                  <div style={{ fontSize: 13, color: '#000', marginTop: 2 }}>{t.blurb}</div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+      {CATEGORIES.map((cat) => (
+        <section key={cat.heading} id={slugify(cat.heading)} className="design-areas-group">
+          <h2 className="design-areas-group-title">{cat.heading}</h2>
+          <p style={{ color: '#000', marginBottom: 12, fontStyle: 'italic' }}>{cat.intro}</p>
+          <ul style={{ paddingLeft: 18, color: '#000' }}>
+            {cat.topics.map((t) => (
+              <li key={t.name} style={{ marginBottom: 14 }}>
+                {t.href ? (
+                  <Link href={t.href} style={{ color: '#1e3a8a', fontWeight: 700 }}>
+                    {t.name}
+                  </Link>
+                ) : (
+                  <strong style={{ color: '#991b1b' }}>{t.name}</strong>
+                )}
+                <StatusBadge status={t.status} />
+                <div style={{ fontSize: 13, color: '#000', marginTop: 4 }}>{t.blurb}</div>
+                <TopicDetail topic={t} heading={cat.heading} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 }
