@@ -25,26 +25,52 @@ export default function PageDownloadBar({ contentSelector = 'main' }: { contentS
 
   useEffect(() => {
     setMounted(true);
-    const t = setTimeout(() => {
-      // Prefer the explicit section title; fall back to first h1.
+
+    const capture = () => {
       const h =
         (document.querySelector('h1.section-title') as HTMLElement | null) ||
         (document.querySelector('h1') as HTMLElement | null) ||
         (document.querySelector('h2') as HTMLElement | null);
       if (h && h.textContent) setTitle(h.textContent.trim());
-      // Capture content text for the SpeechReader.
       const main =
         (document.querySelector(contentSelector) as HTMLElement | null) ||
         (document.querySelector('article') as HTMLElement | null) ||
         document.body;
       if (main) {
-        // Trim long pages to ~6000 chars; SpeechSynthesis chokes on huge
-        // utterances in some browsers.
+        // SpeechSynthesis chokes on huge utterances; cap at 12k
+        // (covers most deep-dive pages without truncating mid-section).
         const txt = (main.textContent || '').replace(/\s+/g, ' ').trim();
-        setPageText(txt.slice(0, 6000));
+        setPageText(txt.slice(0, 12000));
       }
-    }, 80);
-    return () => clearTimeout(t);
+    };
+
+    // Initial capture after first paint.
+    const t = setTimeout(capture, 80);
+    // Re-capture as async/client content lands. MutationObserver fires
+    // for every DOM mutation; debounce to one capture every 400ms while
+    // the page is settling, then disconnect after 5s of quiet — by then
+    // mermaid + topic cards + lazy hydration have all completed.
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    let lastMutation = Date.now();
+    const observer = new MutationObserver(() => {
+      lastMutation = Date.now();
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(capture, 400);
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    const disconnectTimer = setInterval(() => {
+      if (Date.now() - lastMutation > 5000) {
+        observer.disconnect();
+        clearInterval(disconnectTimer);
+      }
+    }, 1000);
+
+    return () => {
+      clearTimeout(t);
+      if (debounce) clearTimeout(debounce);
+      observer.disconnect();
+      clearInterval(disconnectTimer);
+    };
   }, [contentSelector]);
 
   if (!mounted || !title) return null;

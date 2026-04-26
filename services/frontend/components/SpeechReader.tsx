@@ -31,14 +31,81 @@ type Props = {
   compact?: boolean;
 };
 
-type Span = { word: string; start: number; end: number };
+type Span = { word: string; start: number; end: number; sentenceIdx: number };
+
+// Pronunciation dictionary — replaces tricky terms with phonetic-friendly
+// forms before synthesis. Keys are word-boundary matched (case-insensitive).
+// Browser TTS otherwise butchers acronyms and proper nouns.
+const PRONUNCIATIONS: Record<string, string> = {
+  RAG: 'R A G',
+  MCP: 'M C P',
+  JWT: 'J W T',
+  PDF: 'P D F',
+  ASR: 'A S R',
+  TTS: 'T T S',
+  HLD: 'H L D',
+  LLD: 'L L D',
+  SAD: 'system architecture document',
+  ADR: 'A D R',
+  BRD: 'business requirement document',
+  RLS: 'R L S',
+  CCB: 'cognitive circuit breaker',
+  RBAC: 'arr-back',
+  ABAC: 'ay-back',
+  LLM: 'L L M',
+  SLM: 'S L M',
+  OTel: 'open telemetry',
+  OPA: 'open policy agent',
+  PII: 'P I I',
+  RLAIF: 'R-L-A-I-F',
+  RLHF: 'R-L-H-F',
+  DPO: 'D P O',
+  ORPO: 'O R P O',
+  KTO: 'K T O',
+  PEFT: 'peft',
+  LoRA: 'lora',
+  QLoRA: 'Q lora',
+  DoRA: 'dora',
+  RAFT: 'raft',
+  LDAP: 'L-DAP',
+  SSO: 'S S O',
+  SAML: 'sammel',
+  OIDC: 'O I D C',
+  TLS: 'T L S',
+  MLflow: 'M-L-flow',
+  GPU: 'G P U',
+  CPU: 'C P U',
+  YAML: 'yammel',
+  SQL: 'sequel',
+  NoSQL: 'no sequel',
+  GIL: 'gill',
+};
+
+function applyPronunciations(text: string): string {
+  let out = text;
+  for (const [from, to] of Object.entries(PRONUNCIATIONS)) {
+    // Word-boundary, case-sensitive. Capture optional plural "s" so
+    // "ADRs" / "PDFs" / "LLMs" still get rewritten and keep the suffix.
+    out = out.replace(new RegExp(`\\b${from}(s?)\\b`, 'g'), (_m, s) => `${to}${s}`);
+  }
+  return out;
+}
 
 function tokenize(text: string): Span[] {
   const out: Span[] = [];
+  // Split into sentences by .!? followed by whitespace
+  const sentBreaks = new Set<number>();
+  const sentRe = /[.!?]+\s+/g;
+  let sm: RegExpExecArray | null;
+  while ((sm = sentRe.exec(text)) !== null) {
+    sentBreaks.add(sm.index + sm[0].length);
+  }
+  let sentenceIdx = 0;
   const re = /\S+/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
-    out.push({ word: m[0], start: m.index, end: m.index + m[0].length });
+    if (sentBreaks.has(m.index)) sentenceIdx += 1;
+    out.push({ word: m[0], start: m.index, end: m.index + m[0].length, sentenceIdx });
   }
   return out;
 }
@@ -82,7 +149,11 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceName, setVoiceName] = useState<string>('');
   const [rate, setRate] = useState<number>(rateProp);
+  const [pitch, setPitch] = useState<number>(1.0);
+  const [volume, setVolume] = useState<number>(1.0);
+  const [selectionText, setSelectionText] = useState<string>('');
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const startSpanRef = useRef<number>(0);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -123,11 +194,21 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     setState('idle');
   }, [supported]);
 
-  const speak = useCallback(() => {
-    if (!supported || !text) return;
+  const speakFrom = useCallback((startIdx: number, customText?: string) => {
+    if (!supported) return;
+    const sourceText = customText !== undefined ? customText : text;
+    if (!sourceText) return;
     window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
+    // If startIdx > 0, slice the text to start from that word.
+    const offset = customText !== undefined ? 0 : (spans[startIdx]?.start ?? 0);
+    startSpanRef.current = startIdx;
+    const sliced = sourceText.slice(offset);
+    // Apply pronunciation dictionary for cleaner acronym readout
+    const spoken = applyPronunciations(sliced);
+    const utter = new SpeechSynthesisUtterance(spoken);
     utter.rate = rate;
+    utter.pitch = pitch;
+    utter.volume = volume;
     utter.lang = lang;
     if (voiceName) {
       const v = voices.find((x) => x.name === voiceName);
@@ -135,8 +216,16 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     }
     utter.onboundary = (e) => {
       if (e.name && e.name !== 'word') return;
-      const idx = findSpanByCharIndex(e.charIndex);
-      setActiveIdx(idx);
+      // boundary charIndex is into `spoken`. Map back: pronunciations expand
+      // text length, so use spans[] proportional offset as approximation.
+      // For accuracy we walk spans starting from startSpanRef.
+      const targetCharInSlice = e.charIndex;
+      let bestIdx = startSpanRef.current;
+      for (let i = startSpanRef.current; i < spans.length; i++) {
+        if ((spans[i].start - offset) <= targetCharInSlice) bestIdx = i;
+        else break;
+      }
+      setActiveIdx(bestIdx);
     };
     utter.onstart = () => setState('speaking');
     utter.onpause = () => setState('paused');
@@ -151,7 +240,12 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     };
     utterRef.current = utter;
     window.speechSynthesis.speak(utter);
-  }, [supported, text, rate, lang, voiceName, voices, findSpanByCharIndex]);
+  }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans]);
+
+  const speak = useCallback(() => speakFrom(0), [speakFrom]);
+  const speakSelection = useCallback(() => {
+    if (selectionText) speakFrom(0, selectionText);
+  }, [speakFrom, selectionText]);
 
   const pauseFn = useCallback(() => {
     if (!supported) return;
@@ -172,6 +266,46 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   }, [activeIdx, text]);
 
   useEffect(() => () => stop(), [stop]);
+
+  // Keyboard shortcuts: Space = pause/resume, Esc = stop. Bound to
+  // document (window-level listeners can be missed if focus is in an
+  // iframe-like region). Esc always calls stop() regardless of perceived
+  // React state — synthesis-end events can race with key events and
+  // leave the closure thinking we're 'idle' when the queue is still hot.
+  useEffect(() => {
+    if (!supported) return;
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/i.test(target.tagName)) return;
+      if (e.code === 'Space' && (state === 'speaking' || state === 'paused')) {
+        e.preventDefault();
+        if (state === 'speaking') window.speechSynthesis.pause();
+        else if (state === 'paused') window.speechSynthesis.resume();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        stop();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [supported, state, stop]);
+
+  // Watch for text selection on the page; show "Read selection" button.
+  useEffect(() => {
+    if (!compact) return; // only in toolbar mode
+    const handler = () => {
+      const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+      const txt = sel ? sel.toString().trim() : '';
+      // Only show selection if it's >= 3 words and < 5000 chars
+      if (txt.split(/\s+/).length >= 3 && txt.length < 5000) {
+        setSelectionText(txt);
+      } else {
+        setSelectionText('');
+      }
+    };
+    document.addEventListener('selectionchange', handler);
+    return () => document.removeEventListener('selectionchange', handler);
+  }, [compact]);
 
   if (!mounted) return null;
 
@@ -269,7 +403,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
             value={String(rate)}
             onChange={(e) => setRate(Number(e.target.value))}
             style={{ ...selectStyle(), maxWidth: 70 }}
-            title="Speech rate"
+            title="Speech rate (Shift+Space when speaking)"
           >
             <option value="0.5">0.5×</option>
             <option value="0.75">0.75×</option>
@@ -277,6 +411,16 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
             <option value="1.5">1.5×</option>
             <option value="2">2×</option>
           </select>
+        )}
+        {compact && state === 'idle' && selectionText && (
+          <button
+            type="button"
+            onClick={speakSelection}
+            title={`Read selected text (${selectionText.split(/\s+/).length} words)`}
+            style={{ ...btnStyle('#0ea5e9'), fontSize: 12 }}
+          >
+            🎯 Read selection
+          </button>
         )}
         {!compact && englishVoices.length > 1 && (
           <select
@@ -361,9 +505,6 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
         </div>
       )}
       {compact && isActive && (
-        // Floating highlighter overlay below the toolbar pill — shows
-        // which word is being read when invoked from the global page
-        // toolbar. Auto-scrolls active word into view.
         <div
           aria-live="polite"
           style={{
@@ -371,8 +512,8 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
             top: 56,
             right: 16,
             zIndex: 40,
-            width: 'min(640px, calc(100vw - 32px))',
-            maxHeight: 240,
+            width: 'min(720px, calc(100vw - 32px))',
+            maxHeight: 320,
             overflowY: 'auto',
             background: 'rgba(255,255,255,0.98)',
             border: '1px solid #e5e7eb',
@@ -385,28 +526,60 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
             color: '#000',
           }}
         >
-          <div style={{ fontSize: 11, color: '#b45309', fontWeight: 700, marginBottom: 6, letterSpacing: 0.5 }}>
-            🔊 SPEAKING — word being read is highlighted
+          <div style={{ fontSize: 11, color: '#b45309', fontWeight: 700, marginBottom: 8, letterSpacing: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>🔊 SPEAKING — click any word to jump · Space=pause · Esc=stop</span>
           </div>
-          {spans.map((s, i) => {
-            const active = i === activeIdx;
-            return (
-              <span
-                key={i}
-                id={`speech-w-${idText}-${i}`}
-                style={{
-                  background: active ? '#fef08a' : 'transparent',
-                  fontWeight: active ? 700 : 400,
-                  borderRadius: 2,
-                  padding: active ? '1px 2px' : 0,
-                  transition: 'background 80ms linear',
-                }}
-              >
-                {s.word}
-                {' '}
-              </span>
-            );
-          })}
+          {/* Pitch + volume sliders inline above the text */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 11, color: '#374151' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              Pitch
+              <input
+                type="range" min="0.5" max="2" step="0.1" value={pitch}
+                onChange={(e) => setPitch(Number(e.target.value))}
+                style={{ width: 80 }}
+              />
+              <span>{pitch.toFixed(1)}</span>
+            </label>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              Vol
+              <input
+                type="range" min="0" max="1" step="0.05" value={volume}
+                onChange={(e) => setVolume(Number(e.target.value))}
+                style={{ width: 80 }}
+              />
+              <span>{Math.round(volume * 100)}%</span>
+            </label>
+          </div>
+          {/* Word + sentence highlight; click any word to jump */}
+          <div>
+            {spans.map((s, i) => {
+              const active = i === activeIdx;
+              const inActiveSentence = activeIdx >= 0 && s.sentenceIdx === spans[activeIdx]?.sentenceIdx;
+              return (
+                <span
+                  key={i}
+                  id={`speech-w-${idText}-${i}`}
+                  onClick={() => speakFrom(i)}
+                  style={{
+                    background: active ? '#fef08a' : 'transparent',
+                    fontWeight: active ? 700 : 400,
+                    borderRadius: 2,
+                    padding: active ? '1px 2px' : 0,
+                    cursor: 'pointer',
+                    textDecoration: inActiveSentence && !active ? 'underline' : 'none',
+                    textDecorationColor: '#fbbf24',
+                    textDecorationThickness: '2px',
+                    textUnderlineOffset: '3px',
+                    transition: 'background 80ms linear',
+                  }}
+                  title={active ? 'reading this word' : 'click to jump here'}
+                >
+                  {s.word}
+                  {' '}
+                </span>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
