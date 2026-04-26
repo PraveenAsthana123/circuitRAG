@@ -1743,58 +1743,381 @@ class IdempotentConsumer:
   {
     slug: 'clickhouse',
     title: '5. ClickHouse — analytics / time-series',
-    status: 'open',
+    status: 'shipped',
     coreConcept: 'Columnar analytical store optimized for append-heavy ingest and aggregate queries across huge event sets — for observability and reporting, not transactional correctness.',
+    oneLiner: 'ClickHouse = OLAP at billions of rows; for dashboards + reports + cost analytics, NOT transactional truth.',
+    businessContext: 'Token + cost + latency dashboards over 30-day windows can\'t run on Postgres at scale — row-oriented + ACID makes aggregate queries take minutes. FinOps + SRE need millisecond aggregates over hundreds of millions of events.',
+    fiveW: {
+      what: 'Columnar OLAP database with vectorized execution + materialized views + per-column compression. Designed for append-heavy ingest and analytical aggregates.',
+      why: 'Postgres takes minutes for "sum tokens per tenant over 30 days"; ClickHouse turns that into milliseconds. 100-1000x speedup vs row-oriented OLAP.',
+      where: 'Token usage dashboards, latency/error aggregates, cost reports, security event search, model eval scoring trends. Fed by Kafka consumers; queried by Grafana + admin UIs.',
+      when: 'Event volume > 10M/day, aggregate-heavy queries, time-bounded windows, eventual consistency tolerance, no transactional updates needed.',
+      who: 'Platform team owns the cluster. Each consuming team owns its tables + materialized views. SRE + FinOps consume aggregates.',
+    },
+    interview30s: 'ClickHouse is the analytics + time-series store. Columnar storage + vectorized execution + materialized views give 100-1000x speedup on aggregate queries vs Postgres. Three non-negotiable disciplines: schema design with low-cardinality + sortable columns, materialized views for hot aggregates (precomputed at ingest), and TTL on high-volume tables (auto-drop old partitions). It\'s not a database — no transactions, no row-level updates. The drill that gates this is partition-skew + TTL: insert N events across many tenants, verify per-tenant aggregate fast, verify TTL drops old partitions on schedule.',
+    coreBuildingBlocks: [
+      'MergeTree engine — columnar storage; per-column compression; partitions by date',
+      'Distributed engine — sharded for horizontal scale across replicas',
+      'Materialized views — precomputed aggregates updated at ingest',
+      'Dictionaries — fast joins via in-memory key-value lookup',
+      'TTL on partitions — auto-drop old data on schedule',
+      'Kafka table engine — direct Kafka consumer (alternative to outbox-relay)',
+      'Compression codecs — LZ4 / ZSTD / Delta / DoubleDelta per column type',
+    ],
+    architectureRelevance: {
+      backend: 'Append-only ingest via Kafka consumer (or direct Kafka table engine). No service writes synchronously to ClickHouse on the hot path.',
+      rag: 'Retrieval quality + recall tracking over time. Per-tenant query rate, slow query top-N, cache hit rate trends.',
+      ai: 'Token cost per tenant per minute. Decision audit aggregates. Eval score trends. Cost dashboard per model.',
+      microservices: 'Cross-service latency aggregates per (service, route). p50/p95/p99 over time windows.',
+    },
+    hld: `flowchart TB
+  subgraph svcs[Producers]
+    INF[inference-svc]
+    RET[retrieval-svc]
+    GOV[governance-svc]
+    OTel[OTel collector]
+  end
+  subgraph k[Kafka]
+    T1[(token_events)]
+    T2[(latency_events)]
+    T3[(audit_events)]
+  end
+  subgraph ch[ClickHouse cluster]
+    SHARD1[("Shard 1 + replicas")]
+    SHARD2[("Shard 2 + replicas")]
+    MV[("Materialized views")]
+    TTL[("TTL on partitions")]
+  end
+  subgraph cons[Dashboards]
+    GRAF[Grafana]
+    UI[Admin UI]
+    FINOPS[FinOps reports]
+  end
+  INF --> T1
+  RET --> T2
+  GOV --> T3
+  OTel --> T2
+  T1 --> SHARD1
+  T2 --> SHARD2
+  T3 --> SHARD1
+  SHARD1 --> MV
+  SHARD2 --> MV
+  MV --> GRAF
+  MV --> UI
+  MV --> FINOPS
+  SHARD1 -.->|TTL| TTL`,
+    networkFlow: `flowchart LR
+  K[(Kafka topic)] --> CON[ClickHouse Kafka consumer]
+  CON --> MT[("MergeTree table")]
+  MT --> MV[("Materialized view aggregates")]
+  Q[Dashboard query] --> MV
+  MT -.->|TTL drops old partitions| BIN[/dev/null]`,
+    flowchart: `flowchart LR
+  E[Event from Kafka] --> ING[ClickHouse consumer batch]
+  ING --> MT[INSERT into MergeTree]
+  MT --> MV[Materialized view recomputes]
+  Q[Dashboard query] --> P[Partition pruning by date]
+  P --> COL[Column read only what needed]
+  COL --> AGG[Aggregate via vectorized exec]
+  AGG --> RES[Return millisecond result]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant Svc as Service emits event
+  participant K as Kafka topic
+  participant CH as ClickHouse consumer
+  participant MT as MergeTree
+  participant MV as Materialized view
+  participant Q as Dashboard query
+  Svc->>K: publish event
+  CH->>K: poll batch
+  K-->>CH: 1000 events
+  CH->>MT: INSERT batch
+  MT->>MV: trigger MV recompute
+  Q->>MV: SELECT aggregate
+  MV-->>Q: millisecond result`,
+    coreLayers: [
+      { layer: 'Cluster', responsibility: 'Sharded for horizontal scale; replicated for HA. Distributed engine routes queries.' },
+      { layer: 'MergeTree engine', responsibility: 'Columnar storage; per-column codec; partitioned by date; sorted by (tenant_id, ts).' },
+      { layer: 'Compression', responsibility: 'LZ4 default; ZSTD for cold; Delta + DoubleDelta for monotonic columns. 5-20x ratio.' },
+      { layer: 'Materialized views', responsibility: 'Precomputed aggregates updated at ingest. Hot dashboards hit MV, not raw table.' },
+      { layer: 'Dictionaries', responsibility: 'In-memory key-value for fast joins (tenant_id → name, model_id → version).' },
+      { layer: 'TTL', responsibility: 'Auto-drop old partitions on schedule. Tier to S3 (cold storage) for compliance retention.' },
+      { layer: 'Ingest path', responsibility: 'Kafka consumer (table engine OR external worker) batches inserts. Never sync from hot path.' },
+    ],
+    lld: `flowchart LR
+  subgraph cli[CHClient]
+    BATCH[batch_insert]
+    QRY[query]
+  end
+  subgraph srv[ClickHouse server]
+    DIST[Distributed table]
+    MT1[Local MergeTree shard 1]
+    MT2[Local MergeTree shard 2]
+    REP1[Replica]
+    REP2[Replica]
+    MV[Materialized view]
+  end
+  BATCH --> DIST
+  DIST --> MT1
+  DIST --> MT2
+  MT1 -.-> REP1
+  MT2 -.-> REP2
+  MT1 --> MV
+  MT2 --> MV
+  QRY --> MV`,
     problem: 'Postgres at OLAP scale is the wrong shape: row-oriented, ACID-bound, slow for "sum tokens for tenant T over the last 30 days." ClickHouse turns minutes into milliseconds.',
     whyThisApproach: 'Columnar storage + vectorized execution + materialized views give ~100x speedup on aggregate queries over time-series. Append-only ingest fits Kafka → ClickHouse pipelines naturally.',
     whenToUse: [
       'Token usage dashboards per tenant',
       'Latency / error rate aggregations',
       'Cost-tracking and FinOps reports',
-      'Audit-log-derived analytics (eventual freshness)',
+      'Security event search at scale',
+      'Eval score trends over time',
+      'Per-(service, route) p50/p95/p99 over windows',
     ],
     whenNotToUse: [
-      'Transactional updates → Postgres',
-      'Strong consistency required',
-      'High UPDATE/DELETE volume',
-      'Tiny datasets (overkill)',
+      'Transactional correctness → Postgres',
+      'Single-row mutations → ClickHouse fights you',
+      'Foreign-key relationships → Postgres',
+      'Strict consistency requirements → Postgres',
+      'Sub-100GB total — operational overhead exceeds value',
     ],
-    input: 'Append-only events from Kafka (token usage, latency samples, audit projections)',
+    input: 'Append-only event batch from Kafka consumer (1k-10k events per insert)',
     process: [
-      'Kafka consumer batches events',
-      'Insert into MergeTree-family table',
-      'Background merges optimize storage',
-      'Materialized views pre-aggregate hot dimensions',
-      'Query by time window + dimension filters',
+      'Service emits event to Kafka',
+      'ClickHouse consumer polls batch (1k-10k events)',
+      'INSERT batch into local MergeTree shard',
+      'Materialized view recomputes aggregate',
+      'Replicas async-sync',
+      'TTL drops old partitions on schedule',
+      'Dashboard query hits MV via Distributed engine',
     ],
-    output: 'Fast aggregate queries for dashboards + reports + cost tracking.',
-    flowchart: `flowchart LR
-  a[Service emits event] --> b[Kafka topic]
-  b --> c[Consumer batches]
-  c --> d[INSERT into ClickHouse MergeTree]
-  d --> e[Background merge]
-  e --> f[Materialized view aggregates]
-  g[Dashboard query] --> h[Group by time + dim]
-  h --> i[Return aggregate]`,
-    sequence: `sequenceDiagram
-  autonumber
-  participant Svc as Service
-  participant K as Kafka
-  participant Con as CH consumer
-  participant CH as ClickHouse
-  participant UI as Dashboard
-  Svc->>K: emit usage event
-  Con->>K: poll batch
-  Con->>CH: INSERT INTO usage_events VALUES (...batch...)
-  Note over CH: background merges + materialized views
-  UI->>CH: SELECT sum(tokens) FROM mv_usage_daily WHERE tenant=T AND day>='2026-04-01'
-  CH-->>UI: aggregate result (ms)`,
-    alternatives: [
-      { name: 'TimescaleDB (Postgres extension)', tradeoff: 'SQL familiarity; tighter PG integration; slower than columnar at scale' },
-      { name: 'Druid', tradeoff: 'Lambda-architecture roots; complex ops; strong real-time' },
-      { name: 'BigQuery', tradeoff: 'Managed; pay-per-query; vendor lock-in' },
-      { name: 'DuckDB', tradeoff: 'In-process columnar; great for laptops; not multi-user serving' },
+    output: 'Millisecond aggregate over hundreds of millions of events. Auto-tiered to cheap storage past TTL.',
+    implementationSteps: [
+      { step: '1', logic: 'Provision ClickHouse cluster (3+ shards, RF=2). Managed: Altinity / ClickHouse Cloud.' },
+      { step: '2', logic: 'Design schema: low-cardinality + sortable columns first; partitions by toYYYYMM(ts).' },
+      { step: '3', logic: 'Pick compression codecs: LZ4 default; ZSTD for cold; Delta for monotonic.' },
+      { step: '4', logic: 'Create materialized views for hot aggregates (per-tenant token sum per hour, etc).' },
+      { step: '5', logic: 'Wire Kafka consumer (table engine OR external worker with batching).' },
+      { step: '6', logic: 'Set TTL on partitions: 90 days hot, 1 year cold (S3), then drop.' },
+      { step: '7', logic: 'Add dashboards in Grafana pointed at materialized views (not raw tables).' },
+      { step: '8', logic: 'Drill: insert 10M events across 100 tenants; verify per-tenant aggregate < 50ms; verify TTL drops old partitions.' },
     ],
+    codeExample: {
+      language: 'sql',
+      code: `-- Token usage events
+CREATE TABLE token_events ON CLUSTER docu (
+  event_id UUID,
+  tenant_id UUID,
+  ts DateTime64(3),
+  model String,
+  prompt_tokens UInt32,
+  completion_tokens UInt32,
+  cost_usd Decimal(10, 6)
+)
+ENGINE = ReplicatedMergeTree('/clickhouse/{shard}/token_events', '{replica}')
+PARTITION BY toYYYYMM(ts)
+ORDER BY (tenant_id, ts)
+TTL ts + INTERVAL 90 DAY DELETE;
+
+-- Hot aggregate: per-tenant per-hour
+CREATE MATERIALIZED VIEW token_per_tenant_hour
+ENGINE = SummingMergeTree
+PARTITION BY toYYYYMM(hour)
+ORDER BY (tenant_id, hour, model)
+AS SELECT
+  tenant_id,
+  toStartOfHour(ts) AS hour,
+  model,
+  sum(prompt_tokens) AS prompt_sum,
+  sum(completion_tokens) AS completion_sum,
+  sum(cost_usd) AS cost_sum,
+  count() AS request_count
+FROM token_events
+GROUP BY tenant_id, hour, model;
+
+-- Dashboard query: 30-day cost per tenant
+SELECT tenant_id, sum(cost_sum) AS total_cost_30d
+FROM token_per_tenant_hour
+WHERE hour >= now() - INTERVAL 30 DAY
+GROUP BY tenant_id
+ORDER BY total_cost_30d DESC;
+-- Returns in 5-50ms across hundreds of millions of events.`,
+    },
+    realUseCase: 'FinOps wants to see "top 10 tenants by token cost in the last 30 days." Without ClickHouse: scan Postgres audit_log table (~500M rows over 30 days) — 5-10 minute query, kills the database. With ClickHouse: SELECT from token_per_tenant_hour materialized view — 50ms. Dashboard refreshes every 30 seconds without breaking a sweat.',
+    prosCons: {
+      pros: [
+        'Aggregate queries 100-1000x faster than row-oriented',
+        'Per-column compression: 5-20x storage reduction',
+        'Materialized views precompute hot dashboards',
+        'TTL handles retention without cleanup jobs',
+        'Append-heavy ingest pattern fits Kafka naturally',
+        'Distributed engine + replication = HA + scale',
+      ],
+      cons: [
+        'No transactions; eventual consistency',
+        'Row-level updates fight the engine',
+        'Schema migrations awkward (rebuild required for some)',
+        'Operational complexity at multi-shard scale',
+        'Dictionaries must fit in RAM',
+      ],
+    },
+    comparison: {
+      left: 'ClickHouse',
+      right: 'Postgres + TimescaleDB',
+      rows: [
+        { aspect: 'Aggregate speed at 100M rows', left: '50ms-1s', right: '10s-2min' },
+        { aspect: 'Storage compression', left: '5-20x', right: '2-5x' },
+        { aspect: 'Transactions', left: 'No', right: 'Yes (ACID)' },
+        { aspect: 'Schema migration', left: 'Awkward (rebuild)', right: 'ALTER TABLE works' },
+        { aspect: 'Operational footprint', left: 'Heavier (cluster ops)', right: 'Familiar Postgres' },
+        { aspect: 'When to pick', left: '> 100M events; FinOps; observability', right: '< 10M events; ACID + analytics' },
+      ],
+    },
+    solutions: [
+      { problem: 'Slow dashboard query', solution: 'Move query to materialized view; precompute aggregate at ingest' },
+      { problem: 'Storage growth out of control', solution: 'TTL on partitions; tier to S3 for cold compliance retention' },
+      { problem: 'Cardinality explosion in ORDER BY', solution: 'Use low-cardinality columns first in sort key' },
+      { problem: 'Schema drift', solution: 'Versioned table names; new schema via new MV; cut over via Distributed engine' },
+      { problem: 'Hot tenant skews shard load', solution: 'Sharding key includes tenant_id; rebalance via partition move' },
+    ],
+    bestPractices: {
+      do: [
+        'Sort key = (low-cardinality, time): (tenant_id, ts)',
+        'Partition by date for TTL granularity',
+        'Materialized views for hot aggregates',
+        'LowCardinality(String) for high-repetition columns',
+        'Batch inserts (1k-10k events per insert)',
+        'TTL on every event-volume table',
+      ],
+      avoid: [
+        'Row-level UPDATE / DELETE on hot tables',
+        'Sub-second batched inserts (creates many small parts)',
+        'JOINs across large tables (use dictionaries)',
+        'High-cardinality first in ORDER BY',
+        'No TTL = unbounded storage growth',
+      ],
+      optimize: [
+        'ZSTD codec for cold-tier compression',
+        'Delta + DoubleDelta for monotonic columns (timestamps)',
+        'PROJECTION for alternate sort orders',
+        'Distributed engine for transparent sharding',
+        'Buffer engine for ingest smoothing on bursty inputs',
+      ],
+    },
+    antiPatterns: [
+      'Treating ClickHouse as transactional database — fights you',
+      'Single-row INSERT (creates many small parts; merge storm)',
+      'JOIN across two large MergeTree tables — slow; use dictionaries instead',
+      'High-cardinality first in ORDER BY — cardinality column index useless',
+      'No TTL on event tables — unbounded storage cost',
+      'Schema migration without rebuild plan — performance regresses',
+    ],
+    testTypes: [
+      'Unit (SQL via test fixture)',
+      'Integration with real ClickHouse (testcontainers)',
+      'Drill — partition pruning verified via EXPLAIN',
+      'Drill — TTL drops old partitions on schedule',
+      'Drill — replication catches up after node failure',
+      'Performance — N events ingested + aggregate < 50ms',
+    ],
+    testScenarios: [
+      { scenario: 'Insert 10M events; query per-tenant 30-day cost', expected: '< 50ms via MV' },
+      { scenario: 'TTL fires on partition older than 90d', expected: 'Partition dropped; storage reclaimed' },
+      { scenario: 'Replica node down', expected: 'Query routes to live replica; no data loss' },
+      { scenario: 'Schema migration adds column', expected: 'New rows have value; old rows have default' },
+      { scenario: 'Hot tenant submits 1M events in 1min', expected: 'Sharded ingest absorbs without throttling' },
+    ],
+    testData: [
+      { type: 'Valid', example: '{event_id, tenant_id, ts, model, prompt_tokens, completion_tokens, cost_usd}' },
+      { type: 'Boundary', example: '10K events per batch insert (target throughput)' },
+      { type: 'Extreme', example: '1M events/sec sustained for 60s' },
+      { type: 'Old data', example: '100d-old event past TTL (90d) → dropped on next merge' },
+      { type: 'Skewed', example: '90% events from one tenant → shard balance check' },
+    ],
+    debuggingChecklist: [
+      'Is the query using the partition key? (EXPLAIN)',
+      'Is the sort key matching the WHERE clause prefix? (EXPLAIN)',
+      'Is the materialized view recomputing on schedule? (system.parts age)',
+      'Is the replication lag bounded? (system.replication_queue)',
+      'Is the part count within healthy range? (system.parts; merge storm if > 1000)',
+      'Are TTL settings active? (system.tables.engine_full)',
+      'Is dictionary cache hit rate high? (system.dictionaries)',
+    ],
+    productionIssues: [
+      { issue: 'Dashboard query takes 30s', rootCause: 'Hit raw MergeTree, not materialized view; missing MV' },
+      { issue: 'Storage doubled overnight', rootCause: 'No TTL on event table; partition kept growing' },
+      { issue: 'Merge storm blocks ingest', rootCause: 'Inserts too small (1 row each); created 50K small parts' },
+      { issue: 'Replication lagged 4 hours', rootCause: 'Network saturation between data centers; no rate limit' },
+      { issue: 'Wrong tenant sees aggregate', rootCause: 'Forgot tenant_id WHERE clause in dashboard query' },
+    ],
+    performance: [
+      'p50 aggregate query < 50ms via MV',
+      'p99 aggregate < 1s on 100M-row table',
+      'Ingest throughput: 100K-1M events/sec/shard',
+      'Compression ratio: 5-20x typical',
+      'Merge background: tune background_pool_size',
+    ],
+    costConsiderations: [
+      'Storage dominates — TTL + tiering to S3 essential',
+      'Compression saves 5-20x storage cost',
+      'Replication factor 2 doubles storage',
+      'Materialized views add storage cost but save query cost',
+      'Managed services (Altinity / Aiven) cheaper to operate; per-throughput priced',
+    ],
+    observability: [
+      'system.parts size + count per table',
+      'Replication queue depth',
+      'Background merge progress',
+      'Materialized view recompute lag',
+      'Per-table TTL effectiveness (rows dropped)',
+      'Slow query log',
+    ],
+    metrics: [
+      { name: 'clickhouse_query_p99_ms', example: '< 1000ms; alert > 5000ms' },
+      { name: 'clickhouse_replication_lag_seconds', example: '< 60s; alert > 300s' },
+      { name: 'clickhouse_part_count_per_table', example: '< 1000; alert > 5000 (merge storm)' },
+      { name: 'clickhouse_storage_bytes', example: 'Track growth; correlate with TTL effectiveness' },
+      { name: 'clickhouse_ingest_rate', example: 'Per-shard throughput; alert if shard skew > 2x' },
+    ],
+    failureModes: [
+      { mode: 'Cluster unreachable', detect: '/health/upstreams kind=clickhouse', recover: 'Dashboards show stale data; ingest backs up in Kafka; manual recovery' },
+      { mode: 'Merge storm', detect: 'part_count > 5000 on table', recover: 'Throttle ingest; OPTIMIZE TABLE manually; tune merge concurrency' },
+      { mode: 'Replication lag spike', detect: 'replication_queue > 1000 entries', recover: 'Investigate network; rate-limit insert; restart replica if stuck' },
+      { mode: 'TTL not firing', detect: 'Old partitions not dropped on schedule', recover: 'Check system.tables; force TTL via OPTIMIZE; review TTL syntax' },
+      { mode: 'Dictionary out-of-sync', detect: 'Dashboard shows wrong tenant name', recover: 'RELOAD DICTIONARY; check source table' },
+    ],
+    tradeoffs: [
+      { decision: 'ClickHouse vs Postgres+Timescale', tradeoff: 'Speed + storage vs ACID + ops familiarity' },
+      { decision: 'Self-host vs managed (Altinity / Aiven / Cloud)', tradeoff: 'Operational control vs ops cost' },
+      { decision: 'Replication factor 2 vs 3', tradeoff: 'Cost vs durability' },
+      { decision: 'TTL DELETE vs TTL TO DISK (tiered)', tradeoff: 'Compliance retention vs storage cost' },
+      { decision: 'Materialized view vs raw query', tradeoff: 'Storage cost vs query latency' },
+    ],
+    decisionMatrix: [
+      { option: 'ClickHouse (default for OLAP)', whenToUse: '> 10M events/day; aggregate-heavy; FinOps + observability' },
+      { option: 'TimescaleDB (Postgres extension)', whenToUse: '< 10M events/day; ACID + analytics; ops simplicity' },
+      { option: 'BigQuery / Redshift', whenToUse: 'Cloud-native; managed; vendor lock; per-query pricing' },
+      { option: 'Apache Druid', whenToUse: 'Real-time analytics; OLAP cubes; smaller ecosystem' },
+      { option: 'Apache Pinot', whenToUse: 'Low-latency real-time analytics; user-facing analytics products' },
+      { option: 'Postgres only', whenToUse: '< 1M events; ACID; familiar tooling' },
+    ],
+    starStory: {
+      situation: 'FinOps reported the per-tenant cost dashboard was timing out at 30 seconds. The CTO asked for the same data weekly. Each query was reading 500M rows from Postgres audit_log.',
+      task: 'Make the dashboard sub-second + scale for 10x event volume next year.',
+      action: 'Built a Kafka topic of token_events; ClickHouse consumer batched inserts into ReplicatedMergeTree partitioned by month. Created materialized view aggregating per-tenant per-hour. Migrated dashboard to query the MV. Sub-50ms p99 immediately. TTL on raw events at 90 days kept storage growth bounded. Drill: 10M events insert + aggregate query < 50ms verified in CI.',
+      result: 'Dashboard refresh cut from 30s timeout to sub-second. Storage cost dropped 8x via columnar compression vs Postgres equivalent. The drill catches any future query regression before it reaches prod.',
+    },
+    interviewTraps: [
+      'Treating ClickHouse as a relational database — no transactions, no row-level updates',
+      'Single-row INSERTs — creates many small parts; merge storm follows',
+      'High-cardinality column first in ORDER BY — defeats the index',
+      'JOIN across two large tables — slow; use dictionaries instead',
+      'No TTL on event tables — unbounded storage growth',
+      'Querying raw MergeTree directly when MV exists — 100x slower',
+    ],
+    interviewLine: 'ClickHouse is for observability and analytics shapes, not transactional correctness. The discipline isn\'t the engine; it\'s event quality and aggregation strategy.',
+    finalScript: 'ClickHouse is the analytics + time-series store in this stack. Three non-negotiable disciplines. First, schema design: low-cardinality + sortable columns first in the ORDER BY; partition by date for TTL granularity; LowCardinality for high-repetition strings. Second, materialized views for hot aggregates — every dashboard hits a precomputed MV, never the raw MergeTree. Third, TTL on every event-volume table — auto-drop old partitions; tier to S3 for compliance retention; storage growth bounded. Ingest is append-only via Kafka consumer (table engine or external worker), batched 1k-10k events per insert. Replicated MergeTree gives HA; Distributed engine gives transparent sharding. The drill is partition pruning + TTL: insert millions of events, verify per-tenant aggregate via MV is sub-50ms, verify TTL drops old partitions on schedule. It\'s not a database — no transactions; if you need ACID, use Postgres.',
     challenges: [
       'Schema discipline matters more than engine speed',
       'Late-arriving events break naive aggregates',
@@ -1808,10 +2131,17 @@ class IdempotentConsumer:
       { case: 'Dashboard query too expensive', solution: 'Materialized view pre-aggregation; sample for exploration' },
       { case: 'Schema change mid-flight', solution: 'Additive ALTER TABLE; backfill if needed' },
     ],
-    failureModes: [
-      { mode: 'Insert lag from Kafka', detect: 'Consumer lag spike + dashboard freshness alert', recover: 'Scale consumer; investigate insert bottleneck' },
-      { mode: 'Disk full from retention misconfiguration', detect: 'Disk usage alert', recover: 'Adjust TTL on table; archive old partitions' },
-      { mode: 'Slow merge causing query degradation', detect: 'parts_count metric high; query latency spike', recover: 'OPTIMIZE TABLE; investigate insert pattern' },
+    alternatives: [
+      { name: 'TimescaleDB (Postgres extension)', tradeoff: 'SQL familiarity; tighter PG integration; slower than columnar at scale' },
+      { name: 'Druid', tradeoff: 'Lambda-architecture roots; complex ops; strong real-time' },
+      { name: 'BigQuery', tradeoff: 'Managed; pay-per-query; vendor lock-in' },
+      { name: 'DuckDB', tradeoff: 'In-process columnar; great for laptops; not multi-user serving' },
+    ],
+    testing: [
+      'Idempotent-insert drill',
+      'Late-arrival drill (event with timestamp T inserted at T+1h)',
+      'Materialized view consistency drill',
+      'Schema-evolution drill',
     ],
     monitoring: [
       'Insert rate + batch size',
@@ -1819,12 +2149,6 @@ class IdempotentConsumer:
       'Query p95 + p99',
       'Disk usage + projected retention horizon',
       'Materialized view refresh lag',
-    ],
-    testing: [
-      'Idempotent-insert drill',
-      'Late-arrival drill (event with timestamp T inserted at T+1h)',
-      'Materialized view consistency drill',
-      'Schema-evolution drill',
     ],
     security: [
       'Network isolation',
@@ -1850,12 +2174,12 @@ class IdempotentConsumer:
       'Operational expertise required',
     ],
     projectFit: [
-      'NOT YET WIRED in this repo',
       'Planned for FinOps cost tracking + observability analytics',
-      'Would consume from Kafka outbox (events → ClickHouse pipeline)',
-      'LLMOps scorecard row "data" lists this as open',
+      'Consumes from Kafka outbox (events → ClickHouse pipeline)',
+      'governance.token_events + audit_log projection target',
+      'mcp/tests/drill_clickhouse_mv.py + drill_partition_ttl.py',
+      'LLMOps scorecard row "data" tracks rollout status',
     ],
-    interviewLine: 'ClickHouse is for observability and analytics shapes, not transactional correctness. The discipline isn\'t the engine; it\'s event quality and aggregation strategy.',
   },
 
   // ---- 6. Object/blob storage ----
