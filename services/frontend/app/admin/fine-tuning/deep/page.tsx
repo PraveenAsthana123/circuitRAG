@@ -5,6 +5,7 @@
  * Plus the brutal RAG-vs-fine-tuning decision rule.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -2103,6 +2104,15 @@ export default function FineTuningDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/rag/deep', label: 'RAG vs fine-tuning decision', why: 'fresh facts → RAG, not fine-tune; tone/format → fine-tune; PEFT/LoRA reduces cost' },
+          { href: '/admin/llmops/deep', label: 'LLMOps — model + eval registry', why: 'every fine-tuned model in registry with eval report; rollback = registry pointer flip' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: '§10 AI checklist row', why: 'fine-tuning produces a new model_version; checklist requires registry entry + eval threshold' },
+          { href: '/admin/security/deep#owasp-stride-ai-threats', label: 'A13 training data poisoning', why: 'training data lineage + provenance — guard against poisoning; SFT data must be vetted' },
+          { href: '/admin/cicd/deep#cicd-master-pipeline', label: 'AI eval gate before promote', why: 'eval set runs in CI; new fine-tune blocked if regression > delta' },
+        ]}
+      />
     </div>
   );
 }

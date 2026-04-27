@@ -1,5 +1,6 @@
 'use client';
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -396,6 +397,15 @@ export default function GuardrailsDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/security/deep#owasp-stride-ai-threats', label: 'OWASP A11–A15 (AI threats)', why: 'guardrails IS the implementation of OWASP A11 (prompt injection) + A12 (output handling) + A15 (excessive agency)' },
+          { href: '/admin/pii/deep', label: 'PII detect + redact', why: 'pre-ingestion masking + output redaction — guardrail layers compose with PII layer' },
+          { href: '/admin/rag/deep', label: 'RAG output guardrail', why: 'groundedness check + citation enforcement — every uncited claim = hallucination flag' },
+          { href: '/admin/llmops/deep#audit', label: 'Decision audit row', why: 'every guardrail trigger logged in audit row; forensics filterable by guardrail_fired flag' },
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop #6 (untested AI)', why: 'guardrails gating deployment is part of the AI eval gate; release blocked without them' },
+        ]}
+      />
     </div>
   );
 }

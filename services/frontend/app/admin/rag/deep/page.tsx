@@ -1,5 +1,6 @@
 'use client';
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -1358,6 +1359,15 @@ export default function RAGDeepPage() {
         </ul>
       </div>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/tracing/deep#baggage-propagation', label: 'Baggage across RAG hops', why: '5–7 hops (gateway → identity → retrieval → embedder → vector → inference → LLM); baggage.tenant_id filterable per hop' },
+          { href: '/admin/llmops/deep', label: 'LLMOps — prompt + model + eval registry', why: 'every prompt + model versioned; eval threshold gates promote; cost dashboards' },
+          { href: '/admin/guardrails/deep', label: 'AI guardrails (in/out/behavior)', why: 'PII pre-ingestion + prompt injection input filter + output safety + groundedness check' },
+          { href: '/admin/fine-tuning/deep#rag-vs-fine-tuning', label: 'RAG vs fine-tuning decision', why: 'when to retrieve facts vs train them in; RAG is for facts that change, fine-tuning for tone/format' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: '§10 AI/RAG row + hard-stop #6', why: 'PII pre-ingestion + eval gate + token budget + fallback model — checklist owns these rows' },
+        ]}
+      />
     </>
   );
 }

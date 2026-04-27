@@ -7,6 +7,7 @@
  * Each layer is a distinct topic with its own master-template entry.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -863,6 +864,15 @@ export default function AiOrchestrationDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/guardrails/deep', label: 'Guardrails (in/out/behavior)', why: 'OPA + Presidio + safety filter form the policy layer of orchestration; uncontrolled = uncontrollable risk' },
+          { href: '/admin/llmops/deep', label: 'LLMOps (prompt + model + eval registry)', why: 'orchestrator routes via versioned prompt + model; cost dashboards observable per orchestration step' },
+          { href: '/admin/tracing/deep', label: 'Baggage across orchestrator', why: 'planner → workers chain carries baggage.tenant_id; one Jaeger query covers the full plan + tool calls' },
+          { href: '/admin/security/deep#owasp-stride-ai-threats', label: 'A15 excessive agency', why: 'tool-call permission boundaries + scope-grant log = the excessive-agency control' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: '§10 AI checklist row', why: 'orchestrator goes through the same eval gate + cost budget + fallback model rules as any AI feature' },
+        ]}
+      />
     </div>
   );
 }

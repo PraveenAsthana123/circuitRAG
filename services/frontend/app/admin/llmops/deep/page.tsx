@@ -21,6 +21,7 @@
  */
 
 import Mermaid from '../../../../components/Mermaid';
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic as MasterTopic } from '../../../../components/UniversalDeepDive';
 
 const LLMOPS_MASTER_SUMMARY: MasterTopic = {
@@ -1350,6 +1351,15 @@ export default function LlmopsDeepPage() {
           treated as first-class versioned registries.&rdquo;
         </p>
       </div>
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/tracing/deep#trace-draft-audit-linkage', label: 'Trace → draft → audit by request_id', why: 'AI decision audit row keyed by request_id; baggage propagates request_id across every hop' },
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop #6 (untested AI)', why: 'no eval gate green = NO-GO regardless of other green; LLMOps eval registry IS the gate' },
+          { href: '/admin/security/deep#owasp-stride-ai-threats', label: 'OWASP A11–A15 (AI threats)', why: 'prompt injection / output handling / model theft / excessive agency — guardrails enforce' },
+          { href: '/admin/post-release/deep#pdv-monitoring', label: 'AI signals during PDV', why: 'eval drop / hallucination burst / token cost spike — auto-rollback or flag-disable triggers' },
+          { href: '/admin/cicd/deep#cicd-master-pipeline', label: 'AI eval gate in CI/CD', why: 'regression eval set + threshold blocks promote; prompt + model versioned in registry' },
+        ]}
+      />
     </>
   );
 }
