@@ -603,6 +603,189 @@ async def hybrid_retrieve(query: str, tenant_id: str, top_k: int = 5) -> Retriev
     limitations: ['Embedder is a vendor dependency for cloud models', 'Cost grows with corpus size'],
     projectFit: ['libs/py/documind_core/embedder.py', 'mcp/tests/drill_embedding_version_coupling.py'],
     interviewLine: 'Embedding upgrade is shadow-collection + eval gate + alias flip. Never in-place. The drill rejects mismatched-version upsert at the API layer.',
+    implementationSteps: [
+      { step: 'Pin model + version', logic: 'embedding_model + embedding_version on every chunk + every query.' },
+      { step: 'Shadow collection on upgrade', logic: 'New version embeds in parallel collection; old still serves.' },
+      { step: 'Eval gate on golden set', logic: 'Recall@10 of new ≥ old (within tolerance) before flip.' },
+      { step: 'Alias flip', logic: 'Atomic alias swap; new version becomes live; old retained for rollback.' },
+      { step: 'Reject mismatched upsert', logic: 'Repository checks chunk.embedding_version == settings.embedding_version; reject if mismatch.' },
+      { step: 'Retain old N days', logic: 'Old collection kept for 7-14 days; rollback path tested.' },
+      { step: 'Drill: mismatched-version upsert rejected', logic: 'Negative assertion at API layer.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# libs/py/documind_core/embedder.py — version-coupled embedding pipeline
+from sentence_transformers import SentenceTransformer
+from libs.py.documind_core.exceptions import EmbeddingVersionMismatch
+
+class Embedder:
+    def __init__(self, model_name: str, version: str):
+        self.model = SentenceTransformer(model_name)
+        self.version = version
+        self.dim = self.model.get_sentence_embedding_dimension()
+
+    def encode(self, text: str) -> tuple[list[float], str]:
+        vec = self.model.encode(text, normalize_embeddings=True).tolist()
+        return vec, self.version
+
+class ChunkRepository:
+    def __init__(self, qdrant_client, expected_version: str):
+        self.qdrant = qdrant_client
+        self.expected_version = expected_version
+
+    async def upsert(self, chunk: Chunk):
+        if chunk.embedding_version != self.expected_version:
+            raise EmbeddingVersionMismatch(
+                f"chunk version {chunk.embedding_version} != "
+                f"expected {self.expected_version}"
+            )
+        await self.qdrant.upsert(
+            collection_name=f"chunks_v{self.expected_version}",
+            points=[{"id": chunk.id, "vector": chunk.embedding,
+                     "payload": chunk.payload}],
+        )
+
+# Shadow-index upgrade workflow
+async def upgrade_embedding(old_v: str, new_v: str, eval_runner):
+    new_embedder = Embedder("BAAI/bge-small-en-v1.5", new_v)
+    # 1. Build shadow collection with new model
+    await rebuild_shadow_collection(new_embedder, new_v)
+    # 2. Eval gate
+    new_recall = await eval_runner.run(version=new_v)
+    old_recall = await eval_runner.run(version=old_v)
+    if new_recall < old_recall - 0.02:  # 2pp tolerance
+        raise EvalGateFailed(f"recall regressed: {old_recall:.3f} → {new_recall:.3f}")
+    # 3. Atomic alias flip
+    await qdrant.swap_alias("chunks_live", target=f"chunks_v{new_v}")
+    # 4. Schedule old collection deletion (T+14 days)
+    await schedule_cleanup(f"chunks_v{old_v}", days=14)`,
+    },
+    realUseCase: 'Customer wanted upgrade from bge-small-en-v1.5 (384d, recall@10 = 87%) to bge-large-en-v1.5 (1024d, recall@10 = 91%). Workflow: build new collection with v2 alongside v1; eval-svc compared recall@10 on golden set (4pp gain confirmed); atomic alias flip from v1 → v2; old collection retained 14 days. Total user-visible downtime: 0 seconds. Without shadow + eval gate, in-place reindex would have taken the index down for hours and a recall regression would have been invisible.',
+    prosCons: {
+      pros: ['Zero-downtime upgrades', 'Eval gate catches regressions BEFORE flip', 'Rollback path tested via retained old collection', 'embedding_version stamp prevents mixed upserts'],
+      cons: ['2x storage during transition', 'Re-embed all chunks (compute cost)', 'Per-tenant golden set maintenance'],
+    },
+    comparison: {
+      left: 'In-place reindex',
+      right: 'Shadow + eval gate + alias flip (this)',
+      rows: [
+        { aspect: 'Downtime', left: 'Hours', right: 'Zero seconds' },
+        { aspect: 'Regression visibility', left: 'Production users', right: 'Eval gate before flip' },
+        { aspect: 'Rollback', left: 'Re-embed (slow)', right: 'Alias flip back (instant)' },
+        { aspect: 'Storage during upgrade', left: '1x', right: '2x (transient)' },
+        { aspect: 'Compliance evidence', left: 'None', right: 'Eval report + audit row' },
+      ],
+    },
+    solutions: [
+      { problem: 'Vendor model deprecated', solution: 'Shadow-index successor; eval gate; flip when ready' },
+      { problem: 'Mixed-version vectors in store', solution: 'Repository rejects mismatched-version upsert' },
+      { problem: 'Recall drop after upgrade', solution: 'Eval gate enforces tolerance; alias flip blocked' },
+      { problem: 'Vendor outage on cloud embedder', solution: 'Cache embeddings + fallback to local model' },
+    ],
+    bestPractices: {
+      do: [
+        'embedding_version stamp on every chunk + every query',
+        'Shadow collection for any upgrade',
+        'Eval gate on golden set before alias flip',
+        'Atomic alias swap (not rolling)',
+        'Retain old collection 7-14 days for rollback',
+        'Drill: mismatched-version upsert rejected',
+      ],
+      avoid: [
+        'In-place reindex (downtime + no rollback)',
+        'Skipping eval gate (silent regression)',
+        'No version stamp (mixed vectors silently)',
+        'Deleting old collection same-day as flip',
+      ],
+      optimize: [
+        'Quantize new model to int8 for memory + cost',
+        'Per-tenant golden set for tenant-relevant eval',
+        'Batch re-embed across multiple workers',
+      ],
+    },
+    antiPatterns: [
+      'In-place reindex',
+      'No eval gate before flip',
+      'No embedding_version stamp',
+      'Same-day cleanup of old collection',
+      'Mixed-version retrieval',
+    ],
+    testTypes: [
+      'Drill: mismatched-version upsert raises EmbeddingVersionMismatch',
+      'Drill: shadow collection built before alias flip',
+      'Drill: eval gate blocks flip on regression > tolerance',
+      'Drill: retrieval against alias finds new vectors post-flip',
+      'Drill: rollback alias-swap restores old version',
+    ],
+    testScenarios: [
+      { scenario: 'New model exhibits 2pp recall regression', expected: 'Eval gate fails; alias flip blocked' },
+      { scenario: 'Engineer manually upserts wrong-version vector', expected: 'EmbeddingVersionMismatch raised' },
+      { scenario: 'Customer eval set highlights tenant-specific regression', expected: 'Per-tenant gate; flip deferred for that tenant' },
+      { scenario: 'Vendor deprecates model', expected: 'Shadow-index successor; eval; flip' },
+    ],
+    testData: [
+      { type: 'Eval golden set', example: '500 (query, expected chunk_ids) per tenant for recall@10' },
+      { type: 'Mismatched-version probe', example: 'Synthetic chunk with old version + new index target; reject expected' },
+      { type: 'Shadow collection fixture', example: '10K chunks re-embedded with new model; alias swap rehearsed' },
+    ],
+    debuggingChecklist: [
+      'Mismatched version error? Compare chunk.embedding_version + repository.expected_version',
+      'Shadow build slow? Parallelize across workers + GPU',
+      'Eval regression unexpected? Sample golden set; check tenant-specific patterns',
+      'Alias flip succeeded but retrieval still old? Cache invalidation by version key',
+    ],
+    productionIssues: [
+      { issue: 'Recall dropped 18pp after upgrade', rootCause: 'Eval gate not enforced; engineer flipped without running. Hard CI gate added.' },
+      { issue: 'Mixed-version vectors found in collection', rootCause: 'Manual upsert script bypassed repository check. Added DB-level constraint.' },
+      { issue: 'Rollback failed because old collection deleted', rootCause: 'Cleanup ran same-day as flip. Changed retention to 14 days minimum.' },
+    ],
+    performance: [
+      'Shadow re-embed: ~30 min per 1M chunks on A100',
+      'Eval run: ~30s for 500-item golden set',
+      'Alias flip: < 100ms (atomic in Qdrant)',
+      'Retrieval against new alias: same as old (no overhead)',
+    ],
+    costConsiderations: [
+      'Re-embed compute: dominant cost (~$10-100 per 1M chunks on cloud GPU)',
+      'Storage: 2x during transition (transient)',
+      'Eval compute: small (~$0.50 per run)',
+    ],
+    observability: [
+      'Trace: per-upgrade workflow with shadow + eval + flip + cleanup',
+      'Metrics: embedding_version_mismatch_total, eval_recall per version, alias_flip_total',
+      'Logs: structured per upgrade phase',
+      'Audit: hash-chained per upgrade; admin reconstruction',
+    ],
+    metrics: [
+      { name: 'documind_embedding_version_mismatch_total{tenant}', example: 'Counter; alert at any > 0' },
+      { name: 'documind_eval_recall_at_10{embedding_version}', example: 'Gauge per release; alert on regression' },
+      { name: 'documind_alias_flip_total{outcome}', example: 'Counter; outcome=success|blocked-eval|rolled-back' },
+      { name: 'documind_shadow_index_build_duration_seconds{tenant,p}', example: 'Histogram; trend per million chunks' },
+    ],
+    tradeoffs: [
+      { decision: 'Shadow vs in-place', tradeoff: 'Shadow: 0 downtime + 2x storage; in-place: hours of downtime + risk' },
+      { decision: 'Eval tolerance', tradeoff: 'Tight: catches regressions; blocks legitimate small drops' },
+      { decision: 'Old retention', tradeoff: 'Long: rollback safety; storage cost' },
+    ],
+    decisionMatrix: [
+      { option: 'Shadow + eval + alias (this)', whenToUse: 'Production; uptime matters; recall regressions costly' },
+      { option: 'In-place reindex', whenToUse: 'Hackathon; single-tenant POC' },
+      { option: 'Rolling re-embed without alias', whenToUse: 'Never (mixed-version retrieval)' },
+    ],
+    starStory: {
+      situation: 'bge-small was reaching its ceiling; bge-large promised +4pp recall but in-place upgrade meant hours of downtime + no rollback.',
+      task: 'Upgrade to bge-large with zero downtime + rollback path + eval gate.',
+      action: 'Built shadow collection with new model. Eval gate ran on golden set; +4pp confirmed. Atomic alias flip. Old collection retained 14 days. drill_embedding_version_coupling locked discipline.',
+      result: 'Zero downtime. +4pp recall measured post-flip. Pattern adopted across 3 tenants. Rollback drill rehearsed quarterly.',
+    },
+    interviewTraps: [
+      'In-place reindex (downtime + no rollback)',
+      'No embedding_version stamp',
+      'Skipping eval gate',
+      'Same-day deletion of old collection',
+      'Per-tenant golden set neglected',
+    ],
+    finalScript: 'Embedding upgrade is shadow-collection + eval gate + alias flip. Never in-place. Build new collection with new model in parallel. Eval gate compares recall@10 on golden set; flip blocked if regression beyond tolerance. Atomic alias swap takes new version live in milliseconds. Old collection retained 7-14 days for rollback. Repository rejects mismatched-version upsert at the API layer — drill verifies. Per-tenant golden sets handle tenant-specific drift. The non-negotiable rule: every chunk + every query carries embedding_version, and the version is the upgrade contract.',
   },
   // ---- 4. Pre-retrieval ----
   {
@@ -693,6 +876,191 @@ async def hybrid_retrieve(query: str, tenant_id: str, top_k: int = 5) -> Retriev
     limitations: ['Latency budget caps depth', 'LLM cost grows linearly with traffic'],
     projectFit: ['retrieval-svc/app/services/pre_retrieval.py', 'mcp/tests/drill_pre_retrieval.py'],
     interviewLine: 'Pre-retrieval lifts recall cheaply: expand + rewrite + HyDE. The trade-off is latency. We gate each step on query specificity.',
+    implementationSteps: [
+      { step: 'Detect query intent', logic: 'Classify single-hop / multi-hop / definitional / acronym-heavy — drives strategy.' },
+      { step: 'Expand abbreviations', logic: 'Domain dictionary: BHP → "bottom-hole pressure"; SOC2 → "Service Organization Control 2".' },
+      { step: 'Rewrite ambiguous queries', logic: 'LLM rewrite for clarity; keep original alongside.' },
+      { step: 'HyDE (hypothetical doc embedding)', logic: 'LLM generates candidate answer; embed + retrieve neighbors of that.' },
+      { step: 'Multi-query retrieval', logic: 'Generate 3-5 paraphrased queries; union results.' },
+      { step: 'Latency budget gate', logic: 'Skip HyDE if simple query; skip multi-query if specific query.' },
+      { step: 'Drill: recall lift on multi-hop golden set', logic: 'Hard gate on +Npp recall before deploy.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# services/retrieval-svc/app/services/pre_retrieval.py
+from libs.py.documind_core.llm import LLMClient
+
+DOMAIN_ABBREV = {
+    "BHP": "bottom-hole pressure",
+    "SOC2": "Service Organization Control 2",
+    "PII": "personally identifiable information",
+}
+
+@dataclass
+class QueryStrategy:
+    intent: str  # single-hop | multi-hop | definitional | acronym
+    apply_hyde: bool
+    apply_multi_query: bool
+    rewrite: bool
+
+async def classify(query: str, llm: LLMClient) -> QueryStrategy:
+    """LLM-classify query intent + decide which steps apply."""
+    intent = await llm.classify(query, labels=["single-hop","multi-hop","definitional","acronym"])
+    return QueryStrategy(
+        intent=intent,
+        apply_hyde=intent in ("multi-hop", "definitional"),
+        apply_multi_query=intent in ("multi-hop",),
+        rewrite=intent in ("definitional",),
+    )
+
+async def pre_retrieve(query: str, llm: LLMClient) -> list[str]:
+    """Returns list of candidate queries to fan out across retrieval."""
+    candidates = [query]
+    # Expand abbreviations
+    for abbr, full in DOMAIN_ABBREV.items():
+        if abbr in query.split():
+            candidates.append(query.replace(abbr, full))
+
+    strategy = await classify(query, llm)
+
+    if strategy.rewrite:
+        rewritten = await llm.rewrite(query, instruction="Make this clearer")
+        candidates.append(rewritten)
+
+    if strategy.apply_hyde:
+        hyde_doc = await llm.generate(
+            f"Write a paragraph that would answer: {query}",
+            max_tokens=200,
+        )
+        candidates.append(hyde_doc)
+
+    if strategy.apply_multi_query:
+        paraphrases = await llm.paraphrase(query, n=3)
+        candidates.extend(paraphrases)
+
+    # Dedupe + cap to budget
+    return list(dict.fromkeys(candidates))[:6]`,
+    },
+    realUseCase: 'Customer queries had heavy acronyms ("BHP measurements vs SPP at completion"). Without expansion, vector recall@10 was 64% on multi-hop. Adding domain abbreviation expansion + HyDE lifted recall@10 to 89% on the same golden set. Latency cost: +180ms p95 (acceptable for the recall gain). Single-hop simple queries skip HyDE/multi-query via the gate, keeping their latency budget intact.',
+    prosCons: {
+      pros: ['Recall lift +15-25pp on hard queries', 'Domain abbreviations close the vocabulary gap', 'Latency gating per query specificity', 'Cheap (LLM calls << GPU rerank cost)'],
+      cons: ['LLM call adds 100-300ms latency', 'HyDE depends on LLM quality (hallucination risk)', 'Multi-query inflates retrieval cost'],
+    },
+    comparison: {
+      left: 'No pre-retrieval (raw query)',
+      right: 'Expansion + rewrite + HyDE + multi-query (this)',
+      rows: [
+        { aspect: 'Recall@10 on multi-hop', left: '~65%', right: '~88%' },
+        { aspect: 'Recall@10 on acronym-heavy', left: '~60%', right: '~85%' },
+        { aspect: 'Latency p95', left: '~80ms', right: '~260ms' },
+        { aspect: 'LLM token cost per query', left: '$0', right: '~$0.001' },
+      ],
+    },
+    solutions: [
+      { problem: 'Acronym-heavy queries miss', solution: 'Domain abbreviation dictionary + expansion' },
+      { problem: 'Ambiguous phrasing', solution: 'LLM rewrite alongside original' },
+      { problem: 'Multi-hop queries', solution: 'HyDE + multi-query paraphrases' },
+      { problem: 'Latency for simple queries', solution: 'Intent classifier gates expensive steps' },
+    ],
+    bestPractices: {
+      do: [
+        'Domain abbreviation dictionary maintained',
+        'Intent-classifier gates HyDE / multi-query',
+        'Cap candidate queries to budget (≤6)',
+        'Dedupe candidates before fan-out',
+        'Drill recall lift per query type',
+      ],
+      avoid: [
+        'HyDE on every query (cost + latency)',
+        'Multi-query without dedup (retrieval flood)',
+        'Expansion without intent gating',
+        'No domain abbreviation maintenance',
+      ],
+      optimize: [
+        'Cache LLM rewrites by query_hash',
+        'Smaller cheaper LLM for rewrite (Mistral-7B fine)',
+        'Parallel candidate-query fan-out',
+      ],
+    },
+    antiPatterns: [
+      'HyDE on every query',
+      'No latency budget gate',
+      'No dedup before fan-out',
+      'Multi-query without budget cap',
+    ],
+    testTypes: [
+      'Drill: acronym-heavy query → expansion fires',
+      'Drill: multi-hop query → HyDE + multi-query',
+      'Drill: simple query → skip HyDE',
+      'Drill: recall lift ≥ +Npp on golden set per query type',
+    ],
+    testScenarios: [
+      { scenario: 'Query "BHP at well X"', expected: 'Expanded to "bottom-hole pressure at well X"' },
+      { scenario: 'Multi-hop query', expected: 'HyDE + multi-query candidates generated; fan-out' },
+      { scenario: 'Simple definitional', expected: 'Rewrite only; HyDE skipped' },
+      { scenario: 'Latency budget breach', expected: 'Skip multi-query; rerank top-K only' },
+    ],
+    testData: [
+      { type: 'Acronym corpus', example: '500 acronym-heavy queries; expansion measured' },
+      { type: 'Multi-hop golden set', example: '300 multi-hop queries with expected chunks; recall measured' },
+      { type: 'Latency benchmark', example: 'p50/p95 across query intents; gate tuning' },
+    ],
+    debuggingChecklist: [
+      'Recall not lifting? Check abbreviation dict + intent classifier',
+      'Latency spike? HyDE running on simple queries; check gate',
+      'HyDE hallucinating? Check LLM quality + prompt',
+      'Multi-query results too narrow? Increase paraphrase count',
+    ],
+    productionIssues: [
+      { issue: 'Latency p95 doubled after pre-retrieval rollout', rootCause: 'HyDE running on every query; intent gate was disabled for testing.' },
+      { issue: 'Recall regressed despite expansion', rootCause: 'Abbreviation dict had outdated entries; one tenant\'s domain shifted. Per-tenant override added.' },
+      { issue: 'HyDE leaked customer-specific PII into hypothetical doc', rootCause: 'Prompt injection from query. Added Guardrails AI input filter pre-HyDE.' },
+    ],
+    performance: [
+      'Intent classify: ~50ms p95',
+      'LLM rewrite: ~80-150ms p95',
+      'HyDE generation: ~150-300ms p95',
+      'Multi-query paraphrase: ~100-200ms (parallel)',
+      'Total pre-retrieve: ~150-300ms p95 with gating',
+    ],
+    costConsiderations: [
+      'LLM calls: ~$0.0005-0.002 per query',
+      'Cache hits: ~30% on rewrite step',
+      'Smaller cheaper model for rewrite (~$0.0002)',
+    ],
+    observability: [
+      'Trace: per-query strategy + candidate count',
+      'Metrics: pre_retrieve_steps_applied, latency per step, recall lift per intent',
+      'Logs: structured with intent + candidates count',
+    ],
+    metrics: [
+      { name: 'documind_pre_retrieve_strategy{intent}', example: 'Counter; per-intent volume' },
+      { name: 'documind_pre_retrieve_latency_seconds{step,p}', example: 'Histogram per step (classify/rewrite/hyde/multi)' },
+      { name: 'documind_pre_retrieve_recall_lift_pp{intent}', example: 'Gauge; tracked per release' },
+    ],
+    tradeoffs: [
+      { decision: 'HyDE always vs gated', tradeoff: 'Always = uniform recall; gated = lower latency on simple queries' },
+      { decision: 'Multi-query count', tradeoff: 'More = better recall; more LLM cost + retrieval volume' },
+      { decision: 'Cheap vs powerful rewrite LLM', tradeoff: 'Cheap = fast; powerful = better rewrite quality' },
+    ],
+    decisionMatrix: [
+      { option: 'Full pre-retrieve (this)', whenToUse: 'Multi-hop or acronym-heavy domains' },
+      { option: 'Expansion only', whenToUse: 'Acronym domains; latency-tight' },
+      { option: 'No pre-retrieve', whenToUse: 'Simple single-hop queries dominant' },
+    ],
+    starStory: {
+      situation: 'Customer corpus was acronym-heavy + multi-hop; vanilla retrieval recall@10 was 64%.',
+      task: 'Lift recall without blowing latency budget.',
+      action: 'Built pre-retrieve pipeline: domain abbreviation expansion, intent classifier, LLM rewrite for ambiguous, HyDE for multi-hop, multi-query paraphrases. Gated each step on intent. drill_pre_retrieval_recall_lift in CI.',
+      result: 'Recall@10: 64% → 89%. Latency p95: 80ms → 260ms (acceptable). Per-intent gating keeps simple queries fast.',
+    },
+    interviewTraps: [
+      'HyDE on every query (cost + latency)',
+      'No intent gating',
+      'Abbreviation dict not maintained',
+      'No prompt-injection filter on HyDE',
+    ],
+    finalScript: 'Pre-retrieval lifts recall cheaply: expand abbreviations, rewrite ambiguous queries, HyDE for multi-hop, multi-query paraphrases for complex intent. Each step is gated by an intent classifier so simple queries skip the expensive paths. Domain abbreviation dictionary is per-tenant configurable. HyDE has a prompt-injection filter to prevent jailbreak in the hypothetical doc. Drill measures recall lift per query type on a labeled golden set; PRs that drop recall fail CI. The trade-off is latency — recall@10 lifts 25pp at the cost of 150-180ms p95.',
   },
   // ---- 5. Post-retrieval ----
   {
@@ -781,6 +1149,189 @@ async def hybrid_retrieve(query: str, tenant_id: str, top_k: int = 5) -> Retriev
     limitations: ['Cross-encoder is GPU-bound at scale', 'Reranker model has irreducible error rate'],
     projectFit: ['retrieval-svc/app/services/post_retrieval.py', 'libs/py/documind_core/citations.py', 'mcp/tests/drill_post_retrieval.py'],
     interviewLine: 'Post-retrieval refines top-20 to top-5 with cross-encoder rerank. Dedup, filter, cite. Cuts LLM token cost 4x and lifts answer quality.',
+    implementationSteps: [
+      { step: 'Cross-encoder rerank', logic: 'Top-20 fused → top-5 ranked by query-chunk pair score (slow but precise).' },
+      { step: 'Dedup near-duplicates', logic: 'Hash by chunk content prefix; remove ≥0.95 similarity pairs.' },
+      { step: 'Filter by metadata', logic: 'Tenant filter, date filter, doc-type filter applied per query.' },
+      { step: 'Citation pruning', logic: 'Drop chunks scoring < threshold; keep only those that will be cited.' },
+      { step: 'Citation deadline budget', logic: 'If LLM hasn\'t cited by token N, signal interrupt.' },
+      { step: 'Cache rerank scores', logic: 'Key = (query_hash, chunk_id, embedding_version); 1h TTL.' },
+      { step: 'Drill: rerank precision lift on golden set', logic: 'Hard gate on +Npp precision@5.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# services/retrieval-svc/app/services/post_retrieval.py
+from sentence_transformers import CrossEncoder
+import hashlib
+
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2")
+
+@dataclass
+class RerankedChunk:
+    chunk: Chunk
+    score: float
+
+async def rerank_and_filter(
+    query: str, chunks: list[Chunk], top_k: int = 5,
+    score_threshold: float = 0.3,
+) -> list[RerankedChunk]:
+    """Top-20 → top-K via cross-encoder; dedupe + filter + threshold."""
+    # Cache lookup
+    cached = await rerank_cache.lookup(query, [c.id for c in chunks])
+    fresh = [c for c in chunks if c.id not in cached]
+
+    # Score fresh pairs
+    pairs = [(query, c.text) for c in fresh]
+    scores = reranker.predict(pairs) if pairs else []
+
+    all_scored = [
+        RerankedChunk(c, s) for c, s in zip(fresh, scores)
+    ] + [RerankedChunk(c, cached[c.id]) for c in chunks if c.id in cached]
+
+    # Persist new scores
+    await rerank_cache.store({
+        c.chunk.id: c.score for c in all_scored if c.chunk.id not in cached
+    })
+
+    # Threshold filter (drop low-relevance noise)
+    above = [r for r in all_scored if r.score >= score_threshold]
+
+    # Dedupe near-duplicates by content prefix hash
+    seen_prefixes = set()
+    deduped = []
+    for r in sorted(above, key=lambda x: -x.score):
+        prefix = hashlib.sha256(r.chunk.text[:200].encode()).hexdigest()[:16]
+        if prefix in seen_prefixes:
+            continue
+        seen_prefixes.add(prefix)
+        deduped.append(r)
+
+    return deduped[:top_k]`,
+    },
+    realUseCase: 'Without rerank, top-20 from fusion was fed directly to LLM — average prompt was 8K tokens, cost ~$0.04/query, precision@5 was 62% (3 of 5 chunks were redundant or off-topic). Adding cross-encoder rerank + threshold + dedup: top-5 averaged 2K tokens, cost dropped to ~$0.01/query, precision@5 lifted to 87%. The 4x cost reduction paid for the cross-encoder GPU within a week.',
+    prosCons: {
+      pros: ['Precision@5 lifts +20-25pp', 'LLM token cost drops 4x (smaller prompt)', 'Dedup removes redundant context noise', 'Citation pruning improves answer quality'],
+      cons: ['Cross-encoder is GPU-bound (~30-80ms p95)', 'Cache invalidation on embedding upgrade', 'Threshold tuning per tenant'],
+    },
+    comparison: {
+      left: 'Top-20 directly to LLM',
+      right: 'Rerank + dedup + threshold + top-5 (this)',
+      rows: [
+        { aspect: 'Precision@5', left: '~62%', right: '~87%' },
+        { aspect: 'Prompt size', left: '~8K tokens', right: '~2K tokens' },
+        { aspect: 'Cost per query', left: '~$0.04', right: '~$0.01' },
+        { aspect: 'Latency added', left: '0', right: '+30-80ms p95' },
+      ],
+    },
+    solutions: [
+      { problem: 'LLM gets too many redundant chunks', solution: 'Cross-encoder rerank + dedup' },
+      { problem: 'Off-topic chunks bloat prompt', solution: 'Score threshold cuts low-relevance' },
+      { problem: 'Hot queries hit reranker repeatedly', solution: 'Cache scores by (query_hash, chunk_id)' },
+      { problem: 'No-citation hallucination', solution: 'Citation deadline signal interrupts at token N' },
+    ],
+    bestPractices: {
+      do: [
+        'Cross-encoder rerank top-20 → top-5',
+        'Score threshold (e.g., 0.3) cuts low-relevance',
+        'Dedupe by content prefix hash',
+        'Cache by (query_hash, chunk_id, embedding_version)',
+        'Citation deadline signal in inference',
+      ],
+      avoid: [
+        'Cross-encoder on entire corpus',
+        'No threshold (low-relevance noise pollutes prompt)',
+        'No dedup (redundant chunks waste tokens)',
+        'Cache without embedding_version key',
+      ],
+      optimize: [
+        'Quantize cross-encoder to int8',
+        'GPU pool with bounded concurrency',
+        'Per-tenant threshold tuning',
+        'Parallel rerank + dedup',
+      ],
+    },
+    antiPatterns: [
+      'Cross-encoder on full corpus',
+      'No score threshold',
+      'No dedup',
+      'No cache',
+      'Citation deadline ignored',
+    ],
+    testTypes: [
+      'Drill: rerank lifts precision@5 by ≥ Npp on golden set',
+      'Drill: dedup removes ≥0.95-similarity chunks',
+      'Drill: threshold filter rejects low-relevance',
+      'Drill: cache hits skip recomputation',
+      'Drill: citation deadline interrupts at token N',
+    ],
+    testScenarios: [
+      { scenario: 'Top-20 has 5 near-duplicates', expected: 'Dedup removes 4; top-5 has unique chunks' },
+      { scenario: 'Low-relevance chunk above threshold', expected: 'Filter rejects; not in top-5' },
+      { scenario: 'Hot query repeated', expected: 'Cache hit; skip rerank compute' },
+      { scenario: 'LLM no citation by token 200', expected: 'Citation deadline interrupts; output truncated' },
+    ],
+    testData: [
+      { type: 'Precision golden set', example: '500 (query, expected top-5) pairs; precision@5 measured' },
+      { type: 'Near-duplicate corpus', example: 'Synthetic chunks 95-99% similar; dedup tested' },
+      { type: 'Low-relevance probe', example: 'Off-topic chunks alongside relevant; threshold tested' },
+    ],
+    debuggingChecklist: [
+      'Precision low? Check threshold + dedup',
+      'Latency spike? GPU pool saturation',
+      'Cache miss for hot query? Check key shape + TTL',
+      'Citation deadline never fires? Check signal wiring in stream',
+    ],
+    productionIssues: [
+      { issue: 'Reranker hung on 1 query, blocking pool', rootCause: 'No timeout. Added 200ms timeout + skip-rerank fallback.' },
+      { issue: 'Threshold filtered out tenant-specific high-relevance', rootCause: 'Global threshold; tenant\'s domain skewed scores. Per-tenant override added.' },
+      { issue: 'Cache served stale scores after embedding upgrade', rootCause: 'Cache key missed embedding_version. Added version key + retroactive eviction.' },
+    ],
+    performance: [
+      'Cross-encoder rerank: ~30-80ms p95 for top-20 (GPU)',
+      'Dedup hash: ~1ms',
+      'Threshold filter: O(n)',
+      'Cache hit path: ~5-10ms',
+    ],
+    costConsiderations: [
+      'GPU rerank: ~$0.0005 per query at scale',
+      'Cache (Redis): negligible per query',
+      'LLM token savings: ~75% reduction in prompt tokens',
+    ],
+    observability: [
+      'Trace: per-query rerank score distribution + dedup count',
+      'Metrics: precision@5, prompt_tokens, rerank_latency, cache_hit_ratio',
+      'Logs: structured with chunks_kept_count + dropped_below_threshold',
+    ],
+    metrics: [
+      { name: 'documind_rerank_precision_at_5{tenant}', example: 'Gauge; sampled review trends' },
+      { name: 'documind_rerank_latency_seconds{p}', example: 'Histogram; p95 < 100ms' },
+      { name: 'documind_rerank_cache_hit_ratio', example: 'Gauge; target ≥ 0.30' },
+      { name: 'documind_chunks_dropped_below_threshold_total', example: 'Counter; high count = noisy retrieval' },
+    ],
+    tradeoffs: [
+      { decision: 'Top-K size', tradeoff: 'Smaller = lower cost; risk of missing context' },
+      { decision: 'Threshold tightness', tradeoff: 'Tight = pure context; may drop borderline relevant' },
+      { decision: 'Dedup similarity threshold', tradeoff: 'Aggressive = no redundancy; may lose nuance' },
+    ],
+    decisionMatrix: [
+      { option: 'Cross-encoder rerank (this)', whenToUse: 'Production with quality + cost tight' },
+      { option: 'No rerank', whenToUse: 'POC or cost-sensitive demo' },
+      { option: 'LLM-as-reranker', whenToUse: 'Smaller corpus; no cross-encoder infra' },
+    ],
+    starStory: {
+      situation: 'LLM was receiving top-20 chunks at ~8K tokens per prompt; cost $0.04/query; precision@5 was 62%.',
+      task: 'Cut cost + lift precision without sacrificing recall.',
+      action: 'Added cross-encoder rerank top-20 → top-5. Score threshold 0.3. Dedup by content prefix hash. Cache by (query, chunk, embedding_version). Citation deadline signal.',
+      result: 'Cost dropped to $0.01/query (4x). Precision@5: 62% → 87%. GPU paid for itself in a week. Pattern in ADR-011.',
+    },
+    interviewTraps: [
+      'Cross-encoder on entire corpus',
+      'No threshold filter',
+      'No dedup',
+      'Cache without embedding_version',
+      'No citation deadline',
+    ],
+    finalScript: 'Post-retrieval refines top-20 to top-5 via cross-encoder rerank. Score threshold drops low-relevance noise. Dedup by content prefix hash removes near-duplicates. Cache scores by (query_hash, chunk_id, embedding_version) — 30%+ hit rate on hot queries. Citation deadline signal interrupts the LLM stream if no citation by token N. The wins are concrete: precision@5 lifts 62% → 87%, prompt tokens drop 4x, cost-per-query drops 4x. Drill measures precision@5 on a labeled golden set; PRs that drop precision fail CI.',
   },
 ];
 
