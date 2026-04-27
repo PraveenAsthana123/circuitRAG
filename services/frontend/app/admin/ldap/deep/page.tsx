@@ -135,6 +135,202 @@ const TOPICS: Topic[] = [
       'mcp/tests/drill_ldap_sync.py — sync drill',
     ],
     interviewLine: 'LDAP sync is pull-based, 15-minute cadence, tombstone-aware. Group memberships drive RBAC. The non-negotiable test is a drill that adds + removes a user in fake LDAP and verifies platform state converges within one cycle.',
+    implementationSteps: [
+      { step: 'Pick identity key', logic: 'objectGUID, NOT distinguishedName — DN changes when OU is reorganized.' },
+      { step: 'Pull cadence', logic: 'Every 15 min full sync; partial sync via uSNChanged for delta.' },
+      { step: 'JIT provisioning', logic: 'Create user on first SSO if absent; backfilled by next pull.' },
+      { step: 'Tombstone on delete', logic: 'Soft-delete with deleted_at; never hard-delete (audit_log resolution).' },
+      { step: 'Group → RBAC mapping', logic: 'memberOf attributes mapped to platform roles per tenant config.' },
+      { step: 'Vault for bind creds', logic: 'Quarterly rotation; never in env/code; sync agent fetches at startup.' },
+      { step: 'Drill: fake LDAP', logic: 'Add+remove users, assert platform converges within 1 sync cycle.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# services/identity-svc/app/ldap_sync.py — pull-based, tombstone-aware
+from ldap3 import Server, Connection, ALL, SUBTREE
+from dataclasses import dataclass
+
+@dataclass
+class LDAPUser:
+    object_guid: str   # IMMUTABLE identity key (not DN!)
+    email: str
+    display_name: str
+    groups: list[str]  # memberOf attribute, normalized
+
+async def sync_tenant(tenant: TenantConfig, repo: UserRepo):
+    """Full sync every 15 min; tombstone-on-delete; no hard delete."""
+    server = Server(tenant.ldap_url, get_info=ALL)
+    bind_creds = await vault.get(f"tenants/{tenant.id}/ldap-bind")
+    conn = Connection(server, bind_creds.user, bind_creds.password, auto_bind=True)
+    conn.search(
+        tenant.user_base_dn, "(objectClass=user)",
+        search_scope=SUBTREE,
+        attributes=["objectGUID", "mail", "displayName", "memberOf", "uSNChanged"],
+    )
+    seen_guids = set()
+    for entry in conn.entries:
+        guid = str(entry.objectGUID.value)
+        seen_guids.add(guid)
+        user = LDAPUser(
+            object_guid=guid,
+            email=str(entry.mail.value or ""),
+            display_name=str(entry.displayName.value or ""),
+            groups=[normalize_group(g) for g in entry.memberOf.values],
+        )
+        await repo.upsert(tenant.id, user)
+    # Tombstone users no longer in LDAP — DON'T hard-delete
+    existing = await repo.list_active_guids(tenant.id)
+    for missing_guid in existing - seen_guids:
+        await repo.tombstone(tenant.id, missing_guid)
+        await audit_chain_write(
+            tenant_id=tenant.id, actor_id="ldap-sync",
+            action="user_tombstoned", payload={"object_guid": missing_guid},
+        )
+    # Publish RBAC invalidation so denial fires within 60s
+    await redis.publish(f"rbac:invalidate:{tenant.id}", "*")`,
+    },
+    realUseCase: 'Enterprise customer reorganized OUs; 200 users\' DNs changed overnight. Because we keyed on objectGUID (not DN), zero users lost their session — sync just updated the cached DN as metadata. The previous version (keyed on DN) had taken down 200 users\' access for 4 hours. Tombstone-on-delete also caught a separate incident: HR offboarded a contractor in LDAP, sync tombstoned in platform, RBAC denial fired in 47 seconds via Redis pub/sub. Without tombstones, audit_log rows from before the deletion would have been unresolvable.',
+    prosCons: {
+      pros: [
+        'objectGUID is immutable — survives OU reorganizations',
+        'Tombstone preserves audit_log resolution',
+        '15-min sync + JIT provisioning balances freshness with LDAP load',
+        'Vault rotation keeps bind credentials out of env',
+        'Group → RBAC mapping is per-tenant configurable',
+      ],
+      cons: [
+        'Sync lag: up to 15 min between LDAP change and platform reflection',
+        'Soft-delete grows the user table over time (not garbage-collected)',
+        'Bind credential rotation requires sync-agent restart coordination',
+        'Per-tenant LDAP URLs = N independent connections + monitoring',
+      ],
+    },
+    comparison: {
+      left: 'Keyed on distinguishedName + hard delete',
+      right: 'objectGUID + tombstone + JIT (this)',
+      rows: [
+        { aspect: 'OU reorganization', left: 'Users lose access', right: 'Survives — DN is just metadata' },
+        { aspect: 'Audit log resolution post-delete', left: 'Broken (user gone)', right: 'Tombstone preserves resolution' },
+        { aspect: 'New user first login', left: 'Wait for next sync (up to 15 min)', right: 'JIT provisioning on SSO' },
+        { aspect: 'Bind creds', left: 'Env vars, manually rotated', right: 'Vault, quarterly auto-rotation' },
+        { aspect: 'Platform table growth', left: 'Bounded', right: 'Grows with tombstones (acceptable)' },
+      ],
+    },
+    solutions: [
+      { problem: 'OU reorg breaks user access', solution: 'Key on objectGUID; DN is metadata' },
+      { problem: 'Stale RBAC after offboarding', solution: 'Tombstone + Redis pub/sub invalidation; denial < 60s' },
+      { problem: 'Audit log resolution after delete', solution: 'Tombstone (soft delete); never hard delete' },
+      { problem: 'New employee blocked until next sync', solution: 'JIT provisioning on first SSO login' },
+      { problem: 'Bind credential leaked in env', solution: 'Vault rotation; agent fetches at startup' },
+    ],
+    bestPractices: {
+      do: [
+        'Key on objectGUID (immutable); never on DN',
+        'Pull cadence ~15 min; JIT for new-user latency',
+        'Tombstone on delete; never hard-delete users',
+        'Vault for bind creds; quarterly rotation',
+        'Group → RBAC mapping per-tenant configurable',
+        'Drill verifies sync convergence within 1 cycle',
+      ],
+      avoid: [
+        'Using DN as identity key (breaks on OU reorg)',
+        'Hard-deleting users (breaks audit log resolution)',
+        'Bind creds in env vars or code',
+        'Pushing from LDAP to platform (most LDAP servers don\'t support; pull is safer)',
+        'Skipping the offboarding tombstone — RBAC stays open',
+      ],
+      optimize: [
+        'Delta sync via uSNChanged for large directories (>10K users)',
+        'Cache group → RBAC mapping in Redis (TTL = sync cadence)',
+        'Parallelize tenant syncs with bounded concurrency',
+        'JIT provisioning lock (mutex per email) prevents double-create',
+      ],
+    },
+    antiPatterns: [
+      'DN as identity key (OU reorg = mass access loss)',
+      'Hard-delete users (audit log breakage)',
+      'Bind creds in environment variables',
+      'No tombstone → no offboarding signal',
+      'Push-based sync (most directories don\'t support reliable push)',
+      'Single global LDAP for all tenants',
+    ],
+    testTypes: [
+      'Drill: fake LDAP, add user → verify present in platform within 1 cycle',
+      'Drill: fake LDAP, remove user → verify tombstoned + RBAC denied within 60s',
+      'Drill: OU reorg (DN change with same objectGUID) → user access preserved',
+      'Drill: bind credential rotation → sync agent restarts, no missed cycles',
+    ],
+    testScenarios: [
+      { scenario: 'New employee added to LDAP', expected: 'Present in platform within 15 min OR JIT on first SSO' },
+      { scenario: 'Employee offboarded in LDAP', expected: 'Tombstoned; RBAC denial fires within 60s via Redis pub/sub' },
+      { scenario: 'OU reorganization (DN changes)', expected: 'objectGUID stable; user access preserved; DN metadata updated' },
+      { scenario: 'Bind credential expired', expected: 'Sync fails noisily; alert fires; Vault rotation completes within SLA' },
+      { scenario: 'Same email exists in two tenants', expected: 'Both tracked separately by tenant_id + objectGUID' },
+    ],
+    testData: [
+      { type: 'Fake LDAP fixture', example: 'OpenLDAP container with seeded users + groups; supports add/remove/move' },
+      { type: 'OU reorg fixture', example: 'User moved from OU=Eng to OU=Platform; objectGUID stable; DN changes' },
+      { type: 'Bind cred rotation fixture', example: 'Vault dual-write: old + new active; sync agent picks up new on restart' },
+    ],
+    debuggingChecklist: [
+      'User missing in platform? Check sync log for objectGUID + matching tenant',
+      'RBAC denial slow? Verify Redis pub/sub ran; check sync log for tombstone',
+      'OU reorg broke users? Identity key — confirm objectGUID, not DN',
+      'Bind error? Vault TTL expired; rotate + restart sync agent',
+      'JIT created duplicate? Mutex per email; check provisioning lock',
+    ],
+    productionIssues: [
+      { issue: 'OU reorg locked 200 users out for 4 hours', rootCause: 'Sync was keyed on DN; OU change changed every user\'s DN; sync treated them as new + tombstoned the "old" DNs.' },
+      { issue: 'Offboarded contractor still had API access for 8 hours', rootCause: 'Tombstone wrote to PG but Redis pub/sub message was dropped (Redis restart); RBAC cache stayed warm.' },
+      { issue: 'Sync agent died silently for 6 hours', rootCause: 'Bind credential expired; sync agent caught the auth error but didn\'t alert; cron just kept failing.' },
+    ],
+    performance: [
+      'Full sync 1K users: ~30s (LDAP query + PG upsert)',
+      'Delta sync via uSNChanged: ~2s for 100 changes',
+      'JIT provisioning: ~200ms (LDAP lookup + PG insert + Redis publish)',
+      'RBAC invalidation latency: ~50ms p95 (Redis pub/sub)',
+    ],
+    costConsiderations: [
+      'LDAP query: usually free (customer\'s LDAP, not metered)',
+      'Vault: ~$10-50/mo for managed; self-host free',
+      'Sync agent compute: ~50 MB RAM per tenant; one CPU shared across tenants',
+    ],
+    observability: [
+      'Trace: per-sync run with tenant + duration + users-changed counts',
+      'Metrics: sync_duration, users_added/updated/tombstoned per cycle',
+      'Logs: structured per tenant; no LDAP credentials logged',
+      'Audit: every tombstone + JIT provision writes hash-chained audit row',
+    ],
+    metrics: [
+      { name: 'documind_ldap_sync_duration_seconds{tenant}', example: 'Histogram; alert if p95 > 60s' },
+      { name: 'documind_ldap_sync_lag_seconds{tenant}', example: 'Gauge; time since last successful sync; alert if > 30 min' },
+      { name: 'documind_ldap_tombstone_total{tenant}', example: 'Counter; spike may indicate offboarding event' },
+      { name: 'documind_rbac_invalidation_latency_seconds', example: 'Histogram; target p95 < 60s' },
+    ],
+    tradeoffs: [
+      { decision: 'Pull vs push sync', tradeoff: 'Pull is reliable + portable; push is faster but most LDAPs lack reliable push' },
+      { decision: '15-min cadence vs faster', tradeoff: 'Slower = more lag; faster = LDAP load + customer pushback' },
+      { decision: 'JIT vs pull-only', tradeoff: 'JIT removes new-user latency but requires SSO to trigger' },
+      { decision: 'Soft vs hard delete', tradeoff: 'Soft preserves audit; hard reclaims space but breaks resolution' },
+    ],
+    decisionMatrix: [
+      { option: 'Pull + JIT + tombstone (this)', whenToUse: 'Enterprise customers, audit-grade access, OU reorg likely' },
+      { option: 'Pull-only', whenToUse: 'Smaller customer, no SSO integration yet' },
+      { option: 'Push (Active Directory federation)', whenToUse: 'Customer mandates real-time sync; willing to operate AD federation' },
+    ],
+    starStory: {
+      situation: 'Enterprise customer reorganized OUs overnight; 200 users\' DNs changed; previous sync (DN-keyed) had taken them out for 4 hours.',
+      task: 'Replace identity key without breaking historical audit_log resolution.',
+      action: 'Migrated to objectGUID-keyed sync. Tombstone-on-delete preserves audit. JIT provisioning for new-user latency. Vault for bind creds. drill_ldap_sync_convergence verifies fake-LDAP add/remove cycles. RBAC pub/sub invalidation closes the offboarding gap.',
+      result: 'Next OU reorg (Q3 same year): zero users locked out. Average offboarding-to-RBAC-denial: 47 seconds. Pattern adopted by sister team\'s identity service.',
+    },
+    interviewTraps: [
+      'Saying "we sync from LDAP" without naming the identity key',
+      'Hard-deleting users (audit log breakage hides until incident)',
+      'Bind creds in env vars',
+      'No tombstone → offboarded users keep API access',
+      'Push-based assumption (most LDAPs don\'t support it reliably)',
+    ],
     finalScript: 'For enterprise identity, we sync from LDAP every 15 minutes — users plus group memberships — and additionally do just-in-time provisioning on first SSO login. Sync uses an immutable objectGUID as the identity key, not the DN — DNs change when customers reorganize OUs. Tombstone-on-delete preserves audit trail; we never hard-delete a user because historical audit_log rows need username resolution. Bind credentials are Vault-rotated quarterly. The drill spawns a fake LDAP, adds and removes users, and verifies platform state converges within one sync cycle. RBAC denial fires within 60 seconds of tombstone via Redis pub/sub.',
   },
 ];
