@@ -853,6 +853,79 @@ async def round(v_prev, labeled_seed, unlabeled_pool, sme_reviewer, eval_runner)
     ],
     interviewLine: 'RAG = facts; fine-tuning = format. Most production = both. Below 500 examples → don\'t fine-tune. Above 1k → fine-tuning earns its weight.',
     finalScript: 'RAG and fine-tuning answer different questions. Need latest facts or private dynamic data → RAG. Need answer format, tone, or strict policy wording → fine-tuning, with guardrails. Most production systems pair them: a fine-tuned LLM sitting behind a RAG retriever, with output guardrails wrapping the response. The brutal rule: fewer than 500 examples — don\'t fine-tune; improve RAG and prompting first. A thousand to ten thousand high-quality examples — supervised fine-tuning is useful. Lots of raw text but few labels — semi-supervised. Need cheaper or faster inference — fine-tune a smaller model. Document the choice in an ADR before any code lands; mid-build pivots are expensive.',
+    implementationSteps: [
+      { step: 'Audit constraint', logic: 'Freshness/dynamic? → RAG. Format/tone/policy? → FT. Both? → both.' },
+      { step: 'Count labels', logic: '<500 → don\'t FT. 1k-10k → SFT. 100k+ raw → semi-supervised.' },
+      { step: 'Cost vs quality', logic: 'Cheaper inference? → distill smaller model.' },
+      { step: 'ADR + commit', logic: 'Document decision before code; mid-build pivots are expensive.' },
+      { step: 'Layer correctly', logic: 'FT model behind RAG retriever; guardrails wrap output.' },
+    ],
+    codeExample: {
+      language: 'markdown',
+      code: `# ADR-013 — RAG vs Fine-Tuning decision rule
+
+## Decision matrix
+
+| Constraint | RAG | FT | Both |
+|---|---|---|---|
+| Freshness (data changes) | ✓ primary | ✗ | ✓ |
+| Private dynamic data | ✓ primary | ✗ | ✓ |
+| Format / tone | ✗ | ✓ primary | ✓ |
+| Policy wording | guardrails | ✓ | ✓ |
+| Multi-hop reasoning | ✓ via graph | partial | ✓ |
+| Cheaper inference | ✗ | ✓ via distill | partial |
+
+## Brutal rule
+
+  < 500 examples → DON'T fine-tune; improve RAG + prompting first
+  1k - 10k       → SFT useful
+  100k+ raw      → semi-supervised
+  Most prod      → BOTH (FT model behind RAG retriever)
+
+## Common mis-choices we've seen
+
+  - Fine-tuning to inject documents (RAG was the answer; cheaper)
+  - RAG over a tone-mismatched base (FT was the answer; format)
+  - Training without enough data (waste; below 500 samples)`,
+    },
+    realUseCase: 'Customer wanted to "fine-tune the model on our 10k-doc corpus". Audit revealed: docs change weekly (RAG), tone was already fine, format was already fine. Decision: RAG-only. Saved $5k of training compute + 3 weeks. Adopted ADR-013 as the team\'s 30-second audit before any AI build.',
+    prosCons: { pros: ['30-second audit prevents mis-spend', 'ADR locks the decision', 'Pairs both when production needs it'], cons: ['Decision feels reductive vs reality', 'Edge cases need judgment'] },
+    comparison: { left: 'Pick one tool blind', right: 'Constraint-driven decision (this)', rows: [
+      { aspect: 'Mis-spent training cycles', left: 'Common', right: 'Rare' },
+      { aspect: 'Production fit', left: 'Mixed', right: 'High' },
+      { aspect: 'Time-to-decision', left: 'Hours of debate', right: '30 seconds' },
+    ] },
+    solutions: [
+      { problem: 'Tempted to FT private data', solution: 'RAG handles dynamic; FT for format only' },
+      { problem: 'Tone mismatch despite RAG', solution: 'SFT on small adapter; layer over RAG' },
+      { problem: 'Under-500 example FT urge', solution: 'Improve prompts + RAG first; revisit at 1k+' },
+    ],
+    bestPractices: { do: ['ADR before code', 'Constraint audit first', 'Layer FT behind RAG', 'Guardrails wrap output'], avoid: ['FT for facts (use RAG)', 'RAG for tone (use FT)', '<500 example FT'], optimize: ['Distill for cheaper inference', 'Per-tenant adapter pools'] },
+    antiPatterns: ['FT for dynamic facts', 'RAG without guardrails', 'Training on <500 samples'],
+    testTypes: ['Drill: ADR exists per AI build', 'Eval: format compliance ≥ target', 'Eval: factual accuracy ≥ target'],
+    testScenarios: [
+      { scenario: 'Need latest weekly docs', expected: 'RAG chosen; ADR-013 cited' },
+      { scenario: 'Tone mismatch on prod queries', expected: 'SFT adapter; not RAG-only' },
+      { scenario: '300 examples available', expected: 'Don\'t FT; improve prompts' },
+    ],
+    testData: [{ type: 'ADR-013 decision matrix', example: 'Markdown table with constraints × tools' }, { type: 'Past project audit', example: 'Wins + mis-spends documented' }],
+    debuggingChecklist: ['Tone bad despite RAG? FT layer needed', 'Stale answers despite FT? RAG needed', 'Wrong format? FT not RAG', 'Wrong facts? RAG not FT'],
+    productionIssues: [
+      { issue: 'Team spent 2 weeks fine-tuning on documents', rootCause: 'No ADR; should have been RAG. Adopted ADR-013 as the audit.' },
+      { issue: 'RAG-only system had wrong tone', rootCause: 'Tried prompt engineering for 6 weeks; finally added SFT adapter.' },
+    ],
+    performance: ['Decision audit: 30 seconds', 'ADR write: 30 minutes'],
+    costConsiderations: ['Wrong choice cost: ~$5-50k of training time', 'Right choice cost: $0 (audit)'],
+    observability: ['ADR exists per project', 'Eval covers chosen tool\'s strengths'],
+    metrics: [
+      { name: 'documind_ai_build_adr_present', example: 'Counter; target = 1.0 per build' },
+      { name: 'documind_ai_build_decision_revision_total', example: 'Counter; high count = bad initial audit' },
+    ],
+    tradeoffs: [
+      { decision: 'RAG vs FT vs both', tradeoff: 'Both = best fit + ops; either alone = simpler' },
+      { decision: 'When to revisit ADR', tradeoff: 'Mid-build pivot expensive; locked-in mistake also expensive' },
+    ],
+    interviewTraps: ['FT for facts', 'RAG for tone', 'Training on <500', 'No ADR before code'],
   },
 
   // ---- 5. Alignment training (RLHF / DPO / ORPO / KTO / RLAIF) ----
