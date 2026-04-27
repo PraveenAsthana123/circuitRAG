@@ -332,16 +332,56 @@ class TraceLinkDraftRow(BaseModel):
     replayed_at: str | None = None
 
 
+class TraceLinkHitlRow(BaseModel):
+    """Operator-facing projection of governance.hitl_queue.
+
+    Surfaces "this RAG answer was flagged for human review" alongside
+    the audit chain. Without this projection, an operator looking at
+    the trace + drafts wouldn't see that human review intervened —
+    a critical gap for explainability + EU AI Act Art. 14 (human
+    oversight) evidence.
+
+    Closes the trace → draft → audit → HITL loop documented at
+    /admin/explainability/deep#audit-rag-contract-regulation.
+    """
+
+    id: str
+    tenant_id: str | None
+    question: str
+    confidence: float | None = None
+    flag_reason: str | None = None
+    review_status: str = Field(
+        description=(
+            "pending | approved | rejected | edited — surfaced for "
+            "operator forensics: 'was this answer flagged + how did the "
+            "reviewer resolve it?'"
+        ),
+    )
+    reviewer_id: str | None = None
+    review_notes: str | None = None
+    created_at: str
+    reviewed_at: str | None = None
+
+
 class TraceLinkResponse(BaseModel):
     """All governance state we hold for a single correlation_id —
-    audit rows + draft rows. The Jaeger trace URL is a hint, not a
-    fetched payload (the trace lives in Jaeger, not our DB)."""
+    audit rows + draft rows + HITL queue items. The Jaeger trace URL
+    is a hint, not a fetched payload (the trace lives in Jaeger, not
+    our DB)."""
 
     correlation_id: str
     observed_at: str = Field(description="ISO 8601 timestamp at sample time")
     db_reachable: bool
     audit_rows: list[TraceLinkAuditRow] = Field(default_factory=list)
     draft_rows: list[TraceLinkDraftRow] = Field(default_factory=list)
+    hitl_rows: list[TraceLinkHitlRow] = Field(
+        default_factory=list,
+        description=(
+            "Rows from governance.hitl_queue sharing this correlation_id. "
+            "Empty list = the answer was NOT flagged for human review (the "
+            "common case); non-empty = human-in-the-loop intervened."
+        ),
+    )
     jaeger_url: str | None = Field(
         default=None,
         description=(

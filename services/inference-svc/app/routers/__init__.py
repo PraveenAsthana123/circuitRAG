@@ -31,6 +31,7 @@ from app.schemas import (
     ToolStats,
     TraceLinkAuditRow,
     TraceLinkDraftRow,
+    TraceLinkHitlRow,
     TraceLinkResponse,
     UpstreamHealthRow,
 )
@@ -898,6 +899,7 @@ async def admin_trace_link(
     db_client = getattr(request.app.state, "db_client", None)
     audit_rows: list[TraceLinkAuditRow] = []
     draft_rows: list[TraceLinkDraftRow] = []
+    hitl_rows: list[TraceLinkHitlRow] = []
     db_reachable = False
 
     if db_client is not None:
@@ -918,6 +920,25 @@ async def admin_trace_link(
                     SELECT draft_id, tenant_id, tool, status, reason,
                            created_at, replayed_at
                     FROM governance.action_drafts
+                    WHERE correlation_id = $1::uuid
+                    ORDER BY created_at ASC
+                    """,
+                    cid,
+                )
+                # HITL queue projection — completes the trace → draft →
+                # audit → HITL loop. Empty result is normal (most answers
+                # are NOT flagged); non-empty means human-in-the-loop
+                # intervened, which is critical evidence for EU AI Act
+                # Art. 14 (human oversight) audits.
+                # ORDER BY created_at ASC matches the audit + draft
+                # contracts so all three timelines line up for the
+                # operator.
+                h_rows = await conn.fetch(
+                    """
+                    SELECT id, tenant_id, question, confidence, flag_reason,
+                           review_status, reviewer_id, review_notes,
+                           created_at, reviewed_at
+                    FROM governance.hitl_queue
                     WHERE correlation_id = $1::uuid
                     ORDER BY created_at ASC
                     """,
@@ -962,6 +983,25 @@ async def admin_trace_link(
                         if r["replayed_at"] else None
                     ),
                 ))
+            for r in h_rows:
+                hitl_rows.append(TraceLinkHitlRow(
+                    id=str(r["id"]),
+                    tenant_id=str(r["tenant_id"]) if r["tenant_id"] else None,
+                    question=r["question"],
+                    confidence=(
+                        float(r["confidence"])
+                        if r["confidence"] is not None else None
+                    ),
+                    flag_reason=r["flag_reason"],
+                    review_status=r["review_status"],
+                    reviewer_id=str(r["reviewer_id"]) if r["reviewer_id"] else None,
+                    review_notes=r["review_notes"],
+                    created_at=r["created_at"].isoformat() if r["created_at"] else "",
+                    reviewed_at=(
+                        r["reviewed_at"].isoformat()
+                        if r["reviewed_at"] else None
+                    ),
+                ))
         except Exception:  # noqa: BLE001 — operator visibility must
             # not crash. Surface as db_reachable=false; UI shows
             # "(governance unreachable)" rather than 500.
@@ -993,6 +1033,7 @@ async def admin_trace_link(
         db_reachable=db_reachable,
         audit_rows=audit_rows,
         draft_rows=draft_rows,
+        hitl_rows=hitl_rows,
         jaeger_url=jaeger_url,
     )
 

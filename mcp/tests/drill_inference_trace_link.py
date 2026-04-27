@@ -1,8 +1,8 @@
 # RESOURCES: pg inference
 """
 Drill: /api/v1/admin/trace/{correlation_id} reconstructs one
-request end-to-end — audit rows + draft rows linked by
-correlation_id.
+request end-to-end — audit rows + draft rows + HITL queue items
+linked by correlation_id.
 
 Closes the gap "no easy way to follow trace → draft → replay →
 audit" cited across THREE independent reviews:
@@ -10,10 +10,17 @@ audit" cited across THREE independent reviews:
   * docs/architecture/production-trust-quality-and-readiness.md §2
   * docs/architecture/tech-lead-audit-checklist.md §7
 
-The endpoint surfaces audit + draft rows that share the
+Plus the HITL completion documented at
+/admin/explainability/deep#audit-rag-contract-regulation — without
+HITL surfaced in forensics, EU AI Act Art. 14 (human oversight)
+evidence is incomplete: an operator sees the trace + drafts but
+not whether human review intervened.
+
+The endpoint surfaces audit + draft + HITL rows that share the
 correlation_id, plus a Jaeger deep-link if DOCUMIND_JAEGER_URL is
 configured. Operators paste a correlation_id from the dashboard
-and see the full request reconstruction.
+and see the full request reconstruction including any human-
+review state.
 
 Negative-assertion §43-style:
  1. Bad UUID → 400. NEGATIVE: a string-shaped query that always
@@ -33,12 +40,22 @@ Negative-assertion §43-style:
     returns BOTH ordered by timestamp ASC. NEGATIVE: chronological
     order matters — out-of-order surfacing would force the
     operator to manually sort to reconstruct what happened.
+ 6a. Tenant isolation — wrong tenant_id sees ZERO rows for cid_main.
+     NEGATIVE: rows for tenant A must NEVER surface to a request
+     scoped to tenant B (RLS isolation).
  6. fail_closed_failed projection — insert an audit row with
     details={'fail_closed_failed': true}; lookup surfaces it as
     True; the other (success) row surfaces as False. NEGATIVE: a
     regression that hardcoded fail_closed_failed=False (or always
     True) would mask one of the most operationally significant
     audit attributes.
+ 7. HITL join — flagged answer surfaces with review_status +
+    confidence + flag_reason. POSITIVE: completes the trace →
+    draft → audit → HITL loop documented at
+    /admin/explainability/deep.
+ 8. NEGATIVE: HITL row for cid_other does NOT bleed into cid_main
+    lookup. A regression that scanned hitl_queue without WHERE
+    correlation_id filter would surface every flagged answer.
 
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_inference_trace_link.py
@@ -136,6 +153,35 @@ async def _insert_draft(
             )
 
 
+async def _insert_hitl(
+    pool: asyncpg.Pool,
+    *, correlation_id: str, tenant_id: str,
+    question: str, generated_answer: str = "stub",
+    confidence: float = 0.42,
+    flag_reason: str = "low_confidence",
+    review_status: str = "pending",
+) -> str:
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.current_tenant', $1, true)",
+                tenant_id,
+            )
+            row = await conn.fetchrow(
+                """
+                INSERT INTO governance.hitl_queue
+                    (tenant_id, correlation_id, question, retrieved_chunks,
+                     generated_answer, confidence, flag_reason, review_status)
+                VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5, $6, $7, $8)
+                RETURNING id
+                """,
+                tenant_id, correlation_id, question,
+                json.dumps([]), generated_answer, confidence,
+                flag_reason, review_status,
+            )
+    return str(row["id"])
+
+
 async def _cleanup(pool: asyncpg.Pool, correlation_ids: list[str]) -> None:
     async with pool.acquire() as conn:
         await conn.execute(
@@ -144,6 +190,10 @@ async def _cleanup(pool: asyncpg.Pool, correlation_ids: list[str]) -> None:
         )
         await conn.execute(
             "DELETE FROM governance.action_drafts WHERE correlation_id = ANY($1::uuid[])",
+            correlation_ids,
+        )
+        await conn.execute(
+            "DELETE FROM governance.hitl_queue WHERE correlation_id = ANY($1::uuid[])",
             correlation_ids,
         )
 
@@ -314,6 +364,76 @@ async def main() -> None:
                 )
             ok(f"fail_closed_failed projection: 1 true / 2 false (correctly per-row)")
 
+            step("7. HITL join — flagged answer surfaces with review_status")
+            # Insert a HITL row sharing cid_main with review_status=pending.
+            hitl_id = await _insert_hitl(
+                pool, correlation_id=cid_main, tenant_id=tenant,
+                question="What is the refund policy?",
+                generated_answer="(low confidence)",
+                confidence=0.42, flag_reason="low_confidence",
+                review_status="pending",
+            )
+            await asyncio.sleep(0.05)
+            status, body = await _lookup(c, cid_main, tenant)
+            if status != 200:
+                fail(f"expected 200 after HITL insert, got {status}")
+            hitls = body.get("hitl_rows", [])
+            if len(hitls) != 1:
+                fail(
+                    f"expected exactly 1 hitl row for cid_main, got "
+                    f"{len(hitls)}: {hitls}. The HITL projection completes "
+                    f"the trace → draft → audit → HITL loop required for "
+                    f"EU AI Act Art. 14 (human oversight) evidence."
+                )
+            h0 = hitls[0]
+            if h0["id"] != hitl_id:
+                fail(f"wrong HITL row returned: {h0['id']!r} vs expected {hitl_id!r}")
+            if h0["review_status"] != "pending":
+                fail(
+                    f"review_status not surfaced: got {h0['review_status']!r} "
+                    f"vs expected 'pending'. Operator forensics REQUIRES "
+                    f"the resolution state."
+                )
+            if h0["confidence"] is None or abs(h0["confidence"] - 0.42) > 1e-3:
+                fail(
+                    f"confidence not surfaced or wrong: got {h0['confidence']!r} "
+                    f"vs expected 0.42. Confidence is the WHY behind the flag."
+                )
+            ok(
+                f"HITL row surfaced: id={h0['id'][:8]}... "
+                f"review_status={h0['review_status']} "
+                f"confidence={h0['confidence']}"
+            )
+
+            step("8. NEGATIVE: HITL for unrelated cid does NOT bleed into this lookup")
+            # Insert a HITL row for cid_other; lookup on cid_main must NOT see it.
+            hitl_other = await _insert_hitl(
+                pool, correlation_id=cid_other, tenant_id=tenant,
+                question="(should not appear in cid_main lookup)",
+                review_status="rejected",
+            )
+            await asyncio.sleep(0.05)
+            status, body = await _lookup(c, cid_main, tenant)
+            hitls = body.get("hitl_rows", [])
+            ids = [h["id"] for h in hitls]
+            if hitl_other in ids:
+                fail(
+                    f"NEGATIVE FAILED: HITL row for cid_other ({hitl_other}) "
+                    f"leaked into cid_main lookup. A regression that scanned "
+                    f"hitl_queue without WHERE correlation_id filter would "
+                    f"surface every flagged answer in the system. Got ids: "
+                    f"{ids}"
+                )
+            if len(hitls) != 1:
+                fail(
+                    f"expected only the cid_main HITL row (1), got {len(hitls)}: "
+                    f"{ids}. Filter must be cid-scoped."
+                )
+            ok(
+                f"only cid_main's HITL row surfaces ({hitls[0]['id'][:8]}...); "
+                f"cid_other's row correctly filtered out — WHERE clause holds"
+            )
+
         # Cleanup.
         await _cleanup(pool, [cid_main, cid_other])
 
@@ -321,7 +441,7 @@ async def main() -> None:
         await pool.close()
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
-    print(f"{BOLD}{GREEN}  ALL 7 TRACE-LINK STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  ALL 9 TRACE-LINK STEPS PASSED{NC}")
     print(f"{BOLD}{GREEN}════════════════════════════════════════{NC}")
 
 
