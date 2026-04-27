@@ -136,6 +136,135 @@ const TOPICS: Topic[] = [
       'mcp/tests/drill_sft_*.py — eval gates',
     ],
     interviewLine: 'SFT is teaching format. ≥1k SME-reviewed examples. LoRA makes it cheap. Held-out eval gates the deploy. Bad labels = bad model — single biggest risk.',
+    implementationSteps: [
+      { step: 'Collect (input, approved-output) pairs', logic: '1k-10k SME-reviewed; deduplicated; balanced across categories.' },
+      { step: 'Pick base model + LoRA adapter', logic: 'Llama / Mistral / Qwen 7-13B base; LoRA r=16-32 for budget efficiency.' },
+      { step: 'Train with cross-entropy', logic: 'Optimizer AdamW; lr 1e-4 to 5e-4; 3-5 epochs; early stop on eval.' },
+      { step: 'Held-out eval', logic: 'Format compliance + factual accuracy + tone; gate on each.' },
+      { step: 'Canary 5% traffic', logic: 'Compare against base on production metrics; rollback if regression.' },
+      { step: 'Per-tenant adapter serving', logic: 'LoRA adapters loaded by tenant_id; base model shared.' },
+      { step: 'Drill: held-out eval ≥ baseline', logic: 'Regression on golden set blocks deploy.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# train/sft.py — LoRA fine-tuning pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
+from peft import LoraConfig, get_peft_model
+from datasets import load_dataset
+
+base = "mistralai/Mistral-7B-Instruct-v0.2"
+tok = AutoTokenizer.from_pretrained(base)
+model = AutoModelForCausalLM.from_pretrained(base, torch_dtype="bfloat16")
+
+# LoRA: only ~1% of params trainable
+lora = LoraConfig(
+    r=16, lora_alpha=32, lora_dropout=0.05,
+    target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+    task_type="CAUSAL_LM",
+)
+model = get_peft_model(model, lora)
+
+ds = load_dataset("json", data_files={
+    "train": "data/sft_train.jsonl",
+    "eval": "data/sft_eval.jsonl",
+})
+
+def fmt(ex):
+    text = f"<s>[INST] {ex['input']} [/INST] {ex['output']}</s>"
+    return tok(text, truncation=True, max_length=2048)
+
+ds = ds.map(fmt)
+
+args = TrainingArguments(
+    output_dir="out/sft-v1",
+    num_train_epochs=3, per_device_train_batch_size=4,
+    learning_rate=2e-4, warmup_steps=100,
+    eval_strategy="epoch", save_strategy="epoch",
+    load_best_model_at_end=True, bf16=True,
+    metric_for_best_model="eval_loss",
+)
+
+trainer = Trainer(model=model, args=args,
+                  train_dataset=ds["train"], eval_dataset=ds["eval"])
+trainer.train()
+model.save_pretrained("out/sft-v1/lora_adapter")  # ~50-200MB`,
+    },
+    realUseCase: 'Customer needed responses in their corporate voice + structured JSON for downstream automation. Generic Mistral-7B got format right ~60% of the time. SFT with 2.4k SME-reviewed pairs (LoRA r=16, 3 epochs, ~4h on a single A100) hit 96% format compliance + held tone. Per-tenant adapter (50MB) loaded at request time; base model shared. Without SFT, the team would have re-prompted forever.',
+    prosCons: {
+      pros: ['Teaches format reliably (≥95% compliance)', 'LoRA makes it cheap (~$50-200 per training run)', 'Per-tenant adapters scale linearly', 'Held-out eval catches regressions'],
+      cons: ['Needs 1k+ SME-reviewed examples (label cost)', 'Bad labels = bad model (review discipline)', 'Doesn\'t teach factual content (use RAG)', 'Requires GPU access'],
+    },
+    comparison: {
+      left: 'Prompt engineering only',
+      right: 'SFT with LoRA (this)',
+      rows: [
+        { aspect: 'Format compliance', left: '~70-85%', right: '≥95%' },
+        { aspect: 'Tone consistency', left: 'Variable', right: 'Stable' },
+        { aspect: 'Per-tenant variant cost', left: 'Free (different prompts)', right: 'Cheap (LoRA adapter, ~$100)' },
+        { aspect: 'Training data needed', left: 'None', right: '1k+ examples' },
+      ],
+    },
+    solutions: [
+      { problem: 'Inconsistent format', solution: 'SFT teaches structure' },
+      { problem: 'Tone drift', solution: 'SFT corpus controls voice' },
+      { problem: 'Per-tenant variant explosion', solution: 'LoRA adapters per tenant; shared base' },
+      { problem: 'Recall regression after train', solution: 'Held-out eval gate + canary deploy' },
+    ],
+    bestPractices: {
+      do: ['SME review every example', '1k-10k pairs minimum', 'LoRA r=16-32 for cost', 'Held-out eval per-category', 'Canary 5% deploy + rollback'],
+      avoid: ['<500 examples (don\'t SFT)', 'Skipping SME review', 'Full fine-tune when LoRA works', 'No held-out eval'],
+      optimize: ['Per-tenant adapter pool with caching', 'Mixed-precision (bf16) for speed', 'Eval automation in CI'],
+    },
+    antiPatterns: ['SFT for factual knowledge (use RAG)', 'Skipping eval gate', 'No SME review of labels', 'Full fine-tune on small data'],
+    testTypes: ['Held-out eval: format + factual + tone', 'A/B against base model on prod traffic', 'Per-category eval breakdown', 'Adapter loading drill (per-tenant)'],
+    testScenarios: [
+      { scenario: 'New SFT version trained', expected: 'Held-out eval ≥ baseline; canary 5% before full deploy' },
+      { scenario: 'Format regression', expected: 'Eval gate fails; deploy blocked' },
+      { scenario: 'Per-tenant adapter requested', expected: 'Loaded from cache; ~200ms cold load' },
+    ],
+    testData: [
+      { type: 'Held-out eval set', example: '500 (input, approved-output) pairs SME-reviewed; not in train set' },
+      { type: 'Production prompt sample', example: 'Real prompts from prod; check tone + format' },
+      { type: 'Per-category fixture', example: 'Balanced across response types (FAQ, structured, freeform)' },
+    ],
+    debuggingChecklist: [
+      'Eval regression? Check label quality first',
+      'Slow training? bf16 / accumulate / smaller batch',
+      'Adapter not loading? Check cache + tenant_id',
+      'Format drift in prod? Sample monthly + retrain',
+    ],
+    productionIssues: [
+      { issue: 'SFT model was 5pp worse than base on factual queries', rootCause: 'Customer expected SFT to teach knowledge; SFT teaches format. Layered RAG on top.' },
+      { issue: '4h training run failed at hour 3', rootCause: 'Bad checkpoint; out-of-memory at full batch. Reduced batch + gradient accumulation.' },
+      { issue: 'Per-tenant adapter swap blocked main thread', rootCause: 'Sync load. Switched to async pool with warm cache.' },
+    ],
+    performance: ['LoRA train: ~3-6h on A100 for 7B + 5k examples', 'Adapter load: ~150-250ms cold; ~5ms warm', 'Inference latency: ~5-10% overhead vs base'],
+    costConsiderations: ['~$50-200 per training run on cloud A100', 'Adapter storage: 50-200MB each; cheap', 'Per-tenant adapter compute: shared base model'],
+    observability: ['Eval metrics: format/factual/tone per epoch', 'Production: token cost vs base, error rate, tenant satisfaction', 'Adapter cache hit ratio'],
+    metrics: [
+      { name: 'documind_sft_eval_format_compliance', example: 'Gauge per epoch; target ≥ 0.95' },
+      { name: 'documind_sft_canary_regression_pp', example: 'Gauge; alert if > 1pp regression on prod metric' },
+      { name: 'documind_sft_adapter_load_seconds{p}', example: 'Histogram; warm cache < 10ms' },
+      { name: 'documind_sft_per_tenant_active', example: 'Gauge; how many tenants on bespoke adapter' },
+    ],
+    tradeoffs: [
+      { decision: 'LoRA r value', tradeoff: 'Higher r = more capacity + train cost' },
+      { decision: 'Epochs', tradeoff: 'More = better fit + overfit risk' },
+      { decision: 'Per-tenant vs shared adapter', tradeoff: 'Per-tenant: bespoke + ops cost; shared: cheaper' },
+    ],
+    decisionMatrix: [
+      { option: 'SFT with LoRA (this)', whenToUse: '1k+ examples; format/tone teaching needed' },
+      { option: 'Prompt engineering', whenToUse: '<500 examples or rapid iteration' },
+      { option: 'Full fine-tune', whenToUse: 'Massive data + huge architecture changes' },
+      { option: 'RAG only', whenToUse: 'Factual knowledge, not format' },
+    ],
+    starStory: {
+      situation: 'Customer wanted bespoke voice + JSON output; prompt engineering hit 70% format compliance ceiling.',
+      task: 'Reach 95%+ format compliance without re-prompting for every variation.',
+      action: 'Collected 2.4k SME-reviewed pairs over 3 weeks. Trained LoRA r=16 on Mistral-7B for 3 epochs. Held-out eval gated deploy. Canary 5% then full.',
+      result: 'Format compliance went 60% → 96%. Per-tenant adapter pattern adopted across 4 customers. Shared base + 50MB adapters per tenant; total compute cost +5% vs base.',
+    },
+    interviewTraps: ['SFT for factual knowledge (use RAG)', 'Full fine-tune when LoRA works', 'No held-out eval', 'Skipping SME review'],
     finalScript: 'Supervised fine-tuning teaches format. We collect 1k to 10k human-reviewed (input, approved-output) pairs, fine-tune a base model with cross-entropy loss using LoRA for cost efficiency, and gate the deploy on a held-out eval covering format compliance, factual accuracy, and tone match. Canary 5% traffic; compare against base on production metrics; full rollout or rollback. Below 500 examples — don\'t SFT; improve prompting and RAG first. The single biggest failure mode is bad labels — every example is SME-reviewed before training. Per-tenant LoRA adapters let us serve customized variants without retraining the base.',
   },
 
