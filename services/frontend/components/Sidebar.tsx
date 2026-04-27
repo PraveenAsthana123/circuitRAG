@@ -278,6 +278,14 @@ const GROUPS: Group[] = [
       { href: '/admin/tracing/deep#trace-draft-audit-linkage', label: 'Trace → draft → audit · forensics by request_id' },
     ],
   },
+  {
+    heading: 'Production-readiness checklist',
+    items: [
+      { href: '/admin/checklist/deep', label: 'Master checklist — overview' },
+      { href: '/admin/checklist/deep#lifecycle-checklist', label: 'Lifecycle · sections 1–10' },
+      { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Governance + ops + 6 hard stops' },
+    ],
+  },
 ];
 
 /** Left-menu nav. Grouped so the 10+ links are scannable. */
