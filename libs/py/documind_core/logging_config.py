@@ -69,6 +69,46 @@ def _inject_otel_trace(_logger: Any, _name: str, event_dict: EventDict) -> Event
     return event_dict
 
 
+def _inject_baggage(_logger: Any, _name: str, event_dict: EventDict) -> EventDict:
+    """structlog processor: add ALL W3C baggage entries to every event.
+
+    Composes with :func:`_inject_context` (which uses contextvars set by
+    :func:`bind_request_context` in middleware). Handles paths where
+    ``bind_request_context`` isn't called:
+
+    * Kafka consumers waking on a message that came with baggage headers
+      (after manual ``extract_propagation_context`` per
+      ``mcp/server_common``).
+    * ``asyncio.create_task(... context=context.copy())`` spawned from
+      a request scope — baggage flows; bind_request_context typically
+      doesn't follow.
+    * Background workers receiving baggage from outbound httpx calls
+      auto-instrumented by :class:`HTTPXClientInstrumentor`.
+
+    Why this is separate from ``_inject_context``: contextvars are a
+    Python primitive (set by our middleware); baggage is an OTel
+    primitive (set by the propagator + middleware OR by upstream
+    services via the ``baggage`` HTTP header). Both should land in
+    the log; collision policy = explicit log fields win, then
+    contextvars, then baggage. Order matters.
+
+    No-op when OTel SDK isn't installed.
+    """
+    try:
+        from opentelemetry import baggage as _otel_baggage
+    except ImportError:  # pragma: no cover — optional
+        return event_dict
+
+    # _inject_context runs BEFORE this in the processor chain (see
+    # setup_logging shared list). Anything it set wins; baggage fills
+    # in the gaps. Explicit log fields (passed by the caller) also win
+    # because they're already in event_dict before processors run.
+    for key, value in _otel_baggage.get_all().items():
+        if key not in event_dict:
+            event_dict[key] = str(value)
+    return event_dict
+
+
 def _rename_event_to_message(_logger: Any, _name: str, event_dict: EventDict) -> EventDict:
     """structlog uses 'event' as the main field; JSON consumers expect 'message'."""
     if "event" in event_dict:
@@ -98,6 +138,7 @@ def setup_logging(
         structlog.contextvars.merge_contextvars,
         _inject_context,
         _inject_otel_trace,
+        _inject_baggage,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         _rename_event_to_message,
