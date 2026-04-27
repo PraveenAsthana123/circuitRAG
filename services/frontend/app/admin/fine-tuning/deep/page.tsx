@@ -385,6 +385,120 @@ model.save_pretrained("out/sft-v1/lora_adapter")  # ~50-200MB`,
       'libs/py/documind_core/model_registry.py',
     ],
     interviewLine: 'Unsupervised fine-tuning teaches domain language. Clean and dedupe before training; otherwise the model learns noise. Pairs with SFT (format) and RAG (knowledge).',
+    implementationSteps: [
+      { step: 'Collect domain corpus', logic: 'Manuals + SOPs + transcripts + papers; 10M-100M tokens minimum.' },
+      { step: 'Clean + dedupe', logic: 'PII redact + boilerplate strip + near-duplicate removal (hash-based).' },
+      { step: 'Continue pretraining', logic: 'Causal LM loss; smaller LR (1e-5 to 5e-5) than from-scratch; 1-2 epochs.' },
+      { step: 'Perplexity eval on held-out', logic: 'Compare adapted vs base; expect significant drop.' },
+      { step: 'SME terminology spot-check', logic: 'Sample generations; verify domain vocabulary correctly used.' },
+      { step: 'Layer SFT on top', logic: 'Adapted base → SFT → format compliance + domain language.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# train/unsupervised_ft.py — continued pretraining
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
+from datasets import load_dataset
+from peft import LoraConfig, get_peft_model
+
+base = "mistralai/Mistral-7B-v0.1"
+tok = AutoTokenizer.from_pretrained(base)
+model = AutoModelForCausalLM.from_pretrained(base, torch_dtype="bfloat16")
+
+# LoRA on continued pretraining (cheaper than full)
+lora = LoraConfig(r=32, lora_alpha=64, target_modules=["q_proj","v_proj","k_proj","o_proj","gate_proj","up_proj","down_proj"], task_type="CAUSAL_LM")
+model = get_peft_model(model, lora)
+
+# Domain corpus: cleaned + deduped + PII-redacted
+ds = load_dataset("json", data_files="data/domain_corpus.jsonl")
+
+def tokenize(ex):
+    return tok(ex["text"], truncation=True, max_length=2048)
+
+ds = ds.map(tokenize, remove_columns=["text"])
+
+args = TrainingArguments(
+    output_dir="out/unsupervised-v1",
+    num_train_epochs=1,
+    per_device_train_batch_size=4, gradient_accumulation_steps=4,
+    learning_rate=2e-5, warmup_steps=200, lr_scheduler_type="cosine",
+    bf16=True, gradient_checkpointing=True,
+    eval_strategy="epoch",
+    metric_for_best_model="eval_loss", load_best_model_at_end=True,
+)
+
+trainer = Trainer(model=model, args=args,
+                  train_dataset=ds["train"], eval_dataset=ds["validation"])
+trainer.train()
+model.save_pretrained("out/unsupervised-v1/lora_adapter")`,
+    },
+    realUseCase: 'Petroleum engineering customer: generic Mistral-7B treated "BHP" as random tokens, "FCV" was meaningless. After unsupervised FT on 50M tokens of domain manuals + papers, perplexity dropped 35%, SMEs verified correct usage of 200+ industry terms. Stacked SFT on top for format compliance. RAG for facts. Three-layer stack (vocabulary + format + facts) shipped in production.',
+    prosCons: {
+      pros: ['No labels required', 'Closes vocabulary gap on niche domains', 'Pairs with SFT + RAG for full stack', 'LoRA makes it affordable'],
+      cons: ['Doesn\'t teach format (need SFT)', 'Doesn\'t teach freshness (need RAG)', 'Corpus quality is the bottleneck', 'Catastrophic forgetting if LR too high'],
+    },
+    comparison: {
+      left: 'Generic base + RAG only',
+      right: 'Domain-adapted + SFT + RAG (this)',
+      rows: [
+        { aspect: 'Domain vocabulary', left: 'Misinterpreted', right: 'Correctly understood' },
+        { aspect: 'Format compliance', left: 'Variable', right: 'High (via SFT layer)' },
+        { aspect: 'Factual accuracy', left: 'Via RAG', right: 'Via RAG' },
+        { aspect: 'Training cost', left: '0', right: '~$200-1000 per upgrade' },
+      ],
+    },
+    solutions: [
+      { problem: 'Niche vocabulary butchered', solution: 'Continued pretraining on domain corpus' },
+      { problem: 'Noisy corpus', solution: 'Clean + dedupe + PII redact pipeline' },
+      { problem: 'Catastrophic forgetting', solution: 'Smaller LR + LoRA on subset of params' },
+      { problem: 'Doesn\'t teach format', solution: 'Layer SFT on top of adapted base' },
+    ],
+    bestPractices: {
+      do: ['Clean + dedupe + redact corpus first', 'LoRA r=32 on key projections', 'Smaller LR (1e-5 to 5e-5)', '1-2 epochs (not 5-10)', 'Perplexity eval on held-out + SME spot-check'],
+      avoid: ['Full FT for vocabulary alone (use LoRA)', 'Skipping corpus cleaning', 'High LR (causes forgetting)', 'Treating it as "the answer" (it\'s one layer)'],
+      optimize: ['Mixed-precision (bf16)', 'Gradient checkpointing', 'Per-tenant adapter serving', 'Catastrophic-forgetting guard via reg loss'],
+    },
+    antiPatterns: ['No corpus cleaning', 'Full FT when LoRA suffices', 'Replacing RAG with unsupervised FT', 'No held-out perplexity eval'],
+    testTypes: ['Drill: perplexity drop ≥ Npp on held-out', 'Drill: SME terminology spot-check ≥ X correct', 'Drill: catastrophic forgetting bounded (general benchmark)', 'Drill: layered SFT preserves base improvements'],
+    testScenarios: [
+      { scenario: 'Train on 50M tokens petroleum corpus', expected: 'Perplexity drops 30-40% vs base; domain terms used correctly' },
+      { scenario: 'Catastrophic forgetting check', expected: 'General benchmark within 2pp of base (acceptable trade)' },
+      { scenario: 'Stack SFT layer on top', expected: 'Domain + format both improve' },
+    ],
+    testData: [
+      { type: 'Domain corpus', example: '50M tokens petroleum manuals + papers + transcripts; cleaned + deduped' },
+      { type: 'Held-out perplexity set', example: '10M tokens not in train; PPL measured' },
+      { type: 'General benchmark', example: 'MMLU subset; check no catastrophic loss' },
+    ],
+    debuggingChecklist: ['Perplexity didn\'t drop? Corpus quality + LR check', 'Forgetting general knowledge? LR too high', 'Slow training? Gradient checkpointing + smaller batch'],
+    productionIssues: [
+      { issue: 'Domain-adapted model lost MMLU performance', rootCause: 'LR too high (5e-4) for continued pretraining; reduced to 5e-5.' },
+      { issue: 'Corpus had massive duplicates from PDF re-extracts', rootCause: 'No dedup; model overfit on duplicate content. Added MinHash-based dedup pipeline.' },
+    ],
+    performance: ['LoRA continued pretraining: ~10-30h on A100 for 50M tokens', 'Perplexity eval: ~5min on held-out', 'SME spot-check: ~30 min for sample of 50'],
+    costConsiderations: ['LoRA train: ~$100-500 per upgrade on cloud GPU', 'Compute: 1 epoch enough; full FT not needed', 'Corpus storage: cheap (text only)'],
+    observability: ['Per-epoch perplexity', 'Catastrophic forgetting check vs base', 'SME spot-check sign-off'],
+    metrics: [
+      { name: 'documind_unsupervised_perplexity_drop_pp', example: 'Gauge per epoch; target ≥ 20pp' },
+      { name: 'documind_unsupervised_general_benchmark_delta', example: 'Gauge; alert if < -2pp (forgetting)' },
+      { name: 'documind_unsupervised_sme_spot_check_accuracy', example: 'Gauge; sampled' },
+    ],
+    tradeoffs: [
+      { decision: 'Full FT vs LoRA', tradeoff: 'Full: more capacity; LoRA: 90% gain at 10% cost' },
+      { decision: 'Epochs', tradeoff: 'More = better fit + forgetting risk' },
+      { decision: 'Corpus size', tradeoff: 'Larger = better domain coverage; dedup matters more' },
+    ],
+    decisionMatrix: [
+      { option: 'Unsupervised FT (this)', whenToUse: 'Niche-vocabulary domain (oil&gas, medical, legal)' },
+      { option: 'RAG only', whenToUse: 'Generic vocabulary; facts dominate' },
+      { option: 'SFT only', whenToUse: 'Generic vocabulary + format teaching' },
+    ],
+    starStory: {
+      situation: 'Petroleum customer: Mistral-7B base mis-interpreted 200+ domain terms; downstream SFT couldn\'t close gap.',
+      task: 'Adapt base to domain vocabulary without losing general capability.',
+      action: 'Cleaned + deduped 50M tokens of manuals + papers + transcripts. Continued pretraining via LoRA r=32, LR 2e-5, 1 epoch. Perplexity drop 35%; SME spot-check 198/200 correct. Stacked SFT for format.',
+      result: 'Three-layer stack (domain + format + RAG facts) shipped. Customer cited "feels like it understands the field" as the win.',
+    },
+    interviewTraps: ['Treating unsupervised FT as "the answer" (it\'s one layer)', 'Skipping corpus cleaning', 'Full FT when LoRA suffices', 'No catastrophic-forgetting guard'],
     finalScript: 'Unsupervised fine-tuning is domain language adaptation. We continue pretraining the base model on raw domain text — manuals, SOPs, transcripts, papers — with a cleaning pipeline that deduplicates, redacts PII, and tags language. No labels required. Output is a domain-adapted base where downstream SFT and RAG both perform better. The discipline: corpus quality is the bottleneck — noise in equals noise out. Perplexity eval on held-out text gates the registry; SMEs spot-check terminology. It doesn\'t teach format (SFT does that) or freshness (RAG does that) — it teaches vocabulary.',
   },
 
@@ -522,6 +636,110 @@ model.save_pretrained("out/sft-v1/lora_adapter")  # ~50-200MB`,
       'libs/py/documind_core/model_registry.py',
     ],
     interviewLine: 'Semi-supervised exploits the gap: ~1k labels + ~100k raw. Pseudo-label, SME review the high-impact subset, retrain. Pseudo-label errors compound — that\'s the key risk.',
+    implementationSteps: [
+      { step: 'v1 bootstrap on labeled seed', logic: 'SFT on ~1k SME-reviewed examples.' },
+      { step: 'Pseudo-label unlabeled corpus', logic: 'v1 emits (input, predicted-output, confidence) triples.' },
+      { step: 'Triage by confidence + impact', logic: 'Low-confidence + high-impact → SME review; rest auto-accept.' },
+      { step: 'Combine + retrain v2', logic: 'Reviewed pseudo-labels + original seed; train v2.' },
+      { step: 'Held-out gold eval', logic: 'Compare v2 vs v1 on never-seen gold set.' },
+      { step: 'Iterate until plateau', logic: 'Repeat per round; stop when eval stabilizes.' },
+      { step: 'Per-round audit + rollback', logic: 'Each version registered; rollback path tested.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# train/semi_supervised.py — pseudo-label + SME review loop
+async def round(v_prev, labeled_seed, unlabeled_pool, sme_reviewer, eval_runner):
+    # 1. v_prev pseudo-labels the pool
+    pseudo = []
+    for ex in unlabeled_pool:
+        pred, conf = await v_prev.predict_with_confidence(ex.input)
+        pseudo.append({"input": ex.input, "output": pred, "conf": conf, "impact": ex.impact})
+
+    # 2. Triage: SME reviews low-confidence + high-impact
+    review_queue = [p for p in pseudo if p["conf"] < 0.7 or p["impact"] == "high"]
+    auto_accept = [p for p in pseudo if p not in review_queue]
+
+    reviewed = await sme_reviewer.review(review_queue)  # ~ 5-10% of pool
+
+    # 3. Combine + retrain
+    train_set = labeled_seed + reviewed + auto_accept
+    v_new = await train_lora(base_model, train_set)
+
+    # 4. Eval gate
+    eval_score = await eval_runner.run(v_new, gold_set)
+    if eval_score <= eval_runner.run(v_prev, gold_set):
+        raise EvalPlateau("no further improvement; stop iteration")
+
+    return v_new`,
+    },
+    realUseCase: 'Customer had 800 SME-reviewed examples + 80k raw production records. Round 1: v1 trained on 800; bootstrapped pseudo-labels on 80k. Triage: 5k high-confidence-but-high-impact + 3k low-confidence flagged → SME reviewed in 2 weeks. Round 2: trained on 800 + 8k reviewed; eval lifted 11pp. Round 3: 4pp lift; round 4: plateau. Stopped at round 3.',
+    prosCons: {
+      pros: ['Exploits realistic data (small labeled + large raw)', 'SME review focused on high-impact', 'Iterative; eval-gated', 'Per-round registry + rollback'],
+      cons: ['Pseudo-label errors compound silently', 'SME review still required', 'Multi-round complexity', 'Confidence calibration matters'],
+    },
+    comparison: {
+      left: 'SFT on labeled seed only',
+      right: 'Semi-supervised (this)',
+      rows: [
+        { aspect: 'Labels needed', left: '5k+ for high quality', right: '1k seed + pseudo-labels' },
+        { aspect: 'SME effort', left: 'Linear with corpus', right: 'Focused on high-impact subset' },
+        { aspect: 'Risk profile', left: 'Bounded by SME quality', right: 'Pseudo-label compound risk' },
+        { aspect: 'Production accuracy ceiling', left: 'Limited by seed size', right: 'Higher (more data)' },
+      ],
+    },
+    solutions: [
+      { problem: 'SME bandwidth bottleneck', solution: 'Triage to high-impact subset only' },
+      { problem: 'Pseudo-label error compounding', solution: 'SME review on low-confidence + high-impact' },
+      { problem: 'Knowing when to stop', solution: 'Held-out eval plateau detection' },
+      { problem: 'Bad round needs rollback', solution: 'Per-round registry version + rollback path' },
+    ],
+    bestPractices: {
+      do: ['SME review low-confidence + high-impact', 'Held-out gold set for eval', 'Per-round registry + rollback', 'Plateau detection (no infinite rounds)', 'Confidence calibration check'],
+      avoid: ['Auto-accepting all pseudo-labels', 'Same triage threshold across rounds', 'No held-out gold (evaluating on training distribution)', 'Treating round 5 as better than round 3 without eval'],
+      optimize: ['Active learning per round', 'Per-tenant SME reviewer pools', 'Cached pseudo-labels by input_hash'],
+    },
+    antiPatterns: ['Auto-accept all pseudo-labels', 'No held-out eval', 'Infinite rounds without plateau check', 'No per-round rollback'],
+    testTypes: ['Drill: round produces eval lift on held-out', 'Drill: rollback to v_prev works', 'Drill: SME-review queue properly triaged', 'Drill: plateau detection triggers stop'],
+    testScenarios: [
+      { scenario: 'Round N improves eval +2pp', expected: 'Continue to round N+1' },
+      { scenario: 'Round N matches eval (plateau)', expected: 'Stop iteration; release v_N' },
+      { scenario: 'Round N regresses', expected: 'Rollback to v_{N-1}; investigate' },
+    ],
+    testData: [
+      { type: 'Labeled seed', example: '~1k (input, expected) pairs SME-reviewed' },
+      { type: 'Unlabeled pool', example: '~100k production records' },
+      { type: 'Held-out gold', example: '~500 (input, expected) pairs never seen during training' },
+    ],
+    debuggingChecklist: ['Pseudo-label noise? Confidence threshold tightness', 'SME bandwidth swamped? Triage threshold high', 'Rounds not converging? Pool diversity', 'Eval regression? Rollback v_prev'],
+    productionIssues: [
+      { issue: 'Round 3 regressed 4pp', rootCause: 'Pseudo-labels on edge cases compounded; SME catch missed.' },
+      { issue: 'SME review took 4 weeks vs 1', rootCause: 'Triage threshold too loose; queue 30k. Tightened to high-impact only.' },
+    ],
+    performance: ['Round time: ~1-2 weeks (training + SME review)', 'Train: ~4-6h LoRA per round', 'SME review: ~5-10 hours per 1k samples'],
+    costConsiderations: ['Compute per round: ~$200-500 LoRA train', 'SME hours per round: significant; budget explicitly', 'Multi-round storage: per-round registry + small cost'],
+    observability: ['Per-round eval lift', 'SME-review queue depth', 'Confidence-distribution shift round-over-round'],
+    metrics: [
+      { name: 'documind_semi_supervised_round_eval_lift_pp{round}', example: 'Gauge per round; plateau when ≤1pp' },
+      { name: 'documind_semi_supervised_sme_review_count{round}', example: 'Counter; budget management' },
+      { name: 'documind_semi_supervised_pseudo_label_confidence_p{round}', example: 'Histogram; check calibration drift' },
+    ],
+    tradeoffs: [
+      { decision: 'Triage threshold', tradeoff: 'Tight: more SME work; loose: more compound error' },
+      { decision: 'Rounds before plateau', tradeoff: 'More rounds: higher accuracy ceiling; more cost' },
+      { decision: 'Pseudo-label confidence cutoff', tradeoff: 'Higher: cleaner data; smaller set' },
+    ],
+    decisionMatrix: [
+      { option: 'Semi-supervised (this)', whenToUse: '~1k labels + ~100k raw available' },
+      { option: 'Pure SFT', whenToUse: '5k+ SME-reviewed labels' },
+      { option: 'Pure unsupervised', whenToUse: 'Vocabulary gap; no labels' },
+    ],
+    starStory: {
+      situation: 'Customer had 800 SME-reviewed labels + 80k production records; pure SFT plateaued at 73% accuracy.',
+      task: 'Lift accuracy without SME-reviewing all 80k.',
+      action: 'Built semi-supervised loop: v1 SFT on 800 → pseudo-label 80k → triage → SME-review 8k high-impact → v2 SFT on combined. Iterated 3 rounds with eval gate.',
+      result: 'Accuracy: 73% → 88%. SME effort: ~120 hours total (vs ~3000 to label all 80k). Pattern in ADR-012.',
+    },
+    interviewTraps: ['Auto-accept all pseudo-labels', 'No plateau detection', 'No held-out gold', 'Same triage threshold every round'],
     finalScript: 'Semi-supervised fine-tuning is the realistic enterprise scenario: about a thousand SME-reviewed labels and a hundred thousand raw production records. Bootstrap a v1 model on the labeled seed; deploy it as a pseudo-labeler over the unlabeled corpus; emit each (input, predicted-output, confidence) triple. Triage: low-confidence or high-impact samples go to SME review; rest auto-accept. Combine the reviewed pseudo-labels with the original labeled set; train v2; eval on a held-out gold set. Repeat until eval plateaus. The non-negotiable check is human review on high-impact samples — pseudo-label errors compound silently across rounds. Per-round audit + rollback per registry version.',
   },
 
