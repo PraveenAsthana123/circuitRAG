@@ -302,6 +302,218 @@ def chunk_text(text: str, doc_id: str, page_no: int = 0,
       'drill_retrieval_degraded_envelope',
     ],
     interviewLine: 'Hybrid retrieval combines semantic + structured + cached signals. The discipline is honest degradation — when one transport is down, the response declares partial coverage instead of pretending it\'s complete.',
+    implementationSteps: [
+      { step: 'Parallel transport calls', logic: 'Vector + graph + cache fan-out concurrently; each guarded by its own breaker.' },
+      { step: 'Per-transport breaker', logic: 'vector_breaker / graph_breaker independent; one open does not cascade.' },
+      { step: 'Reciprocal-rank fusion', logic: 'Combine top-K from each source; rank by 1/(k+rank); top-20 fed to rerank.' },
+      { step: 'Cross-encoder rerank', logic: 'top-20 → top-5 via cross-encoder (slower but precision-critical).' },
+      { step: 'degraded=True envelope', logic: 'If ANY transport breaker open, mark response degraded; inference adds disclaimer.' },
+      { step: 'Cache write on success', logic: 'Hit cache by (query_hash, embedding_version); 1h TTL.' },
+      { step: 'Drill: kill transport → degraded honestly', logic: 'Negative assertion: response NOT empty AND degraded=true on partial.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# services/inference-svc/app/services/hybrid_retriever.py
+import asyncio
+from libs.py.documind_core.circuit_breaker import CircuitBreaker
+
+vector_breaker = CircuitBreaker("retrieval->qdrant", threshold=5, recovery_timeout=30)
+graph_breaker = CircuitBreaker("retrieval->neo4j", threshold=5, recovery_timeout=30)
+
+@dataclass
+class RetrieveResponse:
+    chunks: list[Chunk]
+    degraded: bool
+    sources_used: list[str]
+
+async def hybrid_retrieve(query: str, tenant_id: str, top_k: int = 5) -> RetrieveResponse:
+    sources, chunks, degraded = [], [], False
+
+    async def fetch_vector():
+        nonlocal degraded
+        if not vector_breaker.allow():
+            degraded = True
+            return []
+        try:
+            vc = await qdrant.search(query, tenant_id, top_k=20)
+            vector_breaker.record_success()
+            sources.append("vector")
+            return vc
+        except Exception:
+            vector_breaker.record_failure()
+            degraded = True
+            return []
+
+    async def fetch_graph():
+        nonlocal degraded
+        if not graph_breaker.allow():
+            degraded = True
+            return []
+        try:
+            gc = await neo4j.traverse(query, tenant_id, depth=2)
+            graph_breaker.record_success()
+            sources.append("graph")
+            return gc
+        except Exception:
+            graph_breaker.record_failure()
+            degraded = True
+            return []
+
+    async def fetch_cache():
+        cc = await redis_cache.lookup(query, tenant_id, settings.embedding_version)
+        if cc:
+            sources.append("cache")
+        return cc or []
+
+    v_chunks, g_chunks, c_chunks = await asyncio.gather(
+        fetch_vector(), fetch_graph(), fetch_cache(),
+    )
+
+    fused = reciprocal_rank_fuse([v_chunks, g_chunks, c_chunks])
+    reranked = await cross_encoder_rerank(query, fused[:20])
+
+    return RetrieveResponse(
+        chunks=reranked[:top_k],
+        degraded=degraded,
+        sources_used=sources,
+    )`,
+    },
+    realUseCase: 'Customer query "policy P references which standards section?" needed graph + vector. Vector found chunks mentioning P; graph traversed P → references → S relationship to surface S sections. Reciprocal rank fusion combined both lists; cross-encoder rerank picked the top-5 most relevant. Response cited both. When Neo4j was upgraded mid-day, graph_breaker opened, vector + cache served, response carried degraded=true → user saw "partial answer (graph context unavailable)" disclaimer instead of an outage page.',
+    prosCons: {
+      pros: [
+        'Multi-signal coverage (semantic + structured + cached)',
+        'Per-transport breakers contain failures',
+        'degraded=True contract makes partial answers honest',
+        'Cross-encoder rerank lifts precision 4-8pp over fusion alone',
+      ],
+      cons: [
+        'Aggregation must handle missing-source case',
+        'Cross-encoder rerank adds 30-80ms p95',
+        'Cache invalidation on embedding upgrade',
+        'Per-transport tuning needed',
+      ],
+    },
+    comparison: {
+      left: 'Vector-only retrieval',
+      right: 'Hybrid (vector + graph + cache, this)',
+      rows: [
+        { aspect: 'Recall@10', left: '~85%', right: '~94%' },
+        { aspect: 'Multi-hop reasoning', left: 'Weak', right: 'Native via graph' },
+        { aspect: 'Failure containment', left: 'All-or-nothing', right: 'Per-transport breaker' },
+        { aspect: 'Latency p95', left: '~80ms', right: '~120ms' },
+        { aspect: 'Cache hit savings', left: 'Manual', right: '~35% queries skip vector+graph' },
+      ],
+    },
+    solutions: [
+      { problem: 'Vector misses multi-hop relationships', solution: 'Graph traversal supplies structured context' },
+      { problem: 'One slow transport drags total latency', solution: 'Per-transport breaker fast-fails the slow one' },
+      { problem: 'Silent partial answers', solution: 'degraded=True propagates to inference disclaimer' },
+      { problem: 'Hot queries hit DBs repeatedly', solution: 'Cache by (query_hash, embedding_version)' },
+    ],
+    bestPractices: {
+      do: [
+        'Parallel fan-out to all transports',
+        'Per-transport breaker per (caller, target)',
+        'Reciprocal rank fusion before rerank',
+        'Cross-encoder rerank top-20 → top-5',
+        'degraded=True on partial coverage',
+        'Cache by (query_hash, embedding_version)',
+      ],
+      avoid: [
+        'Sequential transport calls (slow)',
+        'Single global retrieval CB',
+        'Dropping degraded flag at inference',
+        'Cross-encoder on full fused list (cost)',
+        'Cache without embedding_version key',
+      ],
+      optimize: [
+        'Quantize cross-encoder for inference speed',
+        'Per-tenant rerank cache (query+chunk hash)',
+        'Adaptive top-K based on query specificity',
+      ],
+    },
+    antiPatterns: [
+      'Sequential transport fan-out',
+      'No degraded contract',
+      'No per-transport breaker',
+      'Cross-encoder on entire corpus',
+      'Cache without embedding_version',
+    ],
+    testTypes: [
+      'Drill: all transports up → degraded=false',
+      'Drill: kill Qdrant → vector_breaker opens, others serve, degraded=true',
+      'Drill: kill Neo4j → graph_breaker opens, vector+cache serve',
+      'Drill: all down → empty + degraded=true (no hallucination)',
+      'Drill: cache hit on hot query → bypass vector+graph',
+    ],
+    testScenarios: [
+      { scenario: 'All transports healthy', expected: 'chunks from all; degraded=false; rerank applied' },
+      { scenario: 'Qdrant unavailable', expected: 'graph + cache serve; degraded=true' },
+      { scenario: 'Same query repeated', expected: 'Cache hit; bypass vector+graph; ~10ms response' },
+      { scenario: 'Embedding model upgraded', expected: 'Old cache entries pruned by version key' },
+    ],
+    testData: [
+      { type: 'Multi-source corpus', example: 'Same query findable in vector + graph + cache; coverage measured' },
+      { type: 'Toxiproxy fixture', example: 'In front of Qdrant; toggleable failure mode' },
+      { type: 'Recall golden set', example: '500 (query, expected chunk_ids) pairs across single-hop + multi-hop queries' },
+    ],
+    debuggingChecklist: [
+      'Recall regression? Check sources_used; was a transport silently down?',
+      'Latency spike? Per-transport p95; rerank time',
+      'degraded=true unexpected? Check breaker state; verify upstream actually unreachable',
+      'Cache miss for hot query? Check embedding_version + key shape',
+    ],
+    productionIssues: [
+      { issue: 'Inference response missed degraded disclaimer', rootCause: 'New inference-svc version dropped the field. Drill caught at PR.' },
+      { issue: 'Recall dropped 12pp after embedding upgrade', rootCause: 'Cache key did not include embedding_version; old entries served stale fusion. Added version to cache key.' },
+      { issue: 'Cross-encoder timeout cascaded to inference 503', rootCause: 'No timeout on rerank; one slow query held the path. Added 200ms timeout + skip-rerank fallback on breach.' },
+    ],
+    performance: [
+      'Parallel fan-out: ~80ms p95 (max of vector + graph + cache)',
+      'Reciprocal rank fusion: ~10ms top-20',
+      'Cross-encoder rerank: ~30-80ms top-20 → top-5',
+      'Cache hit path: ~10ms total',
+    ],
+    costConsiderations: [
+      'Cross-encoder GPU inference: ~$0.0005/query at scale',
+      'Cache (Redis): negligible per query',
+      'Graph + vector compute: amortized across tenants',
+    ],
+    observability: [
+      'Trace: per-request transport decisions + outcomes',
+      'Metrics: per-transport latency, breaker state, degraded rate, cache hit ratio',
+      'Logs: structured with sources_used + degraded flag + correlation_id',
+    ],
+    metrics: [
+      { name: 'documind_retrieval_degraded_total{tenant}', example: 'Counter; rate spike means transport problem' },
+      { name: 'documind_retrieval_sources_used{source}', example: 'Counter; per-source coverage tracking' },
+      { name: 'documind_retrieval_cache_hit_ratio', example: 'Gauge; target ≥ 0.30' },
+      { name: 'documind_rerank_latency_seconds{p}', example: 'Histogram; p95 < 100ms' },
+    ],
+    tradeoffs: [
+      { decision: 'Cross-encoder vs no rerank', tradeoff: 'Rerank: +4-8pp precision; +30-80ms latency' },
+      { decision: 'Parallel vs sequential', tradeoff: 'Parallel: max-of latency; sequential: sum-of (slower)' },
+      { decision: 'Cache TTL', tradeoff: 'Long: better hit rate; staleness on corpus updates' },
+    ],
+    decisionMatrix: [
+      { option: 'Hybrid retrieval (this)', whenToUse: 'Multi-source corpora + multi-hop queries' },
+      { option: 'Vector-only', whenToUse: 'Single-hop queries; no graph relationships' },
+      { option: 'Keyword-only (BM25)', whenToUse: 'Highly structured queries; rare in modern RAG' },
+    ],
+    starStory: {
+      situation: 'Customer queries needed both semantic similarity AND multi-hop relationships ("policy A references which standards?"). Vector-only recall@10 was 78%.',
+      task: 'Lift recall + maintain latency budget + handle backend failures gracefully.',
+      action: 'Added Neo4j graph traversal alongside Qdrant. Per-transport breakers (ADR-008). Reciprocal rank fusion. Cross-encoder rerank top-20 → top-5. Cache layer keyed by (query_hash, embedding_version). degraded=True envelope.',
+      result: 'Recall@10: 78% → 94%. Latency p95: 80ms → 120ms (acceptable). Neo4j upgrade later that quarter caused zero outages — graph_breaker opened, vector+cache served, users saw partial-answer disclaimer.',
+    },
+    interviewTraps: [
+      'Single-CB-fits-all retrieval (one transport down kills everything)',
+      'Dropping degraded flag at inference',
+      'Cross-encoder on full corpus instead of top-20',
+      'Cache without embedding_version key',
+      'No per-transport timeout',
+    ],
+    finalScript: 'Hybrid retrieval combines three signals fused honestly. Vector + graph + cache fan-out in parallel, each gated by its own breaker. Reciprocal rank fuses the top-K from each source into a top-20 list, then a cross-encoder rerank narrows to top-5 with precision-critical scoring. The response carries a degraded=True flag if ANY transport breaker was open during fan-out, and inference-svc honors that by adding a "partial answer" disclaimer to the user. Cache key includes embedding_version so model upgrades invalidate cleanly. Drill kills each transport in isolation and asserts the others continue serving with degraded=true — the difference between an enterprise RAG platform and a demo.',
   },
   // ---- 3. Embedding ----
   {
