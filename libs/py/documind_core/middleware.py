@@ -147,6 +147,82 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class BaggageContextMiddleware(BaseHTTPMiddleware):
+    """
+    Populate W3C baggage from ``request.state`` for cross-service propagation.
+
+    Must run AFTER :class:`TenantContextMiddleware` (which populates
+    ``request.state.tenant_id`` / ``user_id`` / ``correlation_id``).
+
+    What this enables (closes the gap described in
+    ``services/frontend/app/admin/tracing/deep`` + global CLAUDE.md §47):
+
+    * Outbound ``httpx`` calls auto-inject ``baggage`` header (via the
+      :class:`HTTPXClientInstrumentor` wired up in
+      ``mcp/server_common.setup_server_otel``).
+    * Downstream services see ``baggage.tenant_id`` without re-parsing
+      the JWT.
+    * Log formatter (see :func:`logging_config.setup_logging` extension)
+      pulls ``baggage_get_all()`` into every log record so logs become
+      filterable by tenant across services.
+
+    Why this is needed: OTel's default propagator is **tracecontext-only**.
+    Trace IDs propagate; business context (tenant / user / request id)
+    does NOT. ``mcp/server_common.setup_server_otel`` adds the
+    :class:`W3CBaggagePropagator` to the global propagator AND
+    auto-instruments httpx. This middleware is the producer side —
+    it actually puts values INTO baggage on the inbound request.
+
+    Naming bridge: the existing project terminology uses
+    ``correlation_id`` (the ``X-Correlation-ID`` header) for what this
+    project's docs and the tracing/deep page call ``request_id``. The
+    baggage key is ``request_id`` (matches the dependency-graph
+    documentation + the trace→draft→audit linkage); the source
+    attribute is still ``request.state.correlation_id``.
+
+    No-op if OTel SDK isn't installed — services without tracing keep
+    booting.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        super().__init__(app)
+        try:
+            from opentelemetry import baggage as _otel_baggage
+            from opentelemetry import context as _otel_context
+            self._baggage = _otel_baggage
+            self._context = _otel_context
+        except ImportError:  # pragma: no cover
+            self._baggage = None
+            self._context = None
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if self._baggage is None or self._context is None:
+            return await call_next(request)
+
+        ctx = self._context.get_current()
+        # Pairs: (baggage_key, request.state attribute name).
+        # tenant / user are 1:1; request_id bridges to correlation_id.
+        pairs = (
+            ("tenant_id", "tenant_id"),
+            ("user_id", "user_id"),
+            ("request_id", "correlation_id"),
+        )
+        for key, attr in pairs:
+            value = getattr(request.state, attr, "")
+            if value:
+                ctx = self._baggage.set_baggage(key, str(value), context=ctx)
+
+        token = self._context.attach(ctx)
+        try:
+            return await call_next(request)
+        finally:
+            self._context.detach(token)
+
+
 class SpanAttributeMiddleware(BaseHTTPMiddleware):
     """
     Tag the current OTel server span with DocuMind-specific attributes

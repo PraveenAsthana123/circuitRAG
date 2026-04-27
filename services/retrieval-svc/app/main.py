@@ -10,6 +10,7 @@ from documind_core.cache import Cache
 from documind_core.config import get_settings
 from documind_core.logging_config import setup_logging
 from documind_core.middleware import (
+    BaggageContextMiddleware,
     CorrelationIdMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -95,6 +96,10 @@ def create_app() -> FastAPI:
     # Innermost middleware — runs last on the request, tags the server
     # span with documind.tenant_id etc. so Jaeger filters by tenant work.
     app.add_middleware(SpanAttributeMiddleware)
+    # BaggageContextMiddleware runs immediately inside SpanAttributeMiddleware
+    # so request.state.tenant_id / user_id / correlation_id are promoted
+    # into W3C baggage for outbound propagation. See /admin/tracing/deep.
+    app.add_middleware(BaggageContextMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(
         RateLimitMiddleware,

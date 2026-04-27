@@ -18,6 +18,7 @@ from documind_core.idempotency import IdempotencyStore
 from documind_core.idempotency_middleware import IdempotencyMiddleware
 from documind_core.logging_config import setup_logging
 from documind_core.middleware import (
+    BaggageContextMiddleware,
     CorrelationIdMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -179,6 +180,11 @@ def create_app() -> FastAPI:
     )
 
     # ----- Middleware (LIFO — last added runs first) ----------------------
+    # BaggageContextMiddleware is added FIRST so it sits INNERMOST in the
+    # Starlette chain — by which time TenantContextMiddleware has populated
+    # request.state. Promotes tenant_id / user_id / correlation_id into W3C
+    # baggage for outbound httpx propagation. See /admin/tracing/deep.
+    app.add_middleware(BaggageContextMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     # Idempotency guard on write routes — duplicate X-Idempotency-Key

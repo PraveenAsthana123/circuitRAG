@@ -11,6 +11,7 @@ from documind_core.config import get_settings
 from documind_core.logging_config import setup_logging
 from documind_core.auth import JWTAuthMiddleware, JWTVerifier
 from documind_core.middleware import (
+    BaggageContextMiddleware,
     CorrelationIdMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -284,6 +285,15 @@ def create_app() -> FastAPI:
     # documind.tenant_id then appear on the server span that Jaeger uses
     # as the trace root, so tag-filter searches by tenant work.
     app.add_middleware(SpanAttributeMiddleware)
+    # BaggageContextMiddleware runs JUST INSIDE SpanAttributeMiddleware
+    # in execution order — i.e., AFTER every other inbound middleware
+    # has populated request.state (tenant_id from JWT, correlation_id
+    # from header). It then promotes those values into W3C baggage so
+    # outbound httpx calls auto-carry tenant_id / user_id / request_id
+    # to downstream services. Without this, OTel propagates trace_id
+    # only — business context stops at this service. See deep-dive at
+    # /admin/tracing/deep#baggage-propagation.
+    app.add_middleware(BaggageContextMiddleware)
 
     try:
         verifier = JWTVerifier(

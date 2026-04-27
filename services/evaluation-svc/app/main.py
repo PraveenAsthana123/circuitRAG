@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 from documind_core.config import BaseServiceSettings, get_settings
 from documind_core.logging_config import setup_logging
 from documind_core.middleware import (
+    BaggageContextMiddleware,
     CorrelationIdMiddleware,
     SecurityHeadersMiddleware,
     TenantContextMiddleware,
@@ -121,6 +122,11 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="DocuMind - Evaluation Service", version="0.1.0", lifespan=lifespan
     )
+    # BaggageContextMiddleware first = innermost; runs after TenantContext
+    # populates request.state, promoting tenant_id / user_id /
+    # correlation_id into W3C baggage for outbound propagation.
+    # See /admin/tracing/deep#baggage-propagation.
+    app.add_middleware(BaggageContextMiddleware)
     app.add_middleware(TenantContextMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
