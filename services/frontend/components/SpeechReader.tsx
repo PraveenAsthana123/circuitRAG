@@ -180,6 +180,9 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const compactMenuRef = useRef<HTMLDetailsElement | null>(null);
   const startSpanRef = useRef<number>(0);
+  // Cancel hook for the in-flight server-TTS chunk queue. stop() calls
+  // this so a queued chunk doesn't keep playing after the user clicked ⏹.
+  const serverChunkCancelRef = useRef<(() => void) | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -286,6 +289,12 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
+    // Abort any in-flight server-TTS chunk queue so subsequent chunks
+    // don't continue playing after the user clicked ⏹.
+    if (serverChunkCancelRef.current) {
+      serverChunkCancelRef.current();
+      serverChunkCancelRef.current = null;
+    }
     setActiveIdx(-1);
     setPlaybackMode(null);
     setActiveAction(null);
@@ -297,6 +306,46 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     compactMenuRef.current?.removeAttribute('open');
   }, []);
 
+  // Chunk text on sentence/paragraph boundaries so each piece is
+  // ≤ MAX_CHARS. Keeps the synthesizer from choking on long pages —
+  // the backend /api/v1/tts caps payload at 4000 chars; browser TTS
+  // chokes around 15 000 in some implementations. Chunks are queued
+  // and played sequentially via one shared <audio> element.
+  const chunkText = useCallback((source: string, maxChars: number = 3800): string[] => {
+    const trimmed = source.trim();
+    if (trimmed.length <= maxChars) return [trimmed];
+    const chunks: string[] = [];
+    // Split on sentence boundaries first
+    const sentences = trimmed.split(/(?<=[.!?])\s+/);
+    let buf = '';
+    for (const s of sentences) {
+      if (s.length > maxChars) {
+        // Single sentence too long — split on whitespace
+        if (buf) { chunks.push(buf); buf = ''; }
+        const words = s.split(/\s+/);
+        let wbuf = '';
+        for (const w of words) {
+          if ((wbuf + ' ' + w).length > maxChars) {
+            if (wbuf) chunks.push(wbuf);
+            wbuf = w;
+          } else {
+            wbuf = wbuf ? `${wbuf} ${w}` : w;
+          }
+        }
+        if (wbuf) buf = wbuf;
+        continue;
+      }
+      if ((buf + ' ' + s).length > maxChars) {
+        if (buf) chunks.push(buf);
+        buf = s;
+      } else {
+        buf = buf ? `${buf} ${s}` : s;
+      }
+    }
+    if (buf) chunks.push(buf);
+    return chunks;
+  }, []);
+
   const speakViaServer = useCallback(async (customText?: string) => {
     const sourceText = (customText ?? text).trim();
     if (!sourceText) return;
@@ -304,48 +353,67 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     setPlaybackMode('server');
     setActiveIdx(-1);
     setServerError('');
+
+    const chunks = chunkText(sourceText, 3800);
+
+    // Single shared <audio> element; sequentially load + play each chunk.
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+    }
+    const audio = audioRef.current;
+    audio.volume = clampVolume(volume);
+
+    let cancelled = false;
+    const cancelAtChunk = () => { cancelled = true; };
+    serverChunkCancelRef.current = cancelAtChunk;
+
     try {
-      const resp = await fetch('/api/v1/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: sourceText, format: 'mp3' }),
-      });
-      if (!resp.ok) {
-        let detail = `TTS request failed with status ${resp.status}`;
-        try {
-          const payload = await resp.json();
-          detail = payload?.detail || detail;
-        } catch {
-          // keep generic
+      for (let i = 0; i < chunks.length; i++) {
+        if (cancelled) break;
+        const piece = chunks[i];
+        const resp = await fetch('/api/v1/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: piece, format: 'mp3' }),
+        });
+        if (!resp.ok) {
+          let detail = `TTS chunk ${i + 1}/${chunks.length} failed with status ${resp.status}`;
+          try {
+            const payload = await resp.json();
+            detail = payload?.detail || detail;
+          } catch {
+            // keep generic
+          }
+          throw new Error(detail);
         }
-        throw new Error(detail);
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+
+        await new Promise<void>((resolve, reject) => {
+          audio.onplay = () => {
+            setPlaybackMode('server');
+            setState('speaking');
+          };
+          audio.onpause = () => setState((current) => (current === 'idle' ? current : 'paused'));
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+            resolve();
+          };
+          audio.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Server audio could not be played by this browser.'));
+          };
+          audio.src = url;
+          audio.load();
+          audio.play().catch(reject);
+        });
+        if (cancelled) {
+          audio.pause();
+          break;
+        }
       }
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      if (!audioRef.current) {
-        audioRef.current = new Audio();
-      }
-      const audio = audioRef.current;
-      audio.src = url;
-      audio.volume = clampVolume(volume);
-      audio.load();
-      audio.onplay = () => {
-        setPlaybackMode('server');
-        setState('speaking');
-      };
-      audio.onpause = () => setState((current) => (current === 'idle' ? current : 'paused'));
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        setPlaybackMode(null);
-        setState('idle');
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        setPlaybackMode(null);
-        setServerError('Server audio could not be played by this browser.');
-        setState('idle');
-      };
-      await audio.play();
+      setPlaybackMode(null);
+      setState('idle');
       return true;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -357,8 +425,10 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
       setPlaybackMode(null);
       setState('idle');
       return false;
+    } finally {
+      serverChunkCancelRef.current = null;
     }
-  }, [text, volume]);
+  }, [text, volume, chunkText]);
 
   const speakFrom = useCallback((startIdx: number, customText?: string) => {
     if (!supported) return;
