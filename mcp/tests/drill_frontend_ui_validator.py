@@ -170,13 +170,28 @@ async def main() -> None:
                 else:
                     print(f"  {GREEN}✓ {report['wraps']} mounts == {report['svgs']} SVGs (≥{mount_floor}){NC}")
 
-                # Step 5: console errors
-                if console_errors:
-                    print(f"  {RED}✗ {len(console_errors)} console error(s):{NC}")
-                    for e in console_errors[:3]:
+                # Step 5: console errors. Filter out the
+                # ClientErrorReporter detection tax (≤1 404 on
+                # /api/v1/admin/client-errors per fresh browser session
+                # when the backend is missing — locked in by
+                # drill_client_error_reporter_suppression).
+                CLIENT_ERROR_404 = "404 (NOT FOUND)"
+                actionable = [
+                    e for e in console_errors
+                    if CLIENT_ERROR_404 not in e
+                ]
+                tax = len(console_errors) - len(actionable)
+                if actionable:
+                    print(f"  {RED}✗ {len(actionable)} console error(s):{NC}")
+                    for e in actionable[:3]:
                         print(f"    {RED}{e[:120]}{NC}")
-                    grand_total_errors += len(console_errors)
+                    grand_total_errors += len(actionable)
                     page_failed = True
+                elif tax > 0:
+                    print(
+                        f"  {GREEN}✓ 0 actionable console errors{NC} "
+                        f"{DIM}({tax} suppressed reporter-detection-tax 404s){NC}"
+                    )
                 else:
                     print(f"  {GREEN}✓ 0 console errors{NC}")
 
