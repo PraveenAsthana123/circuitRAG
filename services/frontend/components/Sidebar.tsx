@@ -182,6 +182,8 @@ const GROUPS: Group[] = [
       { href: '/admin/c4-model/deep', label: 'C4 model (extended for AI)' },
       { href: '/admin/adr/deep', label: 'ADR — Architecture Decision Record' },
       { href: '/admin/jad/deep', label: 'JAD — Joint Application Design' },
+      { href: '/admin/voice-ai/deep', label: 'Voice AI — JFA → ECAPA-TDNN' },
+      { href: '/admin/security/deep', label: 'Security — OWASP + DevSecOps + SOC2' },
     ],
   },
 ];
