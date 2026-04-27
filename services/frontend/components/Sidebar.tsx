@@ -179,6 +179,7 @@ const GROUPS: Group[] = [
       { href: '/admin/techlead/deep', label: 'Tech Lead — API contract' },
       { href: '/admin/eng-manager/deep', label: 'Eng Manager — roadmap + risk' },
       { href: '/admin/technical-plan/deep', label: 'Technical Plan — BRD-to-code' },
+      { href: '/admin/c4-model/deep', label: 'C4 model (extended for AI)' },
     ],
   },
 ];
