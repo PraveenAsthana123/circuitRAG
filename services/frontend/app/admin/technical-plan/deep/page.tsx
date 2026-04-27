@@ -170,7 +170,186 @@ const TOPICS: Topic[] = [
       'mcp/tests/drill_*.py — drills referenced from plans',
       '~/.claude/policies/drill-testing-pattern.md — drill discipline',
     ],
-    interviewLine: 'A technical plan converts a 1-page BRD into a 6-week roadmap with ADRs, drills, and a rollback plan. Reviewed by tech lead, architect, security, and EM before any code lands. Without it, work fragments and the outcome doesn\'t ship. With it, the team builds in parallel and verifies the outcome objectively.',
+    interviewLine: 'A technical plan converts a 1-page BRD into a 6-week roadmap with ADRs, drills, and a rollback plan. Reviewed by tech lead, architect, security, and EM before any code lands.',
+    implementationSteps: [
+      { step: 'Restate BRD in eng terms', logic: 'Outcome + KPIs translated; ambiguities flagged BEFORE code.' },
+      { step: 'Diagram set: HLD + LLD + Network', logic: 'Three views; reviewers find gaps before bugs.' },
+      { step: 'ADR list with reversibility', logic: 'Each irreversible decision has alternatives + cost.' },
+      { step: 'Code change list with PRs + owners', logic: 'Dependency order explicit; parallel-safe PRs identified.' },
+      { step: 'Drill list with negative assertions', logic: 'Each invariant has a test that fails closed if regressed (§43).' },
+      { step: 'Rollback plan + kill switch', logic: 'Paired forward/reverse migrations; rehearsed in staging.' },
+      { step: 'Review board: TL+Arch+Sec+EM', logic: 'Plan approved before code; closed when drills green + KPIs hit.' },
+    ],
+    codeExample: {
+      language: 'markdown',
+      code: `# Technical Plan: per-tenant Token CB (TP-2026-04)
+Owners: ai-platform · Risk-link: RISK-007 · Cycle: 4 weeks
+
+## §0 BRD restated
+Stop tenants from blowing daily LLM budgets. Acceptance:
+  - Token CB enforces daily cap per tenant
+  - Breach returns 429 + Retry-After (next UTC midnight)
+  - Drill verifies enforcement + audit row written
+
+## §11 ADRs
+ADR-052: Per-tenant daily cap stored in Postgres (not Redis-only)
+  - Alternative: Redis with periodic snapshot (faster, less durable)
+  - Decision: PG primary + Redis cache; durability > 5ms latency
+  - Reversibility: medium (data migration if reversed)
+
+## §8 Code change list (4 PRs)
+PR-1: libs/py/documind_core/budget.py — TokenBudgetStore protocol
+PR-2: services/inference-svc — middleware enforces cap
+PR-3: migrations — daily_cost_log table + indexes
+PR-4: docs/ + drill_token_cb.py
+
+## §43 Drills (negative assertions)
+drill_token_cb_enforced — exhaust budget, expect 429 + audit
+drill_token_cb_resets_at_midnight — verify daily reset
+drill_token_cb_per_tenant_isolation — tenant A breach ≠ tenant B blocked
+
+## Rollback
+Kill switch: feature_flag.token_cb=false → bypass middleware
+Forward: 003_token_budget.up.sql; Reverse: 003.down.sql
+Rehearsed in staging on 2026-04-15.
+
+## KPIs measured
+- 100% of tenant breaches return 429 (no silent overruns)
+- Audit row exists for every breach
+- p95 latency overhead < 3ms`,
+    },
+    realUseCase: 'Token CB feature shipped in 4 weeks against this exact plan. Review caught two issues: ADR-052 originally specced Redis-only; reviewers (architect + EM) flagged durability risk. Rollback plan originally lacked the staging rehearsal — added before approval. Drill caught a per-tenant isolation bug 2 days before launch (one tenant\'s breach was incrementing all tenants\' counters). Caught at PR-time, not production.',
+    prosCons: {
+      pros: [
+        'Plan review surfaces gaps before implementation',
+        'Drill list ensures invariants are testable',
+        'Rollback plan tested in staging — not theoretical',
+        'Review board distributes accountability + catches blind spots',
+      ],
+      cons: [
+        '~3-5 days of EM/TL time per plan, up-front',
+        'Slows scrappy work (counter: scrappy work doesn\'t need a plan)',
+        'Plan can become outdated if not revised mid-flight',
+      ],
+    },
+    comparison: {
+      left: '"Just write the code" / ticket-driven work',
+      right: 'Technical plan + review board + drills',
+      rows: [
+        { aspect: 'Surprise during impl', left: 'Found at PR or integration', right: 'Found at plan review' },
+        { aspect: 'Rollback readiness', left: 'Theoretical or untested', right: 'Rehearsed in staging' },
+        { aspect: 'Cross-team dependencies', left: 'Discovered when blocked', right: 'Mapped in code change list' },
+        { aspect: 'Post-launch confidence', left: '"Hopefully works"', right: 'Drills + KPIs measured' },
+      ],
+    },
+    solutions: [
+      { problem: 'Half-shipped features stuck in PR loops', solution: 'Plan dependency order makes parallel-safe PRs explicit' },
+      { problem: 'Untested rollback paths', solution: 'Staging rehearsal before plan approval' },
+      { problem: 'Decisions reconstructed via Slack', solution: 'ADR list per plan; archived in /docs/adr/' },
+      { problem: 'Acceptance criteria fuzzy', solution: 'KPIs from BRD restated; drills verify each' },
+    ],
+    bestPractices: {
+      do: [
+        'Plan reviewed by 4 lenses: TL + architect + security + EM',
+        'Drill list includes at least one negative assertion (§43)',
+        'Rollback rehearsed in staging before approval',
+        'Code change list has dependency DAG + owners',
+        'KPIs from BRD measured post-launch',
+      ],
+      avoid: [
+        'Skipping the security review on "small" features',
+        'Drills that test only happy paths',
+        'Rollback as a plan section without staging rehearsal',
+        'ADRs added after implementation (post-rationalization)',
+      ],
+      optimize: [
+        'Plan template versioned — same shape every time',
+        'Drill scaffolding shared via mcp/tests/templates/',
+        'Cross-link plan ↔ ADR ↔ drill from a search index',
+      ],
+    },
+    antiPatterns: [
+      'Plan as marketing doc (no alternatives, no rollback)',
+      'Single reviewer (loses lens diversity)',
+      'No drills — "we tested manually"',
+      'Rollback plan that\'s never been executed',
+      'KPIs declared but never measured post-launch',
+    ],
+    testTypes: [
+      'Plan review: 4-lens (TL+Arch+Sec+EM) signoff before approval',
+      'Drill discipline: each invariant has a negative-assertion test',
+      'Staging rollback rehearsal: forward + reverse migration tested',
+      'Post-launch KPI measurement vs BRD targets',
+    ],
+    testScenarios: [
+      { scenario: 'Plan review finds gap', expected: 'Plan revised; not approved until resolved' },
+      { scenario: 'Drill fails in CI mid-implementation', expected: 'PR blocks; fix or revert before merge' },
+      { scenario: 'Staging rollback rehearsal fails', expected: 'Plan paused; rollback fixed before approval' },
+      { scenario: 'Post-launch KPI miss', expected: 'Plan re-opened; remediation tracked, not ignored' },
+    ],
+    testData: [
+      { type: 'Plan template', example: 'Markdown w/ §0 BRD, §4 HLD, §11 ADRs, §8 PRs, §43 drills, Rollback, KPIs' },
+      { type: 'Drill scaffold', example: '# RESOURCES + ✓/✗ steps + ALL N STEPS PASSED tail' },
+      { type: 'Rollback rehearsal log', example: 'Staging trace + screenshots + timestamps' },
+    ],
+    debuggingChecklist: [
+      'Plan slipping? Compare PR list to actual; find blocked dependencies',
+      'Drill failing? Read assertion message — it names the invariant',
+      'Rollback nervous? Re-rehearse in staging, not in prod',
+      'KPI miss? Map to which §0 acceptance criterion missed',
+    ],
+    productionIssues: [
+      { issue: 'Per-tenant Token CB shipped but enforcement was global', rootCause: 'Drill tested "exhaust → 429" but not "tenant A breach ≠ tenant B blocked". Negative isolation assertion was missing.' },
+      { issue: 'Migration rolled back at 3am; data corruption', rootCause: 'Reverse migration was written but never rehearsed in staging; column-rename order was wrong.' },
+      { issue: 'Feature shipped, KPI not measured', rootCause: 'Plan closed at code-merge, not at KPI measurement. KPIs slipped a quarter before anyone noticed.' },
+    ],
+    performance: [
+      'Plan write: ~1-2 days for the EM/TL',
+      'Plan review: ~4 hours total across the 4 lenses',
+      'Drill write: ~30 min per invariant',
+      'Staging rollback rehearsal: ~1-2 hours including data restore',
+    ],
+    costConsiderations: [
+      'EM/TL time: ~10% of cycle for the plan + reviews',
+      'Tooling: free — markdown + git + CI + staging env',
+      'ROI: prevents one rollback emergency per quarter',
+    ],
+    observability: [
+      'Plan velocity: time from approval to KPI-measured closure',
+      'Drill coverage: % of invariants with negative-assertion drill',
+      'Rollback readiness: % of plans with rehearsed rollback before approval',
+      'Post-launch KPI hit rate: % of plans where BRD KPIs achieved',
+    ],
+    metrics: [
+      { name: 'plan_approval_to_kpi_measured_days{plan_id}', example: 'Histogram; target p95 ≤ cycle length' },
+      { name: 'plan_drills_negative_count{plan_id}', example: 'Counter; target ≥ 1 per plan (§43)' },
+      { name: 'plan_rollback_rehearsed_total{}', example: 'Ratio to plan_approved_total should be 1.0' },
+      { name: 'plan_kpi_achievement_rate{quarter}', example: 'Gauge; target ≥ 0.85' },
+    ],
+    tradeoffs: [
+      { decision: 'Plan length', tradeoff: 'Too short = gaps; too long = nobody reads it' },
+      { decision: 'Review board size', tradeoff: '4 lenses catches more but takes longer to schedule' },
+      { decision: 'Drill rigor', tradeoff: 'More drills = more confidence but slower iteration' },
+      { decision: 'Rollback rehearsal frequency', tradeoff: 'Every plan = thorough; sample = risk' },
+    ],
+    decisionMatrix: [
+      { option: 'Full technical plan (this)', whenToUse: '≥ 2-week feature, multi-team, regulated, irreversible' },
+      { option: 'Lightweight 1-page', whenToUse: '< 1 week, single team, reversible' },
+      { option: 'No plan / ticket-driven', whenToUse: 'Bug fix, single-PR, well-understood domain' },
+    ],
+    starStory: {
+      situation: 'Per-tenant Token CB feature: 4-week target, blocking 3 customer accounts that had threatened cancellation due to runaway costs.',
+      task: 'Ship in 4 weeks with zero per-tenant isolation bugs and a rehearsed rollback.',
+      action: 'Wrote the plan; review caught durability risk in ADR-052 and missing negative-assertion drill for tenant isolation. Added drill_token_cb_per_tenant_isolation. Rehearsed rollback in staging week 3. Drill caught the isolation bug week 4 day 2.',
+      result: 'Shipped on time. Zero rollback events. KPIs hit (100% breaches → 429, p95 < 3ms overhead). Plan template adopted by sister teams.',
+    },
+    interviewTraps: [
+      'Saying "we have a plan template" without saying who reviews it',
+      'Drill list with no negative assertions',
+      'Rollback plan that\'s only a paragraph (not rehearsed)',
+      'KPIs from BRD that nobody measures post-launch',
+      'ADRs added retroactively to look thorough',
+    ],
     finalScript: 'A technical plan has five sections. BRD restated in our language with KPIs. Architecture diagrams: HLD, Network Flow, LLD per service. ADRs for every irreversible decision with explicit tradeoffs. Code change list with PRs, owners, reviewers, dependency order. Drill list — negative-assertion tests proving the outcome. Rollback plan: kill-switch, paired forward and reverse migrations, data-recovery path tested. Reviewed by tech lead, architect, security, and EM before any code lands. Closed when all drills green and acceptance KPIs measured. Without this, work fragments into tickets that don\'t add up. With it, the team builds in parallel against a shared shape and verifies the outcome objectively.',
   },
 ];
