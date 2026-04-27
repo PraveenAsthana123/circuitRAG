@@ -441,59 +441,114 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     const sliced = sourceText.slice(offset);
     // Apply pronunciation dictionary for cleaner acronym readout
     const spoken = applyPronunciations(sliced);
-    const utter = new SpeechSynthesisUtterance(spoken);
-    utter.rate = rate;
-    utter.pitch = pitch;
-    utter.volume = clampVolume(volume);
-    utter.lang = lang;
-    if (voiceName) {
-      const v = voices.find((x) => x.name === voiceName);
-      if (v) utter.voice = v;
-    }
+
+    // Chrome has a silent ~15k-char cap on a single utterance — long
+    // pages get cut off mid-read with no error. Chunk the spoken text
+    // and queue utterances so the synthesizer reads the full page.
+    // Each chunk gets its own utterance with the same voice/rate/pitch.
+    // The first utterance fires immediately so playback starts fast;
+    // subsequent ones queue automatically (speechSynthesis maintains
+    // a FIFO queue when speak() is called multiple times without
+    // cancel()).
+    const pieces = chunkText(spoken, 4000);
+
     setPlaybackMode('browser');
-    utter.onboundary = (e) => {
-      if (e.name && e.name !== 'word') return;
-      // boundary charIndex is into `spoken`. Map back: pronunciations expand
-      // text length, so use spans[] proportional offset as approximation.
-      // For accuracy we walk spans starting from startSpanRef.
-      const targetCharInSlice = e.charIndex;
-      let bestIdx = startSpanRef.current;
-      for (let i = startSpanRef.current; i < spans.length; i++) {
-        if ((spans[i].start - offset) <= targetCharInSlice) bestIdx = i;
-        else break;
+    let cumulativeOffset = 0;
+    pieces.forEach((piece, idx) => {
+      const utter = new SpeechSynthesisUtterance(piece);
+      utter.rate = rate;
+      utter.pitch = pitch;
+      utter.volume = clampVolume(volume);
+      utter.lang = lang;
+      if (voiceName) {
+        const v = voices.find((x) => x.name === voiceName);
+        if (v) utter.voice = v;
       }
-      setActiveIdx(bestIdx);
-    };
-    utter.onstart = () => {
-      setPlaybackMode('browser');
-      setState('speaking');
-    };
-    utter.onpause = () => setState('paused');
-    utter.onresume = () => setState('speaking');
-    utter.onend = () => {
-      setActiveIdx(-1);
-      setPlaybackMode(null);
-      setState('idle');
-    };
-    utter.onerror = () => {
-      setActiveIdx(-1);
-      setPlaybackMode(null);
-      setState('idle');
-    };
-    utterRef.current = utter;
-    window.speechSynthesis.speak(utter);
-  }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans]);
+      const pieceStartInSpoken = cumulativeOffset;
+      utter.onboundary = (e) => {
+        if (e.name && e.name !== 'word') return;
+        // charIndex is into THIS piece; add piece's start offset for
+        // mapping back to original spans[].
+        const targetCharInSlice = pieceStartInSpoken + e.charIndex;
+        let bestIdx = startSpanRef.current;
+        for (let i = startSpanRef.current; i < spans.length; i++) {
+          if ((spans[i].start - offset) <= targetCharInSlice) bestIdx = i;
+          else break;
+        }
+        setActiveIdx(bestIdx);
+      };
+      // Only fire start/end hooks on first/last piece so the state
+      // machine doesn't churn between chunks.
+      if (idx === 0) {
+        utter.onstart = () => {
+          setPlaybackMode('browser');
+          setState('speaking');
+        };
+      }
+      utter.onpause = () => setState('paused');
+      utter.onresume = () => setState('speaking');
+      if (idx === pieces.length - 1) {
+        utter.onend = () => {
+          setActiveIdx(-1);
+          setPlaybackMode(null);
+          setState('idle');
+        };
+      }
+      utter.onerror = () => {
+        // Don't reset state on a single piece's error mid-queue —
+        // the next piece may still play. Only the LAST piece's
+        // error path resets to idle.
+        if (idx === pieces.length - 1) {
+          setActiveIdx(-1);
+          setPlaybackMode(null);
+          setState('idle');
+        }
+      };
+      if (idx === pieces.length - 1) utterRef.current = utter;
+      window.speechSynthesis.speak(utter);
+      cumulativeOffset += piece.length + 1; // +1 for chunkText join space
+    });
+  }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans, chunkText]);
+
+  // Detect platform-specific install hint for missing voices.
+  const noVoiceHint = useMemo(() => {
+    if (typeof navigator === 'undefined') return '';
+    const ua = navigator.userAgent.toLowerCase();
+    if (/linux/.test(ua) && !/android/.test(ua)) {
+      return 'Linux: install speech-dispatcher + espeak-ng (sudo apt install speech-dispatcher espeak-ng), then restart the browser.';
+    }
+    if (/android/.test(ua)) {
+      return 'Android: enable a TTS engine in Settings → Accessibility → Text-to-speech output.';
+    }
+    if (/iphone|ipad|ipod/.test(ua)) {
+      return 'iOS: voices should be pre-installed. Try a different browser (Safari is most reliable).';
+    }
+    return 'Windows/macOS: voices are usually pre-installed. Try a different browser if Chrome shows zero voices.';
+  }, []);
 
   const speak = useCallback(() => {
     closeCompactMenu();
     const selectedText = getSelectedText();
     setActiveAction('read');
     if (supported && voices.length > 0) {
+      // Browser path — fires word-boundary highlights + pill updates.
       speakFrom(0, selectedText || undefined);
-    } else {
-      void speakViaServer(selectedText || undefined);
+      return;
     }
-  }, [closeCompactMenu, speakFrom, speakViaServer, supported, voices.length]);
+    if (supported && voices.length === 0) {
+      // Loud, actionable error — silent failure was the user's main pain.
+      // Skip server-TTS attempt entirely (it would clobber this message
+      // and likely 404 anyway); user needs to fix the root cause.
+      setServerError(
+        `No browser text-to-speech voices detected (voices.length = 0). ` +
+        `Click 🔊 cannot produce sound until voices are installed. ` +
+        noVoiceHint +
+        ' Word-by-word highlight + the "currently reading" pill require browser TTS — they cannot work without browser-side voices, since server TTS does not expose per-word timing.',
+      );
+      return;
+    }
+    void speakViaServer(selectedText || undefined);
+  }, [closeCompactMenu, speakFrom, speakViaServer, supported, voices.length, noVoiceHint]);
 
   const speakSelected = useCallback(() => {
     closeCompactMenu();
@@ -1128,8 +1183,24 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
         </>
       )}
       {serverError ? (
-        <div style={{ marginTop: 8, fontSize: 12, color: '#991b1b' }}>
-          Speaker error: {serverError}
+        <div
+          role="alert"
+          style={{
+            marginTop: 8,
+            padding: '10px 12px',
+            background: '#fef2f2',
+            border: '2px solid #dc2626',
+            borderRadius: 8,
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: '#7f1d1d',
+            fontWeight: 500,
+            maxWidth: compact ? 360 : 'none',
+            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.15)',
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ Speaker error</div>
+          {serverError}
         </div>
       ) : null}
       {/* CSS Highlight rules — applied to the actual page text via
