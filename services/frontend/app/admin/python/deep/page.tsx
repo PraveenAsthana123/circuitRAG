@@ -21,6 +21,218 @@
  */
 
 import { useState } from 'react';
+import UniversalDeepDive, { type Topic as MasterTopic } from '../../../../components/UniversalDeepDive';
+
+const PYTHON_MASTER_SUMMARY: MasterTopic = {
+  slug: 'python-platform-summary',
+  title: 'Python platform — master interview brief',
+  status: 'shipped',
+  coreConcept: 'Python is the service runtime for async APIs, governed workflows, RAG orchestration, audit, and resilience. Senior-level competence is mutability + async + validation + error taxonomy + lifecycle under production constraints.',
+  oneLiner: 'Python at production scale = async + Pydantic + structured errors + lifespan + drill discipline.',
+  businessContext: 'Multi-tenant SaaS RAG platform: Python services (inference, retrieval, governance, ingestion) wrap async FastAPI endpoints, Pydantic schemas, asyncpg pools, OpenTelemetry traces, and circuit breakers around every external dependency. The discipline distinguishes "scripting" from "production runtime".',
+  fiveW: {
+    what: 'Python services running async FastAPI + Pydantic + asyncpg + OTel + structured exceptions; LoRA training scripts; chunkers; embedding pipelines.',
+    why: 'Python\'s ecosystem (PyTorch, transformers, asyncio) makes it the obvious choice for AI services + dev velocity; production discipline closes the safety gap.',
+    where: 'inference-svc, retrieval-svc, ingestion-svc, governance-svc, eval-svc — all FastAPI; train/ scripts use HF Transformers + PEFT; libs/py/documind_core for shared primitives.',
+    when: 'Every customer request, every ingestion run, every eval cycle.',
+    who: 'Platform engineers own services; ML engineers own training; SREs own runbooks + drills.',
+  },
+  interview30s: 'Python in production demands: async-first I/O via asyncio + asyncpg; Pydantic for every request/response; structured exception taxonomy mapped to HTTP via error_handlers; OTel correlation_id from gateway through services; lifespan hooks for resource init/teardown; pytest + drill suite gating CI. Mutability + async + validation + error taxonomy + lifecycle: master those five and Python becomes a production runtime, not a scripting language.',
+  hld: `flowchart TB
+  C[Client] --> GW[api-gateway]
+  GW --> INF[inference-svc]
+  INF --> RET[retrieval-svc]
+  INF --> GOV[governance-svc]
+  RET --> Q[(Qdrant)]
+  RET --> N[(Neo4j)]
+  GOV --> PG[(Postgres + RLS)]
+  INF --> LLM[Ollama]`,
+  networkFlow: `flowchart LR
+  C[Client] -->|HTTPS+JWT| GW[api-gateway]
+  GW -->|HTTP X-Correlation-ID| INF[inference-svc]
+  INF -->|gRPC| RET[retrieval-svc]
+  INF -->|asyncpg + RLS| PG[(Postgres)]
+  INF -->|HTTP| LLM[Ollama]`,
+  flowchart: `flowchart LR
+  Q[Async request] --> M[Middleware: correlation_id + tenant]
+  M --> R[Router: Pydantic validate]
+  R --> S[Service: business logic]
+  S --> Repo[Repository: tenant_connection]
+  Repo --> DB[(Postgres + RLS)]
+  S --> RES[Response: Pydantic serialize]
+  RES --> Trace[OTel trace + audit log]`,
+  sequence: `sequenceDiagram
+  autonumber
+  participant Cli as Client
+  participant FA as FastAPI
+  participant Svc as Service
+  participant Pool as asyncpg pool
+  participant DB as Postgres
+  Cli->>FA: POST /api/v1/ask
+  FA->>FA: Pydantic validate
+  FA->>Svc: await answer(req)
+  Svc->>Pool: acquire conn
+  Pool->>DB: BEGIN + SET LOCAL tenant
+  Svc->>DB: SELECT chunks
+  DB-->>Svc: rows (RLS filtered)
+  Svc-->>FA: AskResponse
+  FA-->>Cli: stream tokens`,
+  coreLayers: [
+    { layer: 'Async runtime', responsibility: 'asyncio event loop; uvloop in prod; asyncpg pool; httpx async client.' },
+    { layer: 'Validation', responsibility: 'Pydantic v2 models for every request/response; no raw dict in services.' },
+    { layer: 'Error taxonomy', responsibility: 'AppError → NotFoundError/ValidationError/ExternalServiceError; mapped to HTTP via error_handlers.' },
+    { layer: 'Repository', responsibility: 'tenant_connection() context manager; SET LOCAL app.current_tenant; RLS-filtered queries.' },
+    { layer: 'Lifecycle', responsibility: 'FastAPI lifespan: pool init, breaker reset, model warmup, OTel start; teardown reverse order.' },
+    { layer: 'Observability', responsibility: 'JSON structured logs + correlation_id + OTel trace + Prometheus metrics.' },
+  ],
+  lld: `flowchart LR
+  M[Middleware] -->|extract tenant + correlation_id| R[Router]
+  R -->|Depends inject| Svc[Service class]
+  Svc -->|constructor injection| Repo[Repository]
+  Repo -->|async with tenant_connection| Pool[asyncpg pool]
+  Pool -->|conn.fetch SELECT| PG[(Postgres)]`,
+  problem: 'Naive Python services miss async I/O properly, leak connections, lose correlation_id, return raw dicts that drift, and hide errors as 500s. Senior production Python closes each gap.',
+  whyThisApproach: 'Async + Pydantic + structured exceptions + lifespan-managed resources + drill suite produce a Python service that scales horizontally and fails predictably.',
+  whenToUse: ['Customer-facing services', 'Multi-tenant data paths', 'External-dependency-heavy services', 'AI training + eval pipelines'],
+  whenNotToUse: ['One-off scripts', 'Pure compute scripts (Rust/C++ better)', 'Mobile clients (use TypeScript)'],
+  input: 'HTTP request + tenant context + dependencies (DB pool, breakers, audit)',
+  process: ['Middleware extracts correlation_id + tenant_id', 'Router validates via Pydantic', 'Service applies business logic with injected deps', 'Repository wraps tenant_connection() + RLS', 'Response serialized via Pydantic + audit logged'],
+  output: 'Validated response + audit row + trace + cost-log entry',
+  alternatives: [
+    { name: 'Sync Flask + SQLAlchemy', tradeoff: 'Simpler; no async; pool exhaustion on hot path' },
+    { name: 'Go services', tradeoff: 'Faster + typed; smaller AI ecosystem' },
+    { name: 'Node.js / TypeScript', tradeoff: 'Async-native; less ML library coverage' },
+  ],
+  challenges: ['Async/sync interop hazards', 'asyncpg pool tuning', 'Pydantic v1 → v2 migration churn', 'Type-hint discipline at 10K+ LOC'],
+  edgeCases: [
+    { case: 'Sync code in async path blocks event loop', solution: 'Wrap with run_in_executor or use async-native client' },
+    { case: 'Connection pool exhaustion', solution: 'Pool size tuned + statement_timeout + pg_stat_statements review' },
+    { case: 'Pydantic validates partially on optional fields', solution: 'Strict mode + Annotated types' },
+  ],
+  failureModes: [
+    { mode: 'Event loop blocked', detect: 'p99 latency spike + low CPU usage', recover: 'Find sync call in async handler; replace with async client' },
+    { mode: 'Pool exhausted', detect: 'asyncpg pool wait time histogram p95 > 100ms', recover: 'Tune pool size; identify long queries; add statement_timeout' },
+  ],
+  monitoring: ['p50/p95/p99 latency per route', 'Pool wait time + active conn count', 'Pydantic validation failures per route', 'Error rate per AppError subclass'],
+  testing: ['pytest + asyncio + httpx async client', 'Drill suite for invariants', 'Eval gates for ML pipelines', 'Coverage ≥ 80%'],
+  security: ['NOBYPASSRLS app role; tenant_connection() context manager', 'JWT validated at edge; signed claim trusted internally', 'Pydantic validates all inputs; no raw SQL'],
+  scaling: ['10x: pool tune + indexes', '100x: read replicas + horizontal pods', '1000x: per-tenant sharding'],
+  maturity: { mvp: 'Sync Flask scripts', production: 'Async FastAPI + Pydantic + asyncpg + OTel + drills', enterprise: 'Per-tenant adapters + multi-region + advanced observability' },
+  limitations: ['GIL still bites for pure-CPU work', 'Async ecosystem has gaps', 'Type checking is opt-in via mypy'],
+  projectFit: ['libs/py/documind_core/ — shared primitives', 'services/*-svc/ — async FastAPI services', 'mcp/ — MCP servers', 'mcp/tests/drill_*.py — drill suite'],
+  interviewLine: 'Senior Python is mutability + async + validation + error taxonomy + lifecycle under production constraints. Master those five and Python becomes a production runtime, not a scripting language.',
+  implementationSteps: [
+    { step: 'Pin Python version + deps', logic: 'Python 3.11+; requirements pinned; pyproject.toml drives ruff + mypy + black.' },
+    { step: 'Async-first I/O', logic: 'asyncio + asyncpg + httpx async client; never sync I/O in handlers.' },
+    { step: 'Pydantic everywhere at boundaries', logic: 'request/response models; no raw dict in services.' },
+    { step: 'Structured exception taxonomy', logic: 'AppError + subclasses; error_handlers map to HTTP.' },
+    { step: 'Lifespan-managed resources', logic: 'Pool, breaker, OTel init in lifespan; teardown clean.' },
+    { step: 'Drill suite per invariant', logic: 'Each architectural decision has a drill; gates CI.' },
+  ],
+  codeExample: {
+    language: 'python',
+    code: `# services/inference-svc/app/main.py — production FastAPI lifespan + DI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends
+from libs.py.documind_core import config, db, exceptions, error_handlers, logging_config, otel
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = config.get_settings()
+    logging_config.setup_logging(json_format=True)
+    otel.start(service_name="inference-svc")
+    pool = await db.create_pool(settings.dsn)
+    app.state.pool = pool
+    yield
+    await pool.close()
+    otel.shutdown()
+
+app = FastAPI(lifespan=lifespan, default_response_class=JSONResponse)
+
+# Middleware order: correlation_id → security headers → tenant → rate-limit
+app.add_middleware(CorrelationIdMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(TenantMiddleware)
+app.add_middleware(RateLimitMiddleware)
+
+# Error taxonomy → HTTP
+app.add_exception_handler(exceptions.AppError, error_handlers.app_error_handler)
+app.add_exception_handler(Exception, error_handlers.unhandled_exception_handler)
+
+app.include_router(ask_router)
+app.include_router(admin_router)`,
+  },
+  realUseCase: 'Inference-svc started as a sync Flask + SQLAlchemy MVP. Pool exhaustion under load. Migrated to async FastAPI + asyncpg + Pydantic + lifespan. p95 latency dropped 60%; pool exhaustion vanished. Drill discipline (per-invariant test) caught 4 regressions in the first quarter.',
+  prosCons: {
+    pros: ['AI/ML ecosystem unmatched', 'Async + Pydantic give production discipline', 'Massive library coverage', 'Quick iteration'],
+    cons: ['GIL limits pure-CPU work', 'Type discipline opt-in', 'Async/sync mixing hazards'],
+  },
+  comparison: {
+    left: 'Sync Flask + SQLAlchemy',
+    right: 'Async FastAPI + asyncpg + Pydantic (this)',
+    rows: [
+      { aspect: 'Latency under load', left: 'Pool exhaustion', right: 'Async I/O scales' },
+      { aspect: 'Validation discipline', left: 'Mixed', right: 'Pydantic at boundaries' },
+      { aspect: 'Error semantics', left: '500 catch-all', right: 'AppError taxonomy → HTTP' },
+      { aspect: 'Resource lifecycle', left: 'Manual init/teardown', right: 'lifespan ctx manager' },
+    ],
+  },
+  solutions: [
+    { problem: 'Sync I/O blocks event loop', solution: 'asyncpg + httpx async client + run_in_executor for unavoidable sync' },
+    { problem: 'Pool exhaustion', solution: 'pool size + statement_timeout + slow query review' },
+    { problem: '500-only error UX', solution: 'AppError + error_handlers map to specific HTTP codes' },
+    { problem: 'Resource leak on shutdown', solution: 'lifespan teardown reverse order' },
+  ],
+  bestPractices: {
+    do: ['Async-first I/O', 'Pydantic at every boundary', 'AppError taxonomy', 'lifespan-managed resources', 'Drill per invariant', 'Type hints + mypy'],
+    avoid: ['Sync I/O in async handlers', 'Raw dict returns', '500-only error handling', 'Module-level mutable state', 'Skipping lifespan teardown'],
+    optimize: ['uvloop in prod', 'Connection pool warm at startup', 'Statement-prep cache', 'Quantize ML inference where allowed'],
+  },
+  antiPatterns: ['Sync I/O in async path', 'Raw dict in service layer', 'Module-level cache', 'Skipping Pydantic on inputs', 'No drill suite'],
+  testTypes: ['Unit (pytest)', 'Async integration (pytest-asyncio + httpx)', 'Drill (real services)', 'Eval (golden ML sets)', 'Coverage gate ≥ 80%'],
+  testScenarios: [
+    { scenario: 'Async handler awaits sync DB call', expected: 'Drill catches event-loop block via latency spike with low CPU' },
+    { scenario: 'Pydantic validation fails', expected: '422 with structured field errors' },
+    { scenario: 'External service unreachable', expected: 'Breaker opens; ExternalServiceError; 503 to client' },
+  ],
+  testData: [
+    { type: 'pytest fixtures', example: 'isolated tmp PG via pytest-postgresql; per-test session' },
+    { type: 'Drill scaffolds', example: 'mcp/tests/drill_*.py — real services + real DB' },
+    { type: 'Eval golden sets', example: 'data/eval/*.jsonl — labeled (input, expected) pairs' },
+  ],
+  debuggingChecklist: ['Slow async route? Find sync call', 'Pool exhausted? statement_timeout + pg_stat_statements', '500 instead of 4xx? AppError mapping', 'Resource leak? lifespan teardown order'],
+  productionIssues: [
+    { issue: 'p99 latency 8s spike with low CPU', rootCause: 'Sync requests.get() in async path; event loop blocked' },
+    { issue: 'Pool exhausted at peak', rootCause: 'No statement_timeout; runaway query held conn' },
+    { issue: 'Memory leak after rolling deploy', rootCause: 'Lifespan teardown skipped pool.close(); orphan connections' },
+  ],
+  performance: ['Async route p95: ~50-200ms', 'Pool wait time: < 5ms p95', 'Pydantic overhead: ~0.5ms per round trip'],
+  costConsiderations: ['Compute: shared with services', 'Test: pytest fast iterators', 'CI gate: 80% coverage minimum'],
+  observability: ['Trace via OTel correlation_id', 'JSON structured logs', 'Prometheus metrics per route', 'Decision audit per request_id'],
+  metrics: [
+    { name: 'documind_request_duration_seconds{service,route,p}', example: 'Histogram per route' },
+    { name: 'documind_pool_wait_seconds{p}', example: 'Histogram; alert p95 > 100ms' },
+    { name: 'documind_pydantic_validation_failures_total{route}', example: 'Counter; spike = bad client' },
+  ],
+  tradeoffs: [
+    { decision: 'Async vs sync', tradeoff: 'Async scales but adds complexity' },
+    { decision: 'Pydantic v1 vs v2', tradeoff: 'v2 is faster; migration churn' },
+    { decision: 'Type strictness', tradeoff: 'Strict mypy = catch bugs early; slower dev' },
+  ],
+  decisionMatrix: [
+    { option: 'Async FastAPI + asyncpg (this)', whenToUse: 'Production multi-tenant services' },
+    { option: 'Sync Flask', whenToUse: 'Internal tool, low concurrency' },
+    { option: 'Go service', whenToUse: 'Pure-CPU + low-latency hot path' },
+  ],
+  starStory: {
+    situation: 'Inference-svc was sync Flask + SQLAlchemy; pool exhaustion at 100 RPS.',
+    task: 'Scale to 1000 RPS without rewriting business logic.',
+    action: 'Migrated to async FastAPI + asyncpg. Added Pydantic at boundaries. AppError taxonomy. Lifespan-managed pool. Drill suite per invariant.',
+    result: 'p95 latency dropped 60%. Pool exhaustion gone. 4 invariant regressions caught by drills in the first quarter.',
+  },
+  interviewTraps: ['Sync I/O in async path', 'Raw dict returns', 'No lifespan teardown', 'Module-level mutable state', '500-only error handling'],
+  finalScript: 'Senior production Python is async-first, Pydantic-validated, AppError-taxonomized, lifespan-managed, and drill-tested. asyncio + asyncpg avoid pool exhaustion. Pydantic at boundaries prevents shape drift. AppError + error_handlers map exceptions to HTTP. Lifespan ctx manager owns resource init/teardown. Per-invariant drills gate CI. Master mutability + async + validation + error taxonomy + lifecycle, and Python is a production runtime, not a scripting language.',
+};
 
 interface Topic {
   slug: string;
@@ -603,6 +815,9 @@ export default function PythonDeepPage() {
           </p>
         </div>
       </div>
+
+      {/* Master template summary — UniversalDeepDive view of the page theme */}
+      <UniversalDeepDive t={PYTHON_MASTER_SUMMARY} />
 
       {/* TOC */}
       <div className="card">

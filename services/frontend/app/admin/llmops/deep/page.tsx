@@ -21,6 +21,236 @@
  */
 
 import Mermaid from '../../../../components/Mermaid';
+import UniversalDeepDive, { type Topic as MasterTopic } from '../../../../components/UniversalDeepDive';
+
+const LLMOPS_MASTER_SUMMARY: MasterTopic = {
+  slug: 'llmops-platform-summary',
+  title: 'LLMOps platform — master interview brief',
+  status: 'shipped',
+  coreConcept: 'LLMOps is the operational discipline that turns LLM-based systems from demos into production: model + prompt + retrieval + agent versioning, drift detection, cost gating, and audit traceability.',
+  oneLiner: 'LLMOps = MLOps + AI-specific governance (prompt versioning, hallucination, agent budgets, decision audit).',
+  businessContext: 'Multi-tenant SaaS RAG/agent platform must version everything that changes behavior (prompt, model, retrieval, rules), gate with evals, monitor drift + cost + fairness, and reconstruct any decision after the fact.',
+  fiveW: {
+    what: 'Prompt registry, model registry, retrieval-config registry, eval harness, cost log, decision audit, agent kill-switch, drift monitor.',
+    why: 'AI behavior changes on prompt/model/retrieval/rule edits — without versioning + eval gates, regressions ship silently.',
+    where: 'governance-svc (prompts/models/audit), eval-svc (eval harness), inference-svc (cost log), agent-svc (kill-switch).',
+    when: 'Every change to prompt/model/retrieval/rules; every customer request; every billing cycle.',
+    who: 'AI platform engineers + ML engineers own LLMOps; SRE owns drift + cost dashboards; compliance owns audit chain.',
+  },
+  interview30s: 'LLMOps is MLOps for LLM-based systems. Version every behavior-changing artifact: prompts, models, retrieval configs, business rules, agent tool policies. Gate every change on eval (golden set + held-out). Log every decision: input + retrieved chunks + prompt version + model version + output + confidence + cost + override. Monitor drift weekly, cost per request, hallucination rate, fairness gap. Provide an agent kill-switch (depth + cost + time). Reconstruct any decision via correlation_id. Without LLMOps, AI features ship hopes; with it, they ship invariants.',
+  hld: `flowchart TB
+  PROMPT[Prompt registry] --> INF[inference-svc]
+  MODEL[Model registry] --> INF
+  RETR[Retrieval config] --> RET[retrieval-svc]
+  RULES[Rule engine] --> AG[agent-svc]
+  INF --> AUDIT[Decision audit]
+  AG --> AUDIT
+  AUDIT --> REC[Reconstruction view]
+  EVAL[Eval harness] --> CI[CI gate]
+  COST[Cost log] --> FIN[FinOps dashboard]
+  DRIFT[Drift monitor] --> ALERT[Alert]`,
+  networkFlow: `flowchart LR
+  Cli[Client] -->|HTTPS| GW[api-gateway]
+  GW --> INF[inference-svc]
+  INF -->|prompt_version + model_version| GOV[governance-svc]
+  GOV -->|hash-chained audit| PG[(Postgres)]
+  INF -->|cost log| FIN[FinOps]`,
+  flowchart: `flowchart LR
+  R[Request] --> RetR[Retrieve chunks]
+  RetR --> P[Build prompt: prompt_v + chunks]
+  P --> M[LLM: model_v + temperature]
+  M --> O[Output + cost + confidence]
+  O --> AUD[Decision audit row]
+  AUD --> REC[Reconstruction by correlation_id]`,
+  sequence: `sequenceDiagram
+  autonumber
+  participant Cli as Client
+  participant Inf as inference-svc
+  participant Reg as Registry
+  participant LLM
+  participant Aud as governance-svc
+  Cli->>Inf: ask
+  Inf->>Reg: get prompt_v + model_v
+  Reg-->>Inf: pinned versions
+  Inf->>LLM: prompt + model
+  LLM-->>Inf: tokens + cost
+  Inf->>Aud: decision audit row
+  Aud-->>Inf: ack
+  Inf-->>Cli: response`,
+  coreLayers: [
+    { layer: 'Versioning', responsibility: 'Prompt + model + retrieval config + rules each in registry; pinned per-tenant.' },
+    { layer: 'Eval', responsibility: 'Golden set + held-out + production sample; gates every release.' },
+    { layer: 'Cost & FinOps', responsibility: 'Per-request token + USD log; per-tenant budget; alert on overrun.' },
+    { layer: 'Drift', responsibility: 'Embedding drift + recall drift + hallucination rate weekly review.' },
+    { layer: 'Audit', responsibility: 'Hash-chained per-tenant decision log; reconstructible by correlation_id.' },
+    { layer: 'Agent control', responsibility: 'Kill-switch (depth + cost + time); per-call OPA scope.' },
+  ],
+  lld: `flowchart LR
+  PromptReg[Prompt registry] --> Pinned[(prompt_v=v3.2)]
+  ModelReg[Model registry] --> Pinned2[(model_v=mistral-7b-v0.2)]
+  Pinned --> InfAudit[Audit row]
+  Pinned2 --> InfAudit
+  Cost[Cost calc] --> InfAudit
+  Confidence[Confidence calc] --> InfAudit
+  InfAudit --> Chain[(hash chain per tenant)]`,
+  problem: 'AI features without LLMOps regress silently on every prompt/model edit, blow budgets without warning, hallucinate without detection, and become unauditable post-incident.',
+  whyThisApproach: 'Version everything that changes behavior + eval-gate every change + log every decision = a decision system, not a prompt-engineering hobby.',
+  whenToUse: ['Production AI features', 'Multi-tenant LLM platforms', 'Regulated domains', 'Anywhere reproducibility matters'],
+  whenNotToUse: ['Personal hackathon', 'Pre-PMF prototype'],
+  input: 'Prompt edit / model swap / retrieval-config change / rule update / per-request user query',
+  process: ['Registry pin per tenant', 'Eval gate on change', 'Per-request decision audit', 'Drift + cost monitor', 'Reconstruction by correlation_id'],
+  output: 'Versioned + evaluated + audited AI decisions; per-incident reconstruction',
+  alternatives: [
+    { name: 'Hardcoded prompt + model in service code', tradeoff: 'Simple; behavior changes invisible' },
+    { name: 'Vendor LLMOps (Weights & Biases, Arize)', tradeoff: 'Faster to start; vendor lock-in + cost per call' },
+    { name: 'Self-hosted (this)', tradeoff: 'Full control + audit; ops cost' },
+  ],
+  challenges: ['Prompt drift detection', 'Model upgrade without recall regression', 'Cost gate without UX hit', 'Hallucination measurement'],
+  edgeCases: [
+    { case: 'Prompt edit ships without eval', solution: 'CI gate forbids merges without eval pass' },
+    { case: 'Model upgrade silent recall drop', solution: 'Shadow index + canary + recall regression alert' },
+    { case: 'Cost spike on hot tenant', solution: 'Token CB throttle + alert tenant admin' },
+  ],
+  failureModes: [
+    { mode: 'Audit chain broken', detect: 'drill_audit_seal red', recover: 'Investigate write path; restore from chain' },
+    { mode: 'Drift undetected', detect: 'Weekly drift review missed', recover: 'Lower threshold; add automated alert' },
+  ],
+  monitoring: ['Per-prompt-version success rate', 'Per-model recall + hallucination', 'Cost per tenant per day', 'Audit chain seal verification'],
+  testing: ['Drill: prompt change without eval is blocked', 'Drill: audit chain seal verifies', 'Drill: cost overrun returns 429', 'Eval: golden set pass'],
+  security: ['Per-tenant prompt isolation', 'Audit chain HMAC per tenant', 'Decision logs scope-checked'],
+  scaling: ['Registry: small Postgres tables', 'Audit: partition by tenant_id + month', 'Drift compute: scheduled cron'],
+  maturity: { mvp: 'Inline prompts + no audit', production: 'Registry + eval + audit + drift + cost', enterprise: 'Multi-region audit + advanced drift detection + per-tenant policy' },
+  limitations: ['Drift detection is sampled (not exhaustive)', 'Cost log latency 1-2 min', 'Hallucination measure heuristic'],
+  projectFit: ['governance-svc/ — registries + audit', 'eval-svc/ — eval harness + golden sets', 'libs/py/documind_core/cost.py — cost log', 'mcp/tests/drill_*_audit.py — audit drills'],
+  interviewLine: 'LLMOps treats every prompt edit, model swap, and retrieval-config change as a behavior-changing release that demands versioning + eval gate + decision audit.',
+  implementationSteps: [
+    { step: 'Registry per artifact', logic: 'Prompts + models + retrieval configs + rules; each versioned and pinnable per tenant.' },
+    { step: 'Eval harness gates change', logic: 'Golden set + held-out + production sample; CI gate.' },
+    { step: 'Decision audit per request', logic: 'correlation_id + prompt_v + model_v + output + cost + confidence + override.' },
+    { step: 'Hash-chained per-tenant log', logic: 'Tamper-evident; verified by drill_audit_seal weekly.' },
+    { step: 'Drift + cost dashboards', logic: 'Per-tenant per-day; alert on threshold breach.' },
+    { step: 'Agent kill-switch + per-call scope', logic: 'Depth + cost + time bounds; OPA scope check per tool.' },
+  ],
+  codeExample: {
+    language: 'python',
+    code: `# services/governance-svc/app/registry.py — prompt + model registry
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class PromptVersion:
+    id: str
+    template: str
+    version: str  # e.g., "v3.2"
+    model_compat: list[str]
+    eval_score: float | None
+    deployed_at: datetime
+    deployed_by: str
+
+class PromptRegistry:
+    async def get_pinned(self, tenant_id: str, role: str) -> PromptVersion:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """SELECT * FROM prompts
+                   WHERE tenant_id = $1 AND role = $2 AND is_pinned
+                   ORDER BY deployed_at DESC LIMIT 1""",
+                tenant_id, role,
+            )
+            return PromptVersion(**dict(row))
+
+    async def deploy(self, prompt: PromptVersion, eval_result: EvalResult, actor_id: str):
+        if eval_result.score < self._min_eval_score:
+            raise EvalGateFailed(f"score {eval_result.score} < {self._min_eval_score}")
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "INSERT INTO prompts (id, template, version, eval_score, deployed_at, deployed_by) VALUES (...)",
+                    prompt.id, prompt.template, prompt.version, eval_result.score, datetime.utcnow(), actor_id,
+                )
+                await audit_chain_write(
+                    conn, tenant_id=prompt.tenant_id, actor_id=actor_id,
+                    action="prompt_deployed",
+                    payload={"prompt_id": prompt.id, "version": prompt.version, "eval_score": eval_result.score},
+                )`,
+  },
+  realUseCase: 'A prompt edit was rolling out; eval ran on golden set + caught a 3pp regression on factual-accuracy. CI gate blocked merge. Engineer revised prompt; re-eval passed; deployment proceeded. Without the gate, the regression would have been visible only in production hallucination rate weeks later.',
+  prosCons: {
+    pros: ['Behavior changes are reversible + auditable', 'Eval gate catches regressions BEFORE production', 'Decision audit enables post-incident reconstruction', 'Cost gating prevents runaway bills'],
+    cons: ['Up-front investment (registry + eval + audit infra)', 'Eval golden sets need maintenance', 'Drift detection requires sampling discipline'],
+  },
+  comparison: {
+    left: 'Hardcoded prompts + manual model swap',
+    right: 'LLMOps with registry + eval + audit (this)',
+    rows: [
+      { aspect: 'Prompt change tracking', left: 'git log only', right: 'Registry + eval gate + audit row' },
+      { aspect: 'Model upgrade safety', left: 'Hope', right: 'Shadow index + canary + recall' },
+      { aspect: 'Cost predictability', left: 'Surprise bills', right: 'Token CB + per-tenant cap' },
+      { aspect: 'Post-incident reconstruction', left: 'Slack archeology', right: 'correlation_id audit chain' },
+    ],
+  },
+  solutions: [
+    { problem: 'Prompt regression ships silently', solution: 'Registry + eval gate' },
+    { problem: 'Model upgrade recall drop', solution: 'Shadow index + canary + alert' },
+    { problem: 'Cost runaway', solution: 'Token CB + per-tenant budget' },
+    { problem: 'Audit reconstruction lost', solution: 'correlation_id + hash-chained per-tenant log' },
+  ],
+  bestPractices: {
+    do: ['Version every behavior-changing artifact', 'Eval gate every change', 'Decision audit per request', 'Hash-chained per-tenant log', 'Drift dashboards weekly'],
+    avoid: ['Hardcoded prompts in code', 'Model swap without canary', 'Skipping eval gate', 'Silent cost overruns', 'No audit chain'],
+    optimize: ['Per-tenant registry pinning', 'Eval automation in CI', 'Streaming cost log', 'Drift sampling targeted to risky tenants'],
+  },
+  antiPatterns: ['Hardcoded prompts', 'No eval gate', 'No decision audit', 'Silent cost overruns', 'Unsigned audit logs'],
+  testTypes: ['Drill: prompt change blocked without eval', 'Drill: model upgrade canary', 'Drill: cost overrun returns 429', 'Drill: audit seal verifies', 'Eval: golden set + held-out per release'],
+  testScenarios: [
+    { scenario: 'Prompt edit reduces eval score', expected: 'CI gate blocks merge' },
+    { scenario: 'Model swap silent recall regression', expected: 'Shadow index + canary catches; alert' },
+    { scenario: 'Tenant exceeds daily token budget', expected: '429 + Retry-After; admin alerted' },
+    { scenario: 'Audit chain broken', expected: 'drill_audit_seal red; investigation triggered' },
+  ],
+  testData: [
+    { type: 'Eval golden set', example: '500 (input, expected) pairs per role; recall + factual + tone scored' },
+    { type: 'Cost overrun fixture', example: 'Mock requests + cost log + budget config' },
+    { type: 'Audit chain seed', example: 'Sealed window per tenant; verifier must accept' },
+  ],
+  debuggingChecklist: [
+    'Decision unreproducible? correlation_id missing OR audit row missing',
+    'Eval regression? Compare prompt diff + golden set delta',
+    'Cost spike? Per-tenant cost log + Token CB state',
+    'Drift undetected? Drift threshold + sampling cadence',
+  ],
+  productionIssues: [
+    { issue: 'Prompt regression caught only in prod hallucination rate', rootCause: 'Eval gate not enforcing min score; merged anyway. Threshold + CI gate now hard.' },
+    { issue: 'Audit chain gap of 12 minutes', rootCause: 'Audit DB write timeout 50ms; bursty writes silently dropped. Fail-closed semantics added.' },
+    { issue: 'Tenant blew $400 in tokens overnight', rootCause: 'Token CB existed but feature flag off in prod. Flag turned on + drill ensures enforcement.' },
+  ],
+  performance: ['Registry lookup: ~10ms p95 (Redis cached)', 'Audit write: async ~10ms; doesn\'t block', 'Eval run: ~30-60s for 500-item golden set'],
+  costConsiderations: ['Registry storage: small PG tables', 'Audit storage: ~500 bytes/row × retention', 'Eval compute: dominant cost on heavy golden sets'],
+  observability: ['Trace: per-request prompt_v + model_v + cost + confidence', 'Metrics: prompt_eval_score, model_recall, cost_per_tenant', 'Audit: hash-chained per tenant; verified weekly'],
+  metrics: [
+    { name: 'documind_prompt_eval_score{prompt_id,version}', example: 'Gauge per release; alert on regression' },
+    { name: 'documind_decision_audit_writes_total{tenant,outcome}', example: 'Counter; outcome=success|failure' },
+    { name: 'documind_cost_per_tenant_per_day_usd', example: 'Gauge; alert on threshold breach' },
+    { name: 'documind_drift_score{tenant,metric}', example: 'Gauge weekly; alert if drift > threshold' },
+  ],
+  tradeoffs: [
+    { decision: 'Self-host vs vendor LLMOps', tradeoff: 'Self-host: full control; vendor: fast start' },
+    { decision: 'Eval coverage', tradeoff: 'Big golden set: better; expensive' },
+    { decision: 'Audit retention', tradeoff: 'Long: compliance; storage' },
+  ],
+  decisionMatrix: [
+    { option: 'Self-hosted LLMOps (this)', whenToUse: 'Production multi-tenant AI; regulated' },
+    { option: 'Vendor LLMOps (Arize, W&B)', whenToUse: 'Small team, willing to pay per call' },
+    { option: 'Spreadsheet tracking', whenToUse: 'Hackathon only' },
+  ],
+  starStory: {
+    situation: 'Pre-LLMOps: prompt edits shipped via git; recall regressions caught only in production weeks later.',
+    task: 'Make every behavior change reversible + auditable.',
+    action: 'Built prompt registry + eval harness + decision audit + hash-chained per-tenant log + Token CB + drift dashboards.',
+    result: 'Zero silent regressions in 6 months. EU AI Act audit passed. Pattern documented as ADR-008/009/010.',
+  },
+  interviewTraps: ['Hardcoded prompts in service code', 'No eval gate', 'No decision audit', 'Silent cost overruns'],
+  finalScript: 'LLMOps is the operational discipline behind production AI. Version every prompt + model + retrieval config + rule. Eval-gate every change with golden set + held-out. Decision-audit every request with correlation_id, prompt_v, model_v, output, cost, confidence, override. Hash-chain audit per tenant. Drift + cost dashboards weekly. Agent kill-switch on depth + cost + time. With LLMOps, AI ships invariants; without it, AI ships hopes.',
+};
 
 type Bullet = string;
 
@@ -1084,6 +1314,9 @@ export default function LlmopsDeepPage() {
           </p>
         </div>
       </div>
+
+      {/* Master template summary — UniversalDeepDive view of the page theme */}
+      <UniversalDeepDive t={LLMOPS_MASTER_SUMMARY} />
 
       {/* Table of contents — quick jumps. */}
       <div className="card">
