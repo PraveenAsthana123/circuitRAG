@@ -12,6 +12,7 @@
  * a topic with its own Mermaid diagram and master-template content.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -1354,6 +1355,15 @@ export default function C4ModelDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/adr/deep', label: 'ADR — decision records', why: 'every L2 container choice / L5 governance rule / L7 lifecycle pipeline locks via an ADR' },
+          { href: '/admin/jad/deep', label: 'JAD → BRD → C4 chain', why: 'C4 levels are the architecture artifact downstream of JAD and BRD; new constraint = new mini-JAD before any L1–L7 redraw' },
+          { href: '/admin/security/deep#owasp-stride-ai-threats', label: 'STRIDE per L2 container', why: 'every box in L2 needs an S/T/R/I/D/E table; L5 governance reviews them' },
+          { href: '/admin/tracing/deep#baggage-propagation', label: 'L6 observability — baggage', why: 'L6 wires CompositePropagator + baggage so trace/log/metric all join by tenant_id' },
+          { href: '/admin/checklist/deep', label: 'Production-readiness gate', why: 'C4 L7 lifecycle row in the checklist gates every release' },
+        ]}
+      />
     </div>
   );
 }

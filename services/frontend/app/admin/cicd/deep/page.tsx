@@ -9,6 +9,7 @@
  * contract tests, AI evaluation-based testing).
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -724,6 +725,15 @@ export default function CICDDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: 'Checklist §6 CI/CD + hard-stop #6', why: 'CI/CD rows + untested-AI hard-stop; this page is the implementation reference' },
+          { href: '/admin/post-release/deep', label: 'Auto-rollback wiring', why: 'Argo Rollouts AnalysisTemplate consumes PDV golden + AI signals; CI/CD configures it' },
+          { href: '/admin/security/deep#devsecops-pipeline', label: 'DevSecOps shift-left', why: 'CI gates: secret scan + SAST + SCA + container scan + cosign + SBOM' },
+          { href: '/admin/tracing/deep', label: 'Baggage drill in CI', why: 'drill_baggage_propagation runs in CI; propagator regression = build break' },
+          { href: '/admin/load-testing/deep#k6-jmeter-multi-phase', label: 'k6 smoke gate in CI', why: 'CI < 10 min smoke phase; full multi-phase load nightly outside CI' },
+        ]}
+      />
     </div>
   );
 }

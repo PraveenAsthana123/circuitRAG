@@ -10,6 +10,7 @@
  * container hardening), and cloud security with SOC2 trust principles.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -715,6 +716,15 @@ export default function SecurityDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/c4-model/deep', label: 'STRIDE per L2 container', why: 'every container in C4 L2 needs an S/T/R/I/D/E table; security and architecture co-own L5 governance' },
+          { href: '/admin/guardrails/deep', label: 'AI guardrails (in/out/behavior)', why: 'OWASP A11–A15 (prompt injection, output handling, model theft, excessive agency) implemented as guardrails' },
+          { href: '/admin/pii/deep', label: 'PII detection + masking', why: 'SOC 2 CC6.2 + GDPR PII handling lives in the masking layer; audit log redaction lives here too' },
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop gate', why: 'security-issue is the #1 hard stop; no SAST / SCA / secret-scan green = NO-GO' },
+          { href: '/admin/cicd/deep#cicd-master-pipeline', label: 'DevSecOps gates in CI', why: 'shift-left scans (Bandit / pip-audit / Trivy / cosign / SBOM) implemented in pipeline' },
+        ]}
+      />
     </div>
   );
 }

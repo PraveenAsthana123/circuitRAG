@@ -9,6 +9,7 @@
  * 10 ADRs every AI engineering team should write.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -612,6 +613,15 @@ export default function ADRDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/c4-model/deep', label: 'C4 (7 levels)', why: 'every ADR references the C4 box(es) it affects (e.g. ADR-007 affects L2-box-3, L3-box-1.2)' },
+          { href: '/admin/jad/deep', label: 'JAD → BRD → C4 → ADR chain', why: 'ADRs land at the end of the chain; new mini-JAD precedes any new ADR' },
+          { href: '/admin/architect/deep', label: 'Architect role + ARB', why: 'ARB reviews ADRs; architect signs every Status: Accepted line' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: 'Production-readiness checklist', why: '§1 of the checklist requires ADRs filed for every locked decision in this release' },
+          { href: '/admin/security/deep#cloud-soc2-iam', label: 'SOC2 / ISO 42001 audit trail', why: 'CC8.1 change management = ADRs as evidence; immutable + numbered + reviewed' },
+        ]}
+      />
     </div>
   );
 }

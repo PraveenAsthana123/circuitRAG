@@ -9,6 +9,7 @@
  * pattern that turns logs from "noise" into "story").
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -806,6 +807,15 @@ export default function TracingDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop #5 (no tracing)', why: 'this page IS the implementation of the no-tracing hard-stop check; without baggage propagator, release is blocked' },
+          { href: '/admin/c4-model/deep#level-6-observability', label: 'C4 L6 observability', why: 'L6 wires the propagator + log formatter + Jaeger; this page is the L6 reference implementation' },
+          { href: '/admin/post-release/deep#pdv-monitoring', label: 'PDV — golden + AI signals', why: 'rollback decisions during PDV are filterable by baggage.tenant_id; one Jaeger query per incident' },
+          { href: '/admin/microservices/deep', label: 'Microservices + cross-service', why: 'baggage is the universal microservices contract — N hops, one trace_id, business context everywhere' },
+          { href: '/admin/llmops/deep#audit', label: 'Decision audit row', why: 'audit row keyed by request_id (propagated via baggage); forensics joins trace + draft + audit' },
+        ]}
+      />
     </div>
   );
 }

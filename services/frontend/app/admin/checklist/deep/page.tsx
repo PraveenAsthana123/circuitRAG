@@ -9,6 +9,7 @@
  * The 6 hard-stop conditions form the GO / NO-GO rule.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -779,6 +780,15 @@ export default function ChecklistDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/c4-model/deep', label: 'C4 (7 levels)', why: '§1 architecture row references L1–L7 — checklist cannot be ticked without current diagrams' },
+          { href: '/admin/tracing/deep', label: 'Baggage + forensics', why: '§2 distributed-systems row + hard-stop #5 (no tracing) — both implemented here' },
+          { href: '/admin/post-release/deep#pdv-monitoring', label: 'PDV + rollback decision matrix', why: '§8 observability + §9 deployment + hard-stop #3 (no monitoring) — all gated by PDV' },
+          { href: '/admin/security/deep', label: 'Security (OWASP + STRIDE + DevSecOps)', why: '§7 security rows + hard-stop #1 (security issue) — gated by SAST + SCA + STRIDE' },
+          { href: '/admin/cicd/deep', label: 'CI/CD pipeline + AI eval gate', why: '§6 CI/CD rows + hard-stop #6 (untested AI) — eval gate runs before promote' },
+        ]}
+      />
     </div>
   );
 }

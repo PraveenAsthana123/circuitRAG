@@ -8,6 +8,7 @@
  * AI systems.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -440,6 +441,15 @@ export default function PrinciplesDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/microservices/deep', label: 'Microservices design', why: 'SRP = bounded context per service; DIP = LLMProvider interface; ISP = split EmbedderInterface from ChatInterface' },
+          { href: '/admin/tracing/deep#baggage-propagation', label: 'Factor XI logs + tracing', why: '17-factor extension: structured logs pull baggage_get_all() so every log line is tenant-filterable' },
+          { href: '/admin/llmops/deep', label: 'AI factors 13–17', why: 'models / prompts / evaluation / cost — the AI-specific extensions to 12-factor live here' },
+          { href: '/admin/cicd/deep#tdd-framework-ai', label: 'TDD enforces SOLID', why: 'hard-to-test code = SRP / DIP violation; TDD red phase makes design problems visible' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: 'Checklist §4 Coding', why: 'SOLID + 17-factor + DDD folders + type hints + no N+1 are direct checklist rows' },
+        ]}
+      />
     </div>
   );
 }

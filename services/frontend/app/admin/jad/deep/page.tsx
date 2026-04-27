@@ -11,6 +11,7 @@
  * cost constraints).
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -715,6 +716,15 @@ export default function JADDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/c4-model/deep', label: 'C4 (7 levels)', why: 'JAD outputs Day 2 = draft C4 L1 + L2; the chain is unidirectional during normal flow' },
+          { href: '/admin/adr/deep', label: 'ADR catalog (10 AI-SDLC)', why: 'JAD Day 3 produces 5–15 ADRs covering locked decisions' },
+          { href: '/admin/eng-manager/deep', label: 'Eng manager — roadmap + risk', why: 'JAD risk register feeds the eng manager backlog + risk dashboard' },
+          { href: '/admin/architect/deep', label: 'Architect role', why: 'architect translates JAD output to C4 + ADR; signs the chain' },
+          { href: '/admin/technical-plan/deep', label: 'Technical plan — BRD-to-code', why: 'JAD BRD becomes the technical plan that drives sprint backlog' },
+        ]}
+      />
     </div>
   );
 }
