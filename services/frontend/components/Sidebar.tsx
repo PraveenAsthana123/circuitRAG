@@ -254,6 +254,22 @@ const GROUPS: Group[] = [
       { href: '/admin/load-testing/deep#performance-tuning-outage-playbook', label: 'Tuning + outage playbook' },
     ],
   },
+  {
+    heading: 'CI/CD + TDD',
+    items: [
+      { href: '/admin/cicd/deep', label: 'CI/CD + TDD — overview' },
+      { href: '/admin/cicd/deep#cicd-master-pipeline', label: 'CI/CD · master pipeline + AI gates' },
+      { href: '/admin/cicd/deep#tdd-framework-ai', label: 'TDD · F.I.R.S.T. + contract + AI eval' },
+    ],
+  },
+  {
+    heading: 'Release ops — deploy + verify',
+    items: [
+      { href: '/admin/post-release/deep', label: 'Release ops — overview' },
+      { href: '/admin/post-release/deep#deployment-playbook', label: 'Deployment playbook · strategy fit' },
+      { href: '/admin/post-release/deep#pdv-monitoring', label: 'PDV · golden + AI signals + matrix' },
+    ],
+  },
 ];
 
 /** Left-menu nav. Grouped so the 10+ links are scannable. */
