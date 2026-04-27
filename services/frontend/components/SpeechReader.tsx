@@ -83,23 +83,21 @@ const PRONUNCIATIONS: Record<string, string> = {
   GIL: 'gill',
 };
 
-// Strip special / formatting chars before synthesis. Browser TTS
-// engines literalize these (read "underscore", "dash", "asterisk")
-// which mangles technical content. User: "it should read only text
-// not other things example _ - # special character".
+// Strip special / formatting chars before synthesis. User feedback
+// over multiple iterations: "it should read only text not other
+// things example _ - # special character", "/ : Not required to
+// read / = any arithmetic sign".
 //
-// Replaced with space:
-//   _ - # @ * ` ~ | / \ { } [ ] < > = +
+// Replaced with space (NOT read):
+//   _ * ` ~ | / \\ { } [ ] < > # @ = + : - — – × ÷ ± ≤ ≥ ≠ ^ %
 // Preserved (normal punctuation that helps prosody):
-//   . , ! ? : ; ( ) " '
-// Hyphen between word chars becomes space ("multi-tenant" → "multi tenant")
-// to avoid the engine reading "multi dash tenant".
+//   . , ! ? ; ( ) " '
 function cleanForSpeech(text: string): string {
   let out = text;
   // Hyphen / em-dash / en-dash between non-space chars → space
   out = out.replace(/(?<=\S)[-—–](?=\S)/g, ' ');
-  // Other special chars → space (keeps standard punctuation intact)
-  out = out.replace(/[_*`~|\\<>{}\[\]#@/=+]/g, ' ');
+  // Other special + arithmetic chars → space
+  out = out.replace(/[_*`~|\\<>{}\[\]#@/=+:×÷±≤≥≠^%]/g, ' ');
   // Collapse runs of whitespace
   out = out.replace(/\s+/g, ' ').trim();
   return out;
@@ -795,34 +793,70 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
       document.body;
     if (!root) return [];
     const ranges: Range[] = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node: Node | null;
-    while ((node = walker.nextNode())) {
-      // Skip text inside controls (the toolbar speaks the page, not itself).
-      let p: Node | null = node.parentNode;
-      let inControl = false;
+    // CRITICAL: this set MUST match PageDownloadBar's capture filter
+    // exactly. Otherwise spans[i] (from synth text) misaligns with
+    // domRanges[i] (from DOM walk), and the highlight points at the
+    // wrong word — the user's recurring 'voice and highlighter not in
+    // sync' / 'highlighter still not working' complaint stemmed from
+    // walker capturing div/span chrome text that the synth never read.
+    const SEMANTIC = /^(H1|H2|H3|H4|H5|H6|P|LI|TD|TH|BLOCKQUOTE|FIGCAPTION|DT|DD)$/;
+    // Find each semantic element in document order, then walk ITS
+    // text nodes only. Avoids div/span chrome text leaking into the
+    // range list.
+    const semElements = Array.from(root.querySelectorAll(
+      'h1, h2, h3, h4, h5, h6, p, li, td, th, blockquote, figcaption, dt, dd',
+    ));
+    const seen = new WeakSet<Element>();
+    for (const el of semElements) {
+      if (seen.has(el)) continue;
+      // Skip if any ancestor is a control or has data-speech-skip
+      let p: Element | null = el;
+      let skip = false;
       while (p && p !== root) {
-        const el = p as HTMLElement;
-        const tag = el.tagName;
-        if (tag && /^(BUTTON|SELECT|INPUT|TEXTAREA|LABEL|OPTION)$/i.test(tag)) {
-          inControl = true;
+        const tag = p.tagName;
+        if (/^(BUTTON|SELECT|INPUT|TEXTAREA|LABEL|OPTION|OPTGROUP|CODE|PRE|SVG|NAV|ASIDE)$/i.test(tag)) {
+          skip = true;
           break;
         }
-        if (el.dataset && el.dataset.speechSkip === '1') {
-          inControl = true;
+        if ((p as HTMLElement).dataset?.speechSkip === '1') {
+          skip = true;
           break;
         }
-        p = p.parentNode;
+        p = p.parentElement;
       }
-      if (inControl) continue;
-      const t = (node as Text).nodeValue || '';
-      const re = /\S+/g;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(t)) !== null) {
-        const r = document.createRange();
-        r.setStart(node, m.index);
-        r.setEnd(node, m.index + m[0].length);
-        ranges.push(r);
+      if (skip) continue;
+      // Mark nested semantics so we don't double-count
+      el.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, td, th, blockquote, figcaption, dt, dd').forEach((nested) => seen.add(nested));
+      // Walk text nodes within this semantic element only
+      const localWalker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let node: Node | null;
+      while ((node = localWalker.nextNode())) {
+        // Skip if a nested semantic ancestor (already accounted for)
+        let pn: Node | null = node.parentNode;
+        let nested = false;
+        while (pn && pn !== el) {
+          const tag = (pn as HTMLElement).tagName;
+          if (tag && SEMANTIC.test(tag) && pn !== el) {
+            nested = true;
+            break;
+          }
+          // Also skip text inside controls/code within this element
+          if (tag && /^(BUTTON|SELECT|INPUT|TEXTAREA|CODE|PRE|SVG)$/i.test(tag)) {
+            nested = true;
+            break;
+          }
+          pn = pn.parentNode;
+        }
+        if (nested) continue;
+        const t = (node as Text).nodeValue || '';
+        const re = /\S+/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(t)) !== null) {
+          const r = document.createRange();
+          r.setStart(node, m.index);
+          r.setEnd(node, m.index + m[0].length);
+          ranges.push(r);
+        }
       }
     }
     return ranges;
@@ -894,7 +928,15 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
 
   const idText = cssId(text);
   // Filter to English; classify by gender via name heuristic.
-  const englishVoices = voices.filter((v) => v.lang.startsWith('en'));
+  // US English ONLY — user requirement: 'no uk sound only USA'.
+  // Some voices report 'en-US' explicitly; some report 'en_US' or
+  // just 'en' with US-specific names (Samantha, Alex on macOS).
+  // Match en-US strictly first; if zero match, fall back to any en-*
+  // so Linux espeak (which reports just 'en') still appears.
+  const usVoices = voices.filter((v) => /^en[-_]US$/i.test(v.lang));
+  const englishVoices = usVoices.length > 0
+    ? usVoices
+    : voices.filter((v) => /^en/i.test(v.lang));
   const hasLoadedVoices = voices.length > 0;
   const hasEnglishVoices = englishVoices.length > 0;
   const FEMALE_HINTS = /samantha|karen|fiona|moira|tessa|veena|zira|susan|catherine|female|woman|allison|ava|joanna|kendra|kimberly|salli|amy|emma|lupe|joanna|raveena|aditi|mia|sophia|lilly/i;
