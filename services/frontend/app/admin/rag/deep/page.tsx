@@ -74,6 +74,119 @@ const TOPICS: Topic[] = [
     limitations: ['Heuristic, not algorithmically optimal', 'Chunk boundaries lose some context', 'Tables/figures still hard'],
     projectFit: ['ingestion-svc chunking pipeline', 'Per-tenant Qdrant collections store chunks', 'GuardrailChecker validates citation grounding (commit ada94b9)'],
     interviewLine: 'Answer quality is downstream of retrieval quality, downstream of chunking quality. Chunking is the most operationally-impactful Python layer in the RAG stack.',
+    implementationSteps: [
+      { step: 'Sentence-aware split', logic: 'Sentences via regex /(?<=[.!?])\\s+/; preserve paragraph breaks.' },
+      { step: 'Token-budget windows', logic: '512-1024 tokens with 10-20% overlap; respects sentence/paragraph boundaries.' },
+      { step: 'Stamp metadata', logic: 'document_id + page_no + chunk_no + embedding_version on every chunk.' },
+      { step: 'Section-aware optional', logic: 'For docs with clear h1/h2 structure, weight section breaks higher.' },
+      { step: 'Drill: golden recall', logic: 'Sample queries → expected chunk recall ≥ target.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# services/ingestion-svc/app/parsers/chunker.py — sentence-aware
+import re
+from dataclasses import dataclass
+
+SENT_RE = re.compile(r"(?<=[.!?])\\s+")
+
+@dataclass
+class Chunk:
+    document_id: str
+    page_no: int
+    chunk_no: int
+    text: str
+    embedding_version: str
+
+def chunk_text(text: str, doc_id: str, page_no: int = 0,
+               max_tokens: int = 512, overlap_tokens: int = 64) -> list[Chunk]:
+    sents = SENT_RE.split(text)
+    chunks, buf, buf_tokens, n = [], [], 0, 0
+    for s in sents:
+        st = len(s.split())
+        if buf_tokens + st > max_tokens and buf:
+            chunks.append(Chunk(doc_id, page_no, n, " ".join(buf),
+                                settings.embedding_version))
+            n += 1
+            keep, kt = [], 0
+            for s2 in reversed(buf):
+                kt += len(s2.split())
+                keep.insert(0, s2)
+                if kt >= overlap_tokens: break
+            buf, buf_tokens = keep, kt
+        buf.append(s); buf_tokens += st
+    if buf:
+        chunks.append(Chunk(doc_id, page_no, n, " ".join(buf),
+                            settings.embedding_version))
+    return chunks`,
+    },
+    realUseCase: 'Customer corpus had product manuals with deeply nested sections. Naive 512-token splits broke mid-sentence on 18% of chunks; recall@10 was 79%. Sentence-aware chunker fixed boundaries; recall hit 91%. Adding 64-token overlap caught queries that crossed chunk boundaries — recall went to 94%.',
+    prosCons: {
+      pros: ['Sentence-aware boundaries preserve coherence', 'Overlap catches boundary-crossing queries', 'embedding_version stamp enables zero-downtime upgrades', 'Cheap (CPU only)'],
+      cons: ['Heuristic — fails on weirdly-formatted text', 'Tables and figures still hard', 'Token-counting approximation (whitespace ≠ true tokens)'],
+    },
+    comparison: {
+      left: 'Fixed-size character chunks',
+      right: 'Sentence-aware token chunks (this)',
+      rows: [
+        { aspect: 'Mid-sentence breaks', left: 'Common', right: 'Rare' },
+        { aspect: 'Recall@10', left: '~70-80%', right: '~90-95%' },
+        { aspect: 'Implementation complexity', left: 'Trivial', right: 'Modest' },
+        { aspect: 'Boundary-crossing queries', left: 'Miss', right: 'Caught by overlap' },
+      ],
+    },
+    solutions: [
+      { problem: 'Mid-sentence chunk breaks', solution: 'Sentence regex split + token budget' },
+      { problem: 'Boundary-crossing query miss', solution: '10-20% chunk overlap' },
+      { problem: 'Embedding upgrade re-chunk needed', solution: 'embedding_version stamp + shadow index' },
+      { problem: 'Tables in chunks', solution: 'Detect table → preserve as single chunk OR pass-through to format-specific parser' },
+    ],
+    bestPractices: {
+      do: ['Sentence-aware splits', '512-1024 tokens with 10-20% overlap', 'Stamp embedding_version', 'Drill recall on golden set', 'Per-format parser feeds chunker'],
+      avoid: ['Fixed-size character splits', 'No overlap', 'Mid-sentence boundaries', 'Skipping embedding_version'],
+      optimize: ['Streaming chunk emission for large docs', 'Per-tenant max_tokens override', 'Cache by content_hash + chunker_version'],
+    },
+    antiPatterns: ['Fixed-size chunks', 'No overlap', 'No embedding_version', 'No drill on golden set'],
+    testTypes: ['Drill: chunk boundary respects sentences', 'Drill: golden recall ≥ target', 'Drill: overlap correctness', 'Drill: embedding_version propagated to all chunks'],
+    testScenarios: [
+      { scenario: 'Long paragraph (>2000 tokens)', expected: 'Split at sentence boundaries within budget' },
+      { scenario: 'Bullet list', expected: 'Each bullet preserved or grouped sensibly' },
+      { scenario: 'Boundary-crossing query', expected: 'Overlap catches; chunk hit on neighbor' },
+    ],
+    testData: [
+      { type: 'Mixed-shape corpus', example: 'Product manuals + emails + transcripts; sentence variation' },
+      { type: 'Recall golden set', example: '500 (query, expected chunk_id) pairs' },
+    ],
+    debuggingChecklist: ['Mid-sentence break? Sentence regex broken on edge punctuation', 'Recall regression? Check overlap + chunk size', 'Boundary cross miss? Overlap too small'],
+    productionIssues: [
+      { issue: 'Recall dropped 18% after embedding upgrade', rootCause: 'Re-embed without re-chunk; chunks were old shape. Re-chunked + re-embedded.' },
+      { issue: 'Tables retrieved as garbled', rootCause: 'Generic chunker on PDF table extracted by pdfminer. Pass tables through to a table-specific extractor.' },
+    ],
+    performance: ['Chunker: ~2-5ms per 1000 tokens', 'Sentence regex: trivial', 'Throughput per worker: ~50 docs/s on average'],
+    costConsiderations: ['CPU-only', 'Storage: chunks ~1.2x source text (overlap)', 'Re-chunk on upgrade is bounded'],
+    observability: ['Trace: per-doc chunks emitted + boundary respect rate', 'Metrics: chunks_emitted_total{format}', 'Logs: structured per doc'],
+    metrics: [
+      { name: 'documind_chunks_emitted_total{format}', example: 'Counter; per-format ingest rate' },
+      { name: 'documind_chunk_recall_at_10{tenant}', example: 'Gauge; sampled review trends' },
+      { name: 'documind_chunk_size_tokens{p}', example: 'Histogram; p50 around 512' },
+    ],
+    tradeoffs: [
+      { decision: 'Chunk size', tradeoff: 'Small = better precision; large = better context' },
+      { decision: 'Overlap ratio', tradeoff: 'High = recall + storage; low = lean' },
+      { decision: 'Sentence vs paragraph splits', tradeoff: 'Sentence: finer; paragraph: more context' },
+    ],
+    decisionMatrix: [
+      { option: 'Sentence-aware token chunks (this)', whenToUse: 'Mixed customer corpora, retrieval quality matters' },
+      { option: 'Fixed-size character', whenToUse: 'POC / hackathon / homogeneous corpus' },
+      { option: 'Semantic-similarity chunking', whenToUse: 'High-end RAG; willing to pay compute' },
+    ],
+    starStory: {
+      situation: 'Initial chunker was fixed 1000-character splits. Recall@10 stuck at 73%.',
+      task: 'Boost recall without re-architecting the embedding/index.',
+      action: 'Sentence-aware splits + token budget + overlap. Stamped embedding_version. drill_chunker_recall_golden in CI.',
+      result: 'Recall@10: 73% → 91% on first deploy. After tuning to 64-token overlap: 94%. ADR-006 documents the discipline.',
+    },
+    interviewTraps: ['Fixed-size character chunks', 'No overlap', 'No embedding_version stamp', 'No recall drill on golden set'],
+    finalScript: 'Chunking is the most operationally-impactful Python layer in the RAG stack. Sentences via regex, packed into 512-1024 token windows with 10-20% overlap, respecting paragraph boundaries. Every chunk stamped with document_id, page_no, chunk_no, and embedding_version — last one enables zero-downtime model upgrades via shadow index. Drill measures recall on a labeled golden set; PRs that drop recall fail CI.',
   },
   {
     slug: 'hybrid-retrieval',
