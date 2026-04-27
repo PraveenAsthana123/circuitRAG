@@ -1037,6 +1037,86 @@ async def round(v_prev, labeled_seed, unlabeled_pool, sme_reviewer, eval_runner)
     projectFit: ['eval-svc — preference benchmark', 'governance.preference_log — pairs + thumbs', 'libs/py/documind_core/model_registry.py'],
     interviewLine: 'Alignment trains on preferences. DPO is the modern default. KL anchor prevents collapse. Reward hacking is the always-on risk.',
     finalScript: 'Alignment training is the step after SFT. Instead of teaching format with (input, ideal-output) pairs, you teach preference: answer A is better than answer B. RLHF was the original — train a reward model, then PPO. DPO is the modern default — directly optimize on preference pairs, no separate reward model, half the ops cost. ORPO collapses SFT and alignment into one stage. KTO works with thumbs up/down (no pairs needed). RLAIF replaces human feedback with AI critique to scale beyond human bottleneck. The KL-divergence anchor prevents the model collapsing to short/safe outputs. Eval covers held-out preference plus general benchmarks. Production user-facing models need this; SFT alone is insufficient.',
+    implementationSteps: [
+      { step: 'Collect preference data', logic: 'Pairs (chosen, rejected) OR thumbs (up/down) from production sample.' },
+      { step: 'Pick technique', logic: 'DPO default; RLHF for legacy stack; ORPO for SFT+align combined; KTO for thumbs-only.' },
+      { step: 'KL anchor', logic: 'Reference model prevents collapse to short/safe outputs.' },
+      { step: 'Train + eval', logic: 'Held-out preference benchmark + general benchmark.' },
+      { step: 'Reward-hacking probe', logic: 'Adversarial drill: model gaming the reward without real quality lift.' },
+    ],
+    codeExample: { language: 'python', code: `# train/dpo.py — DPO via TRL
+from trl import DPOTrainer, DPOConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from datasets import load_dataset
+
+base = AutoModelForCausalLM.from_pretrained("out/sft-v1")
+ref = AutoModelForCausalLM.from_pretrained("out/sft-v1")  # frozen reference
+tok = AutoTokenizer.from_pretrained("out/sft-v1")
+
+# Each row: {"prompt", "chosen", "rejected"}
+ds = load_dataset("json", data_files="data/preferences.jsonl")
+
+trainer = DPOTrainer(
+    model=base, ref_model=ref, tokenizer=tok,
+    args=DPOConfig(output_dir="out/dpo-v1", num_train_epochs=1,
+                   per_device_train_batch_size=2, beta=0.1),  # KL strength
+    train_dataset=ds["train"], eval_dataset=ds["validation"],
+)
+trainer.train()` },
+    realUseCase: 'After SFT, model emitted format-correct but verbose answers. Collected 5k preference pairs from production thumbs. DPO trained 6h on A100. Held-out preference win rate: 51% → 73% vs SFT-only. General benchmark unchanged. KL anchor prevented collapse to short outputs.',
+    prosCons: { pros: ['Trains on real preference signal', 'DPO is half the ops of RLHF', 'Refusal training built-in', 'KL anchor prevents collapse'], cons: ['Preference data collection UX investment', 'Reward hacking always-on risk', 'Adds another training stage'] },
+    comparison: { left: 'SFT only', right: 'SFT + DPO alignment (this)', rows: [
+      { aspect: 'Preference win-rate', left: '50%', right: '70-75%' },
+      { aspect: 'Refusal calibration', left: 'Heuristic', right: 'Trained' },
+      { aspect: 'Ops complexity', left: 'One stage', right: 'Two stages' },
+      { aspect: 'Compute (DPO)', left: '~$200', right: '~$300 (1.5x)' },
+    ] },
+    solutions: [
+      { problem: 'SFT plateau on quality', solution: 'DPO on preference pairs lifts win-rate' },
+      { problem: 'Verbose / safe-mode collapse', solution: 'KL anchor to reference model' },
+      { problem: 'Reward hacking', solution: 'Adversarial probe drill + general benchmark guard' },
+      { problem: 'Human feedback bottleneck', solution: 'RLAIF — AI critique scales' },
+    ],
+    bestPractices: { do: ['DPO over RLHF (modern default)', 'KL anchor with beta tuned', 'Held-out preference + general benchmark', 'Adversarial reward-hack probe'], avoid: ['No KL anchor (collapse risk)', 'Skipping general benchmark', 'Treating thumbs-up as ground truth without sampling'], optimize: ['ORPO for one-stage', 'RLAIF for scale', 'Per-tenant alignment if preferences differ'] },
+    antiPatterns: ['No KL anchor', 'PPO when DPO suffices', 'Skipping reward-hack drill'],
+    testTypes: ['Held-out preference eval', 'Reward-hacking probe', 'General benchmark', 'Refusal calibration drill'],
+    testScenarios: [
+      { scenario: 'Trained DPO model on 5k pairs', expected: 'Win-rate ≥ +15pp vs SFT' },
+      { scenario: 'Adversarial reward probe', expected: 'Probe rejected; quality lift real' },
+      { scenario: 'General benchmark check', expected: 'Within 2pp of SFT (no collapse)' },
+    ],
+    testData: [
+      { type: 'Preference pairs', example: '5k (prompt, chosen, rejected) from production thumbs' },
+      { type: 'Held-out preference benchmark', example: '500 unseen pairs; win-rate measured' },
+      { type: 'Adversarial probe', example: 'Crafted prompts that game the reward without real quality' },
+    ],
+    debuggingChecklist: ['Win-rate flat? Pair quality / KL beta', 'General benchmark drop? KL too low; reduce beta', 'Reward hack? Adversarial probe + reward-model audit'],
+    productionIssues: [
+      { issue: 'DPO model became overly cautious', rootCause: 'KL anchor too strong; reduced beta from 0.5 to 0.1.' },
+      { issue: 'Reward hack: short answers preferred', rootCause: 'Length bias in preference labels. Re-collected with length-balanced sampling.' },
+    ],
+    performance: ['DPO train: ~6-12h on A100 for 5k pairs', 'Eval run: ~30min held-out + benchmark', 'Inference: same as SFT model'],
+    costConsiderations: ['DPO compute: ~$300 per training run', 'RLHF compute: ~$1000+', 'Preference collection: UX + ops cost'],
+    observability: ['Preference win-rate trend', 'KL divergence vs reference', 'Reward-hack probe trip count', 'General benchmark trend'],
+    metrics: [
+      { name: 'documind_alignment_win_rate{version}', example: 'Gauge per release; target ≥ +15pp vs SFT' },
+      { name: 'documind_alignment_kl_divergence', example: 'Gauge; alert if drift past beta budget' },
+      { name: 'documind_reward_hack_probe_total{outcome}', example: 'Counter; outcome=detected|missed' },
+    ],
+    tradeoffs: [
+      { decision: 'DPO vs RLHF', tradeoff: 'DPO: half ops; RLHF: legacy + reward-model interpretability' },
+      { decision: 'KL beta', tradeoff: 'High: stable; low: more drift toward preference signal' },
+      { decision: 'Human vs AI feedback (RLAIF)', tradeoff: 'Human: quality; AI: scale' },
+    ],
+    decisionMatrix: [
+      { option: 'DPO (this)', whenToUse: 'Modern default; have preference pairs' },
+      { option: 'RLHF', whenToUse: 'Legacy stack; reward-model interpretability matters' },
+      { option: 'ORPO', whenToUse: 'SFT + alignment in one pass; smaller ops surface' },
+      { option: 'KTO', whenToUse: 'Only thumbs (no pairs)' },
+      { option: 'RLAIF', whenToUse: 'Human feedback bottleneck; AI critique acceptable' },
+    ],
+    starStory: { situation: 'SFT-only model plateaued at 51% preference win-rate vs base.', task: 'Lift quality beyond what SFT provides.', action: '5k production preference pairs; DPO 6h on A100; KL beta 0.1; held-out + general benchmark gates.', result: 'Win-rate 51% → 73%. General benchmark unchanged. Pattern in ADR-014.' },
+    interviewTraps: ['No KL anchor', 'Skipping reward-hack drill', 'PPO when DPO works', 'Treating thumbs as ground truth'],
   },
 
   // ---- 6. PEFT family ----
@@ -1134,6 +1214,88 @@ async def round(v_prev, labeled_seed, unlabeled_pool, sme_reviewer, eval_runner)
     projectFit: ['libs/py/documind_core/peft_loader.py', 'inference-svc — per-request adapter selection', 'mcp/tests/drill_lora_*.py'],
     interviewLine: 'PEFT is how you make per-tenant fine-tuning viable. LoRA is default. QLoRA cheaper. Per-tenant adapters compose at serve time. Cross-tenant drill non-negotiable.',
     finalScript: 'PEFT — parameter-efficient fine-tuning — is the technique that makes per-tenant fine-tuning economically viable. LoRA freezes the base model and trains a low-rank adapter, typically 0.1 to 1 percent of base parameters. QLoRA quantizes the base to 4-bit so you can train a 70-billion-parameter model on a single H100. DoRA decouples magnitude and direction for a small quality lift over LoRA. Adapters compose at serve time: base plus tenant-A plus feature-X. The cost is around $10 to $50 per adapter run versus $1k-10k for full FT. Quality gap is typically under 5%. The drill that gates this is cross-tenant leak — adapter trained on tenant A must never apply to tenant B query. Per-request adapter selection enforced at the serve layer.',
+    implementationSteps: [
+      { step: 'Pick PEFT method', logic: 'LoRA default; QLoRA for big models on small GPUs; DoRA for small quality lift.' },
+      { step: 'Configure adapter', logic: 'r=16-32 typical; target attention projections; bias optional.' },
+      { step: 'Train', logic: '0.1-1% of base params trainable; 3-5 epochs; LoRA at lr 1e-4 to 5e-4.' },
+      { step: 'Save adapter only', logic: '50-200MB per adapter; base frozen and shared.' },
+      { step: 'Per-request adapter selection', logic: 'tenant_id → adapter; loaded into base at serve time.' },
+      { step: 'Cross-tenant drill', logic: 'Tenant A query MUST NOT see tenant B adapter (negative assertion).' },
+    ],
+    codeExample: { language: 'python', code: `# train/peft_lora.py — LoRA + QLoRA pattern
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+# QLoRA: 4-bit base
+bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
+                         bnb_4bit_compute_dtype="bfloat16")
+base = AutoModelForCausalLM.from_pretrained(
+    "mistralai/Mistral-7B-Instruct-v0.2",
+    quantization_config=bnb, device_map="auto",
+)
+base = prepare_model_for_kbit_training(base)
+
+lora = LoraConfig(
+    r=16, lora_alpha=32, lora_dropout=0.05,
+    target_modules=["q_proj","v_proj","k_proj","o_proj"],
+    task_type="CAUSAL_LM", bias="none",
+)
+model = get_peft_model(base, lora)
+# Train normally; save only adapter (50-200MB)
+model.save_pretrained("out/tenant-A-adapter")` },
+    realUseCase: 'Customer A and Customer B both wanted bespoke models. Pre-PEFT: 2 full-FT runs at $10k each = $20k. With LoRA r=16: 2 adapter runs at $50 each = $100. Same base shared. Cross-tenant drill verifies tenant A query never loads tenant B adapter at serve time.',
+    prosCons: { pros: ['Per-tenant FT becomes economic ($10-50)', 'Quality gap to full-FT typically < 5%', 'Adapter swap is fast', 'Compose multiple adapters'], cons: ['Quality ceiling slightly below full-FT', 'Adapter pool ops surface', 'QLoRA precision quirks on edge cases'] },
+    comparison: { left: 'Full FT', right: 'LoRA / QLoRA (this)', rows: [
+      { aspect: 'Cost per train', left: '~$1-10k', right: '~$10-50' },
+      { aspect: 'Storage per variant', left: 'Full base copy (~14GB for 7B)', right: 'Adapter ~50-200MB' },
+      { aspect: 'Quality vs base', left: 'Highest', right: '95-100% of full-FT' },
+      { aspect: 'Per-tenant viability', left: 'Rarely', right: 'Standard' },
+    ] },
+    solutions: [
+      { problem: 'Per-tenant variants too expensive', solution: 'LoRA r=16 brings cost to $10-50' },
+      { problem: '70B model on small GPU', solution: 'QLoRA 4-bit + LoRA' },
+      { problem: 'Cross-tenant adapter leak', solution: 'Tenant_id → adapter routing + drill' },
+      { problem: 'Adapter pool sprawl', solution: 'Per-tenant cache + LRU eviction' },
+    ],
+    bestPractices: { do: ['LoRA r=16-32 on attention projections', 'QLoRA when base ≥ 13B', 'Cross-tenant routing drill', 'Adapter cache with LRU'], avoid: ['Full-FT when LoRA suffices', 'Skipping cross-tenant drill', 'r > 64 (diminishing returns)'], optimize: ['DoRA for small quality lift', 'Mixed-precision (bf16)', 'Gradient checkpointing'] },
+    antiPatterns: ['Full FT without measuring LoRA plateau', 'No cross-tenant routing drill', 'Skip QLoRA on big models'],
+    testTypes: ['Cross-tenant leak drill (negative)', 'Quality vs full-FT delta on golden', 'Adapter load latency benchmark', 'QLoRA vs LoRA delta'],
+    testScenarios: [
+      { scenario: 'Tenant A query at serve', expected: 'Loads tenant A adapter; tenant B never matched' },
+      { scenario: '70B QLoRA on H100', expected: 'Trains successfully; full-precision base would OOM' },
+      { scenario: 'Adapter quality eval', expected: 'Within 5pp of hypothetical full-FT' },
+    ],
+    testData: [
+      { type: 'Per-tenant fixtures', example: '4 tenants × distinct golden sets; cross-load probes' },
+      { type: 'Big-model QLoRA', example: '70B model on single H100 fixture' },
+      { type: 'Quality benchmark', example: 'LoRA vs full-FT on same data; delta measured' },
+    ],
+    debuggingChecklist: ['Quality ceiling? Try DoRA or higher r', 'Cross-tenant leak? Routing layer + drill', 'OOM on big model? QLoRA 4-bit', 'Slow swap? Adapter cache cold'],
+    productionIssues: [
+      { issue: 'Tenant A query loaded tenant B adapter', rootCause: 'Routing fallback on adapter-not-found pulled default; default was tenant B. Drill caught this in CI.' },
+      { issue: 'QLoRA model emitted broken JSON', rootCause: '4-bit compute precision quirk on rare paths. Switched to LoRA bf16 for that customer.' },
+    ],
+    performance: ['LoRA train: ~3-6h on A100', 'QLoRA train: ~6-12h (slower due to dequantize)', 'Adapter swap: ~150-250ms cold; ~5ms warm cache'],
+    costConsiderations: ['LoRA: ~$10-50 per train', 'QLoRA: ~$30-100 (slower)', 'Full FT: ~$1k-10k (compare)', 'Storage: tiny per adapter'],
+    observability: ['Per-adapter eval scores', 'Cross-tenant routing trace', 'Adapter cache hit rate', 'Per-tenant active adapters'],
+    metrics: [
+      { name: 'documind_peft_adapter_active{tenant}', example: 'Gauge; serving capacity tracker' },
+      { name: 'documind_peft_cross_tenant_leak_total', example: 'Counter; alert at any > 0' },
+      { name: 'documind_peft_adapter_load_seconds{p}', example: 'Histogram; p95 < 250ms cold' },
+    ],
+    tradeoffs: [
+      { decision: 'LoRA vs QLoRA', tradeoff: 'LoRA: faster; QLoRA: bigger models on small hardware' },
+      { decision: 'r value', tradeoff: 'Higher: more capacity + cost; lower: cheap but ceiling' },
+      { decision: 'Per-tenant vs shared', tradeoff: 'Per-tenant: bespoke + ops cost; shared: cheaper + uniform' },
+    ],
+    decisionMatrix: [
+      { option: 'LoRA r=16-32 (this)', whenToUse: 'Default for fine-tuning' },
+      { option: 'QLoRA', whenToUse: 'Big base on small GPU' },
+      { option: 'DoRA', whenToUse: 'LoRA quality plateau; need small lift' },
+      { option: 'Full FT', whenToUse: 'Foundational rebuild; PEFT plateau measured' },
+    ],
+    starStory: { situation: 'Customer A + B both wanted bespoke models; full-FT cost would be $20k.', task: 'Make per-tenant FT economic.', action: 'LoRA r=16 on Mistral-7B; 2 adapter runs at $50 each. Cross-tenant routing drill in CI.', result: 'Per-customer cost $50 vs $10k. Pattern adopted across 5 tenants. ADR-015.' },
+    interviewTraps: ['Full FT when LoRA plateau not measured', 'No cross-tenant drill', 'r > 64 wasted compute'],
   },
 
   // ---- 7. RAFT ----
@@ -1239,6 +1401,81 @@ async def round(v_prev, labeled_seed, unlabeled_pool, sme_reviewer, eval_runner)
     ],
     interviewLine: 'RAFT teaches the model to USE RAG correctly — cite the right chunks, ignore distractors, refuse on empty context. The missing link between SFT and pure RAG.',
     finalScript: 'RAFT — Retrieval-Augmented Fine-Tuning — is the missing link between SFT and pure RAG. Each training example is a query plus K retrieved chunks (some gold, some distractors) plus the gold answer with explicit chunk citations. The model learns three things at once: cite the right chunks, ignore distractors, refuse when the context is insufficient. Pure SFT plus RAG gets around 70% citation accuracy in production; RAFT typically lifts that to 90%+. The eval covers citation accuracy, answer accuracy, and refusal calibration. The non-negotiable test is a distractor-injection drill: add a chunk that mentions the right entity but the wrong fact, and verify the model still cites the gold chunk.',
+    implementationSteps: [
+      { step: 'Build RAFT training set', logic: '(query, K chunks with mix of gold + distractors, gold answer with citations).' },
+      { step: 'SFT with citation supervision', logic: 'Loss includes correct citation token positions.' },
+      { step: 'Refusal training', logic: 'Some examples have NO gold chunks; expected output is refusal.' },
+      { step: 'Distractor injection eval', logic: 'Adversarial chunks that mention right entity, wrong fact.' },
+      { step: 'Citation + answer + refusal eval gates', logic: 'All three must meet thresholds before deploy.' },
+    ],
+    codeExample: { language: 'python', code: `# train/raft.py — RAFT example construction
+def make_raft_example(query: str, gold_chunks: list[Chunk],
+                      distractor_chunks: list[Chunk],
+                      gold_answer: str, no_answer_prob: float = 0.1):
+    """Build one RAFT training row."""
+    if random.random() < no_answer_prob:
+        # Refusal training: no gold chunks
+        chunks = distractor_chunks[:5]
+        answer = "I cannot find relevant information in the provided context."
+    else:
+        # Mix gold + distractors
+        chunks = gold_chunks + distractor_chunks[:max(0, 5 - len(gold_chunks))]
+        random.shuffle(chunks)
+        # Answer with explicit citations: [doc_id_X]
+        answer = gold_answer + " " + " ".join(f"[{c.id}]" for c in gold_chunks)
+
+    prompt = f"<context>\\n" + "\\n".join(f"[{c.id}] {c.text}" for c in chunks) + f"\\n</context>\\n\\nQuery: {query}"
+    return {"input": prompt, "output": answer}` },
+    realUseCase: 'Pure SFT-then-RAG: 71% citation accuracy in production. After RAFT (5k examples with distractors + 10% refusal): 92% citation accuracy + 88% refusal calibration. Drill caught a regression where the model cited the distractor chunk that mentioned the right entity but had wrong facts.',
+    prosCons: { pros: ['Lifts citation accuracy 20pp+', 'Teaches refusal calibration', 'Pairs with RAG retrieval naturally', 'Distractor robustness'], cons: ['Training set construction is non-trivial', 'Needs gold-labeled chunks', 'Eval must cover citation + answer + refusal'] },
+    comparison: { left: 'SFT + RAG only', right: 'RAFT (this)', rows: [
+      { aspect: 'Citation accuracy', left: '~70%', right: '~92%' },
+      { aspect: 'Refusal calibration', left: 'Heuristic', right: 'Trained' },
+      { aspect: 'Distractor robustness', left: 'Low', right: 'High' },
+      { aspect: 'Training data complexity', left: 'Simple', right: 'Mix gold + distractors' },
+    ] },
+    solutions: [
+      { problem: 'Citation drift (cites wrong chunk)', solution: 'RAFT teaches citation via supervision' },
+      { problem: 'Hallucinates on empty context', solution: 'Refusal-training examples in RAFT' },
+      { problem: 'Distractor confusion', solution: 'Adversarial chunks mixed in training' },
+    ],
+    bestPractices: { do: ['Mix gold + distractors per example', '10-20% refusal examples', 'Citation-aware loss', 'Distractor-injection drill'], avoid: ['Citation as afterthought', 'No refusal training', 'No distractor adversarial probe'], optimize: ['Per-domain RAFT corpora', 'Top-K varied across examples', 'Multi-citation support'] },
+    antiPatterns: ['SFT-then-RAG without citation training', 'No refusal examples', 'No distractor probe'],
+    testTypes: ['Citation accuracy on golden set', 'Refusal calibration eval', 'Distractor-injection drill (negative)', 'Answer accuracy combined'],
+    testScenarios: [
+      { scenario: 'Query with gold chunks', expected: 'Cites gold; answers correctly' },
+      { scenario: 'Query with no gold chunks', expected: 'Refuses politely (refusal calibration)' },
+      { scenario: 'Distractor mentions right entity, wrong fact', expected: 'Cites gold chunk; not distractor' },
+    ],
+    testData: [
+      { type: 'RAFT golden set', example: '500 (query, gold chunks, distractors, expected answer)' },
+      { type: 'Refusal probe', example: '100 queries with empty/wrong context; expect refusal' },
+      { type: 'Distractor adversarial', example: 'Distractor chunks crafted to confuse' },
+    ],
+    debuggingChecklist: ['Citation drift? Distractor ratio + citation supervision', 'Hallucination on empty context? Refusal training balance', 'Distractor confusion? More adversarial in training'],
+    productionIssues: [
+      { issue: 'Citation accuracy regressed 5pp after RAFT v2', rootCause: 'New distractors all from same domain; reduced diversity. Re-balanced.' },
+      { issue: 'Refusal too aggressive', rootCause: 'No-answer-prob set to 0.3; reduced to 0.1 for balance.' },
+    ],
+    performance: ['RAFT train: ~6-12h on A100 for 5k', 'Eval: ~30min citation + answer + refusal', 'Inference: same as SFT model'],
+    costConsiderations: ['RAFT compute: ~$300-500', 'Gold labeling: significant SME cost', 'Distractor curation: ops effort'],
+    observability: ['Citation accuracy per release', 'Refusal calibration trend', 'Distractor-injection probe trip rate'],
+    metrics: [
+      { name: 'documind_raft_citation_accuracy{version}', example: 'Gauge; target ≥ 0.90' },
+      { name: 'documind_raft_refusal_calibration{version}', example: 'Gauge; target ≥ 0.85' },
+      { name: 'documind_raft_distractor_probe_pass_rate', example: 'Gauge; target ≥ 0.95' },
+    ],
+    tradeoffs: [
+      { decision: 'No-answer-prob', tradeoff: 'Higher: better refusal; risk over-cautious' },
+      { decision: 'Distractor count per example', tradeoff: 'More: harder + better robustness; smaller gold signal' },
+    ],
+    decisionMatrix: [
+      { option: 'RAFT (this)', whenToUse: 'RAG-heavy + citation accuracy matters' },
+      { option: 'SFT only', whenToUse: 'No retrieval' },
+      { option: 'Pure RAG', whenToUse: 'Don\'t care about citation specificity' },
+    ],
+    starStory: { situation: 'Customer was at 71% citation accuracy; missed citations + occasional hallucinations on empty context.', task: 'Lift citation + refusal beyond SFT-then-RAG.', action: '5k RAFT examples with distractors + 10% refusal. Citation supervision in loss.', result: '92% citation accuracy. 88% refusal calibration. ADR-016.' },
+    interviewTraps: ['Citation as afterthought', 'No refusal training', 'No distractor probe'],
   },
 
   // ---- 8. Tool-use / function-calling FT ----
@@ -1347,6 +1584,94 @@ async def round(v_prev, labeled_seed, unlabeled_pool, sme_reviewer, eval_runner)
     projectFit: ['/admin/ai-orchestration/deep — OpenClaw uses this', '/admin/mcp/deep — MCPClient enforces schema', 'libs/py/documind_core/tools.py'],
     interviewLine: 'Tool-use FT teaches the model to emit valid tool calls. Required prerequisite for agents. Schema validation gates execution.',
     finalScript: 'Tool-use fine-tuning teaches the model to emit structured function calls. Each training example is a user query, the list of available tool schemas, and either a ground-truth tool call with arguments, a direct text answer, or a refusal. The model learns four things: when to call a tool, which one, with what arguments, and when to skip and answer directly. Production agents need above 95% schema-valid call rate to be usable; without tool-use FT, base models hallucinate function names and argument shapes. The schema validator gates execution — every emitted call must validate before it runs. Drills cover validity, tool-injection rejection, and refusal calibration. Required prerequisite for any OpenClaw-style worker agent.',
+    implementationSteps: [
+      { step: 'Define tool schemas', logic: 'JSON Schema per tool with required + optional args; types pinned.' },
+      { step: 'Build training set', logic: '(query, tools, ground-truth: call|answer|refusal) tuples from production sample.' },
+      { step: 'Train with structured-output loss', logic: 'Teaches when, which, args, refusal — four decisions.' },
+      { step: 'Schema validator gates execution', logic: 'Emitted call must validate; invalid → reject + reprompt.' },
+      { step: 'Tool-injection drill', logic: 'Adversarial query with bogus tool name; model rejects.' },
+    ],
+    codeExample: { language: 'python', code: `# train/tool_use.py — tool schema + example construction
+TOOL_SCHEMAS = [
+    {"name": "search_docs", "description": "Search corpus",
+     "parameters": {"type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"]}},
+    {"name": "get_user", "description": "Look up user",
+     "parameters": {"type": "object",
+                    "properties": {"user_id": {"type": "string"}},
+                    "required": ["user_id"]}},
+]
+
+def make_example(query: str, action: dict):
+    """action: {'tool_call': {...}} OR {'answer': '...'} OR {'refusal': '...'}"""
+    prompt = f"Tools:\\n{json.dumps(TOOL_SCHEMAS)}\\n\\nQuery: {query}"
+    if "tool_call" in action:
+        completion = json.dumps({"tool_call": action["tool_call"]})
+    elif "answer" in action:
+        completion = json.dumps({"answer": action["answer"]})
+    else:
+        completion = json.dumps({"refusal": action["refusal"]})
+    return {"input": prompt, "output": completion}
+
+# Schema validate at serve time
+def validate_call(emitted: dict, schemas: list[dict]) -> bool:
+    if "tool_call" not in emitted:
+        return False
+    schema = next((s for s in schemas if s["name"] == emitted["tool_call"]["name"]), None)
+    return schema and validate_args(emitted["tool_call"]["arguments"], schema["parameters"])` },
+    realUseCase: 'Base Mistral-7B emitted only ~70% schema-valid tool calls; agents broke on 30% of attempts. After tool-use FT (3k examples covering 12 tools): 96% schema-valid rate. Schema validator caught the remaining 4% before execution; agent retries via reprompt.',
+    prosCons: { pros: ['Schema-valid rate hits 95%+', 'Refusal calibration built-in', 'Multi-tool routing learned', 'Required for production agents'], cons: ['Per-tool training data needed', 'Schema changes require retrain', 'Argument shape variability hard'] },
+    comparison: { left: 'Base model + JSON-schema prompt', right: 'Tool-use FT (this)', rows: [
+      { aspect: 'Schema-valid rate', left: '~70%', right: '~96%' },
+      { aspect: 'Right-tool selection', left: 'Variable', right: 'High' },
+      { aspect: 'Refusal calibration', left: 'Heuristic', right: 'Trained' },
+      { aspect: 'Training cost', left: '0', right: '$200-500 per refresh' },
+    ] },
+    solutions: [
+      { problem: 'Hallucinated tool names', solution: 'Tool-use FT learns valid names' },
+      { problem: 'Wrong argument shapes', solution: 'Schema validator rejects + reprompt' },
+      { problem: 'Tool when answer would do', solution: 'Mix direct-answer examples in training' },
+      { problem: 'Tool injection attack', solution: 'Adversarial drill + refusal training' },
+    ],
+    bestPractices: { do: ['JSON Schema per tool', 'Mix tool-call + answer + refusal examples', 'Schema validator at serve', 'Tool-injection drill'], avoid: ['Free-form tool calls (must be schema-validated)', 'Skipping refusal training', 'Treating model output as trusted'], optimize: ['Per-tool argument validators', 'Reprompt on invalid', 'Schema versioning'] },
+    antiPatterns: ['No schema validator', 'Trust model output blindly', 'No tool-injection drill', 'Mix unrelated tools in same context'],
+    testTypes: ['Schema-valid rate eval', 'Right-tool selection eval', 'Refusal calibration drill', 'Tool-injection adversarial probe'],
+    testScenarios: [
+      { scenario: 'Query needs search_docs', expected: 'Emits valid call with required query arg' },
+      { scenario: 'Query has direct answer', expected: 'Skips tools; answers directly' },
+      { scenario: 'Adversarial bogus tool name', expected: 'Refuses; doesn\'t hallucinate' },
+      { scenario: 'Invalid argument shape emitted', expected: 'Validator rejects + reprompt' },
+    ],
+    testData: [
+      { type: 'Tool-use golden set', example: '500 (query, tools, expected action) pairs' },
+      { type: 'Tool-injection probe', example: 'Adversarial queries with fake tool names' },
+      { type: 'Schema-valid eval', example: 'Validator runs on every emitted call' },
+    ],
+    debuggingChecklist: ['Schema-invalid? Argument shape vs schema', 'Wrong tool? Per-tool eval breakdown', 'Tool when answer fits? Mix more direct-answer training'],
+    productionIssues: [
+      { issue: 'Agent storm because tool kept being called wrong', rootCause: 'Reprompt loop without budget. Added retry cap + fallback.' },
+      { issue: 'Tool-injection succeeded once', rootCause: 'Refusal training inadequate for adversarial. Added tool-injection drill in CI.' },
+    ],
+    performance: ['Tool-use FT train: ~3-6h on A100 for 3k examples', 'Schema validate: <1ms per call', 'Reprompt latency: 1.5x normal call'],
+    costConsiderations: ['Train: ~$200-500 per refresh', 'Validator: free', 'Per-tool training: scales with tool count'],
+    observability: ['Per-tool call rate', 'Schema-valid rate per release', 'Tool-injection probe trip rate', 'Refusal rate'],
+    metrics: [
+      { name: 'documind_tool_use_schema_valid_rate', example: 'Gauge; target ≥ 0.95' },
+      { name: 'documind_tool_use_right_tool_rate', example: 'Gauge; target ≥ 0.90' },
+      { name: 'documind_tool_use_injection_probe_pass', example: 'Gauge; target ≥ 0.99' },
+    ],
+    tradeoffs: [
+      { decision: 'Per-tool vs unified training', tradeoff: 'Per-tool: bespoke quality; unified: scale' },
+      { decision: 'Refusal-prob in training', tradeoff: 'Higher: safer; risk over-cautious agents' },
+    ],
+    decisionMatrix: [
+      { option: 'Tool-use FT (this)', whenToUse: 'Production agents needed' },
+      { option: 'Base + prompt only', whenToUse: 'Demo / hackathon' },
+      { option: 'Vendor function-calling (OpenAI)', whenToUse: 'Willing to pay per-call' },
+    ],
+    starStory: { situation: 'Agents broke on 30% of tool calls due to schema-invalid emissions.', task: 'Lift schema-valid rate to production threshold (95%+).', action: '3k tool-use FT examples covering 12 tools + refusal cases. Schema validator at serve. Tool-injection drill.', result: '96% schema-valid rate. Agents stable. ADR-017.' },
+    interviewTraps: ['No schema validator', 'No tool-injection drill', 'Trust model output', 'No refusal training'],
   },
 
   // ---- 9. Knowledge distillation ----
@@ -1451,6 +1776,96 @@ async def round(v_prev, labeled_seed, unlabeled_pool, sme_reviewer, eval_runner)
     ],
     interviewLine: 'Distillation is the FinOps lever — small student mimics big teacher. 80% quality at 10-20% cost. Held-out eval gates the deploy.',
     finalScript: 'Knowledge distillation is the largest single FinOps lever in production AI. Train a small student model to mimic a large teacher. Two flavors: response distillation, where the student learns from the teacher\'s text outputs, and logit distillation, where the student matches the teacher\'s next-token probability distribution. Logit is higher quality but requires teacher access at training time. Typical result: a 70-billion teacher distills to a 7-billion student at around 80% quality and 10-20% inference cost. Production traffic above some threshold justifies the training investment. The drill compares student to teacher on a held-out eval; if the gap exceeds tolerance, increase distillation data volume or student size. Per-domain students let us serve customized variants without retraining the teacher.',
+    implementationSteps: [
+      { step: 'Pick distillation type', logic: 'Response: cheap, vendor-friendly. Logit: higher quality, needs teacher access.' },
+      { step: 'Generate teacher outputs', logic: 'Run teacher on N prompts; capture outputs (or logits).' },
+      { step: 'Train student', logic: 'Cross-entropy on teacher outputs OR KL-divergence on logits.' },
+      { step: 'Held-out eval gate', logic: 'Student vs teacher gap ≤ tolerance before deploy.' },
+      { step: 'Production canary', logic: '5% traffic; compare metrics; rollout or rollback.' },
+    ],
+    codeExample: { language: 'python', code: `# train/distill.py — response distillation
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+
+teacher_model = "meta-llama/Llama-3-70B-Instruct"  # access via API or local
+student_base = "meta-llama/Llama-3-8B"
+
+# 1. Generate teacher outputs offline (response distillation)
+async def generate_distill_set(prompts: list[str]) -> list[dict]:
+    return [{"prompt": p, "teacher_output": await teacher_call(p)}
+            for p in prompts]
+
+# 2. Train student to mimic
+tok = AutoTokenizer.from_pretrained(student_base)
+student = AutoModelForCausalLM.from_pretrained(student_base)
+
+def fmt(ex):
+    text = f"<s>[INST] {ex['prompt']} [/INST] {ex['teacher_output']}</s>"
+    return tok(text, truncation=True, max_length=2048)
+
+ds = load_dataset("json", data_files="data/distill_set.jsonl").map(fmt)
+
+trainer = Trainer(model=student, args=TrainingArguments(
+    output_dir="out/distill-v1", num_train_epochs=3,
+    per_device_train_batch_size=4, learning_rate=2e-4, bf16=True,
+), train_dataset=ds["train"], eval_dataset=ds["validation"])
+trainer.train()
+
+# Eval gate: student vs teacher on held-out
+gap = evaluate_gap(student, teacher_outputs, gold_set)
+if gap > 0.10:
+    raise EvalGap(f"student-teacher gap {gap} > tolerance")` },
+    realUseCase: 'Customer ran Llama-3-70B at $0.15/query; 100k queries/day = $15k/day. Distilled to Llama-3-8B at 0.78x quality + $0.02/query = $2k/day. Net savings $13k/day = $4.7M/year. Distill compute one-time cost ~$3k. Paid back in ~6 hours.',
+    prosCons: { pros: ['Massive inference cost reduction', '80%+ quality preservation typical', 'Per-domain students composable', 'Training cost amortized fast'], cons: ['Teacher access required (response: API; logit: local)', 'Quality gap real (5-20pp)', 'Can\'t exceed teacher quality', 'Training data volume matters'] },
+    comparison: { left: 'Run teacher in prod', right: 'Distill to student (this)', rows: [
+      { aspect: 'Inference cost', left: '$0.15/query', right: '$0.02/query (~7.5x cheaper)' },
+      { aspect: 'Quality', left: '100%', right: '~80%' },
+      { aspect: 'Training cost', left: '0', right: '~$3k one-time' },
+      { aspect: 'Latency', left: '~5s', right: '~0.8s (~6x faster)' },
+    ] },
+    solutions: [
+      { problem: 'Teacher inference cost too high', solution: 'Distill to smaller student' },
+      { problem: 'Quality gap too wide', solution: 'More distill data OR larger student' },
+      { problem: 'No teacher API access', solution: 'Response distillation works on outputs only' },
+      { problem: 'Per-domain quality', solution: 'Per-domain student fine-tuning on top of distill' },
+    ],
+    bestPractices: { do: ['Generate distill set BEFORE student training', 'Logit distillation if teacher access available', 'Held-out eval gate', 'Production canary'], avoid: ['Distilling from too-small teacher', 'Skipping eval gate', 'Same student size as teacher (no point)'], optimize: ['Mixed-precision train', 'Per-domain student fine-tuning', 'Caching teacher outputs for retrain'] },
+    antiPatterns: ['No eval gate vs teacher', 'Distilling from same-size model', 'Skipping production canary'],
+    testTypes: ['Held-out eval: student vs teacher', 'Production canary metrics', 'Per-domain quality eval', 'Latency + cost benchmark'],
+    testScenarios: [
+      { scenario: 'Distilled 70B → 8B', expected: 'Student within 10pp on held-out; cost 7-10x lower' },
+      { scenario: 'Per-domain student', expected: 'Domain quality matches or exceeds teacher; general slightly worse' },
+      { scenario: 'Production canary 5%', expected: 'Cost ↓; quality metrics within tolerance' },
+    ],
+    testData: [
+      { type: 'Distill prompts', example: '50k diverse prompts (broad domain coverage)' },
+      { type: 'Held-out eval', example: '500 (prompt, teacher-output) pairs not in train' },
+      { type: 'Per-domain probe', example: 'Domain-specific golden sets per tenant' },
+    ],
+    debuggingChecklist: ['Quality gap large? Increase distill data OR student size', 'Slow training? Mixed-precision + bigger batch', 'Per-domain regression? Add domain-specific distill data'],
+    productionIssues: [
+      { issue: 'Student regressed on niche queries', rootCause: 'Distill set lacked domain coverage. Added per-tenant distill data.' },
+      { issue: 'Logit distillation OOMed', rootCause: 'Teacher logits at full vocab (32k) × seq_len. Used top-K logits truncation.' },
+    ],
+    performance: ['Distill compute: ~$1-5k for 50k prompts', 'Student inference: ~5-10x faster than teacher', 'Eval: ~30min held-out comparison'],
+    costConsiderations: ['Training one-time: $1-5k', 'Production saves: dominant', 'Teacher API cost (response distill): $100-1000 for 50k prompts'],
+    observability: ['Student vs teacher quality delta', 'Per-domain regression', 'Production cost trend post-deploy'],
+    metrics: [
+      { name: 'documind_distill_student_teacher_gap_pp', example: 'Gauge; target ≤ 10pp' },
+      { name: 'documind_distill_per_domain_regression{tenant}', example: 'Gauge; alert if regression > 5pp' },
+      { name: 'documind_distill_inference_cost_savings_usd_per_day', example: 'Gauge; trend' },
+    ],
+    tradeoffs: [
+      { decision: 'Response vs logit distillation', tradeoff: 'Logit: higher quality; needs teacher logit access' },
+      { decision: 'Student size', tradeoff: 'Smaller: cheaper inference; bigger gap' },
+      { decision: 'Distill data volume', tradeoff: 'More: better quality; more train cost' },
+    ],
+    decisionMatrix: [
+      { option: 'Distill (this)', whenToUse: 'Production traffic >$ threshold; teacher cost dominant' },
+      { option: 'Run teacher in prod', whenToUse: 'Low traffic; quality > cost' },
+      { option: 'Smaller base + SFT', whenToUse: 'Quality bar lower; no teacher available' },
+    ],
+    starStory: { situation: 'Customer running 70B model at $15k/day inference cost.', task: 'Cut cost without breaking quality.', action: 'Generated 50k distill prompts. Trained 8B student via response distillation. Held-out eval: 8pp gap (within tolerance). Production canary 5% then full.', result: 'Cost dropped to $2k/day. Quality at 78% of teacher. Saved $4.7M/year. Pattern in ADR-018.' },
+    interviewTraps: ['Distill from same-size model', 'No eval gate vs teacher', 'Skipping production canary', 'No per-domain check'],
   },
 
   // ---- 10. Full fine-tuning ----
@@ -1580,6 +1995,93 @@ async def round(v_prev, labeled_seed, unlabeled_pool, sme_reviewer, eval_runner)
     ],
     interviewLine: 'Full FT is the maximum-quality, maximum-cost option. Reserved for foundational rebuilds. PEFT is default in 2025; full FT only after PEFT plateau measured.',
     finalScript: 'Full fine-tuning updates every base-model parameter — no frozen layers, no adapters. The quality ceiling is higher than PEFT but the cost is roughly 100x: a 7B model takes 8 H100s for 1-2 days; a 70B model takes 64 H100s for 3-7 days. In 2025 the default is LoRA or QLoRA — the quality gap to full FT is typically under 5% on most tasks. Full FT is reserved for cases where the gap matters: foundational rebuilds, niche-domain rewrites, capability injection like long-context or multimodal. The brutal rule: don\'t full-FT until you\'ve measured a PEFT plateau and the remaining gap is worth the cost. Per-tenant full-FT is almost never economic. Catastrophic forgetting on general benchmarks is the always-on risk; mix 5-10% general data to mitigate.',
+    implementationSteps: [
+      { step: 'Measure PEFT plateau', logic: 'Push LoRA r=64 + DoRA + epoch tuning; if quality still short, full FT may be justified.' },
+      { step: 'Pick infrastructure', logic: '7B: 8x H100 / 1-2d. 70B: 64x H100 / 3-7d. Cost: $5-50k.' },
+      { step: 'Mix general data', logic: '5-10% general benchmark data prevents catastrophic forgetting.' },
+      { step: 'Train + checkpoint frequently', logic: 'Multi-day jobs need recovery; checkpoint every N steps.' },
+      { step: 'General + domain eval', logic: 'Both must improve (or not regress past tolerance).' },
+      { step: 'Deploy via canary', logic: 'Full-FT changes a lot; canary 5% before rollout.' },
+    ],
+    codeExample: { language: 'python', code: `# train/full_ft.py — full FT with checkpointing + general-data mix
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer
+from datasets import load_dataset, concatenate_datasets
+
+base = "mistralai/Mistral-7B-v0.1"
+tok = AutoTokenizer.from_pretrained(base)
+model = AutoModelForCausalLM.from_pretrained(base, torch_dtype="bfloat16")
+
+# Mix 90% domain + 10% general (catastrophic-forgetting guard)
+domain = load_dataset("json", data_files="data/domain_full.jsonl")["train"]
+general = load_dataset("json", data_files="data/general_mix.jsonl")["train"].select(range(len(domain)//9))
+mixed = concatenate_datasets([domain, general]).shuffle(seed=42)
+
+args = TrainingArguments(
+    output_dir="out/full-ft-v1",
+    num_train_epochs=2, per_device_train_batch_size=2, gradient_accumulation_steps=8,
+    learning_rate=1e-5,  # SMALL LR for full FT (vs 1e-4 for LoRA)
+    warmup_steps=500, lr_scheduler_type="cosine",
+    bf16=True, gradient_checkpointing=True,
+    deepspeed="configs/zero3.json",  # multi-GPU sharding
+    save_strategy="steps", save_steps=500, save_total_limit=3,
+    eval_strategy="steps", eval_steps=500,
+    metric_for_best_model="eval_loss", load_best_model_at_end=True,
+)
+
+trainer = Trainer(model=model, args=args, train_dataset=mixed,
+                  eval_dataset=load_dataset("json", data_files="data/full_eval.jsonl")["validation"])
+trainer.train()` },
+    realUseCase: 'Foundational rebuild for a specialized legal domain. PEFT plateaued at 78% accuracy on legal-specific eval; full FT pushed to 89%. Cost: $35k for 2-day 7B run on 8x H100. Justified by the 11pp quality lift and the customer\'s willingness to fund foundational work.',
+    prosCons: { pros: ['Highest quality ceiling', 'Capability injection (long-context, multimodal)', 'Foundational rebuild for niche domains'], cons: ['~100x cost vs PEFT', 'Catastrophic forgetting risk', 'Per-tenant rarely economic', 'Multi-day recovery if hardware fails'] },
+    comparison: { left: 'PEFT (LoRA + DoRA tuned)', right: 'Full FT (this)', rows: [
+      { aspect: 'Quality ceiling', left: '~95% of full', right: '100%' },
+      { aspect: 'Compute cost', left: '~$50-500', right: '~$5-50k' },
+      { aspect: 'Per-tenant viability', left: 'Standard', right: 'Almost never' },
+      { aspect: 'Catastrophic forgetting risk', left: 'Low', right: 'High (mitigate with general data mix)' },
+    ] },
+    solutions: [
+      { problem: 'PEFT plateau measured; gap matters', solution: 'Full FT (cost-justified by quality lift)' },
+      { problem: 'Catastrophic forgetting', solution: 'Mix 5-10% general data + smaller LR' },
+      { problem: 'Multi-day train risk', solution: 'Frequent checkpointing + recovery script' },
+    ],
+    bestPractices: { do: ['Measure PEFT plateau FIRST', 'Mix general data', 'Smaller LR (1e-5) than LoRA', 'Multi-GPU via DeepSpeed', 'Checkpoint frequently', 'Canary deploy'], avoid: ['Full-FT without PEFT measurement', 'Per-tenant full-FT', 'No general data mix (forgetting)', 'No checkpointing (lose days)'], optimize: ['DeepSpeed ZeRO-3', 'Mixed-precision (bf16)', 'Gradient checkpointing'] },
+    antiPatterns: ['Full FT before PEFT plateau', 'Per-tenant full-FT', 'No general data mix', 'Lose checkpoint = restart from scratch'],
+    testTypes: ['PEFT plateau eval (justify full FT)', 'General benchmark vs base', 'Domain-specific eval', 'Catastrophic-forgetting check'],
+    testScenarios: [
+      { scenario: 'Pre-full-FT PEFT plateau', expected: 'Documented in ADR; gap measurable + worth cost' },
+      { scenario: 'Post-train general benchmark', expected: 'Within 2pp of base (no catastrophic forgetting)' },
+      { scenario: 'Domain eval', expected: '+10pp+ over PEFT (justifies cost)' },
+    ],
+    testData: [
+      { type: 'PEFT-plateau evidence', example: 'LoRA r=64, DoRA, 5+ epochs all hit ceiling X% accuracy' },
+      { type: 'General benchmark', example: 'MMLU subset; check forgetting' },
+      { type: 'Domain eval', example: 'Niche-domain golden set; quality measured' },
+    ],
+    debuggingChecklist: ['Catastrophic forgetting? More general data + smaller LR', 'Train OOM? DeepSpeed ZeRO-3 + grad checkpoint', 'Multi-day failure? Checkpoint recovery', 'No quality lift? PEFT was already at ceiling'],
+    productionIssues: [
+      { issue: 'Full-FT lost MMLU performance', rootCause: 'No general data mix; LR too high. Re-train with 10% general + LR 1e-5.' },
+      { issue: '6h GPU job restart', rootCause: 'No checkpoint; hardware blip. Added checkpoint every 500 steps.' },
+    ],
+    performance: ['7B full FT: ~24-48h on 8x H100 ($5-15k)', '70B full FT: ~3-7 days on 64x H100 ($30-100k)', 'Eval: ~1h general + domain'],
+    costConsiderations: ['$5k-100k per training run', 'Justified only by measured PEFT plateau + foundational rebuild', 'Multi-day rerun cost if checkpoint loss'],
+    observability: ['PEFT plateau evidence in ADR', 'General + domain eval pre/post', 'Catastrophic-forgetting metric trend'],
+    metrics: [
+      { name: 'documind_full_ft_general_benchmark_delta', example: 'Gauge; alert if < -2pp' },
+      { name: 'documind_full_ft_domain_quality_gain_pp', example: 'Gauge; expect ≥ 10pp over PEFT' },
+      { name: 'documind_full_ft_compute_cost_usd', example: 'Counter per train; ADR justifies' },
+    ],
+    tradeoffs: [
+      { decision: 'Full FT vs LoRA', tradeoff: 'Full: 100% quality + 100x cost; LoRA: 95% quality + 1x cost' },
+      { decision: 'General data mix ratio', tradeoff: 'More: less forgetting; less domain emphasis' },
+      { decision: 'Train epochs', tradeoff: 'More: better fit; forgetting risk' },
+    ],
+    decisionMatrix: [
+      { option: 'Full FT (this)', whenToUse: 'PEFT plateau measured; foundational rebuild; quality > cost' },
+      { option: 'PEFT (default)', whenToUse: 'Most fine-tuning' },
+      { option: 'Distill smaller', whenToUse: 'Cost > quality; running too-big teacher' },
+    ],
+    starStory: { situation: 'Specialized legal domain customer; PEFT plateau at 78%; needed 89% threshold for production.', task: 'Foundational rebuild justified by quality gap.', action: 'Documented PEFT plateau in ADR. 7B full FT, 8x H100, 2 days, $35k. Mixed 10% general data. Frequent checkpointing.', result: '89% domain accuracy. General benchmark within 1pp of base. Production canary then full deploy. ADR-019.' },
+    interviewTraps: ['Full FT before PEFT plateau measured', 'Per-tenant full-FT', 'No general data mix', 'No checkpointing'],
   },
 ];
 
