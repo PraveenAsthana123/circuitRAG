@@ -23,6 +23,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 
 type Props = {
   text: string;
@@ -560,29 +561,26 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
         speakOne(i + 1);
         return;
       }
+      // SET HIGHLIGHT FIRST, then queue audio. flushSync forces the
+      // React state commit + DOM paint to happen NOW, before we hand
+      // the utterance to the engine. Result: the highlighted word is
+      // visible on screen before any audio for it begins. User: 'sound
+      // starting early highlight starting late' — fixed by hoisting
+      // setActiveIdx out of utter.onstart and forcing synchronous paint.
+      flushSync(() => {
+        setActiveIdx(startIdx + i);
+      });
+
       const utter = new SpeechSynthesisUtterance(wordText);
       utter.rate = rate;
       utter.pitch = pitch;
       utter.volume = clampVolume(volume);
       utter.lang = lang;
       if (v) utter.voice = v;
-      utter.onstart = () => {
-        // Highlight THIS word as soon as the engine confirms it's
-        // about to speak. Highlight visibly leads audio by the engine's
-        // own onstart-to-audio latency (~30-100ms) plus the React
-        // paint cycle (~16ms). This is the 'highlighter should lead'
-        // requirement satisfied at the voice-engine level.
-        setActiveIdx(startIdx + i);
-      };
       utter.onend = () => {
-        // Schedule next word; tiny defer to avoid engine queueing
-        // weirdness in some browsers
         setTimeout(() => speakOne(i + 1), 0);
       };
       utter.onerror = () => {
-        // Engine error on a single word — log + continue with next.
-        // If many in a row fail, the speakOne(i+1) chain will
-        // eventually exit when wordSpans is exhausted.
         setTimeout(() => speakOne(i + 1), 0);
       };
       window.speechSynthesis.speak(utter);
