@@ -216,6 +216,9 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
   // session — used to suppress the time-based estimator (which would
   // otherwise fight onboundary and produce out-of-sync highlights).
   const boundaryFiredRef = useRef(false);
+  // Cancel hook for the word-by-word loop. stop() flips cancelled=true
+  // so the in-flight speakOne(i) chain exits cleanly.
+  const wordCancelRef = useRef<{ cancelled: boolean } | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -340,6 +343,11 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     if (keepAliveRef.current) {
       clearInterval(keepAliveRef.current);
       keepAliveRef.current = null;
+    }
+    // Cancel the word-by-word loop if running
+    if (wordCancelRef.current) {
+      wordCancelRef.current.cancelled = true;
+      wordCancelRef.current = null;
     }
     setActiveIdx(-1);
     setPlaybackMode(null);
@@ -503,99 +511,84 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     }
   }, []);
 
+  // Word-by-word speak loop. Each word is its own utterance; activeIdx
+  // is set in onstart so the highlight leads the audio (engine speaks
+  // the word AFTER firing onstart). Guarantees voice + highlight sync.
   const speakFrom = useCallback((startIdx: number, customText?: string) => {
     if (!supported) return;
     const sourceText = customText !== undefined ? customText : text;
     if (!sourceText) return;
     window.speechSynthesis.cancel();
-    // If startIdx > 0, slice the text to start from that word.
-    const offset = customText !== undefined ? 0 : (spans[startIdx]?.start ?? 0);
+
+    // Tokenize the source: same regex tokenize() used for spans, so
+    // wordSpans[i] aligns with spans[startIdx + i] when reading the
+    // full page text.
+    const wordSpans = customText !== undefined
+      ? tokenize(customText)
+      : spans.slice(startIdx);
+    if (wordSpans.length === 0) return;
+
     startSpanRef.current = startIdx;
-    const sliced = sourceText.slice(offset);
-    // Apply pronunciation dictionary for cleaner acronym readout
-    const spoken = applyPronunciations(sliced);
-
-    // Chrome has a silent ~15k-char cap on a single utterance — long
-    // pages get cut off mid-read with no error. Chunk the spoken text
-    // and queue utterances so the synthesizer reads the full page.
-    // Each chunk gets its own utterance with the same voice/rate/pitch.
-    // The first utterance fires immediately so playback starts fast;
-    // subsequent ones queue automatically (speechSynthesis maintains
-    // a FIFO queue when speak() is called multiple times without
-    // cancel()).
-    const pieces = chunkText(spoken, 4000);
-
     setPlaybackMode('browser');
-    let cumulativeOffset = 0;
-    pieces.forEach((piece, idx) => {
-      const utter = new SpeechSynthesisUtterance(piece);
+    setState('speaking');
+    setActiveIdx(startIdx);
+    speechStartTimeRef.current = performance.now();
+    boundaryFiredRef.current = true; // word-mode IS the boundary mechanism
+    startKeepAlive();
+
+    // Cancel hook for the word loop
+    const ctrl = { cancelled: false };
+    wordCancelRef.current = ctrl;
+
+    const v = voices.find((x) => x.name === voiceName);
+
+    const speakOne = (i: number) => {
+      if (ctrl.cancelled) return;
+      if (i >= wordSpans.length) {
+        // All words done
+        setActiveIdx(-1);
+        setPlaybackMode(null);
+        setState('idle');
+        stopKeepAlive();
+        wordCancelRef.current = null;
+        return;
+      }
+      const ws = wordSpans[i];
+      const wordText = applyPronunciations(ws.word);
+      // Skip empty / pure-punctuation tokens (cleanForSpeech may strip)
+      if (!wordText.trim()) {
+        speakOne(i + 1);
+        return;
+      }
+      const utter = new SpeechSynthesisUtterance(wordText);
       utter.rate = rate;
       utter.pitch = pitch;
       utter.volume = clampVolume(volume);
       utter.lang = lang;
-      if (voiceName) {
-        const v = voices.find((x) => x.name === voiceName);
-        if (v) utter.voice = v;
-      }
-      const pieceStartInSpoken = cumulativeOffset;
-      utter.onboundary = (e) => {
-        if (e.name && e.name !== 'word') return;
-        // Mark that onboundary fires on this voice — disables the
-        // time-based estimator below to prevent the two from fighting.
-        boundaryFiredRef.current = true;
-        // charIndex is into THIS piece; add piece's start offset for
-        // mapping back to original spans[].
-        const targetCharInSlice = pieceStartInSpoken + e.charIndex;
-        let bestIdx = startSpanRef.current;
-        for (let i = startSpanRef.current; i < spans.length; i++) {
-          if ((spans[i].start - offset) <= targetCharInSlice) bestIdx = i;
-          else break;
-        }
-        setActiveIdx(bestIdx);
+      if (v) utter.voice = v;
+      utter.onstart = () => {
+        // Highlight THIS word as soon as the engine confirms it's
+        // about to speak. Highlight visibly leads audio by the engine's
+        // own onstart-to-audio latency (~30-100ms) plus the React
+        // paint cycle (~16ms). This is the 'highlighter should lead'
+        // requirement satisfied at the voice-engine level.
+        setActiveIdx(startIdx + i);
       };
-      // Only fire start/end hooks on first/last piece so the state
-      // machine doesn't churn between chunks.
-      if (idx === 0) {
-        utter.onstart = () => {
-          setPlaybackMode('browser');
-          setState('speaking');
-          // Start Chrome 14s-bug keepAlive + capture start time for
-          // time-based fallback word tracking. Reset the boundary-
-          // detection flag — the first 1500ms of speaking determines
-          // whether this voice emits onboundary; the estimator runs
-          // ONLY if no boundary events have fired by then.
-          startKeepAlive();
-          speechStartTimeRef.current = performance.now();
-          totalSpokenWordsRef.current = 0;
-          boundaryFiredRef.current = false;
-        };
-      }
-      utter.onpause = () => setState('paused');
-      utter.onresume = () => setState('speaking');
-      if (idx === pieces.length - 1) {
-        utter.onend = () => {
-          setActiveIdx(-1);
-          setPlaybackMode(null);
-          setState('idle');
-          stopKeepAlive();
-        };
-      }
+      utter.onend = () => {
+        // Schedule next word; tiny defer to avoid engine queueing
+        // weirdness in some browsers
+        setTimeout(() => speakOne(i + 1), 0);
+      };
       utter.onerror = () => {
-        // Don't reset state on a single piece's error mid-queue —
-        // the next piece may still play. Only the LAST piece's
-        // error path resets to idle.
-        if (idx === pieces.length - 1) {
-          setActiveIdx(-1);
-          setPlaybackMode(null);
-          setState('idle');
-          stopKeepAlive();
-        }
+        // Engine error on a single word — log + continue with next.
+        // If many in a row fail, the speakOne(i+1) chain will
+        // eventually exit when wordSpans is exhausted.
+        setTimeout(() => speakOne(i + 1), 0);
       };
-      if (idx === pieces.length - 1) utterRef.current = utter;
       window.speechSynthesis.speak(utter);
-      cumulativeOffset += piece.length + 1; // +1 for chunkText join space
-    });
-  }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans, chunkText, startKeepAlive, stopKeepAlive]);
+    };
+    speakOne(0);
+  }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans, startKeepAlive, stopKeepAlive]);
 
   // Time-based active-word estimator — fallback ONLY for voices that
   // don't fire onboundary (commonly espeak-ng on Linux). The estimator
@@ -1136,6 +1129,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
                 <option value="0.5">0.5×</option>
                 <option value="0.75">0.75×</option>
                 <option value="1">1×</option>
+                <option value="1.25">1.25×</option>
                 <option value="1.5">1.5×</option>
                 <option value="2">2×</option>
               </select>
@@ -1182,6 +1176,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
             <option value="0.5">0.5× slow</option>
             <option value="0.75">0.75×</option>
             <option value="1">1× normal</option>
+            <option value="1.25">1.25×</option>
             <option value="1.5">1.5× fast</option>
             <option value="2">2× very fast</option>
           </select>
