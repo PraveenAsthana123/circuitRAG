@@ -82,8 +82,30 @@ const PRONUNCIATIONS: Record<string, string> = {
   GIL: 'gill',
 };
 
-function applyPronunciations(text: string): string {
+// Strip special / formatting chars before synthesis. Browser TTS
+// engines literalize these (read "underscore", "dash", "asterisk")
+// which mangles technical content. User: "it should read only text
+// not other things example _ - # special character".
+//
+// Replaced with space:
+//   _ - # @ * ` ~ | / \ { } [ ] < > = +
+// Preserved (normal punctuation that helps prosody):
+//   . , ! ? : ; ( ) " '
+// Hyphen between word chars becomes space ("multi-tenant" → "multi tenant")
+// to avoid the engine reading "multi dash tenant".
+function cleanForSpeech(text: string): string {
   let out = text;
+  // Hyphen / em-dash / en-dash between non-space chars → space
+  out = out.replace(/(?<=\S)[-—–](?=\S)/g, ' ');
+  // Other special chars → space (keeps standard punctuation intact)
+  out = out.replace(/[_*`~|\\<>{}\[\]#@/=+]/g, ' ');
+  // Collapse runs of whitespace
+  out = out.replace(/\s+/g, ' ').trim();
+  return out;
+}
+
+function applyPronunciations(text: string): string {
+  let out = cleanForSpeech(text);
   for (const [from, to] of Object.entries(PRONUNCIATIONS)) {
     // Word-boundary, case-sensitive. Capture optional plural "s" so
     // "ADRs" / "PDFs" / "LLMs" still get rewritten and keep the suffix.
