@@ -161,6 +161,197 @@ const TOPICS: Topic[] = [
       '/admin/deep-dives — discoverability for new joiners',
     ],
     interviewLine: 'I run AI engineering with three artifacts: a roadmap that says what we ship, a risk register that says what can go wrong, and an ADR log that says why we chose. Each has an owner and a cadence. Without all three, implicit knowledge owns the team and burnout owns the schedule.',
+    implementationSteps: [
+      { step: 'Quarterly roadmap', logic: '8–12 weeks of work, OKR-linked; no rolling 12-month wishlist.' },
+      { step: 'Risk register', logic: 'Drift, hallucination, vendor, regulatory — owner + mitigation + kill-switch threshold each.' },
+      { step: 'ADR log', logic: 'Append-only; decision + alternatives + reversibility cost on every irreversible call.' },
+      { step: 'Staffing → roadmap + risk', logic: 'Hires map to roadmap commitments AND unmitigated risks; not reactive headcount.' },
+      { step: 'On-call rotation + runbooks', logic: 'Per-service runbooks; postmortems per P0/P1; weekly review of paging volume.' },
+      { step: 'Quarterly reconciliation', logic: 'Reject new work that pushes unmitigated risk past budget.' },
+      { step: 'Compliance cadence', logic: 'EU AI Act / SOC2 / GDPR review quarterly; not a yearly fire drill.' },
+    ],
+    codeExample: {
+      language: 'yaml',
+      code: `# .eng/roadmap-2026-q2.yml — example artifact
+quarter: 2026-Q2
+team: ai-platform
+owner: eng-manager-name
+okr: "Reduce per-tenant LLM cost 30% while holding recall@10 above 92%"
+
+commitments:
+  - id: ROAD-101
+    title: "Cross-encoder rerank cache"
+    impact: "12-18% cost reduction"
+    eng_weeks: 4
+    risk_link: RISK-007
+    status: in_flight
+  - id: ROAD-102
+    title: "Embedding model upgrade to v3"
+    impact: "+2pp recall@10"
+    eng_weeks: 6
+    risk_link: RISK-002
+    blocks: [eval-svc-shadow-index]
+    status: planning
+
+# .eng/risks-2026-q2.yml
+risks:
+  - id: RISK-002
+    name: "Model drift on embedding upgrade"
+    owner: ai-platform
+    mitigation: "Shadow index + eval gate + feature flag"
+    kill_switch: "Recall regression > 2pp on golden set"
+    status: monitored
+  - id: RISK-007
+    name: "Per-tenant token cost runaway"
+    owner: finops + ai-platform
+    mitigation: "Token CB with daily budget; tier-aware routing"
+    kill_switch: "Daily cost per tenant > 1.5x baseline for 3 days"
+    status: monitored
+
+# docs/adr/0042-cache-rerank-by-query-hash.md (excerpt)
+# Status: accepted | Date: 2026-04-22 | Reversibility: low
+# Decision: Cache cross-encoder rerank scores keyed by
+# (query_hash, embedding_version) with 1h TTL.
+# Alternatives: no cache (current); cache by document_id (no, rerank is query-conditional)
+# Why now: §3 of ROAD-101; risk-linked to RISK-007.`,
+    },
+    realUseCase: 'Q2 plan: ship rerank cache (12-18% cost reduction) + embedding v3 upgrade (+2pp recall). Budget allowed both, but ADR for embedding upgrade flagged: drift risk requires shadow index, which needs eval-svc work first. Roadmap re-sequenced — eval-svc shadow-index in Q1 catch-up, embedding upgrade pushed to early Q3. No surprise outage. The previous quarter\'s "ship and see" approach caused a recall regression that took 5 days to detect.',
+    prosCons: {
+      pros: [
+        'Three artifacts make implicit knowledge explicit + transferable',
+        'Risk register makes "we should have known" impossible after the fact',
+        'ADR log lets new joiners reconstruct decisions without tribal knowledge',
+        'Quarterly reconciliation prevents scope-creep beyond risk budget',
+      ],
+      cons: [
+        'Up-front overhead — ~4 hours/week for the EM',
+        'Risk register reviews can become checkbox theater if not enforced',
+        'ADRs slow rapid prototyping (counter: prototypes don\'t need ADRs)',
+      ],
+    },
+    comparison: {
+      left: '"Trust me" leadership / implicit decisions',
+      right: 'Three-artifact discipline (roadmap + risk + ADR)',
+      rows: [
+        { aspect: 'New-joiner ramp', left: '6–8 weeks of tribal knowledge', right: '2 weeks of doc reading' },
+        { aspect: 'Decision reconstruction', left: 'Slack archeology', right: 'Searchable ADR log' },
+        { aspect: 'Risk surprise rate', left: '"We didn\'t see that coming"', right: 'Risk register has it' },
+        { aspect: 'Scope creep', left: 'Constant re-prioritization', right: 'Quarterly reconciliation, locked plan' },
+        { aspect: 'Burnout', left: 'High — implicit ownership', right: 'Lower — owners + cadence explicit' },
+      ],
+    },
+    solutions: [
+      { problem: 'Implicit knowledge = single point of failure', solution: 'ADR log + risk register make decisions transferable' },
+      { problem: 'Scope creep destroys quarterly plans', solution: 'Quarterly reconciliation gate; new work fights for ROAD-X slot' },
+      { problem: 'Hiring is reactive', solution: 'Headcount maps to risk register + roadmap, not "we need more"' },
+      { problem: 'Postmortems vanish into Slack', solution: 'Postmortem template + index in /docs/postmortems/' },
+      { problem: 'Compliance becomes annual fire drill', solution: 'Quarterly compliance review tied to roadmap reconciliation' },
+    ],
+    bestPractices: {
+      do: [
+        'Roadmap items link to risk register IDs',
+        'ADR for every irreversible decision',
+        'Postmortem within 48h of P0/P1',
+        'Risk register reviewed monthly; quarterly with leadership',
+        'On-call rotation balanced; nobody on > 25% of weeks',
+        'Headcount asks include the roadmap and risk evidence',
+      ],
+      avoid: [
+        'Roadmaps without OKR linkage (won\'t survive priority shifts)',
+        'Risk register that hasn\'t been touched in 90 days',
+        'ADRs as marketing material (decision + alternatives + cost only)',
+        'Implicit on-call ownership (everyone = nobody)',
+      ],
+      optimize: [
+        'Roadmap → Risk → ADR cross-referenced (graph view in eng portal)',
+        'Postmortem action items tracked to closure (not just "filed")',
+        'Quarterly compliance + risk review on the same cadence (1 prep cycle)',
+      ],
+    },
+    antiPatterns: [
+      'Rolling 12-month roadmap that never gets locked',
+      'Risk register existed at company founding; never updated',
+      'ADRs only for "big" decisions (the small ones bite later)',
+      'Hiring before roadmap + risk are agreed (causes mismatch)',
+      'On-call ownership floats by week (degraded knowledge transfer)',
+    ],
+    testTypes: [
+      'Quarterly roadmap reconciliation review (process check)',
+      'Risk register monthly walkthrough (does each risk still apply?)',
+      'ADR audit per quarter (sample 5 random decisions; can a junior reconstruct?)',
+      'Postmortem closure rate (action items completed within agreed window)',
+    ],
+    testScenarios: [
+      { scenario: 'New senior IC joins mid-quarter', expected: 'Reads roadmap + risks + ADR index; contributes by week 2' },
+      { scenario: 'Production drift incident', expected: 'Risk register entry exists; mitigation invoked; postmortem within 48h' },
+      { scenario: 'Quarterly leadership review', expected: 'EM presents roadmap + risk delta + ADR highlights; no surprises' },
+    ],
+    testData: [
+      { type: 'Roadmap template', example: 'YAML schema with id, title, impact, eng_weeks, risk_link, status, blocks' },
+      { type: 'Risk register schema', example: 'YAML with id, name, owner, mitigation, kill_switch, status, last_review_date' },
+      { type: 'ADR template', example: 'Markdown: status, date, reversibility, decision, alternatives, why-now, links' },
+    ],
+    debuggingChecklist: [
+      'Roadmap slip? Compare commitments to actuals; flag risks that grew',
+      'Surprise incident? Was a risk register entry stale or missing?',
+      'Hiring blocked? Mismatch between requested skill and roadmap+risk evidence',
+      'Postmortem actions stuck? Owner unclear or no follow-up cadence',
+      'New-joiner slow ramp? ADR log probably has gaps',
+    ],
+    productionIssues: [
+      { issue: 'Embedding upgrade caused 18pp recall drop', rootCause: 'Roadmap had upgrade scheduled but no ADR linked it to RISK-002. Shadow-index work was on backlog, never sequenced before the upgrade.' },
+      { issue: '6 months of cost growth went un-flagged', rootCause: 'RISK-007 entry existed but kill-switch threshold was never set. Mitigation existed in code but wasn\'t monitored.' },
+      { issue: 'Senior IC quit citing "fire drills every quarter"', rootCause: 'Compliance treated as annual; Q4 always had 6 weeks piled on top of roadmap. Quarterly cadence would have spread the load.' },
+    ],
+    performance: [
+      'Roadmap planning cycle: ~2 weeks of EM time per quarter (front-loaded)',
+      'Risk register monthly review: ~1 hour with platform leads',
+      'ADR write-up per decision: ~30 min for the author, ~10 min for review',
+      'Postmortem: ~2-4 hours within 48h of incident',
+    ],
+    costConsiderations: [
+      'EM time: ~4 hours/week sustained for the three artifacts',
+      'Tooling: free — markdown + YAML + git; no special platform needed',
+      'ROI: prevents one P0 outage per year ≫ time spent',
+    ],
+    observability: [
+      'Roadmap progress: shipped vs committed per quarter (target ≥ 80%)',
+      'Risk register health: % of risks with last_review_date < 30 days',
+      'ADR coverage: % of irreversible decisions with linked ADR',
+      'Postmortem closure: % of action items completed within window',
+      'On-call balance: max % of weeks any one engineer is primary (target ≤ 25%)',
+    ],
+    metrics: [
+      { name: 'roadmap_completion_rate{quarter}', example: 'Gauge; target ≥ 0.8' },
+      { name: 'risk_register_stale_entries{}', example: 'Counter; alert if any entry > 30 days since last review' },
+      { name: 'adr_coverage_rate{}', example: 'Gauge; target = 1.0 for irreversible decisions' },
+      { name: 'postmortem_action_closure_rate{quarter}', example: 'Gauge; target ≥ 0.9 within agreed window' },
+    ],
+    tradeoffs: [
+      { decision: 'Roadmap detail level', tradeoff: 'Too granular = brittle; too vague = unaccountable' },
+      { decision: 'Risk register completeness', tradeoff: 'Every conceivable risk = noise; only obvious risks = surprises' },
+      { decision: 'ADR threshold for "irreversible"', tradeoff: 'Too low = ADR fatigue; too high = decisions go untracked' },
+      { decision: 'On-call rotation size', tradeoff: 'Wide = light load but stale knowledge; narrow = expert response but burnout' },
+    ],
+    decisionMatrix: [
+      { option: 'Three-artifact discipline (this)', whenToUse: 'Team ≥ 5, multi-quarter roadmap, regulated/compliant domain' },
+      { option: 'Quarterly OKRs only', whenToUse: 'Team < 5, single product, low regulatory burden' },
+      { option: 'Trust-me leadership', whenToUse: 'Founder-led pre-PMF prototype phase only' },
+    ],
+    starStory: {
+      situation: 'New AI platform team at a regulated SaaS — 8 engineers, 3 product surfaces, EU AI Act readiness deadline 9 months out.',
+      task: 'Get the team operational + compliant + sustainably-paced without a 6-month "discovery phase".',
+      action: 'Established the three artifacts in week 1: roadmap (Q1: foundation; Q2: first ship; Q3: hardening), risk register (drift, vendor, compliance, on-call), ADR template. Hired against roadmap — 2 senior IC + 1 SRE. Set quarterly reconciliation cadence. EU AI Act review quarterly, not annual. Postmortem template before the first incident.',
+      result: 'EU AI Act readiness on time. Zero P0s in first year. New-joiner ramp dropped from 8 weeks to 2.5. Pattern adopted by sister teams. EM cited in promo as "the model for AI eng leadership".',
+    },
+    interviewTraps: [
+      'Saying "we have OKRs" without saying who owns them or how they\'re reviewed',
+      'Risk register as a one-time exercise, not a living document',
+      'ADRs that read like sales pitches (no alternatives = not a real decision record)',
+      'Hiring "to be safe" without roadmap + risk evidence',
+      'Compliance as annual project (creates Q4 burnout cycle)',
+      'Postmortems without action-item closure tracking',
+    ],
     finalScript: 'I run AI engineering as three artifacts. The roadmap says what we ship per quarter, OKR-linked, defensible to leadership. The risk register names every non-traditional risk — drift, hallucination, vendor lock-in, regulatory drift — each with an owner, mitigation, and kill-switch threshold. The ADR log records every irreversible decision: append-only, indexed, searchable. Staffing maps to roadmap and risk; hiring isn\'t reactive. On-call is owned, runbooks per service, postmortems per incident. Quarterly we reconcile business priorities against the risk register; we don\'t take work that increases unmitigated risk past budget. Without these three, implicit owns the team and burnout owns the schedule.',
   },
 ];
