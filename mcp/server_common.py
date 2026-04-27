@@ -163,17 +163,32 @@ class ToolCallRequest(BaseModel):
 # OTel — optional. Silent no-op if the SDK isn't installed.
 # ---------------------------------------------------------------------------
 try:
+    from opentelemetry import baggage as _otel_baggage
+    from opentelemetry import context as _otel_context
     from opentelemetry import trace as _otel_trace
+    from opentelemetry.baggage.propagation import W3CBaggagePropagator
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
         OTLPSpanExporter,
     )
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.propagate import set_global_textmap
+    from opentelemetry.propagators.composite import CompositePropagator
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.trace.propagation.tracecontext import (
+        TraceContextTextMapPropagator,
+    )
     OTEL_AVAILABLE = True
 except ImportError:  # pragma: no cover
     OTEL_AVAILABLE = False
+
+# httpx auto-instrumentation is a separate package; degrade gracefully.
+try:
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    HTTPX_INSTRUMENT_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    HTTPX_INSTRUMENT_AVAILABLE = False
 
 
 def setup_server_otel(app: FastAPI, *, service_name: str) -> None:
@@ -200,10 +215,32 @@ def setup_server_otel(app: FastAPI, *, service_name: str) -> None:
         BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True)),
     )
     _otel_trace.set_tracer_provider(provider)
+
+    # W3C composite propagator: traceparent (trace context) + baggage.
+    # Without this, the next service cannot reconstruct the trace chain
+    # OR read business context (tenant_id, user_id, request_id) that
+    # the upstream service set. Default OTel propagator is tracecontext
+    # ONLY — baggage is NOT enabled unless we set it explicitly.
+    set_global_textmap(CompositePropagator([
+        TraceContextTextMapPropagator(),
+        W3CBaggagePropagator(),
+    ]))
+
+    # Auto-instrument inbound (FastAPI extracts headers → context).
     FastAPIInstrumentor.instrument_app(app)
+
+    # Auto-instrument outbound (httpx injects traceparent + baggage
+    # into request headers on every call). Idempotent.
+    if HTTPX_INSTRUMENT_AVAILABLE:
+        try:
+            HTTPXClientInstrumentor().instrument()
+        except Exception:  # noqa: BLE001  — instrument() raises if already on
+            pass
+
     log.info(
-        "mcp_server_otel_initialized service=%s endpoint=%s",
-        service_name, endpoint,
+        "mcp_server_otel_initialized service=%s endpoint=%s "
+        "propagator=tracecontext+baggage httpx_instrumented=%s",
+        service_name, endpoint, HTTPX_INSTRUMENT_AVAILABLE,
     )
 
 
@@ -212,6 +249,82 @@ def get_tracer(module_name: str):  # noqa: ANN201
     if not OTEL_AVAILABLE:
         return None
     return _otel_trace.get_tracer(module_name)
+
+
+# ---------------------------------------------------------------------------
+# Baggage helpers — explicit API for setting + reading per-request
+# business context that propagates across service boundaries via the
+# W3C ``baggage`` HTTP header. Use for tenant_id, user_id, request_id,
+# feature_flag — anything you want every downstream service + log line
+# to see WITHOUT plumbing a parameter through every function signature.
+#
+# Caveats:
+#   * Baggage is NOT encrypted. Never put secrets / PII in baggage.
+#   * Each entry adds bytes to every outbound request header. Keep it
+#     small (target < 8 entries, < 1 KB total).
+#   * Baggage value max ~4096 bytes per W3C spec; many proxies cap
+#     headers at 8 KB total — budget the carrier accordingly.
+# ---------------------------------------------------------------------------
+
+
+def baggage_set(key: str, value: str):  # noqa: ANN201
+    """Attach ``key=value`` to the current OTel context.
+
+    The value will be auto-injected into every outbound httpx request
+    AS LONG AS the call happens within the same async task / context
+    where ``baggage_set`` was called.
+
+    Returns the new context token (for testing); production callers
+    can usually ignore it.
+    """
+    if not OTEL_AVAILABLE:
+        return None
+    ctx = _otel_baggage.set_baggage(key, value)
+    return _otel_context.attach(ctx)
+
+
+def baggage_get(key: str) -> str | None:
+    """Read a baggage value from the current OTel context, or None."""
+    if not OTEL_AVAILABLE:
+        return None
+    val = _otel_baggage.get_baggage(key)
+    return None if val is None else str(val)
+
+
+def baggage_get_all() -> dict[str, str]:
+    """Return ALL baggage entries from the current OTel context."""
+    if not OTEL_AVAILABLE:
+        return {}
+    return {str(k): str(v) for k, v in _otel_baggage.get_all().items()}
+
+
+def inject_propagation_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Mutate ``headers`` to carry the current trace context + baggage.
+
+    Useful when calling an external service via raw client (NOT httpx,
+    which is auto-instrumented). After this call, ``headers`` contains
+    ``traceparent`` (always) and ``baggage`` (if any baggage is set).
+    """
+    if not OTEL_AVAILABLE:
+        return headers
+    from opentelemetry.propagate import inject
+    inject(headers)
+    return headers
+
+
+def extract_propagation_context(headers: dict[str, str]):  # noqa: ANN201
+    """Extract trace context + baggage from incoming headers and attach.
+
+    For inbound paths NOT auto-instrumented (e.g., consuming a Kafka
+    message that carried headers as a manual carrier). Returns a token
+    that the caller can pass to ``_otel_context.detach`` after the
+    handler completes.
+    """
+    if not OTEL_AVAILABLE:
+        return None
+    from opentelemetry.propagate import extract
+    ctx = extract(headers)
+    return _otel_context.attach(ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -630,15 +743,21 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
 
 
 __all__ = [
-    "OTEL_AVAILABLE",
+    "HTTPX_INSTRUMENT_AVAILABLE",
     "JWT_AVAILABLE",
     "NoopCM",
-    "ToolCallRequest",
+    "OTEL_AVAILABLE",
     "TokenVerifier",
+    "ToolCallRequest",
+    "baggage_get",
+    "baggage_get_all",
+    "baggage_set",
     "build_auth",
     "enforce_scope",
+    "extract_propagation_context",
     "get_tracer",
     "handle_tool_call",
+    "inject_propagation_headers",
     "mount_metrics_endpoint",
     "setup_server_otel",
 ]

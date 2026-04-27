@@ -270,6 +270,14 @@ const GROUPS: Group[] = [
       { href: '/admin/post-release/deep#pdv-monitoring', label: 'PDV · golden + AI signals + matrix' },
     ],
   },
+  {
+    heading: 'Distributed tracing + baggage',
+    items: [
+      { href: '/admin/tracing/deep', label: 'Tracing + baggage — overview' },
+      { href: '/admin/tracing/deep#baggage-propagation', label: 'Baggage propagation · chain across hops' },
+      { href: '/admin/tracing/deep#trace-draft-audit-linkage', label: 'Trace → draft → audit · forensics by request_id' },
+    ],
+  },
 ];
 
 /** Left-menu nav. Grouped so the 10+ links are scannable. */
