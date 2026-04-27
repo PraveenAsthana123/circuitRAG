@@ -165,6 +165,131 @@ const TOPICS: Topic[] = [
       'mcp/tests/drill_policy_*.py — per-rule drills',
     ],
     interviewLine: 'Policy is the non-negotiable runtime gate. OPA + Guardrails + Presidio combined. Without it, the AI system owns its own behavior — which is risk.',
+    implementationSteps: [
+      { step: 'OPA sidecar', logic: 'Per-request authorization via Rego rules; sub-10ms eval.' },
+      { step: 'Guardrails AI', logic: 'Input/output validation: prompt-injection, PII, toxicity, citation-deadline.' },
+      { step: 'Presidio PII masker', logic: 'Pre-storage + pre-external-send PII redaction.' },
+      { step: 'Hash-chained audit', logic: 'Every decision logged per tenant; tamper-evident.' },
+      { step: 'Version-pinned rules', logic: 'Rego + Guardrails configs in git; canary-deployed.' },
+      { step: 'Drill known attacks', logic: 'OWASP LLM Top 10 + custom corpora; each must be caught.' },
+    ],
+    codeExample: {
+      language: 'rego',
+      code: `# policy/agent_actions.rego — declarative tool-call authorization
+package documind.agent
+
+# Default deny
+default allow = false
+
+# Allow if scope present + not in business-hours sensitive ops
+allow {
+    input.action == "hr.create_user"
+    "hr:write" in input.actor.scopes
+    input.tenant_id == input.actor.tenant_id
+    not sensitive_op_outside_hours
+}
+
+allow {
+    input.action == "doc.read"
+    "docs:read" in input.actor.scopes
+    input.resource.tenant_id == input.actor.tenant_id
+}
+
+# Sensitive ops gated to business hours UTC
+sensitive_op_outside_hours {
+    input.action in {"hr.create_user", "ops.purge_tenant"}
+    h := time.clock([time.now_ns(), "UTC"])[0]
+    h < 9
+}
+
+sensitive_op_outside_hours {
+    input.action in {"hr.create_user", "ops.purge_tenant"}
+    h := time.clock([time.now_ns(), "UTC"])[0]
+    h >= 18
+}
+
+# Audit: log every decision (allow OR deny)
+audit_log[entry] {
+    entry := {
+        "decision": allow,
+        "action": input.action,
+        "actor": input.actor.id,
+        "reason": rationale,
+    }
+}`,
+    },
+    realUseCase: 'Customer onboarded with strict compliance: no agent action outside 9-18 UTC, all PII pre-masked, every decision audited. OPA Rego rules enforced time check; Guardrails AI rejected 3 prompt-injection attempts week 1; Presidio masked patient names before LLM saw them. Hash-chained audit verified by drill_policy_seal weekly. Without policy layer, customer would not have signed.',
+    prosCons: {
+      pros: ['Declarative rules in version control', 'Sub-50ms decision latency', 'Tamper-evident audit', 'Independent of model/agent code'],
+      cons: ['Rego learning curve', 'Sidecar adds operational surface', 'Rule conflicts need careful diff'],
+    },
+    comparison: {
+      left: 'Hardcoded policy in service code',
+      right: 'OPA + Guardrails + Presidio (this)',
+      rows: [
+        { aspect: 'Rule changes', left: 'Service redeploy', right: 'Rego push, no service deploy' },
+        { aspect: 'Auditability', left: 'Mixed with code', right: 'Hash-chained per tenant' },
+        { aspect: 'Cross-team review', left: 'Code review', right: 'Security + compliance review Rego' },
+        { aspect: 'Latency', left: '< 1ms (in-process)', right: '~10-50ms (sidecar)' },
+      ],
+    },
+    solutions: [
+      { problem: 'Compliance demanding declarative rules', solution: 'OPA Rego in git; canary-deployed' },
+      { problem: 'Prompt injection reaching LLM', solution: 'Guardrails AI input validator' },
+      { problem: 'PII leaking to external services', solution: 'Presidio at egress' },
+      { problem: 'Audit reconstruction post-incident', solution: 'Hash-chained per-tenant log' },
+    ],
+    bestPractices: {
+      do: ['Version-pin all rules', 'Canary deploy policy changes', 'Drill OWASP LLM Top 10', 'Hash-chain audit per tenant'],
+      avoid: ['Hardcoded policy in service code', 'Skipping the audit hash chain', 'Deploying policy without canary'],
+      optimize: ['Rule cache per tenant for hot path', 'Sidecar pool with health checks'],
+    },
+    antiPatterns: ['Hardcoded policy', 'No audit chain', 'No drill', 'Service-side PII masking only'],
+    testTypes: ['Drill OWASP LLM Top 10 against Guardrails', 'Drill OPA rules per scope/role', 'Drill Presidio PII recall', 'Drill audit chain seal'],
+    testScenarios: [
+      { scenario: 'Out-of-hours sensitive op', expected: 'OPA denies; audit row written' },
+      { scenario: 'Prompt injection in user query', expected: 'Guardrails blocks; user sees friendly error' },
+      { scenario: 'PII in payload to external service', expected: 'Presidio masks before egress' },
+      { scenario: 'Audit chain broken', expected: 'drill_policy_seal red; investigation triggered' },
+    ],
+    testData: [
+      { type: 'OPA rule fixture', example: 'Rego + input fixtures × allow/deny labels' },
+      { type: 'Guardrails attack corpus', example: 'OWASP LLM Top 10 + custom red-team set' },
+      { type: 'Presidio golden set', example: '500 docs with labeled PII; recall ≥ 99%' },
+    ],
+    debuggingChecklist: [
+      'OPA always denying? Check default allow and rule logic',
+      'Guardrails false-positive? Threshold tune; per-tenant override',
+      'Presidio missing PII? Custom recognizer for domain terms',
+      'Audit chain failing? Hash mismatch; investigate write path',
+    ],
+    productionIssues: [
+      { issue: 'OPA rule rolled out broke all writes', rootCause: 'No canary; hot push. Added canary stage + smoke test.' },
+      { issue: 'Guardrails blocked legitimate medical query', rootCause: 'Toxicity threshold too tight. Per-tenant override added.' },
+    ],
+    performance: ['OPA decision: ~5-15ms p95', 'Guardrails: ~20-50ms p95', 'Presidio: ~10-30ms p95', 'Audit write: async ~10ms'],
+    costConsiderations: ['Sidecar compute: shared across services', 'OPA + Guardrails open-source', 'Presidio open-source'],
+    observability: ['Trace per decision; metrics per rule', 'Audit hash-chain verified weekly', 'Policy version in every audit row'],
+    metrics: [
+      { name: 'documind_policy_decision_total{rule,outcome}', example: 'Counter; spike on deny may indicate attack' },
+      { name: 'documind_guardrail_block_total{rule,tenant}', example: 'Counter; per-tenant attack visibility' },
+      { name: 'documind_policy_eval_latency_seconds{component}', example: 'Histogram p95 < 50ms' },
+    ],
+    tradeoffs: [
+      { decision: 'Rego vs hardcoded', tradeoff: 'Rego: declarative + reviewable; learning curve' },
+      { decision: 'Sidecar vs in-process', tradeoff: 'Sidecar: independent deploy; more latency' },
+    ],
+    decisionMatrix: [
+      { option: 'OPA + Guardrails + Presidio (this)', whenToUse: 'Multi-tenant SaaS with compliance + agent features' },
+      { option: 'Hardcoded policy', whenToUse: 'Internal tool; trusted users; simple shape' },
+    ],
+    starStory: {
+      situation: 'Compliance-bound customer required declarative policy + per-decision audit + PII masking before sign.',
+      task: 'Stand up policy layer that supports per-tenant variations + zero-downtime rule updates.',
+      action: 'Deployed OPA + Guardrails + Presidio sidecars. Rules in git. Canary stage. Hash-chained audit per tenant. drill_policy_owasp_llm + drill_policy_pii_recall + drill_policy_audit_seal in CI.',
+      result: 'Customer signed. Zero policy-layer P0 in 6 months. Pattern adopted by 2 other compliance customers.',
+    },
+    interviewTraps: ['Hardcoded policy in service code', 'No audit hash chain', 'No canary on rule deploys', 'Skipping the OWASP drill'],
     finalScript: 'Policy is the layer that turns AI into something an enterprise can adopt. OPA enforces per-request authorization via declarative Rego rules. Guardrails AI validates inputs (prompt-injection, PII) and outputs (toxicity, hallucination, citation-deadline). Presidio masks PII before storage or external send. All three are sidecar-deployed for sub-50ms eval. Every decision writes a hash-chained audit row per tenant. Rules are version-pinned in git, reviewed by security + compliance, deployed via canary. Without this, the manager (Paperclip) and workers (OpenClaw) own the platform\'s behavior. With it, agents have hands but the brain is steerable.',
   },
 
@@ -309,6 +434,131 @@ const TOPICS: Topic[] = [
       'mcp/tests/drill_paperclip_*.py — manager drills',
     ],
     interviewLine: 'Paperclip is the manager layer — plans but does not execute. The kill-switch (max-depth, max-cost, max-time) is non-negotiable. Without it, agent loops run unbounded.',
+    implementationSteps: [
+      { step: 'Receive goal', logic: 'User goal + tenant_id + correlation_id; create plan_id.' },
+      { step: 'LLM planner decomposes', logic: 'Goal → task graph; nodes are tool calls or sub-goals.' },
+      { step: 'Assign tasks to workers', logic: 'Per-task scope check; route to OpenClaw worker.' },
+      { step: 'Track cost + depth + time', logic: 'Agent CB enforces max_depth + max_cost + max_wall_clock.' },
+      { step: 'Event-sourced state', logic: 'pending → planning → running → done | failed | aborted.' },
+      { step: 'Aggregate + return', logic: 'Worker results combined; final answer + citations + cost.' },
+      { step: 'Hard-stop on kill-switch', logic: 'Breach → audit + abort; no silent overrun.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# services/agent-svc/app/paperclip.py — manager with kill-switch
+from libs.py.documind_core.agent_cb import AgentCircuitBreaker
+from libs.py.documind_core.audit import audit_chain_write
+
+class Paperclip:
+    def __init__(self, planner, dispatcher, audit, max_depth=8,
+                 max_cost_usd=2.0, max_wall_clock_s=120):
+        self._planner = planner
+        self._dispatcher = dispatcher
+        self._audit = audit
+        self._cb = AgentCircuitBreaker(
+            max_depth=max_depth,
+            max_cost_usd=max_cost_usd,
+            max_wall_clock_s=max_wall_clock_s,
+        )
+
+    async def execute(self, goal: str, tenant_id: str, correlation_id: str):
+        plan_id = uuid.uuid4().hex
+        await self._set_state(plan_id, "planning")
+        plan = await self._planner.decompose(goal, tenant_id)
+        await self._set_state(plan_id, "running")
+
+        results = []
+        for task in plan.tasks:
+            self._cb.check()  # raises AgentBudgetExhausted if breached
+            try:
+                r = await self._dispatcher.dispatch(task, tenant_id, correlation_id)
+                self._cb.record(cost_usd=r.cost_usd, depth=task.depth)
+                results.append(r)
+            except AgentBudgetExhausted:
+                await self._set_state(plan_id, "aborted")
+                await audit_chain_write(
+                    tenant_id=tenant_id,
+                    actor_id="paperclip",
+                    action="agent_aborted_budget",
+                    payload={"plan_id": plan_id, "reason": "budget"},
+                )
+                raise
+
+        await self._set_state(plan_id, "done")
+        return aggregate(results)`,
+    },
+    realUseCase: 'Customer asked agent: "summarize my last 5 incidents and create a postmortem doc". Planner decomposed: incident-list (1 tool call) → fetch-incidents-detail (5 calls) → write-postmortem (1 LLM call). Agent CB tracked depth (1+5+1=7, under max_depth=8) and cost ($0.45, under $2). All worked. Without kill-switch, an LLM that misinterpreted "summarize all incidents" could have looped through 1000 incidents and burned $50.',
+    prosCons: {
+      pros: ['Kill-switch makes agent loops bounded', 'Event-sourced state enables replay', 'Per-task scope check prevents privilege creep', 'Cost tracking integrates with Token CB'],
+      cons: ['Planner LLM cost adds to per-request total', 'State machine complexity', 'Aggregation logic per task type'],
+    },
+    comparison: {
+      left: 'Naive ReAct agent loop',
+      right: 'Paperclip with kill-switch (this)',
+      rows: [
+        { aspect: 'Loop bound', left: 'Soft (max iterations)', right: 'Hard (depth + cost + time)' },
+        { aspect: 'State recovery', left: 'Lost on crash', right: 'Event-sourced replay' },
+        { aspect: 'Cost predictability', left: 'Surprise', right: 'Bounded by max_cost' },
+        { aspect: 'Audit', left: 'Logs only', right: 'Hash-chained per decision' },
+      ],
+    },
+    solutions: [
+      { problem: 'Agent infinite loop', solution: 'Agent CB max_depth + max_wall_clock' },
+      { problem: 'Cost runaway', solution: 'Agent CB max_cost_usd; hard-stop on breach' },
+      { problem: 'Crash mid-execution', solution: 'Event-sourced state; replay from last checkpoint' },
+      { problem: 'Worker conflict on shared resource', solution: 'Distributed lock + retry with backoff' },
+    ],
+    bestPractices: {
+      do: ['Kill-switch always (depth + cost + time)', 'Event-sourced state for replay', 'Per-task scope check', 'Audit every decision', 'Drill kill-switch enforcement'],
+      avoid: ['Naive ReAct loop without budget', 'In-memory state (lost on crash)', 'Per-call scope decisions skipped', 'Silent overruns'],
+      optimize: ['Cache planner output for repeated goals', 'Batched worker dispatch where independent', 'Tiered model routing (cheaper for simple steps)'],
+    },
+    antiPatterns: ['No kill-switch', 'In-memory state', 'No per-task scope check', 'Silent budget overruns', 'No drill on agent loop'],
+    testTypes: ['Drill: agent forced to loop → CB hard-stops', 'Drill: cost breach → abort + audit', 'Drill: state replay after crash', 'Drill: per-task scope check enforced'],
+    testScenarios: [
+      { scenario: 'Agent reaches max_depth=8', expected: 'CB hard-stops; state=aborted; audit row' },
+      { scenario: 'Cost reaches max_cost_usd=2', expected: 'Same: hard-stop + audit + 429 to user' },
+      { scenario: 'Wall-clock max_wall_clock_s=120', expected: 'Same' },
+      { scenario: 'Crash mid-plan', expected: 'Replay from event-sourced state; idempotent' },
+    ],
+    testData: [
+      { type: 'Loop trigger fixture', example: 'Mock tool that always returns "call yourself again"' },
+      { type: 'Cost-runaway fixture', example: 'Tool that returns large outputs requiring expensive LLM' },
+      { type: 'Crash recovery fixture', example: 'Kill paperclip mid-plan; verify replay' },
+    ],
+    debuggingChecklist: [
+      'Agent stuck? Check CB state + depth/cost/time counters',
+      'Plan replay broken? Event log integrity',
+      'Worker conflict? Distributed lock granularity',
+      'Cost off? Token tracking per task',
+    ],
+    productionIssues: [
+      { issue: 'Agent ran 8h burning $400', rootCause: 'Kill-switch existed but feature flag off in prod for "demo"' },
+      { issue: 'Plan replay corrupted', rootCause: 'Event log non-idempotent; same event replayed twice. Added idempotency key per event.' },
+    ],
+    performance: ['Plan decompose: ~1-3s LLM call', 'Per-task dispatch: ~50-200ms', 'State transition: ~10ms PG write', 'CB check: O(1) ~0.5μs'],
+    costConsiderations: ['Planner LLM: ~$0.01-0.05 per plan', 'Worker calls: variable', 'State storage: small per plan'],
+    observability: ['Trace per plan with all task hops', 'Metrics: agent_aborted{reason}, plan_cost_usd{tenant}', 'Logs: structured per state transition'],
+    metrics: [
+      { name: 'documind_agent_aborted_total{tenant,reason}', example: 'Counter; reason=budget|depth|time|crash' },
+      { name: 'documind_plan_cost_usd{tenant,p}', example: 'Histogram; p95 trend per tenant' },
+      { name: 'documind_plan_state_seconds{tenant,from,to}', example: 'Histogram; transition latency' },
+    ],
+    tradeoffs: [
+      { decision: 'Kill-switch tightness', tradeoff: 'Tight = bounded + may abort legitimate; loose = costly' },
+      { decision: 'Event-sourced vs in-memory', tradeoff: 'Sourced: replay; in-memory: faster but lossy' },
+    ],
+    decisionMatrix: [
+      { option: 'Paperclip with kill-switch (this)', whenToUse: 'Agent features in production' },
+      { option: 'Naive ReAct', whenToUse: 'Demo / hackathon' },
+    ],
+    starStory: {
+      situation: 'First agent feature in production; week 1 had a $400 token bill from one stuck loop.',
+      task: 'Make agent loops bounded + auditable + recoverable.',
+      action: 'Wrote Agent CB with depth + cost + time. Event-sourced plan state. Per-task scope check + audit. drill_paperclip_kill_switch in CI.',
+      result: 'Zero billing surprises since. Agent feature scaled to 5 customers. Pattern documented as ADR-009.',
+    },
+    interviewTraps: ['No kill-switch', 'In-memory state', 'Silent budget overruns', 'No per-task scope check'],
     finalScript: 'Paperclip is the orchestration brain. It receives a user goal, decomposes via an LLM planner into a task graph, assigns subtasks to OpenClaw workers, tracks token + USD + wall-clock cost, and aggregates results into a final response. The state machine is event-sourced: pending → planning → assigned → running → done | failed | aborted. The kill-switch is non-negotiable — Agent Circuit Breaker enforces max-depth, max-cost, max-wall-clock; on breach, hard-stop with audit. Every decision is logged with correlation_id. Deployed stateless; state in Postgres with Redis cache. Without the kill-switch, agent loops run unbounded; with it, the system is bounded + auditable.',
   },
 
@@ -457,6 +707,141 @@ const TOPICS: Topic[] = [
       'mcp/tests/drill_openclaw_*.py — worker drills',
     ],
     interviewLine: 'OpenClaw workers are the hands. They execute real-world actions but only safe when wrapped with per-call policy + sandbox + audit. Stateless pool; auto-scale on queue depth.',
+    implementationSteps: [
+      { step: 'Sandboxed execution', logic: 'Restricted namespace + egress allowlist + memory cap + fs isolation.' },
+      { step: 'Per-call OPA check', logic: 'Tool action + actor scope + tenant validated before execution.' },
+      { step: 'Idempotency on write', logic: 'X-Idempotency-Key persisted; retry returns cached.' },
+      { step: 'Audit row per call', logic: 'Input + output + actor + correlation_id + outcome.' },
+      { step: 'Compensation hooks', logic: 'Saga rollback path defined per write tool.' },
+      { step: 'Stateless pool + autoscale', logic: 'Queue depth driven; no per-worker state.' },
+      { step: 'Drill: bad inputs rejected', logic: 'Wrong API / wrong tenant / oversized payload all blocked.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# services/agent-svc/app/openclaw_worker.py — sandboxed execution
+from libs.py.documind_core.exceptions import ScopeDeniedError, IdempotencyConflict
+
+class OpenClawWorker:
+    def __init__(self, policy_client, idem_store, audit, sandbox):
+        self._policy = policy_client
+        self._idem = idem_store
+        self._audit = audit
+        self._sandbox = sandbox  # restricted namespace + egress allowlist
+
+    async def execute(self, task: Task, ctx: TaskContext) -> ToolResult:
+        # 1. Per-call OPA scope check
+        decision = await self._policy.allow({
+            "action": task.tool_name,
+            "actor": {"id": ctx.actor_id, "scopes": ctx.scopes, "tenant_id": ctx.tenant_id},
+            "resource": task.resource,
+        })
+        if not decision.allow:
+            await self._audit.log_denial(task, ctx, reason=decision.rationale)
+            raise ScopeDeniedError(decision.rationale)
+
+        # 2. Idempotency on write
+        if task.is_write and ctx.idempotency_key:
+            cached = await self._idem.get(ctx.tenant_id, ctx.idempotency_key)
+            if cached:
+                if cached.payload_hash == task.payload_hash():
+                    return cached.result
+                raise IdempotencyConflict(ctx.idempotency_key)
+
+        # 3. Sandboxed execution
+        async with self._sandbox.scope(
+            mem_mb=512, wall_clock_s=30,
+            egress_allowlist=task.tool_egress_allowlist,
+        ):
+            try:
+                result = await dispatch_tool(task)
+            except Exception as e:
+                await self._audit.log_failure(task, ctx, error=str(e))
+                if task.compensation:
+                    await task.compensation.execute(ctx)
+                raise
+
+        # 4. Persist idempotency + audit
+        if task.is_write and ctx.idempotency_key:
+            await self._idem.store(ctx.tenant_id, ctx.idempotency_key, task, result, ttl_h=24)
+        await self._audit.log_success(task, ctx, result)
+        return result`,
+    },
+    realUseCase: 'Agent task: "create JIRA ticket for incident X". OpenClaw worker: OPA check ("itsm:write" present + tenant matches), idempotency lookup (not seen), sandboxed call to JIRA with egress allowlist (only jira.com:443), audit row written. Same task replayed: idempotency hit, cached response returned, no duplicate ticket. Without sandbox, a malformed tool call could have hit any API; without idempotency, retry would have duplicated tickets.',
+    prosCons: {
+      pros: ['Sandbox bounds blast radius', 'Per-call OPA check prevents privilege creep', 'Idempotency prevents duplicate writes', 'Stateless pool auto-scales', 'Compensation enables saga rollback'],
+      cons: ['Sandbox config per tool type', 'Per-call OPA adds latency (~10-30ms)', 'Compensation logic must be written + tested per tool'],
+    },
+    comparison: {
+      left: 'Direct tool calls in agent code',
+      right: 'OpenClaw sandboxed worker (this)',
+      rows: [
+        { aspect: 'Egress control', left: 'None — agent can call anywhere', right: 'Per-tool allowlist' },
+        { aspect: 'Per-call scope check', left: 'In agent (mixed with logic)', right: 'OPA sidecar (declarative)' },
+        { aspect: 'Idempotency', left: 'Per-tool ad hoc', right: 'Standard X-Idempotency-Key' },
+        { aspect: 'Compensation', left: 'Often missing', right: 'Mandatory for writes' },
+        { aspect: 'Auditability', left: 'Mixed', right: 'Per-call hash-chained' },
+      ],
+    },
+    solutions: [
+      { problem: 'Worker calls wrong API', solution: 'Sandbox egress allowlist per tool' },
+      { problem: 'Privilege creep across tools', solution: 'Per-call OPA scope check' },
+      { problem: 'Duplicate writes on retry', solution: 'X-Idempotency-Key + 24h replay store' },
+      { problem: 'Partial-failure orphan state', solution: 'Compensation hooks per write tool' },
+    ],
+    bestPractices: {
+      do: ['Sandbox every worker', 'Per-call OPA scope check', 'X-Idempotency-Key on writes', 'Compensation for write tools', 'Audit per call'],
+      avoid: ['Workers without sandbox', 'Skipping per-call scope check', 'Per-tool ad-hoc idempotency', 'Missing compensation on writes'],
+      optimize: ['Pool warm workers (avoid cold start)', 'Cache scope decisions per JWT', 'Async audit batch flush'],
+    },
+    antiPatterns: ['Worker without sandbox', 'No per-call scope check', 'Missing idempotency', 'No compensation', 'Stateful workers'],
+    testTypes: ['Drill: wrong API call → sandbox blocks egress', 'Drill: wrong tenant → OPA denies', 'Drill: oversized payload → sandbox kills', 'Drill: idempotency replay → cached result', 'Drill: compensation runs on write failure'],
+    testScenarios: [
+      { scenario: 'Worker tries to call disallowed API', expected: 'Sandbox blocks; audit row noting denial' },
+      { scenario: 'Worker called with wrong tenant_id', expected: 'OPA denies; ScopeDeniedError; audit row' },
+      { scenario: 'Same idempotency key + payload', expected: 'Cached response returned; no duplicate' },
+      { scenario: 'Write tool fails mid-execution', expected: 'Compensation runs; saga rolls back' },
+    ],
+    testData: [
+      { type: 'Bad-egress fixture', example: 'Tool config that tries to call evil.example.com' },
+      { type: 'Cross-tenant probe', example: 'JWT for tenant A used to call tool for tenant B' },
+      { type: 'Idempotency replay fixture', example: 'Same key + same payload sent twice; verify cached' },
+      { type: 'Compensation fixture', example: 'Write tool that fails after partial state; verify rollback' },
+    ],
+    debuggingChecklist: [
+      'Worker stuck? Sandbox memory or wall-clock breach',
+      'Tool denied? Compare task scopes to OPA rule',
+      'Idempotency mismatch? Payload hash drift; check store TTL',
+      'Compensation didn\'t run? Verify write tool registers it',
+    ],
+    productionIssues: [
+      { issue: 'Tool stormed an external API + got rate-limited', rootCause: 'Per-tool concurrency limit missing. Added bounded semaphore per tool name.' },
+      { issue: 'Saga compensation orphaned mid-flight on worker crash', rootCause: 'Compensation log not idempotent. Added compensation_id + replay safe path.' },
+    ],
+    performance: ['Per-call OPA: ~10-30ms p95', 'Sandbox spinup: ~50-200ms (warm pool)', 'Tool dispatch: variable per tool', 'Audit write: async ~10ms'],
+    costConsiderations: ['Sandbox compute: shared pool', 'Idempotency store: ~1KB × keys/day × 24h', 'Compensation testing: ops time per write tool'],
+    observability: ['Trace: per-call with task + scopes + outcome', 'Metrics: tool_call_total{tool,outcome}, sandbox_blocks_total', 'Audit: hash-chained per tenant'],
+    metrics: [
+      { name: 'documind_tool_call_total{tool,outcome}', example: 'Counter; per-tool success/fail rate' },
+      { name: 'documind_sandbox_blocks_total{reason}', example: 'Counter; egress|memory|time blocks' },
+      { name: 'documind_compensation_runs_total{tool,outcome}', example: 'Counter; spike means write-tool failures' },
+      { name: 'documind_idempotency_replay_total{outcome}', example: 'Counter; hit ratio' },
+    ],
+    tradeoffs: [
+      { decision: 'Sandbox tightness', tradeoff: 'Tight = bounded; tools may break legitimate calls' },
+      { decision: 'OPA per-call vs cached', tradeoff: 'Per-call: fresh; cached: faster' },
+      { decision: 'Idempotency store TTL', tradeoff: 'Long: more retry-safe; storage cost' },
+    ],
+    decisionMatrix: [
+      { option: 'OpenClaw sandboxed worker (this)', whenToUse: 'Agent features touching external systems' },
+      { option: 'Direct tool calls in agent code', whenToUse: 'Demo / hackathon / single-user tool' },
+    ],
+    starStory: {
+      situation: 'Agent feature shipped without sandboxing; first month had 2 incidents of tools calling wrong APIs.',
+      task: 'Standardize worker execution: sandbox + OPA + idempotency + audit.',
+      action: 'Built OpenClawWorker class. Per-call OPA scope check. Sandbox with egress allowlist + memory cap + wall-clock. X-Idempotency-Key on writes. Compensation hooks. drill_openclaw_bad_egress + drill_openclaw_idempotency in CI.',
+      result: 'Zero "tool called wrong API" incidents since. Pattern adopted across 8 worker types. ADR-010 documents the contract.',
+    },
+    interviewTraps: ['No sandbox', 'No per-call scope check', 'Missing idempotency on writes', 'No compensation hooks', 'Stateful workers'],
     finalScript: 'OpenClaw workers are the execution arm. They run in a restricted namespace with egress allowlists, per-call timeouts, memory caps, and filesystem isolation. Each tool call passes through OPA for per-tool permission check, executes with budget, and writes an audit row with input + output + actor + correlation_id. Writes use X-Idempotency-Key for safe retry. Compensation hooks enable saga rollback on partial failure. The pool is stateless; auto-scaled on queue depth. Without sandboxing, workers can call wrong APIs and leak data; with it, they are bounded + auditable. The non-negotiable test is a drill that pumps known bad inputs — wrong API, wrong tenant, oversized payload — and asserts each is rejected before reaching the external system.',
   },
 ];
