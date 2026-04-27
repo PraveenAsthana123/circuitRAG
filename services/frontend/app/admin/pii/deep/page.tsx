@@ -5,6 +5,7 @@
  * for multi-tenant audit logs and AI outputs.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -387,6 +388,15 @@ export default function PiiDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/guardrails/deep', label: 'Output guardrail (PII redact on response)', why: 'PII detection runs both pre-ingestion (corpus) AND on output (LLM response) — guardrails layer wraps the output filter' },
+          { href: '/admin/rag/deep', label: 'RAG pre-ingestion masking', why: 'mask PII before chunking + embedding so vector DB never holds raw PII; tokenization preserves referential integrity' },
+          { href: '/admin/security/deep#cloud-soc2-iam', label: 'SOC2 CC6.2 + GDPR PII', why: 'PII handling = SOC2 confidentiality TSC + GDPR Art. 32; both demand encryption + access control + retention' },
+          { href: '/admin/tracing/deep', label: 'PII NEVER in baggage', why: 'baggage is plaintext header — block list in helper API rejects baggage_set("email", ...) at the boundary' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: '§10 AI row + §7 security', why: 'PII removed pre-ingestion + audit log redaction = checklist hard requirements; tied to hard-stop #1' },
+        ]}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -375,6 +376,15 @@ export default function RbacDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/sso/deep', label: 'SSO (SAML / OIDC)', why: 'group claims from IdP map to RBAC roles via JIT provisioning; RBAC is the layer that consumes SSO claims' },
+          { href: '/admin/ldap/deep', label: 'LDAP (enterprise sync)', why: 'enterprise group memberships sync via LDAP → RBAC role assignments; ldap-svc is the source of truth' },
+          { href: '/admin/security/deep#cloud-soc2-iam', label: 'SOC2 CC6.1 access control', why: 'RBAC + role review + audit log = SOC2 access-control evidence trail; CC6.1 maps directly' },
+          { href: '/admin/tracing/deep#trace-draft-audit-linkage', label: 'Audit by request_id', why: 'every authz decision logged with actor + scope + decision; forensics filterable by tenant + actor' },
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop #1 (security issue)', why: 'broken access control is OWASP A01 + the #1 hard stop; release blocked until RBAC tests green' },
+        ]}
+      />
     </div>
   );
 }

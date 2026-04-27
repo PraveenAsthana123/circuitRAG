@@ -1,5 +1,6 @@
 'use client';
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -346,6 +347,15 @@ export default function LdapDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/sso/deep', label: 'SSO via LDAP-backed IdP', why: 'enterprise LDAP often fronted by ADFS / Keycloak as SAML / OIDC IdP; SSO consumes the LDAP directory' },
+          { href: '/admin/rbac/deep', label: 'RBAC group sync', why: 'LDAP group memberships sync periodically into RBAC role assignments; ldap-svc is the source of truth' },
+          { href: '/admin/security/deep#cloud-soc2-iam', label: 'SOC2 CC6.1 + offboarding', why: 'LDAP offboarding closure within SLA = SOC2 access-control evidence; immediate removal on termination' },
+          { href: '/admin/tracing/deep', label: 'Audit by request_id', why: 'every LDAP sync + every authz decision logged keyed by request_id; baggage propagates' },
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop #1 (security issue)', why: 'stale LDAP group = privilege escalation risk; sync drift detection is part of the security gate' },
+        ]}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -358,6 +359,15 @@ export default function SsoDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/rbac/deep', label: 'RBAC consumes SSO claims', why: 'group claim mapping drives role assignment; SSO populates the auth context that RBAC enforces' },
+          { href: '/admin/ldap/deep', label: 'LDAP as enterprise IdP', why: 'on-prem SSO often goes through ADFS / LDAP-backed IdP; ldap-svc syncs group memberships' },
+          { href: '/admin/security/deep#cloud-soc2-iam', label: 'SOC2 CC6.1 + MFA + JIT', why: 'SSO + MFA + JIT provisioning = three of the SOC2 access control evidence rows' },
+          { href: '/admin/tracing/deep#baggage-propagation', label: 'baggage.user_id propagation', why: 'auth middleware sets baggage.user_id from SSO subject; flows to every downstream service' },
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop #1 (security issue)', why: 'auth bypass is the highest-impact security issue; release blocked without SSO test green' },
+        ]}
+      />
     </div>
   );
 }
