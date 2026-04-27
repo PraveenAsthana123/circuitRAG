@@ -510,41 +510,61 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     }
   }, []);
 
-  // Word-by-word speak loop. Each word is its own utterance; activeIdx
-  // is set in onstart so the highlight leads the audio (engine speaks
-  // the word AFTER firing onstart). Guarantees voice + highlight sync.
+  // Sentence-by-sentence speak loop. Each sentence is one utterance;
+  // the entire sentence is highlighted (all spans sharing sentenceIdx)
+  // before the engine speaks it. User: 'word by word is not ok ...
+  // it should highlight complete line and read as complete line'.
+  //
+  // setActiveIdx points at the FIRST word of the active sentence;
+  // the activeIdx effect below uses spans[].sentenceIdx to highlight
+  // every word in that sentence. Sync is trivially correct: one
+  // utterance per sentence; highlight set + flushed before speak().
   const speakFrom = useCallback((startIdx: number, customText?: string) => {
     if (!supported) return;
     const sourceText = customText !== undefined ? customText : text;
     if (!sourceText) return;
     window.speechSynthesis.cancel();
 
-    // Tokenize the source: same regex tokenize() used for spans, so
-    // wordSpans[i] aligns with spans[startIdx + i] when reading the
-    // full page text.
+    // Tokenize the source. Group words by sentenceIdx into
+    // sentenceGroups[s] = [span, span, ...] in document order.
     const wordSpans = customText !== undefined
       ? tokenize(customText)
       : spans.slice(startIdx);
     if (wordSpans.length === 0) return;
 
+    const sentenceGroups: Array<{ firstSpanIdx: number; words: Span[] }> = [];
+    let curSentence = wordSpans[0].sentenceIdx;
+    let curBuf: Span[] = [];
+    let curFirstIdx = startIdx;
+    wordSpans.forEach((s, i) => {
+      if (s.sentenceIdx !== curSentence && curBuf.length > 0) {
+        sentenceGroups.push({ firstSpanIdx: curFirstIdx, words: curBuf });
+        curBuf = [];
+        curFirstIdx = startIdx + i;
+        curSentence = s.sentenceIdx;
+      }
+      curBuf.push(s);
+    });
+    if (curBuf.length > 0) {
+      sentenceGroups.push({ firstSpanIdx: curFirstIdx, words: curBuf });
+    }
+    if (sentenceGroups.length === 0) return;
+
     startSpanRef.current = startIdx;
     setPlaybackMode('browser');
     setState('speaking');
-    setActiveIdx(startIdx);
     speechStartTimeRef.current = performance.now();
-    boundaryFiredRef.current = true; // word-mode IS the boundary mechanism
+    boundaryFiredRef.current = true; // sentence-mode IS the boundary mechanism
     startKeepAlive();
 
-    // Cancel hook for the word loop
     const ctrl = { cancelled: false };
     wordCancelRef.current = ctrl;
 
     const v = voices.find((x) => x.name === voiceName);
 
-    const speakOne = (i: number) => {
+    const speakSentence = (i: number) => {
       if (ctrl.cancelled) return;
-      if (i >= wordSpans.length) {
-        // All words done
+      if (i >= sentenceGroups.length) {
         setActiveIdx(-1);
         setPlaybackMode(null);
         setState('idle');
@@ -552,38 +572,38 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
         wordCancelRef.current = null;
         return;
       }
-      const ws = wordSpans[i];
-      const wordText = applyPronunciations(ws.word);
-      // Skip empty / pure-punctuation tokens (cleanForSpeech may strip)
-      if (!wordText.trim()) {
-        speakOne(i + 1);
+      const group = sentenceGroups[i];
+      // Build sentence text from its words (preserves original spacing
+      // implicit by joining with ' '; cleanForSpeech inside
+      // applyPronunciations strips arithmetic + special chars).
+      const rawSentence = group.words.map((w) => w.word).join(' ');
+      const spokenSentence = applyPronunciations(rawSentence);
+      if (!spokenSentence.trim()) {
+        speakSentence(i + 1);
         return;
       }
-      // SET HIGHLIGHT FIRST, then queue audio. flushSync forces the
-      // React state commit + DOM paint to happen NOW, before we hand
-      // the utterance to the engine. Result: the highlighted word is
-      // visible on screen before any audio for it begins. User: 'sound
-      // starting early highlight starting late' — fixed by hoisting
-      // setActiveIdx out of utter.onstart and forcing synchronous paint.
+      // SET HIGHLIGHT FOR ENTIRE SENTENCE before queueing audio.
+      // setActiveIdx points at first word; the CSS Highlight effect
+      // detects sentenceIdx and highlights all words in this sentence.
       flushSync(() => {
-        setActiveIdx(startIdx + i);
+        setActiveIdx(group.firstSpanIdx);
       });
 
-      const utter = new SpeechSynthesisUtterance(wordText);
+      const utter = new SpeechSynthesisUtterance(spokenSentence);
       utter.rate = rate;
       utter.pitch = pitch;
       utter.volume = clampVolume(volume);
       utter.lang = lang;
       if (v) utter.voice = v;
       utter.onend = () => {
-        setTimeout(() => speakOne(i + 1), 0);
+        setTimeout(() => speakSentence(i + 1), 0);
       };
       utter.onerror = () => {
-        setTimeout(() => speakOne(i + 1), 0);
+        setTimeout(() => speakSentence(i + 1), 0);
       };
       window.speechSynthesis.speak(utter);
     };
-    speakOne(0);
+    speakSentence(0);
   }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans, startKeepAlive, stopKeepAlive]);
 
   // Time-based active-word estimator — fallback ONLY for voices that
@@ -878,21 +898,27 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     const ranges = domRangesRef.current;
     const target = ranges[activeIdx];
     if (!target) return;
-    // Active word
+    // Sentence-mode: highlight ALL words sharing the active sentence's
+    // sentenceIdx in bright yellow (speech-active). User: 'highlight
+    // complete line and read as complete line'. The single-word
+    // highlight is dropped — sentence is the unit.
     const ActiveCtor = (window as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
     if (ActiveCtor) {
-      reg.set?.('speech-active', new ActiveCtor(target));
-      // Sentence highlight: collect siblings sharing sentenceIdx
       const sIdx = spans[activeIdx]?.sentenceIdx;
       if (sIdx !== undefined) {
         const sentenceRanges = spans
-          .map((s, i) => (s.sentenceIdx === sIdx && i !== activeIdx ? ranges[i] : null))
+          .map((s, i) => (s.sentenceIdx === sIdx ? ranges[i] : null))
           .filter((r): r is Range => !!r);
-        if (sentenceRanges.length) {
-          reg.set?.('speech-sentence', new ActiveCtor(...sentenceRanges));
+        if (sentenceRanges.length > 0) {
+          reg.set?.('speech-active', new ActiveCtor(...sentenceRanges));
         } else {
-          reg.delete?.('speech-sentence');
+          reg.set?.('speech-active', new ActiveCtor(target));
         }
+        // No separate sentence-underline now — the whole sentence
+        // glows; underline would be redundant.
+        reg.delete?.('speech-sentence');
+      } else {
+        reg.set?.('speech-active', new ActiveCtor(target));
       }
     }
     // Scroll into view
@@ -1062,34 +1088,43 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
             <button type="button" onClick={stop} title="Stop" style={compact ? compactControlBtnStyle('#991b1b') : btnStyle('#991b1b')}>⏹</button>
           </>
         )}
-        {/* Live "reading word" pill — shows the active word as text so the
-            user knows EXACTLY which word is being read RIGHT NOW. Works
-            even on browsers without CSS Highlight API support. */}
-        {(state === 'speaking' || state === 'paused') && activeIdx >= 0 && spans[activeIdx] && (
-          <span
-            aria-live="polite"
-            title="Currently reading"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '4px 10px',
-              borderRadius: 999,
-              background: '#facc15',
-              color: '#000',
-              border: '1px solid #ca8a04',
-              fontSize: 13,
-              fontWeight: 700,
-              maxWidth: compact ? 200 : 360,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              boxShadow: '0 0 0 2px rgba(250, 204, 21, 0.35)',
-            }}
-          >
-            🟡 {spans[activeIdx].word}
-          </span>
-        )}
+        {/* Live "currently reading" pill — shows the FIRST FEW WORDS of
+            the active sentence (sentence-mode). Works even on browsers
+            without CSS Highlight API support. */}
+        {(state === 'speaking' || state === 'paused') && activeIdx >= 0 && spans[activeIdx] && (() => {
+          const sIdx = spans[activeIdx].sentenceIdx;
+          const sentenceWords = spans
+            .filter((s) => s.sentenceIdx === sIdx)
+            .slice(0, 6)
+            .map((s) => s.word)
+            .join(' ');
+          const preview = sentenceWords.length > 60 ? sentenceWords.slice(0, 60) + '…' : sentenceWords;
+          return (
+            <span
+              aria-live="polite"
+              title="Currently reading sentence"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 10px',
+                borderRadius: 999,
+                background: '#facc15',
+                color: '#000',
+                border: '1px solid #ca8a04',
+                fontSize: 13,
+                fontWeight: 700,
+                maxWidth: compact ? 240 : 480,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 0 0 2px rgba(250, 204, 21, 0.35)',
+              }}
+            >
+              🟡 {preview}
+            </span>
+          );
+        })()}
         {compact && (
           <details ref={compactMenuRef} style={{ position: 'relative' }}>
             <summary
