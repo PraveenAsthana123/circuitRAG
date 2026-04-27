@@ -117,6 +117,18 @@ function cssId(text: string): string {
   return Math.abs(h).toString(16).slice(0, 8);
 }
 
+function getSelectedText(): string {
+  if (typeof window === 'undefined') return '';
+  const selected = window.getSelection?.()?.toString() || '';
+  return selected.replace(/\s+/g, ' ').trim();
+}
+
+function clampVolume(value: number): number {
+  if (Number.isNaN(value)) return 1.0;
+  if (value <= 0) return 1.0;
+  return Math.min(1.0, Math.max(0.1, value));
+}
+
 function btnStyle(color: string): React.CSSProperties {
   return {
     padding: '4px 10px',
@@ -153,13 +165,20 @@ const LS_KEYS = {
 export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US', compact = false, showSettingsHint = false }: Props) {
   const spans = useMemo(() => tokenize(text), [text]);
   const [activeIdx, setActiveIdx] = useState<number>(-1);
-  const [state, setState] = useState<'idle' | 'speaking' | 'paused'>('idle');
+  const [state, setState] = useState<'idle' | 'speaking' | 'paused' | 'server_loading'>('idle');
+  const [playbackMode, setPlaybackMode] = useState<'browser' | 'server' | null>(null);
+  const [activeAction, setActiveAction] = useState<'read' | 'selected' | 'full' | 'server' | null>(null);
+  const [serverAvailable, setServerAvailable] = useState(false);
+  const [serverVoice, setServerVoice] = useState<string>('');
+  const [serverError, setServerError] = useState<string>('');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceName, setVoiceName] = useState<string>('');
   const [rate, setRate] = useState<number>(rateProp);
   const [pitch, setPitch] = useState<number>(1.0);
   const [volume, setVolume] = useState<number>(1.0);
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const compactMenuRef = useRef<HTMLDetailsElement | null>(null);
   const startSpanRef = useRef<number>(0);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -182,8 +201,29 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     }
     if (savedVolume) {
       const parsed = Number(savedVolume);
-      if (!Number.isNaN(parsed)) setVolume(parsed);
+      if (!Number.isNaN(parsed)) setVolume(clampVolume(parsed));
     }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch('/api/v1/tts')
+      .then(async (resp) => {
+        if (!resp.ok) return null;
+        return resp.json() as Promise<{ available?: boolean; voice?: string }>;
+      })
+      .then((data) => {
+        if (!mounted || !data) return;
+        setServerAvailable(Boolean(data.available));
+        setServerVoice(data.voice || '');
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setServerAvailable(false);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -203,7 +243,12 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(LS_KEYS.volume, String(volume));
+    const normalized = clampVolume(volume);
+    if (normalized !== volume) {
+      setVolume(normalized);
+      return;
+    }
+    window.localStorage.setItem(LS_KEYS.volume, String(normalized));
   }, [volume]);
 
   // Load voices (some browsers populate asynchronously via voiceschanged).
@@ -236,11 +281,84 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   }, [spans]);
 
   const stop = useCallback(() => {
-    if (!supported) return;
-    window.speechSynthesis.cancel();
+    if (supported) window.speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     setActiveIdx(-1);
+    setPlaybackMode(null);
+    setActiveAction(null);
+    setServerError('');
     setState('idle');
   }, [supported]);
+
+  const closeCompactMenu = useCallback(() => {
+    compactMenuRef.current?.removeAttribute('open');
+  }, []);
+
+  const speakViaServer = useCallback(async (customText?: string) => {
+    const sourceText = (customText ?? text).trim();
+    if (!sourceText) return;
+    setState('server_loading');
+    setPlaybackMode('server');
+    setActiveIdx(-1);
+    setServerError('');
+    try {
+      const resp = await fetch('/api/v1/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: sourceText, format: 'mp3' }),
+      });
+      if (!resp.ok) {
+        let detail = `TTS request failed with status ${resp.status}`;
+        try {
+          const payload = await resp.json();
+          detail = payload?.detail || detail;
+        } catch {
+          // keep generic
+        }
+        throw new Error(detail);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+      }
+      const audio = audioRef.current;
+      audio.src = url;
+      audio.volume = clampVolume(volume);
+      audio.load();
+      audio.onplay = () => {
+        setPlaybackMode('server');
+        setState('speaking');
+      };
+      audio.onpause = () => setState((current) => (current === 'idle' ? current : 'paused'));
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setPlaybackMode(null);
+        setState('idle');
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setPlaybackMode(null);
+        setServerError('Server audio could not be played by this browser.');
+        setState('idle');
+      };
+      await audio.play();
+      return true;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (/NotAllowedError|play\(\) failed/i.test(detail)) {
+        setServerError('Browser blocked autoplay. Click the speaker again after interacting with the page.');
+      } else {
+        setServerError(detail);
+      }
+      setPlaybackMode(null);
+      setState('idle');
+      return false;
+    }
+  }, [text, volume]);
 
   const speakFrom = useCallback((startIdx: number, customText?: string) => {
     if (!supported) return;
@@ -256,12 +374,13 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     const utter = new SpeechSynthesisUtterance(spoken);
     utter.rate = rate;
     utter.pitch = pitch;
-    utter.volume = volume;
+    utter.volume = clampVolume(volume);
     utter.lang = lang;
     if (voiceName) {
       const v = voices.find((x) => x.name === voiceName);
       if (v) utter.voice = v;
     }
+    setPlaybackMode('browser');
     utter.onboundary = (e) => {
       if (e.name && e.name !== 'word') return;
       // boundary charIndex is into `spoken`. Map back: pronunciations expand
@@ -275,32 +394,81 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
       }
       setActiveIdx(bestIdx);
     };
-    utter.onstart = () => setState('speaking');
+    utter.onstart = () => {
+      setPlaybackMode('browser');
+      setState('speaking');
+    };
     utter.onpause = () => setState('paused');
     utter.onresume = () => setState('speaking');
     utter.onend = () => {
       setActiveIdx(-1);
+      setPlaybackMode(null);
       setState('idle');
     };
     utter.onerror = () => {
       setActiveIdx(-1);
+      setPlaybackMode(null);
       setState('idle');
     };
     utterRef.current = utter;
     window.speechSynthesis.speak(utter);
   }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans]);
 
-  const speak = useCallback(() => speakFrom(0), [speakFrom]);
+  const speak = useCallback(() => {
+    closeCompactMenu();
+    const selectedText = getSelectedText();
+    setActiveAction('read');
+    if (supported && voices.length > 0) {
+      speakFrom(0, selectedText || undefined);
+    } else {
+      void speakViaServer(selectedText || undefined);
+    }
+  }, [closeCompactMenu, speakFrom, speakViaServer, supported, voices.length]);
+
+  const speakSelected = useCallback(() => {
+    closeCompactMenu();
+    const selectedText = getSelectedText();
+    if (!selectedText) {
+      setServerError('No text is selected.');
+      return;
+    }
+    setActiveAction('selected');
+    setServerError('');
+    if (supported && voices.length > 0) {
+      speakFrom(0, selectedText);
+    } else {
+      void speakViaServer(selectedText);
+    }
+  }, [closeCompactMenu, speakFrom, speakViaServer, supported, voices.length]);
+
+  const speakFull = useCallback(() => {
+    closeCompactMenu();
+    setActiveAction('full');
+    if (supported && voices.length > 0) {
+      speakFrom(0);
+    } else {
+      void speakViaServer();
+    }
+  }, [closeCompactMenu, speakFrom, speakViaServer, supported, voices.length]);
+
+  const speakServerOnly = useCallback(() => {
+    closeCompactMenu();
+    const selectedText = getSelectedText();
+    setActiveAction('server');
+    void speakViaServer(selectedText || undefined);
+  }, [closeCompactMenu, speakViaServer]);
 
   const pauseFn = useCallback(() => {
-    if (!supported) return;
-    if (state === 'speaking') window.speechSynthesis.pause();
-  }, [supported, state]);
+    if (state !== 'speaking') return;
+    if (playbackMode === 'browser' && supported) window.speechSynthesis.pause();
+    if (playbackMode === 'server') audioRef.current?.pause();
+  }, [playbackMode, supported, state]);
 
   const resumeFn = useCallback(() => {
-    if (!supported) return;
-    if (state === 'paused') window.speechSynthesis.resume();
-  }, [supported, state]);
+    if (state !== 'paused') return;
+    if (playbackMode === 'browser' && supported) window.speechSynthesis.resume();
+    if (playbackMode === 'server') void audioRef.current?.play();
+  }, [playbackMode, supported, state]);
 
   useEffect(() => {
     if (activeIdx < 0) return;
@@ -311,6 +479,19 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   }, [activeIdx, text]);
 
   useEffect(() => () => stop(), [stop]);
+
+  useEffect(() => {
+    if (!compact || typeof document === 'undefined') return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const menu = compactMenuRef.current;
+      if (!menu?.hasAttribute('open')) return;
+      const target = event.target as Node | null;
+      if (target && menu.contains(target)) return;
+      menu.removeAttribute('open');
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [compact]);
 
   // Keyboard shortcuts: Space = pause/resume, Esc = stop. Bound to
   // document (window-level listeners can be missed if focus is in an
@@ -324,8 +505,13 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
       if (target && /^(INPUT|TEXTAREA|SELECT)$/i.test(target.tagName)) return;
       if (e.code === 'Space' && (state === 'speaking' || state === 'paused')) {
         e.preventDefault();
-        if (state === 'speaking') window.speechSynthesis.pause();
-        else if (state === 'paused') window.speechSynthesis.resume();
+        if (playbackMode === 'browser') {
+          if (state === 'speaking') window.speechSynthesis.pause();
+          else if (state === 'paused') window.speechSynthesis.resume();
+        } else if (playbackMode === 'server') {
+          if (state === 'speaking') audioRef.current?.pause();
+          else if (state === 'paused') void audioRef.current?.play();
+        }
       } else if (e.key === 'Escape') {
         e.preventDefault();
         stop();
@@ -333,7 +519,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [supported, state, stop]);
+  }, [playbackMode, state, stop, supported]);
 
   // In-place highlighting on the actual page content via the CSS
   // Highlight API. Walking <main>'s text nodes and building Range
@@ -438,7 +624,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
 
   if (!mounted) return null;
 
-  if (!supported) {
+  if (!supported && !compact) {
     return (
       <span title="Browser does not support SpeechSynthesis" style={{ color: '#9ca3af', fontSize: 13 }}>
         🔇
@@ -476,72 +662,216 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     fontWeight: 700,
     boxShadow: '0 0 0 2px rgba(180, 83, 9, 0.25)',
   });
+  const actionColor = (action: 'read' | 'selected' | 'full' | 'server'): string => {
+    if (action === 'read') return '#1e3a8a';
+    if (action === 'selected') return '#7c3aed';
+    if (action === 'full') return '#4338ca';
+    return '#0f766e';
+  };
+  const actionLabel = (action: 'read' | 'selected' | 'full' | 'server' | null): string => {
+    if (action === 'selected') return 'Selected read';
+    if (action === 'full') return 'Full read';
+    if (action === 'server') return 'Server audio';
+    return 'Read + highlight';
+  };
+  const statusLabel =
+    state === 'server_loading'
+      ? `Preparing ${actionLabel(activeAction)}`
+      : state === 'speaking'
+        ? `${actionLabel(activeAction)} active`
+        : state === 'paused'
+          ? `${actionLabel(activeAction)} paused`
+          : null;
+  const isActionActive = (action: 'read' | 'selected' | 'full' | 'server') =>
+    activeAction === action && state !== 'idle';
+  const actionBtnStyle = (action: 'read' | 'selected' | 'full' | 'server'): React.CSSProperties =>
+    isActionActive(action) ? filledBtn(actionColor(action)) : btnStyle(actionColor(action));
+  const compactActionBtnStyle = (action: 'read' | 'selected' | 'full' | 'server'): React.CSSProperties => ({
+    ...(isActionActive(action) ? filledBtn(actionColor(action)) : btnStyle(actionColor(action))),
+    minWidth: 30,
+    width: 30,
+    height: 30,
+    padding: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 14,
+    lineHeight: 1,
+  });
+  const compactControlBtnStyle = (color: string): React.CSSProperties => ({
+    ...btnStyle(color),
+    minWidth: 30,
+    width: 30,
+    height: 30,
+    padding: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 14,
+    lineHeight: 1,
+  });
 
   return (
-    <div style={{ display: compact ? 'inline-flex' : 'block', alignItems: 'center', gap: 8, position: 'relative' }}>
+    <div style={{ display: compact ? 'inline-block' : 'block', alignItems: 'center', gap: 8, position: 'relative' }}>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        {state === 'idle' && (
-          <button type="button" onClick={speak} title="Read aloud" style={btnStyle('#1e3a8a')} aria-label="Read aloud">
-            🔊 {compact ? '' : 'Read'}
-          </button>
+        {state !== 'speaking' && state !== 'paused' && (
+          <>
+            <button type="button" onClick={speak} title="Read aloud with highlight" style={compact ? compactActionBtnStyle('read') : actionBtnStyle('read')} aria-label="Read aloud with highlight">
+              🔊 {compact ? '' : 'Read + highlight'}
+            </button>
+            <button type="button" onClick={speakFull} title="Read full content" style={compact ? compactActionBtnStyle('full') : actionBtnStyle('full')} aria-label="Read full content">
+              📖 {compact ? '' : 'Full read'}
+            </button>
+            {!compact && (
+              <>
+                <button type="button" onClick={speakSelected} title="Read selected text" style={actionBtnStyle('selected')} aria-label="Read selected text">
+                  📝 Selected read
+                </button>
+                {serverAvailable && (
+                  <button type="button" onClick={speakServerOnly} title="Play server audio" style={actionBtnStyle('server')} aria-label="Play server audio">
+                    🎧 Server audio
+                  </button>
+                )}
+              </>
+            )}
+          </>
+        )}
+        {state === 'server_loading' && (
+          <>
+            {!compact && (
+              <span style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 700 }}>
+                Preparing {actionLabel(activeAction)}...
+              </span>
+            )}
+            <button type="button" onClick={stop} title="Stop" style={compact ? compactControlBtnStyle('#991b1b') : btnStyle('#991b1b')}>⏹</button>
+          </>
         )}
         {state === 'speaking' && (
           <>
-            <button type="button" onClick={pauseFn} title="Pause (currently speaking)" style={filledBtn('#b45309')} aria-label="Speaking — click to pause">
-              🔊 Speaking · ⏸
+            <button type="button" onClick={pauseFn} title="Pause (currently speaking)" style={filledBtn(actionColor(activeAction || 'read'))} aria-label="Speaking — click to pause">
+              {compact ? '⏸' : `${actionLabel(activeAction)} · ⏸`}
             </button>
-            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>⏹</button>
+            <button type="button" onClick={stop} title="Stop" style={compact ? compactControlBtnStyle('#991b1b') : btnStyle('#991b1b')}>⏹</button>
           </>
         )}
         {state === 'paused' && (
           <>
-            <button type="button" onClick={resumeFn} title="Resume" style={filledBtn('#16a34a')}>▶ Resume</button>
-            <button type="button" onClick={stop} title="Stop" style={btnStyle('#991b1b')}>⏹</button>
+            <button type="button" onClick={resumeFn} title="Resume" style={filledBtn(actionColor(activeAction || 'read'))}>{compact ? '▶' : `${actionLabel(activeAction)} · ▶ Resume`}</button>
+            <button type="button" onClick={stop} title="Stop" style={compact ? compactControlBtnStyle('#991b1b') : btnStyle('#991b1b')}>⏹</button>
           </>
         )}
-        {compact && englishVoices.length > 1 && (
-          <select
-            value={voiceName}
-            onChange={(e) => setVoiceName(e.target.value)}
-            style={{ ...selectStyle(), maxWidth: 130 }}
-            title="Voice (♀/♂)"
+        {/* Live "reading word" pill — shows the active word as text so the
+            user knows EXACTLY which word is being read RIGHT NOW. Works
+            even on browsers without CSS Highlight API support. */}
+        {(state === 'speaking' || state === 'paused') && activeIdx >= 0 && spans[activeIdx] && (
+          <span
+            aria-live="polite"
+            title="Currently reading"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 10px',
+              borderRadius: 999,
+              background: '#facc15',
+              color: '#000',
+              border: '1px solid #ca8a04',
+              fontSize: 13,
+              fontWeight: 700,
+              maxWidth: compact ? 200 : 360,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 0 0 2px rgba(250, 204, 21, 0.35)',
+            }}
           >
-            {female.length > 0 && (
-              <optgroup label="♀ Female">
-                {female.map((v) => (
-                  <option key={v.name} value={v.name}>♀ {v.name}{v.localService ? '' : ' ☁'}</option>
-                ))}
-              </optgroup>
-            )}
-            {male.length > 0 && (
-              <optgroup label="♂ Male">
-                {male.map((v) => (
-                  <option key={v.name} value={v.name}>♂ {v.name}{v.localService ? '' : ' ☁'}</option>
-                ))}
-              </optgroup>
-            )}
-            {other.length > 0 && (
-              <optgroup label="· Other">
-                {other.map((v) => (
-                  <option key={v.name} value={v.name}>{v.name}{v.localService ? '' : ' ☁'}</option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+            🟡 {spans[activeIdx].word}
+          </span>
         )}
         {compact && (
-          <select
-            value={String(rate)}
-            onChange={(e) => setRate(Number(e.target.value))}
-            style={{ ...selectStyle(), maxWidth: 70 }}
-            title="Speech rate (Shift+Space when speaking)"
-          >
-            <option value="0.5">0.5×</option>
-            <option value="0.75">0.75×</option>
-            <option value="1">1×</option>
-            <option value="1.5">1.5×</option>
-            <option value="2">2×</option>
-          </select>
+          <details ref={compactMenuRef} style={{ position: 'relative' }}>
+            <summary
+              title="Audio options"
+              style={{
+                ...compactControlBtnStyle('#6b7280'),
+                listStyle: 'none',
+                userSelect: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              ⚙
+            </summary>
+            <div
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 34,
+                zIndex: 50,
+                minWidth: 220,
+                padding: 10,
+                borderRadius: 10,
+                background: '#fff',
+                border: '1px solid #d1d5db',
+                boxShadow: '0 10px 24px rgba(0,0,0,0.14)',
+                display: 'grid',
+                gap: 8,
+              }}
+            >
+              <button type="button" onClick={speakSelected} title="Read selected text" style={btnStyle('#7c3aed')} aria-label="Read selected text">
+                📝 Selected read
+              </button>
+              {serverAvailable && (
+                <button type="button" onClick={speakServerOnly} title="Play server audio" style={btnStyle('#0f766e')} aria-label="Play server audio">
+                  🎧 Server audio
+                </button>
+              )}
+              {englishVoices.length > 1 && (
+                <select
+                  value={voiceName}
+                  onChange={(e) => setVoiceName(e.target.value)}
+                  style={{ ...selectStyle(), maxWidth: '100%' }}
+                  title="Voice (♀/♂)"
+                >
+                  {female.length > 0 && (
+                    <optgroup label="♀ Female">
+                      {female.map((v) => (
+                        <option key={v.name} value={v.name}>♀ {v.name}{v.localService ? '' : ' ☁'}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {male.length > 0 && (
+                    <optgroup label="♂ Male">
+                      {male.map((v) => (
+                        <option key={v.name} value={v.name}>♂ {v.name}{v.localService ? '' : ' ☁'}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {other.length > 0 && (
+                    <optgroup label="· Other">
+                      {other.map((v) => (
+                        <option key={v.name} value={v.name}>{v.name}{v.localService ? '' : ' ☁'}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              )}
+              <select
+                value={String(rate)}
+                onChange={(e) => {
+                  setRate(Number(e.target.value));
+                  closeCompactMenu();
+                }}
+                style={{ ...selectStyle(), maxWidth: '100%' }}
+                title="Speech rate (Shift+Space when speaking)"
+              >
+                <option value="0.5">0.5×</option>
+                <option value="0.75">0.75×</option>
+                <option value="1">1×</option>
+                <option value="1.5">1.5×</option>
+                <option value="2">2×</option>
+              </select>
+            </div>
+          </details>
         )}
         {!compact && englishVoices.length > 1 && (
           <select
@@ -612,8 +942,76 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
           Browser speech is available, but no English voice was detected.
         </div>
       )}
+      {compact && (
+        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {statusLabel ? (
+            <div
+              aria-live="polite"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '2px 8px',
+                borderRadius: 999,
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                color: '#1d4ed8',
+                fontSize: 11,
+                fontWeight: 700,
+                maxWidth: 220,
+              }}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: state === 'paused' ? '#f59e0b' : '#2563eb',
+                  boxShadow: state === 'paused' ? '0 0 0 0 rgba(245, 158, 11, 0.45)' : '0 0 0 0 rgba(37, 99, 235, 0.45)',
+                  animation: state === 'paused' ? 'documind-audio-pulse 1.4s ease-out infinite' : 'documind-audio-pulse 1.2s ease-out infinite',
+                }}
+              />
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLabel}</span>
+            </div>
+          ) : serverAvailable ? (
+            <div style={{ fontSize: 11, color: '#6b7280', maxWidth: 220 }}>
+              Server voice ready{serverVoice ? `: ${serverVoice}` : ''}.
+            </div>
+          ) : null}
+        </div>
+      )}
       {!compact && (
         <>
+        {statusLabel && (
+          <div
+            aria-live="polite"
+            style={{
+              marginTop: 8,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '4px 10px',
+              borderRadius: 999,
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              color: '#1d4ed8',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: state === 'paused' ? '#f59e0b' : '#2563eb',
+                boxShadow: state === 'paused' ? '0 0 0 0 rgba(245, 158, 11, 0.45)' : '0 0 0 0 rgba(37, 99, 235, 0.45)',
+                animation: state === 'paused' ? 'documind-audio-pulse 1.4s ease-out infinite' : 'documind-audio-pulse 1.2s ease-out infinite',
+              }}
+            />
+            <span>{statusLabel}</span>
+          </div>
+        )}
         <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280' }}>
           Browser speech status: {supported ? 'supported' : 'unsupported'} · voices loaded {voices.length} · English voices {englishVoices.length}
         </div>
@@ -659,16 +1057,28 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
         </div>
         </>
       )}
+      {serverError ? (
+        <div style={{ marginTop: 8, fontSize: 12, color: '#991b1b' }}>
+          Speaker error: {serverError}
+        </div>
+      ) : null}
       {/* CSS Highlight rules — applied to the actual page text via
           Range objects registered in the activeIdx effect. No DOM
           mutation, no floating overlay. */}
       <style>{`
+        @keyframes documind-audio-pulse {
+          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45); }
+          70% { transform: scale(1.08); box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
+          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+        }
         ::highlight(speech-active) {
-          background-color: #fef08a;
+          background-color: #facc15;
           color: #000;
+          font-weight: 700;
+          text-shadow: 0 0 0.5px #000;
         }
         ::highlight(speech-sentence) {
-          text-decoration: underline 2px #fbbf24;
+          text-decoration: underline 2px #f59e0b;
           text-underline-offset: 3px;
         }
       `}</style>
