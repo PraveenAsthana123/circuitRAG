@@ -158,6 +158,220 @@ const TOPICS: Topic[] = [
       'mcp/tests/drill_pii_redaction.py — pipeline drill',
     ],
     interviewLine: 'PII handling lives at three boundaries: ingest, output, and audit. Detection is layered (regex + NER + policy). The non-negotiable test is a drill that pumps known PII through and asserts redaction at every boundary.',
+    implementationSteps: [
+      { step: 'Define detector chain', logic: 'Regex (high precision, low recall) → NER (contextual) → policy (per-tenant + jurisdiction).' },
+      { step: 'Set per-tenant policies', logic: 'HIPAA = mask all PHI; GDPR = consent-aware; internal = minimal redaction.' },
+      { step: 'Pick action per category', logic: 'Mask (***), hash (HMAC), tokenize (reversible by ops), or drop (delete).' },
+      { step: 'Boundary 1: ingest', logic: 'Detect at parse-time before chunks land in Postgres / Qdrant.' },
+      { step: 'Boundary 2: output', logic: 'Re-scan LLM responses before streaming to client.' },
+      { step: 'Boundary 3: audit', logic: 'Audit_log writes use redact_pii=True; never log raw PII.' },
+      { step: 'Drill the negative', logic: 'Inject known-PII corpus; assert ZERO survives to storage or output.' },
+    ],
+    codeExample: {
+      language: 'python',
+      code: `# libs/py/documind_core/pii.py — layered detector + per-tenant policy
+import re
+from dataclasses import dataclass
+from typing import Literal
+import spacy
+
+NLP = spacy.load("en_core_web_sm")  # NER
+EMAIL = re.compile(r"\\b[\\w.+-]+@[\\w-]+\\.[\\w.-]+\\b")
+PHONE = re.compile(r"\\b\\+?[\\d\\s().-]{7,}\\b")
+SSN = re.compile(r"\\b\\d{3}-\\d{2}-\\d{4}\\b")
+
+Action = Literal["mask", "hash", "tokenize", "drop"]
+
+@dataclass
+class Policy:
+    jurisdiction: str  # "hipaa" | "gdpr" | "internal"
+    rules: dict[str, Action]
+    version: str
+
+def detect_layers(text: str) -> list[tuple[int, int, str]]:
+    """Returns (start, end, category) tuples in document order."""
+    spans = []
+    for cat, pattern in [("EMAIL", EMAIL), ("PHONE", PHONE), ("SSN", SSN)]:
+        for m in pattern.finditer(text):
+            spans.append((m.start(), m.end(), cat))
+    doc = NLP(text)
+    for ent in doc.ents:
+        if ent.label_ in ("PERSON", "ORG", "GPE"):
+            spans.append((ent.start_char, ent.end_char, ent.label_))
+    spans.sort()
+    # merge overlapping spans
+    merged = []
+    for s in spans:
+        if merged and s[0] < merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], s[1]), merged[-1][2])
+        else:
+            merged.append(s)
+    return merged
+
+def redact(text: str, policy: Policy) -> tuple[str, list[dict]]:
+    spans = detect_layers(text)
+    audit = []
+    out_chunks = []
+    cursor = 0
+    for start, end, cat in spans:
+        action = policy.rules.get(cat, "mask")
+        out_chunks.append(text[cursor:start])
+        replacement = {
+            "mask": "[REDACTED]",
+            "hash": f"#{hash(text[start:end]) & 0xfffffff:x}",
+            "tokenize": f"<tok:{cat}:{end-start}>",
+            "drop": "",
+        }[action]
+        out_chunks.append(replacement)
+        audit.append({
+            "category": cat, "action": action,
+            "policy_version": policy.version,
+            "char_range": [start, end],
+        })
+        cursor = end
+    out_chunks.append(text[cursor:])
+    return "".join(out_chunks), audit`,
+    },
+    realUseCase: 'A HIPAA customer onboarded with 50K medical records. Pipeline: ingest detects 47 categories of PHI (regex + NER + custom medical terms). Policy: ALL mask except patient_id which tokenizes (reversible by ops only). Output boundary re-scans LLM responses before streaming. Drill harness pumped a public-PII corpus through; baseline 100% redaction. Then injected one synthetic typo ("john,smith" not "john.smith") — regex missed but NER caught. Without the layered approach, that one would have leaked.',
+    prosCons: {
+      pros: [
+        'Three boundaries = defense in depth (no single point of failure)',
+        'Per-tenant policy supports HIPAA + GDPR + internal in one platform',
+        'Layered detection (regex + NER) catches both common + contextual PII',
+        'Audit chain proves redaction happened (compliance evidence)',
+        'Drill discipline catches false-negatives BEFORE they leak',
+      ],
+      cons: [
+        'NER inference adds 30–80ms p95 per chunk',
+        'False positives on names that look like common words ("Bill", "Mark")',
+        'Tokenize-and-reverse path needs strict access control on the reverse key',
+        'Policy churn: jurisdiction rules change, tested via re-running the drill set',
+      ],
+    },
+    comparison: {
+      left: 'Regex-only PII detection',
+      right: 'Layered: regex + NER + per-tenant policy',
+      rows: [
+        { aspect: 'Recall on emails / SSNs', left: '~95%', right: '~99%' },
+        { aspect: 'Recall on names / orgs', left: '~30%', right: '~85% (NER)' },
+        { aspect: 'Per-jurisdiction support', left: 'One policy fits all', right: 'HIPAA / GDPR / internal independently' },
+        { aspect: 'Latency overhead', left: '~2ms p95', right: '~30-80ms p95 (NER)' },
+        { aspect: 'False-positive rate', left: 'Low (literal patterns only)', right: 'Higher; tunable via NER threshold' },
+      ],
+    },
+    solutions: [
+      { problem: 'NER false positives on common-word names', solution: 'Confidence threshold + per-tenant allowlist of common words' },
+      { problem: 'Regex misses PII in malformed text', solution: 'NER backstop catches contextual mentions' },
+      { problem: 'Output stream leaks PII generated by LLM', solution: 'Re-scan LLM responses pre-stream at output boundary' },
+      { problem: 'Audit log itself leaks PII', solution: 'redact_pii=True flag on every audit write; verified by drill' },
+      { problem: 'Tokenized values leaked via the reverse key', solution: 'BYPASSRLS on reverse + audit per access; key in HSM' },
+    ],
+    bestPractices: {
+      do: [
+        'Three boundaries: ingest, output, audit',
+        'Layer regex + NER + policy for defense in depth',
+        'Per-tenant policy versioned; audit logs cite policy_version',
+        'Drill pumps known-PII corpus through; asserts zero survives',
+        'NER + regex confidence thresholds tuned per jurisdiction',
+      ],
+      avoid: [
+        'Regex-only detection (misses contextual PII)',
+        'Single global policy across HIPAA/GDPR/internal',
+        'Skipping the output-boundary scan ("LLM won\'t generate PII")',
+        'Logging raw PII in audit for "convenience"',
+      ],
+      optimize: [
+        'NER batching across chunks (3-5x throughput)',
+        'Cache redaction results by chunk_hash + policy_version',
+        'Quantize NER model to int8 for faster inference',
+        'Sharded reverse-token key store for tokenize-action access control',
+      ],
+    },
+    antiPatterns: [
+      'PII handling at one boundary only (e.g., ingest only)',
+      'Regex-only — misses 70% of names/orgs',
+      'Single policy across jurisdictions',
+      'No drill — you don\'t know what you\'re missing',
+      'Tokenize-without-access-control on reverse',
+      'Logging raw PII in audit',
+    ],
+    testTypes: [
+      'Drill: known-PII corpus → assert zero PII in Postgres/Qdrant/audit/output',
+      'Negative drill: synthetic typo PII (regex misses) → NER must catch',
+      'Policy diff drill: HIPAA mask vs GDPR consent-aware on same input',
+      'Performance drill: NER overhead p95 ≤ budget',
+    ],
+    testScenarios: [
+      { scenario: 'Email "john@x.com" in user query', expected: 'Detected (EMAIL); masked at ingest before Postgres write' },
+      { scenario: 'Patient name "John Smith" in medical record', expected: 'NER detects PERSON; HIPAA policy → mask' },
+      { scenario: 'LLM response generates "+1-555-1234"', expected: 'Output boundary detects PHONE; mask before stream' },
+      { scenario: 'Audit log write with raw payload', expected: 'redact_pii=True applied; raw PII never reaches DB' },
+      { scenario: 'Tokenized patient_id used by support agent', expected: 'Reverse-token call gated + audited; key in HSM' },
+    ],
+    testData: [
+      { type: 'Public PII corpus', example: '500 sentences with email/phone/SSN/names; baseline recall measured' },
+      { type: 'Synthetic typo set', example: 'PII variants regex misses ("john,smith", "555  1234"); NER backstop tested' },
+      { type: 'Per-jurisdiction fixture', example: 'Same record × HIPAA/GDPR/internal; outputs diverge per policy' },
+    ],
+    debuggingChecklist: [
+      'PII leaked? Check which boundary missed (ingest? output? audit?)',
+      'False positive on a common name? Check NER confidence + allowlist',
+      'Latency spike? NER batching or quantization may have regressed',
+      'Audit row has raw PII? redact_pii=True flag missing on the write call',
+      'Tokenize reverse failing? Audit log + key permissions',
+    ],
+    productionIssues: [
+      { issue: 'GDPR customer leaked patient name in LLM response', rootCause: 'Output boundary scan was disabled by feature flag for performance test, never re-enabled.' },
+      { issue: 'Regex caught email but missed name in same sentence', rootCause: 'NER fell back to "no_model" because spaCy load failed silently at startup.' },
+      { issue: '12% regression in NER recall after model upgrade', rootCause: 'Drill ran on golden set but didn\'t catch domain-specific terms (medication names) that needed custom tagger.' },
+    ],
+    performance: [
+      'Regex layer: ~1-2ms per chunk',
+      'NER layer: ~30-80ms p95 per chunk (CPU); ~10ms (GPU batched)',
+      'Output boundary scan: same overhead, gated by streaming buffer',
+      'Throughput per worker: ~50 chunks/s with NER batched',
+    ],
+    costConsiderations: [
+      'NER inference: ~$0.02 per 1000 chunks (CPU) / ~$0.005 (GPU shared)',
+      'Reverse-token HSM: ~$50/mo (managed) or self-host',
+      'Audit storage: ~200 bytes per redaction row × 30-day retention',
+    ],
+    observability: [
+      'Trace: per-chunk redaction trace with detected categories + actions',
+      'Metrics: detection count by category, action distribution, latency p95',
+      'Logs: raw PII NEVER logged; only category + char_range + policy_version',
+      'Audit: hash-chained per tenant; verified by drill_audit_seal',
+    ],
+    metrics: [
+      { name: 'documind_pii_detected_total{category,action}', example: 'Counter; spike on category may indicate new PII type' },
+      { name: 'documind_pii_redaction_latency_seconds{boundary}', example: 'Histogram; alert if p95 > budget per boundary' },
+      { name: 'documind_pii_drill_recall', example: 'Gauge; target ≥ 0.99 on golden set; alert below' },
+      { name: 'documind_pii_audit_chain_failures_total', example: 'Counter; alert at any > 0' },
+    ],
+    tradeoffs: [
+      { decision: 'Regex-only vs layered detection', tradeoff: 'Layered catches more but adds 30-80ms p95' },
+      { decision: 'Mask vs tokenize for patient ID', tradeoff: 'Mask is simpler; tokenize allows reversible ops with audit' },
+      { decision: 'Per-tenant policy vs global', tradeoff: 'Per-tenant supports HIPAA+GDPR; ops complexity grows' },
+      { decision: 'Output-boundary scan', tradeoff: 'Adds latency to every response; without it LLM can leak' },
+    ],
+    decisionMatrix: [
+      { option: 'Layered detection (this)', whenToUse: 'Multi-tenant + multi-jurisdiction + audit needs' },
+      { option: 'Regex-only', whenToUse: 'Internal tool, single jurisdiction, simple PII categories' },
+      { option: 'Vendor PII service (e.g., AWS Comprehend)', whenToUse: 'No NER infra; willing to pay per-token API cost' },
+    ],
+    starStory: {
+      situation: 'HIPAA customer onboarded; first PII drill failed: 8 of 50 medical records leaked patient names through ingest.',
+      task: 'Get to 100% redaction on the golden set + lock the discipline.',
+      action: 'Added NER layer behind regex (was regex-only). Tuned confidence threshold via golden-set sweeps. Added per-jurisdiction policy. Wrote drill_pii_three_boundaries that pumps known PII through ingest + output + audit; asserts zero in Postgres/Qdrant/audit/stream. Drill in CI gates main.',
+      result: 'Recall went 92% → 99.7%. HIPAA audit passed first attempt. Pattern adopted by GDPR customer 2 months later (just policy switch).',
+    },
+    interviewTraps: [
+      'Saying "we use regex" without mentioning NER',
+      'Single-boundary redaction (ingest only)',
+      'Logging raw PII in audit "for debuggability"',
+      'Tokenize without access-control + audit on reverse',
+      'No drill — claiming coverage based on unit tests',
+    ],
     finalScript: 'PII handling has three boundaries — ingest, output, and audit — and a layered detection pipeline at each. Regex catches the obvious (email, phone, SSN). NER catches the contextual (names, addresses, organizations). Policy resolves per-tenant + per-jurisdiction rules: HIPAA masks all PHI, GDPR is consent-aware, internal is minimal. Actions are mask, hash, tokenize, or drop. Every redaction writes an audit row with policy_version, hash-chained per tenant. The non-negotiable test is a drill that pumps a known-PII corpus through the pipeline and asserts no PII survives to storage or output. Mocks lie about regex-NER coverage; only the live pipeline shows where false-negatives hide.',
   },
 ];
