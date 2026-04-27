@@ -31,8 +31,14 @@ type ChunkRecoveryBanner = {
   at: number;
 };
 
+type BuildUpdateBanner = {
+  currentBuildId: string;
+  latestBuildId: string;
+};
+
 const CHUNK_RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
 const CHUNK_BANNER_TTL_MS = 30 * 1000;
+const BUILD_POLL_INTERVAL_MS = 15 * 1000;
 
 // Keep the window-property names stable so a hot-reload doesn't
 // register two listeners. The globals dance with `as any` is
@@ -46,6 +52,69 @@ declare global {
 
 export default function ClientErrorReporter() {
   const [chunkBanner, setChunkBanner] = useState<ChunkRecoveryBanner | null>(null);
+  const [buildUpdateBanner, setBuildUpdateBanner] = useState<BuildUpdateBanner | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let mounted = true;
+    let pollTimer: number | null = null;
+    const storageKey = 'documind_loaded_build_id';
+    const dismissedKey = 'documind_dismissed_build_id';
+
+    async function checkBuildUpdate() {
+      const ctl = new AbortController();
+      try {
+        const info = await api.frontendBuildInfo(ctl.signal);
+        const buildId = info.build_id;
+        if (!mounted || !buildId) return;
+
+        const currentBuildId = sessionStorage.getItem(storageKey);
+        if (!currentBuildId) {
+          sessionStorage.setItem(storageKey, buildId);
+          return;
+        }
+        if (currentBuildId === buildId) return;
+
+        const dismissedBuildId = sessionStorage.getItem(dismissedKey);
+        if (dismissedBuildId === buildId) return;
+
+        setBuildUpdateBanner({
+          currentBuildId,
+          latestBuildId: buildId,
+        });
+      } catch {
+        // Build polling is best-effort only. Never surface as a user error.
+      }
+    }
+
+    function schedulePoll() {
+      if (pollTimer != null) window.clearInterval(pollTimer);
+      pollTimer = window.setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          void checkBuildUpdate();
+        }
+      }, BUILD_POLL_INTERVAL_MS);
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void checkBuildUpdate();
+      }
+    }
+
+    void checkBuildUpdate();
+    schedulePoll();
+    window.addEventListener('focus', checkBuildUpdate);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      mounted = false;
+      if (pollTimer != null) window.clearInterval(pollTimer);
+      window.removeEventListener('focus', checkBuildUpdate);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -104,10 +173,54 @@ export default function ClientErrorReporter() {
       window.setTimeout(() => window.location.reload(), 150);
     }
 
+    // Lazy disable: if the reporting endpoint ever returns a
+    // non-recoverable status (404 / 405 / 501), suppress all subsequent
+    // reports — both this session AND future navigations (sessionStorage)
+    // — so a missing backend doesn't keep flooding the F12 console with
+    // 404s on every page load.
+    const REPORTER_DISABLED_KEY = 'documind_client_error_reporter_disabled';
+    let endpointDisabled = false;
+    try {
+      if (window.sessionStorage.getItem(REPORTER_DISABLED_KEY) === '1') {
+        endpointDisabled = true;
+      }
+    } catch {
+      // sessionStorage unavailable; degrade to in-memory only.
+    }
+
+    function disableReporter() {
+      endpointDisabled = true;
+      try {
+        window.sessionStorage.setItem(REPORTER_DISABLED_KEY, '1');
+      } catch {
+        // ignore
+      }
+    }
+
+    // First-POST gate: if N parallel reports fire on the very first
+    // page load (before sessionStorage flag is set), naive code POSTs
+    // each one and the browser logs N × 404 console errors. Gate the
+    // first POST on a singleton Promise; subsequent reports wait, then
+    // suppress on 404/405/501.
+    let firstReportPromise: Promise<void> | null = null;
     function safeReport(body: Parameters<typeof api.reportClientError>[0]) {
-      // Fire-and-forget. Catch the catch — a reporting failure
-      // mustn't loop into another reporting attempt.
-      api.reportClientError(body).catch(() => undefined);
+      if (endpointDisabled) return;
+      if (firstReportPromise) {
+        firstReportPromise.then(() => {
+          if (endpointDisabled) return;
+          api.reportClientError(body).catch(() => undefined);
+        });
+        return;
+      }
+      firstReportPromise = api.reportClientError(body).then(
+        () => undefined,
+        (err: unknown) => {
+          const status = (err as { status?: number })?.status;
+          if (status === 404 || status === 405 || status === 501) {
+            disableReporter();
+          }
+        },
+      );
     }
 
     function onError(ev: ErrorEvent) {
@@ -236,6 +349,53 @@ export default function ClientErrorReporter() {
       // component is mounted.
     };
   }, []);
+
+  function refreshNow() {
+    if (typeof window === 'undefined') return;
+    const key = buildUpdateBanner?.latestBuildId;
+    if (key) {
+      sessionStorage.setItem('documind_loaded_build_id', key);
+      sessionStorage.removeItem('documind_dismissed_build_id');
+    }
+    window.location.reload();
+  }
+
+  function dismissBuildUpdate() {
+    if (typeof window === 'undefined') return;
+    if (buildUpdateBanner?.latestBuildId) {
+      sessionStorage.setItem('documind_dismissed_build_id', buildUpdateBanner.latestBuildId);
+    }
+    setBuildUpdateBanner(null);
+  }
+
+  if (buildUpdateBanner) {
+    return (
+      <div className="client-recovery-banner" role="status" aria-live="polite">
+        <div>
+          <strong>New frontend build detected.</strong> This tab is on{' '}
+          <code>{buildUpdateBanner.currentBuildId}</code> and a newer build{' '}
+          <code>{buildUpdateBanner.latestBuildId}</code> is available.
+        </div>
+        <div className="client-recovery-banner-actions">
+          <button
+            type="button"
+            className="client-recovery-banner-primary"
+            onClick={refreshNow}
+          >
+            Refresh now
+          </button>
+          <button
+            type="button"
+            className="client-recovery-banner-dismiss"
+            onClick={dismissBuildUpdate}
+            aria-label="Dismiss frontend update banner"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return chunkBanner ? (
     <div className="client-recovery-banner" role="status" aria-live="polite">
