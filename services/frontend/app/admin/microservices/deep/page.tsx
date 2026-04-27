@@ -1,5 +1,6 @@
 'use client';
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -576,6 +577,15 @@ export default function MicroservicesDeepPage() {
         </ul>
       </div>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/tracing/deep#baggage-propagation', label: 'Baggage propagation', why: 'every cross-service call carries traceparent + baggage; CompositePropagator wired in mcp/server_common' },
+          { href: '/admin/breakers/deep', label: 'Circuit breakers', why: 'one of four core resilience patterns alongside timeout / retry / bulkhead' },
+          { href: '/admin/principles/deep', label: 'SOLID + 17-factor', why: 'every microservice = one bounded context (SRP) + stateless (Factor VI) + config in env (Factor III)' },
+          { href: '/admin/rollout/deep#k8s-health-probes', label: '3-probe pattern (startup / liveness / readiness)', why: 'liveness DUMB; readiness SMART (deps); startup for slow boot — wired per service' },
+          { href: '/admin/checklist/deep', label: 'Production-readiness gate', why: 'every new service ships with checklist + drill + ADR' },
+        ]}
+      />
     </>
   );
 }

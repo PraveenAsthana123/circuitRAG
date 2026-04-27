@@ -10,6 +10,7 @@
  * keeps services up under deployment churn.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -521,6 +522,15 @@ export default function RolloutDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop gate', why: 'no rollback path = NO-GO; this page implements the path' },
+          { href: '/admin/post-release/deep#pdv-monitoring', label: 'PDV monitoring + matrix', why: 'PDV decides when to fire rollback; rollback decision matrix is pre-decided here' },
+          { href: '/admin/cicd/deep', label: 'CI/CD canary wiring', why: 'Argo Rollouts AnalysisTemplate is configured in CI/CD; rollback paths tested as part of pipeline' },
+          { href: '/admin/tracing/deep#baggage-propagation', label: 'Baggage during rollback', why: 'baggage.tenant_id remains valid across rollback hops; partial rollback observable per tenant' },
+          { href: '/admin/load-testing/deep#performance-tuning-outage-playbook', label: 'Outage catalog', why: 'every rollback drill becomes a permanent k6 scenario in the catalog' },
+        ]}
+      />
     </div>
   );
 }

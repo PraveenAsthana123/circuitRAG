@@ -8,6 +8,7 @@
  * smoke + rollback decision matrix + AI/RAG-specific signals).
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -746,6 +747,15 @@ export default function PostReleaseDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop gate (6 conditions)', why: 'PDV breach maps directly to "no monitoring" + "no rollback" hard stops; this page implements the operational half of the gate' },
+          { href: '/admin/tracing/deep', label: 'Baggage + trace→draft→audit', why: 'rollback decisions filterable by tenant_id via baggage; forensics by request_id when PDV alerts' },
+          { href: '/admin/rollout/deep', label: 'Rollback strategy + 3-probe', why: 'auto-rollback wired here triggers the 4-layer rollback flow; readiness probe gates traffic during canary' },
+          { href: '/admin/cicd/deep#cicd-master-pipeline', label: 'CI/CD auto-rollback wiring', why: 'Argo Rollouts AnalysisTemplate consumes these golden + AI signals' },
+          { href: '/admin/load-testing/deep#performance-tuning-outage-playbook', label: 'Outage playbook + catalog', why: 'every PDV-triggered rollback becomes a permanent k6 regression scenario' },
+        ]}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -613,6 +614,15 @@ export default function BreakersDeepPage() {
         </ul>
       </div>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/tracing/deep#baggage-propagation', label: 'Baggage propagation', why: 'every retry hop carries traceparent + request_id; circuit-breaker open events auto-correlate by tenant' },
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Hard-stop gate', why: 'no fallback / no rollback / no monitoring on a breaker = release blocked' },
+          { href: '/admin/post-release/deep#pdv-monitoring', label: 'PDV monitoring', why: 'breaker-open rate is a golden signal; window aggregate avoids single-spike rollback' },
+          { href: '/admin/microservices/deep', label: 'Microservices resilience', why: 'breaker is one of four core resilience patterns (timeout / retry / breaker / bulkhead)' },
+          { href: '/admin/rollout/deep#rollback-strategy', label: 'Rollback strategy', why: 'auto-rollback triggers include breaker-open spike on critical dependency' },
+        ]}
+      />
     </>
   );
 }

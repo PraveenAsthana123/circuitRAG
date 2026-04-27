@@ -7,6 +7,7 @@
  * relevance, §32 Trade-offs, §33 Decision matrix.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -481,6 +482,15 @@ export default function ArchitectDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/c4-model/deep', label: 'C4 (7 levels, AI-extended)', why: 'every architect-led system has L1–L7 diagrams; L5 governance + L6 observability + L7 lifecycle are the AI-specific extensions' },
+          { href: '/admin/adr/deep', label: 'ADR — decision records', why: 'every locked decision becomes an ADR; immutable; numbered; linked from PR' },
+          { href: '/admin/jad/deep', label: 'JAD → BRD → C4 → ADR chain', why: 'unidirectional design flow; new constraints trigger new mini-JAD, never hidden in-flight pivot' },
+          { href: '/admin/checklist/deep', label: 'Production-readiness gate', why: 'the architect signs off the checklist; 6 hard stops are non-negotiable' },
+          { href: '/admin/security/deep#owasp-stride-ai-threats', label: 'STRIDE per L2 container', why: 'every container in C4 L2 needs a STRIDE table; architect owns this' },
+        ]}
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@
  * practices, §24 Production issues, §26 Debugging checklist.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -387,6 +388,15 @@ export default function TechleadDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/checklist/deep', label: 'Production-readiness checklist', why: 'tech lead signs the checklist; 17 sections + 6 hard stops are pair-signed (lead + on-call + compliance)' },
+          { href: '/admin/cicd/deep', label: 'CI/CD + TDD framework', why: 'tech lead owns CI gate config + TDD discipline; build-once + AI eval gates' },
+          { href: '/admin/tracing/deep', label: 'Baggage + trace→draft→audit', why: 'tech lead enforces baggage_set in auth middleware so cross-service forensics works' },
+          { href: '/admin/post-release/deep', label: 'PDV + rollback decision matrix', why: 'tech lead pre-decides rollback matrix; debate-free at 3 AM' },
+          { href: '/admin/principles/deep', label: 'SOLID + 17-factor', why: 'tech lead enforces principles in code review; AI-generated code follows the same rules' },
+        ]}
+      />
     </div>
   );
 }
