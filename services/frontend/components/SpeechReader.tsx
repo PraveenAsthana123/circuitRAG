@@ -159,7 +159,6 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   const [rate, setRate] = useState<number>(rateProp);
   const [pitch, setPitch] = useState<number>(1.0);
   const [volume, setVolume] = useState<number>(1.0);
-  const [selectionText, setSelectionText] = useState<string>('');
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const startSpanRef = useRef<number>(0);
   const [mounted, setMounted] = useState(false);
@@ -292,9 +291,6 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans]);
 
   const speak = useCallback(() => speakFrom(0), [speakFrom]);
-  const speakSelection = useCallback(() => {
-    if (selectionText) speakFrom(0, selectionText);
-  }, [speakFrom, selectionText]);
 
   const pauseFn = useCallback(() => {
     if (!supported) return;
@@ -440,24 +436,6 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     }
   }, [state, buildDomRanges]);
 
-  // Watch for text selection — but DON'T pop up a giant panel. Just
-  // keep the trimmed selection text in state so the toolbar can show
-  // a small "Read selection" button only when ≥3 words are selected.
-  useEffect(() => {
-    if (!compact) return;
-    const handler = () => {
-      const sel = typeof window !== 'undefined' ? window.getSelection() : null;
-      const txt = sel ? sel.toString().trim() : '';
-      if (txt.split(/\s+/).length >= 3 && txt.length < 5000) {
-        setSelectionText(txt);
-      } else {
-        setSelectionText('');
-      }
-    };
-    document.addEventListener('selectionchange', handler);
-    return () => document.removeEventListener('selectionchange', handler);
-  }, [compact]);
-
   if (!mounted) return null;
 
   if (!supported) {
@@ -565,16 +543,6 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
             <option value="2">2×</option>
           </select>
         )}
-        {compact && state === 'idle' && selectionText && (
-          <button
-            type="button"
-            onClick={speakSelection}
-            title={`Read selected text (${selectionText.split(/\s+/).length} words)`}
-            style={{ ...btnStyle('#0ea5e9'), fontSize: 12 }}
-          >
-            🎯 Read selection
-          </button>
-        )}
         {!compact && englishVoices.length > 1 && (
           <select
             value={voiceName}
@@ -658,14 +626,14 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
           aria-live="polite"
           style={{
             marginTop: 8,
-            padding: 10,
+            padding: 8,
             background: '#fafaf9',
             borderLeft: '3px solid #1e3a8a',
             borderRadius: 4,
             color: '#000',
-            fontSize: 14,
-            lineHeight: 1.7,
-            maxHeight: 220,
+            fontSize: 12,
+            lineHeight: 1.55,
+            maxHeight: 120,
             overflowY: 'auto',
           }}
         >
