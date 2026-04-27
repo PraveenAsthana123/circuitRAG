@@ -37,10 +37,32 @@ export default function PageDownloadBar({ contentSelector = 'main' }: { contentS
         (document.querySelector('article') as HTMLElement | null) ||
         document.body;
       if (main) {
-        // SpeechSynthesis chokes on huge utterances; cap at 12k
-        // (covers most deep-dive pages without truncating mid-section).
-        const txt = (main.textContent || '').replace(/\s+/g, ' ').trim();
-        setPageText(txt.slice(0, 12000));
+        // Capture ONLY headings + paragraphs + list items + table cells +
+        // figure captions. Skip buttons, selects, inputs, code blocks,
+        // and anything tagged data-speech-skip. The user complaint
+        // 'it is reading button — which is not required' was caused by
+        // raw textContent including toolbar button labels. Limiting to
+        // semantic content tags fixes that.
+        const SEMANTIC = 'h1, h2, h3, h4, h5, h6, p, li, td, th, blockquote, figcaption, dt, dd';
+        const SKIP = new Set(['BUTTON', 'SELECT', 'INPUT', 'TEXTAREA', 'OPTION', 'OPTGROUP', 'LABEL', 'CODE', 'PRE', 'SVG', 'NAV', 'ASIDE']);
+        const parts: string[] = [];
+        const seen = new WeakSet<Element>();
+        main.querySelectorAll(SEMANTIC).forEach((el) => {
+          if (seen.has(el)) return;
+          // Skip if any ancestor is a control/nav OR carries data-speech-skip
+          let p: Element | null = el;
+          while (p && p !== main) {
+            if (SKIP.has(p.tagName)) return;
+            if ((p as HTMLElement).dataset?.speechSkip === '1') return;
+            p = p.parentElement;
+          }
+          // Skip if a nested heading/paragraph already captured (avoid dup)
+          el.querySelectorAll(SEMANTIC).forEach((nested) => seen.add(nested));
+          const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (txt) parts.push(txt);
+        });
+        const joined = parts.join('. ').replace(/\.\s*\./g, '.').slice(0, 12000);
+        setPageText(joined);
       }
     };
 

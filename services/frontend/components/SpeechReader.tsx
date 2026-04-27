@@ -160,9 +160,10 @@ const LS_KEYS = {
   rate: 'documind.speech.rate',
   pitch: 'documind.speech.pitch',
   volume: 'documind.speech.volume',
+  autoplay: 'documind.speech.autoplay',
 } as const;
 
-export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US', compact = false, showSettingsHint = false }: Props) {
+export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US', compact = false, showSettingsHint = false }: Props) {
   const spans = useMemo(() => tokenize(text), [text]);
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const [state, setState] = useState<'idle' | 'speaking' | 'paused' | 'server_loading'>('idle');
@@ -176,6 +177,8 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   const [rate, setRate] = useState<number>(rateProp);
   const [pitch, setPitch] = useState<number>(1.0);
   const [volume, setVolume] = useState<number>(1.0);
+  const [autoplay, setAutoplay] = useState<boolean>(false);
+  const autoplayFiredRef = useRef(false);
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const compactMenuRef = useRef<HTMLDetailsElement | null>(null);
@@ -183,6 +186,10 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
   // Cancel hook for the in-flight server-TTS chunk queue. stop() calls
   // this so a queued chunk doesn't keep playing after the user clicked ⏹.
   const serverChunkCancelRef = useRef<(() => void) | null>(null);
+  // Chrome silently stops speech after ~14s; this timer resets the engine.
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const speechStartTimeRef = useRef<number>(0);
+  const totalSpokenWordsRef = useRef<number>(0);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -206,7 +213,15 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
       const parsed = Number(savedVolume);
       if (!Number.isNaN(parsed)) setVolume(clampVolume(parsed));
     }
+    const savedAutoplay = window.localStorage.getItem(LS_KEYS.autoplay);
+    if (savedAutoplay === '1') setAutoplay(true);
   }, []);
+
+  // Persist autoplay preference.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(LS_KEYS.autoplay, autoplay ? '1' : '0');
+  }, [autoplay]);
 
   useEffect(() => {
     let mounted = true;
@@ -294,6 +309,11 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     if (serverChunkCancelRef.current) {
       serverChunkCancelRef.current();
       serverChunkCancelRef.current = null;
+    }
+    // Stop the Chrome 14s-bug keepAlive timer
+    if (keepAliveRef.current) {
+      clearInterval(keepAliveRef.current);
+      keepAliveRef.current = null;
     }
     setActiveIdx(-1);
     setPlaybackMode(null);
@@ -430,6 +450,33 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     }
   }, [text, volume, chunkText]);
 
+  // Chrome silently stops speech after ~14 seconds — well-known bug.
+  // Workaround: pause+resume on a timer so the engine resets.
+  const startKeepAlive = useCallback(() => {
+    if (keepAliveRef.current) return;
+    keepAliveRef.current = setInterval(() => {
+      if (typeof window === 'undefined') return;
+      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        // Force engine reset to prevent silent stop
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      } else if (!window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        // Speech ended; clear the timer
+        if (keepAliveRef.current) {
+          clearInterval(keepAliveRef.current);
+          keepAliveRef.current = null;
+        }
+      }
+    }, 12000); // every 12s, before Chrome's ~14s timeout
+  }, []);
+
+  const stopKeepAlive = useCallback(() => {
+    if (keepAliveRef.current) {
+      clearInterval(keepAliveRef.current);
+      keepAliveRef.current = null;
+    }
+  }, []);
+
   const speakFrom = useCallback((startIdx: number, customText?: string) => {
     if (!supported) return;
     const sourceText = customText !== undefined ? customText : text;
@@ -483,6 +530,11 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
         utter.onstart = () => {
           setPlaybackMode('browser');
           setState('speaking');
+          // Start Chrome 14s-bug keepAlive + capture start time for
+          // time-based fallback word tracking.
+          startKeepAlive();
+          speechStartTimeRef.current = performance.now();
+          totalSpokenWordsRef.current = 0;
         };
       }
       utter.onpause = () => setState('paused');
@@ -492,6 +544,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
           setActiveIdx(-1);
           setPlaybackMode(null);
           setState('idle');
+          stopKeepAlive();
         };
       }
       utter.onerror = () => {
@@ -502,13 +555,37 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
           setActiveIdx(-1);
           setPlaybackMode(null);
           setState('idle');
+          stopKeepAlive();
         }
       };
       if (idx === pieces.length - 1) utterRef.current = utter;
       window.speechSynthesis.speak(utter);
       cumulativeOffset += piece.length + 1; // +1 for chunkText join space
     });
-  }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans, chunkText]);
+  }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans, chunkText, startKeepAlive, stopKeepAlive]);
+
+  // Time-based active-word estimator. Many TTS voices (notably
+  // espeak-ng on Linux) don't fire onboundary events, so the pill +
+  // CSS Highlight never advance. As a fallback, estimate the active
+  // word index from elapsed speaking time at the current rate (~150
+  // base WPM × rate). Updates every 200ms while speaking. If
+  // onboundary IS firing (modern Google voices), this estimator just
+  // confirms the same value and the real callback wins on the next
+  // tick. Per-tick comparison: max(boundary-set, time-est).
+  useEffect(() => {
+    if (state !== 'speaking') return;
+    const tick = setInterval(() => {
+      const elapsedSec = (performance.now() - speechStartTimeRef.current) / 1000;
+      // Default speaking rate ~150 WPM = 2.5 words/sec at rate=1.0
+      const wordsPerSec = 2.5 * rate;
+      const estimatedIdx = Math.min(
+        spans.length - 1,
+        startSpanRef.current + Math.floor(elapsedSec * wordsPerSec),
+      );
+      setActiveIdx((cur) => (estimatedIdx > cur ? estimatedIdx : cur));
+    }, 200);
+    return () => clearInterval(tick);
+  }, [state, rate, spans.length]);
 
   // Detect platform-specific install hint for missing voices.
   const noVoiceHint = useMemo(() => {
@@ -549,6 +626,25 @@ export default function SpeechReader({ text, rate: rateProp = 1.0, lang = 'en-US
     }
     void speakViaServer(selectedText || undefined);
   }, [closeCompactMenu, speakFrom, speakViaServer, supported, voices.length, noVoiceHint]);
+
+  // Autoplay on page load: when the autoplay toggle is on, fire speak()
+  // once after voices are loaded and text is captured. autoplayFiredRef
+  // ensures we only fire once per mount; subsequent navigations remount
+  // the component (or rebuild the toolbar via PageDownloadBar) so a
+  // fresh fire happens. Browser autoplay policy may block the FIRST
+  // page in a session — in that case the alert appears prompting the
+  // user to click 🔊 once; subsequent pages auto-play.
+  useEffect(() => {
+    if (!autoplay) return;
+    if (autoplayFiredRef.current) return;
+    if (!supported) return;
+    if (!text || text.length < 50) return; // wait for content to land
+    if (voices.length === 0) return; // wait for voices to populate
+    autoplayFiredRef.current = true;
+    // Tiny defer to let React paint the toolbar first
+    const t = setTimeout(() => speak(), 250);
+    return () => clearTimeout(t);
+  }, [autoplay, supported, text, voices.length, speak]);
 
   const speakSelected = useCallback(() => {
     closeCompactMenu();
