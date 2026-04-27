@@ -286,6 +286,14 @@ const GROUPS: Group[] = [
       { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Governance + ops + 6 hard stops' },
     ],
   },
+  {
+    heading: 'AI Explainability + Interpretability',
+    items: [
+      { href: '/admin/explainability/deep', label: 'Explainability — overview' },
+      { href: '/admin/explainability/deep#global-local-xai', label: 'Global + local · SHAP / counterfactual' },
+      { href: '/admin/explainability/deep#audit-rag-contract-regulation', label: 'Audit row · RAG four-part · EU AI Act' },
+    ],
+  },
 ];
 
 /** Left-menu nav. Grouped so the 10+ links are scannable. */
