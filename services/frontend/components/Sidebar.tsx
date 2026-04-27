@@ -179,11 +179,79 @@ const GROUPS: Group[] = [
       { href: '/admin/techlead/deep', label: 'Tech Lead — API contract' },
       { href: '/admin/eng-manager/deep', label: 'Eng Manager — roadmap + risk' },
       { href: '/admin/technical-plan/deep', label: 'Technical Plan — BRD-to-code' },
-      { href: '/admin/c4-model/deep', label: 'C4 model (extended for AI)' },
-      { href: '/admin/adr/deep', label: 'ADR — Architecture Decision Record' },
-      { href: '/admin/jad/deep', label: 'JAD — Joint Application Design' },
-      { href: '/admin/voice-ai/deep', label: 'Voice AI — JFA → ECAPA-TDNN' },
-      { href: '/admin/security/deep', label: 'Security — OWASP + DevSecOps + SOC2' },
+    ],
+  },
+  {
+    heading: 'C4 model (7 levels · AI-extended)',
+    items: [
+      { href: '/admin/c4-model/deep', label: 'C4 — overview' },
+      { href: '/admin/c4-model/deep#level-1-system-context', label: 'L1 · System context' },
+      { href: '/admin/c4-model/deep#level-2-containers', label: 'L2 · Containers' },
+      { href: '/admin/c4-model/deep#level-3-components', label: 'L3 · Components' },
+      { href: '/admin/c4-model/deep#level-4-code', label: 'L4 · Code' },
+      { href: '/admin/c4-model/deep#level-5-governance', label: 'L5 · Governance' },
+      { href: '/admin/c4-model/deep#level-6-observability', label: 'L6 · Observability' },
+      { href: '/admin/c4-model/deep#level-7-lifecycle', label: 'L7 · Lifecycle' },
+    ],
+  },
+  {
+    heading: 'ADR — Architecture Decision Record',
+    items: [
+      { href: '/admin/adr/deep', label: 'ADR — overview' },
+      { href: '/admin/adr/deep#adr-fundamentals', label: 'ADR · Fundamentals + template' },
+      { href: '/admin/adr/deep#adr-001-ai-assisted-dev', label: 'ADR-001 · AI-assisted dev (worked)' },
+      { href: '/admin/adr/deep#adr-catalog-ai-sdlc', label: 'ADR catalog · AI-SDLC (10 ADRs)' },
+    ],
+  },
+  {
+    heading: 'JAD — Joint Application Design',
+    items: [
+      { href: '/admin/jad/deep', label: 'JAD — overview' },
+      { href: '/admin/jad/deep#jad-fundamentals', label: 'JAD · Fundamentals + roles' },
+      { href: '/admin/jad/deep#jad-day-by-day-execution', label: 'JAD · Day-by-day execution' },
+      { href: '/admin/jad/deep#jad-adr-c4-unified-chain', label: 'JAD → BRD → C4 → ADR chain' },
+    ],
+  },
+  {
+    heading: 'Voice AI — JFA → ECAPA-TDNN',
+    items: [
+      { href: '/admin/voice-ai/deep', label: 'Voice AI — overview' },
+      { href: '/admin/voice-ai/deep#jfa-to-x-vector', label: 'JFA · GMM-UBM → i-vector → x-vector' },
+      { href: '/admin/voice-ai/deep#voice-auth-system', label: 'Voice auth · ECAPA-TDNN system' },
+    ],
+  },
+  {
+    heading: 'Security — OWASP + DevSecOps + SOC2',
+    items: [
+      { href: '/admin/security/deep', label: 'Security — overview' },
+      { href: '/admin/security/deep#owasp-stride-ai-threats', label: 'OWASP 2025 + STRIDE + AI threats' },
+      { href: '/admin/security/deep#devsecops-pipeline', label: 'DevSecOps pipeline (shift-left)' },
+      { href: '/admin/security/deep#cloud-soc2-iam', label: 'Cloud · SOC2 + IAM controls' },
+    ],
+  },
+  {
+    heading: 'Rollout · rollback + health probes',
+    items: [
+      { href: '/admin/rollout/deep', label: 'Rollout — overview' },
+      { href: '/admin/rollout/deep#rollback-strategy', label: 'Rollback · app + DB + AI + infra' },
+      { href: '/admin/rollout/deep#k8s-health-probes', label: 'K8s · startup / liveness / readiness' },
+    ],
+  },
+  {
+    heading: 'Architecture principles',
+    items: [
+      { href: '/admin/principles/deep', label: 'Principles — overview' },
+      { href: '/admin/principles/deep#solid-ai-microservices', label: 'SOLID · AI-SDLC + microservices' },
+      { href: '/admin/principles/deep#twelve-factor-kiss-yagni-dry', label: '12-factor + KISS / YAGNI / DRY' },
+    ],
+  },
+  {
+    heading: 'Load testing — k6 + JMeter + AI',
+    items: [
+      { href: '/admin/load-testing/deep', label: 'Load testing — overview' },
+      { href: '/admin/load-testing/deep#k6-jmeter-multi-phase', label: 'k6 + JMeter · multi-phase' },
+      { href: '/admin/load-testing/deep#rag-ai-load-testing', label: 'RAG / AI · layered + breakpoint' },
+      { href: '/admin/load-testing/deep#performance-tuning-outage-playbook', label: 'Tuning + outage playbook' },
     ],
   },
 ];
