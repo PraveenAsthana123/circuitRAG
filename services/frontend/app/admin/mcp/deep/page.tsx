@@ -1,5 +1,6 @@
 'use client';
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -565,6 +566,15 @@ export default function MCPDeepPage() {
         </ul>
       </div>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/tracing/deep', label: 'CompositePropagator + baggage', why: 'mcp/server_common wires the propagator + httpx auto-instrumentation; every MCP server inherits' },
+          { href: '/admin/security/deep#owasp-stride-ai-threats', label: 'A15 excessive agency', why: 'tool-call scope check + scope-deny audit = the excessive-agency control; required_scopes per tool' },
+          { href: '/admin/ai-orchestration/deep', label: 'MCP servers as workers', why: 'orchestrator (planner) → MCP servers (workers); plan + tool sequence audit row composes' },
+          { href: '/admin/checklist/deep#governance-ops-checklist', label: 'Drill discipline (§43)', why: 'every MCP server ships drill_*.py; commits without drill blocked; resource-tag scheduler' },
+          { href: '/admin/post-release/deep', label: 'Scope-deny in PDV', why: 'scope-deny rate is a golden signal; spike triggers investigate (auth bypass attempt or stale scopes)' },
+        ]}
+      />
     </>
   );
 }

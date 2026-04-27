@@ -8,6 +8,7 @@
  * case study playbook.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -1060,6 +1061,15 @@ export default function LoadTestingDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/cicd/deep#cicd-master-pipeline', label: 'k6 smoke gate in CI', why: 'CI < 10 min smoke phase; full multi-phase load nightly outside CI; breakpoint VU tracked as release metric' },
+          { href: '/admin/post-release/deep#performance-tuning-outage-playbook', label: 'Outage catalog + playbook', why: 'every PDV-triggered rollback becomes a permanent k6 regression scenario; quarterly chaos replay' },
+          { href: '/admin/rollout/deep', label: 'Capacity planning + rollback', why: 'breakpoint VU drives replica count + autoscale config; rollback drill replays load' },
+          { href: '/admin/rag/deep', label: 'RAG layered load test', why: 'embedder + vector + LLM in isolation first, then end-to-end; tokens + cost = first-class metrics' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: '§13 performance row', why: 'p95 / p99 / breakpoint / soak duration / spike recovery — checklist rows with measurable thresholds' },
+        ]}
+      />
     </div>
   );
 }

@@ -13,6 +13,8 @@
  */
 
 import Link from 'next/link';
+
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -906,6 +908,15 @@ export default function DataDeepPage() {
       </div>
 
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/database/deep', label: 'Storage layer', why: 'data flow output → schema; data preprocessing decisions drive index strategy + partitioning' },
+          { href: '/admin/rag/deep', label: 'Chunking + embedding upstream', why: 'data preprocessing IS the upstream of RAG ingestion; quality at this layer caps RAG quality' },
+          { href: '/admin/pii/deep', label: 'Pre-ingestion masking', why: 'PII masking + tokenization happens in data pipeline before chunking; never raw PII into vector DB' },
+          { href: '/admin/security/deep#cloud-soc2-iam', label: 'SOC2 confidentiality', why: 'data classification + retention + encryption at rest = SOC2 + GDPR controls' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: '§1 architecture data flow row', why: 'DFD with PII clearly marked is a checklist row; this page implements the discipline' },
+        ]}
+      />
     </>
   );
 }

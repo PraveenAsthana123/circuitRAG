@@ -17,6 +17,7 @@
  *   6. S3 / object store (raw artifact)
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const DATASTORES: Topic[] = [
@@ -2704,6 +2705,15 @@ export default function DatabaseDeepPage() {
           <li>What observability + audit evidence is required?</li>
         </ol>
       </div>
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/data/deep', label: 'Data preprocessing upstream', why: 'data pipeline output → DB schema + index strategy; PII tokenization preserves referential integrity across stores' },
+          { href: '/admin/security/deep#cloud-soc2-iam', label: 'RLS for tenant isolation = SOC2 CC6.1', why: 'Postgres row-level security is the access-control evidence for SOC2; tenant_id check on every query' },
+          { href: '/admin/tracing/deep', label: 'OTel asyncpg instrumentation', why: 'N+1 queries surface as Jaeger span explosion; baggage.tenant_id filterable per query' },
+          { href: '/admin/rollout/deep#rollback-strategy', label: 'DB expand-contract migration', why: 'never DROP/RENAME in same release as add; backward-compat first → backfill → contract later' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: '§4 coding row + §9 deployment', why: 'no N+1 + indexes on WHERE/ORDER BY columns + safe migration = direct checklist rows' },
+        ]}
+      />
     </>
   );
 }

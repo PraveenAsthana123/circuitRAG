@@ -21,6 +21,8 @@
  */
 
 import { useState } from 'react';
+
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic as MasterTopic } from '../../../../components/UniversalDeepDive';
 
 const PYTHON_MASTER_SUMMARY: MasterTopic = {
@@ -903,6 +905,15 @@ export default function PythonDeepPage() {
           control under production constraints.&rdquo;
         </p>
       </div>
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/principles/deep', label: 'SOLID + 17-factor in Python', why: 'DIP via Protocol; SRP via small modules; 12-factor + 5 AI factors mapped to Python project layout' },
+          { href: '/admin/cicd/deep', label: 'Ruff + black + mypy + pytest in CI', why: 'CI gates enforce PEP 8 + types + tests; pre-commit hooks block style debate at PR time' },
+          { href: '/admin/tracing/deep', label: 'OTel Python wiring', why: 'mcp/server_common.setup_server_otel is THE Python reference for CompositePropagator + httpx + FastAPI auto-instrument' },
+          { href: '/admin/security/deep#devsecops-pipeline', label: 'Bandit + pip-audit gates', why: 'Python-specific SAST + SCA tools run in CI; secret scan via Gitleaks' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: '§4 coding row', why: 'Python-specific implementation of: type hints + no catch-all + idempotency + immutable structures' },
+        ]}
+      />
     </>
   );
 }

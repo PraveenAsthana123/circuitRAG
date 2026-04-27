@@ -7,6 +7,7 @@
  * Problem/Context, §11 ADR, §9 Logical steps.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -366,6 +367,15 @@ export default function TechnicalPlanDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/jad/deep', label: 'JAD BRD becomes the plan', why: 'technical plan is the BRD-to-code artifact downstream of JAD; new constraint = new mini-JAD' },
+          { href: '/admin/c4-model/deep', label: 'Plan references C4 levels affected', why: 'every workstream in the plan tags C4 boxes it touches; impact analysis becomes one query' },
+          { href: '/admin/adr/deep', label: 'ADRs lock decisions in the plan', why: 'every locked decision in the plan = ADR; no shadow decisions' },
+          { href: '/admin/checklist/deep', label: 'Plan must include checklist sign-off', why: 'plan completion = all 17 checklist sections green + 6 hard stops clear' },
+          { href: '/admin/architect/deep', label: 'Architect signs the plan', why: 'architect approves before sequencing; tech lead owns execution; em owns delivery' },
+        ]}
+      />
     </div>
   );
 }

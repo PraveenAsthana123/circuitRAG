@@ -10,6 +10,7 @@
  * design with C4 + ADRs + JAD framing + STRIDE threat model.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -494,6 +495,15 @@ export default function VoiceAIDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/security/deep#owasp-stride-ai-threats', label: 'Voice biometric = bio PII', why: 'voice clip is sensitive biometric; STRIDE table required; spoofing is the highest threat' },
+          { href: '/admin/pii/deep', label: 'PII pre-ingestion + retention', why: 'voice samples = SOC2 confidentiality + GDPR Art. 9 special-category data; consent + retention schedule mandatory' },
+          { href: '/admin/guardrails/deep', label: 'Voice clone consent guardrail', why: 'TTS voice cloning requires consent record + watermarking (AudioSeal / Resemble Detect); refuse public-figure clones' },
+          { href: '/admin/llmops/deep', label: 'Speaker model versioning + eval', why: 'ECAPA-TDNN model in registry with EER + DCF metrics; rollback via registry pointer flip' },
+          { href: '/admin/checklist/deep#lifecycle-checklist', label: '§10 AI row applies', why: 'voice biometrics goes through the same eval gate + cost budget + fallback model rules as any AI feature' },
+        ]}
+      />
     </div>
   );
 }

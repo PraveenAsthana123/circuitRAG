@@ -6,6 +6,7 @@
  * §0 BRD, §11 ADR, §32 Trade-offs, §35 Interview traps, §37 STAR.
  */
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
 import UniversalDeepDive, { type Topic } from '../../../../components/UniversalDeepDive';
 
 const TOPICS: Topic[] = [
@@ -368,6 +369,15 @@ export default function EngManagerDeep() {
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
+      <DeepDiveCrossRefs
+        refs={[
+          { href: '/admin/jad/deep', label: 'JAD → BRD → backlog', why: 'JAD outputs feed eng-manager backlog + risk register; mini-JAD on every new constraint' },
+          { href: '/admin/architect/deep', label: 'Architect collaboration', why: 'em + architect co-own ARB cadence and ADR throughput; architect signs the design, em sequences the work' },
+          { href: '/admin/cicd/deep', label: 'DORA metrics tracked here', why: 'deploy frequency + lead time + change failure rate + MTTR — em-level KPIs derived from CI/CD' },
+          { href: '/admin/post-release/deep', label: 'Incident management + RCA', why: 'em owns blameless postmortems + on-call rotation health; PDV + outage catalog feed em risk register' },
+          { href: '/admin/checklist/deep', label: 'Production-readiness gate', why: 'em is one of the three pair-signers (lead + on-call + compliance); em escalates hard-stop overrides' },
+        ]}
+      />
     </div>
   );
 }
