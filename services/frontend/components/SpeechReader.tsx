@@ -190,6 +190,10 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const speechStartTimeRef = useRef<number>(0);
   const totalSpokenWordsRef = useRef<number>(0);
+  // True once a SpeechSynthesisUtterance has fired onboundary in this
+  // session — used to suppress the time-based estimator (which would
+  // otherwise fight onboundary and produce out-of-sync highlights).
+  const boundaryFiredRef = useRef(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -514,6 +518,9 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
       const pieceStartInSpoken = cumulativeOffset;
       utter.onboundary = (e) => {
         if (e.name && e.name !== 'word') return;
+        // Mark that onboundary fires on this voice — disables the
+        // time-based estimator below to prevent the two from fighting.
+        boundaryFiredRef.current = true;
         // charIndex is into THIS piece; add piece's start offset for
         // mapping back to original spans[].
         const targetCharInSlice = pieceStartInSpoken + e.charIndex;
@@ -531,10 +538,14 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
           setPlaybackMode('browser');
           setState('speaking');
           // Start Chrome 14s-bug keepAlive + capture start time for
-          // time-based fallback word tracking.
+          // time-based fallback word tracking. Reset the boundary-
+          // detection flag — the first 1500ms of speaking determines
+          // whether this voice emits onboundary; the estimator runs
+          // ONLY if no boundary events have fired by then.
           startKeepAlive();
           speechStartTimeRef.current = performance.now();
           totalSpokenWordsRef.current = 0;
+          boundaryFiredRef.current = false;
         };
       }
       utter.onpause = () => setState('paused');
@@ -564,20 +575,35 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     });
   }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans, chunkText, startKeepAlive, stopKeepAlive]);
 
-  // Time-based active-word estimator. Many TTS voices (notably
-  // espeak-ng on Linux) don't fire onboundary events, so the pill +
-  // CSS Highlight never advance. As a fallback, estimate the active
-  // word index from elapsed speaking time at the current rate (~150
-  // base WPM × rate). Updates every 200ms while speaking. If
-  // onboundary IS firing (modern Google voices), this estimator just
-  // confirms the same value and the real callback wins on the next
-  // tick. Per-tick comparison: max(boundary-set, time-est).
+  // Time-based active-word estimator — fallback ONLY for voices that
+  // don't fire onboundary (commonly espeak-ng on Linux). The estimator
+  // is suppressed during the first 1500ms (calibration window) and
+  // permanently disabled if any onboundary event fires — onboundary is
+  // always more accurate, and running both at once was producing the
+  // out-of-sync highlight behavior the user reported.
+  //
+  // Conservative rate: ~2.0 wps × user rate (vs ~2.5 average) so the
+  // estimator stays slightly behind real speech rather than racing
+  // ahead. Falls back further if speech is paused (skip ticks while
+  // window.speechSynthesis.paused === true).
   useEffect(() => {
     if (state !== 'speaking') return;
+    const calibrationMs = 1500;
     const tick = setInterval(() => {
-      const elapsedSec = (performance.now() - speechStartTimeRef.current) / 1000;
-      // Default speaking rate ~150 WPM = 2.5 words/sec at rate=1.0
-      const wordsPerSec = 2.5 * rate;
+      // If onboundary is firing, the boundary handler is already
+      // setting activeIdx — don't overwrite.
+      if (boundaryFiredRef.current) return;
+      const elapsed = performance.now() - speechStartTimeRef.current;
+      // Stay quiet during calibration window — gives onboundary a
+      // chance to assert itself before we start estimating.
+      if (elapsed < calibrationMs) return;
+      // Skip ticks while speech is paused (engine isn't actually
+      // speaking even if React state says 'speaking').
+      if (typeof window !== 'undefined' && window.speechSynthesis.paused) return;
+      const elapsedSec = elapsed / 1000;
+      // Conservative: 2.0 wps × rate (vs naive 2.5) — better to lag
+      // slightly than race ahead.
+      const wordsPerSec = 2.0 * rate;
       const estimatedIdx = Math.min(
         spans.length - 1,
         startSpanRef.current + Math.floor(elapsedSec * wordsPerSec),
