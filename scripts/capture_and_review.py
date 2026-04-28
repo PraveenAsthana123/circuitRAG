@@ -209,6 +209,23 @@ async def capture_and_record(
         except Exception as exc:  # noqa: BLE001
             log.error("capture_record_council_run_failed err=%s", exc)
 
+    # ── Backfill the event row with advisor_output ─────────────
+    # The event was recorded with advisor_output=None up-front
+    # (the "always record before council" safety contract). Now
+    # that the council succeeded, update with the parsed output so
+    # downstream readers (dashboard, audit) see the summary.
+    if (memory is not None and event_id is not None
+            and parsed is not None):
+        try:
+            memory.update_event_advisor_output(
+                event_id,
+                advisor_output=parsed.to_dict(),
+                model_used=model_used,
+                duration_s=council_duration,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.error("capture_update_event_failed err=%s", exc)
+
     risk = parsed.risk_level if parsed else None
     result = CaptureResult(
         fired=True, filtered=False,

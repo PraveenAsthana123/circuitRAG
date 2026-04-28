@@ -116,9 +116,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-2F | council retention purge — prune_council_runs + CLI | `dfddcd4` | 8 (6 negatives) |
 | Phase-2A3 | batched council replay against unreviewed events (DispatchPool composes) | `4f5d4db` | 8 (6 negatives) |
 | Phase-1B-static | HTML dashboard renderer (pre-approved alt to Next.js UI) | `9661753` | 8 (6 negatives) |
-| Phase-1B | Next.js Server Component embedding the static dashboard (§7-granted) | _this commit_ | 8 (6 negatives) |
+| Phase-1B | Next.js Server Component embedding the static dashboard (§7-granted) | `b140146` | 8 (6 negatives) |
+| Phase-5A | e2e meta-drill + capture/event-update gap fix | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 22 commits this session, 167 drill steps green across 21 board+sidecar+agent+policy+pipeline+UI drills, 37 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 23 commits this session, 175 drill steps green across 22 board+sidecar+agent+policy+pipeline+UI drills, **264 steps via the resource-aware runner** across all 38 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 

@@ -374,6 +374,46 @@ class AdvisorMemory:
             rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
+    def update_event_advisor_output(
+        self,
+        event_id: int,
+        *,
+        advisor_output: dict | None,
+        model_used: str | None = None,
+        duration_s: float | None = None,
+    ) -> bool:
+        """Backfill the advisor_output / model_used / duration_s on an
+        event row that was recorded BEFORE the council fired.
+
+        capture_and_review's contract: record the event with
+        advisor_output=None up-front (so the audit row exists even
+        if the council crashes), then update with the council's
+        result if it succeeds. Without this method the event row
+        stays advisor_output=None forever and the dashboard can't
+        show the summary.
+        """
+        sets: list[str] = []
+        params: list = []
+        if advisor_output is not None:
+            sets.append("advisor_output = ?")
+            params.append(json.dumps(advisor_output))
+        if model_used is not None:
+            sets.append("model_used = ?")
+            params.append(model_used)
+        if duration_s is not None:
+            sets.append("duration_s = ?")
+            params.append(duration_s)
+        if not sets:
+            return False
+        params.append(event_id)
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"UPDATE advisor_events SET {', '.join(sets)} "
+                f"WHERE id = ?",
+                params,
+            )
+            return cur.rowcount > 0
+
     def find_events_without_council_run(
         self,
         *,
