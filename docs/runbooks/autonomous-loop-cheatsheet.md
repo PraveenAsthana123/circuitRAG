@@ -108,6 +108,9 @@ POST-COMMIT HOOK (scripts/git-hooks/post-commit)
 # Weekly council retention prune (2F)
 0 4 * * 0 /tmp/documind-venv/bin/python /mnt/deepa/rag/scripts/prune_council_runs.py --apply --vacuum
 
+# Weekly JSONL log retention prune (6E) — keeps 90 days of watcher.log + council_runs.log
+30 4 * * 0 /tmp/documind-venv/bin/python /mnt/deepa/rag/scripts/prune_loop_logs.py --apply
+
 # Or composed pipeline (5X) — snapshot + prom export + alerts/webhook in one call
 5 0 * * * /mnt/deepa/rag/scripts/run_filter_pipeline.sh \
     --prometheus-out /var/lib/node_exporter/textfile/council.prom \
