@@ -1,0 +1,80 @@
+# Sidecar Advisor — routing policy
+#
+# Each route maps a classified event_type → an advisor agent + model.
+# Phase 1 (current): only prompt + code routes wired to local Ollama.
+# Phase 2: architecture + pr_review wired to Claude / Codex once the
+# external API surface lands.
+#
+# Editing this file changes runtime behaviour immediately — but
+# treated as code. The classifier_version + advisor.policy_hash on
+# every advisor_events row tags the policy version so a regression
+# is attributable to a specific edit.
+
+advisor_policy:
+  default_model: codegemma:7b-instruct
+
+  routes:
+    prompt:
+      agents:
+        - prompt_coach
+        - clarity_reviewer
+      model: codegemma:7b-instruct
+      fallback: starcoder2:7b
+      timeout_s: 60.0
+      # No external tool execution — the prompt_coach is purely advisory.
+
+    code:
+      agents:
+        - code_reviewer
+        - test_advisor
+      model: deepseek-coder:6.7b-instruct
+      fallback: codellama:7b-instruct
+      timeout_s: 90.0
+      tools:
+        # Phase 2: shell out to these BEFORE calling the LLM so the
+        # advisor sees real tool output, not just LLM opinions.
+        - ruff
+        - pytest
+
+    architecture:
+      agents:
+        - architect_advisor
+        - risk_advisor
+      # Phase 2: external API. Phase 1 falls back to local model.
+      model: codellama:7b-instruct
+      fallback: deepseek-coder:6.7b-instruct
+      timeout_s: 120.0
+      approval_required: false
+
+    pr_review:
+      agents:
+        - code_reviewer
+        - architect_advisor
+        - chair_advisor
+      # Phase 2: codex /review. Phase 1 stub.
+      model: deepseek-coder:6.7b-instruct
+      fallback: codellama:7b-instruct
+      timeout_s: 120.0
+      command_phase2: "/review"
+
+    debug:
+      agents:
+        - debug_advisor
+      model: deepseek-coder:6.7b-instruct
+      fallback: codellama:7b-instruct
+      timeout_s: 90.0
+
+# Output contract — every advisor MUST return JSON matching this shape.
+# A response that doesn't parse triggers a single retry; if the retry
+# also fails, the advisor records the malformed text in
+# advisor_output_raw and surfaces a placeholder-with-error.
+output_schema:
+  type: object
+  required: [summary, risk_level, top_3_advice]
+  properties:
+    summary:           {type: string,  maxLength: 500}
+    risk_level:        {type: string,  enum: [LOW, MEDIUM, HIGH]}
+    top_3_advice:      {type: array,   maxItems: 3}
+    better_prompt_or_code: {type: string, maxLength: 4000}
+    next_action:       {type: string,  maxLength: 200}
+    confidence:        {type: number,  minimum: 0.0, maximum: 1.0}
