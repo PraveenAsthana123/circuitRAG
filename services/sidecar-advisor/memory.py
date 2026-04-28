@@ -218,7 +218,15 @@ class AdvisorMemory:
             )
             return cur.lastrowid or 0
 
-    def get_patterns(self, kind: str | None = None) -> list[dict]:
+    def get_patterns(
+        self,
+        kind: str | None = None,
+        event_type: str | None = None,
+    ) -> list[dict]:
+        """Read patterns. event_type filter is best-effort — patterns
+        currently aren't tagged with event_type at the schema level
+        (Phase 2C+ adds the column). For now the caller filters by
+        scanning."""
         sql = "SELECT * FROM advisor_memory"
         params: list = []
         if kind:
@@ -227,3 +235,85 @@ class AdvisorMemory:
         sql += " ORDER BY confidence DESC, last_used_at DESC"
         with self._connect() as conn:
             return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+    def get_pattern_by_text(
+        self, *, pattern_kind: str, pattern_text: str,
+    ) -> dict | None:
+        """Look up a single pattern by its (kind, text) — the natural
+        idempotency key for distillation. Returns None if not found."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM advisor_memory
+                WHERE pattern_kind = ? AND pattern_text = ?
+                LIMIT 1
+                """,
+                (pattern_kind, pattern_text),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def append_pattern_sources(
+        self,
+        pattern_id: int,
+        new_event_ids: list[int],
+        *,
+        new_confidence: float | None = None,
+    ) -> bool:
+        """Merge new source_event_ids into an existing pattern's
+        source_events JSON list. Used by distill() when a re-run
+        finds events that contributed to an already-known pattern.
+
+        new_confidence (optional): replace the confidence with the
+        recomputed value. Pass None to leave it unchanged."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT source_events FROM advisor_memory WHERE id = ?",
+                (pattern_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            try:
+                existing = json.loads(row["source_events"])
+                if not isinstance(existing, list):
+                    existing = []
+            except (json.JSONDecodeError, TypeError):
+                existing = []
+            merged = sorted(set(existing) | set(new_event_ids))
+            if new_confidence is not None:
+                conn.execute(
+                    """
+                    UPDATE advisor_memory
+                    SET source_events = ?, confidence = ?
+                    WHERE id = ?
+                    """,
+                    (json.dumps(merged), new_confidence, pattern_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE advisor_memory
+                    SET source_events = ?
+                    WHERE id = ?
+                    """,
+                    (json.dumps(merged), pattern_id),
+                )
+        return True
+
+    def record_pattern_use(self, pattern_ids: list[int]) -> int:
+        """Bump use_count + set last_used_at for each cited pattern.
+        Called by the advisor when patterns get folded into a prompt.
+        Returns the number of rows updated."""
+        if not pattern_ids:
+            return 0
+        now = _utcnow_iso()
+        placeholders = ",".join("?" * len(pattern_ids))
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"""
+                UPDATE advisor_memory
+                SET use_count = use_count + 1, last_used_at = ?
+                WHERE id IN ({placeholders})
+                """,
+                (now, *pattern_ids),
+            )
+            return cur.rowcount

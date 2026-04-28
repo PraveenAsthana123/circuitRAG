@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -197,6 +198,7 @@ class Advisor:
         generate_fn: GenerateFn | None = None,
         ollama_url: str = "http://localhost:11434",
         council=None,
+        memory=None,
     ) -> None:
         self._policy = policy
         self._ollama_url = ollama_url
@@ -208,6 +210,12 @@ class Advisor:
         # council still runs single-agent for non-pr_review routes
         # without paying the import cost of the council module.
         self._council = council
+        # Optional AdvisorMemory — when set, distilled patterns are
+        # injected into the prompt as a "preferences / avoid" preamble
+        # AND the cited patterns get use_count + last_used_at bumped.
+        # When None, the advisor runs as before — memory is opt-in,
+        # not retrofitted onto callers who haven't built the memory.
+        self._memory = memory
 
     async def review(
         self, *, event_type: str, content: str,
@@ -262,7 +270,21 @@ class Advisor:
             log.warning("advisor_no_template event_type=%s", event_type)
             return (None, None, model, 0.0)
 
-        prompt = template.format(content=content)
+        # Inject distilled memory patterns as a preamble. The preamble
+        # is empty when memory is cold or no patterns of this kind
+        # exist — same prompt as before, no behaviour drift on a fresh
+        # system.
+        memory_preamble, cited_pattern_ids = self._build_memory_preamble()
+        prompt_body = template.format(content=content)
+        if memory_preamble:
+            prompt = f"{memory_preamble}\n\n{prompt_body}"
+        else:
+            prompt = prompt_body
+        if cited_pattern_ids and self._memory is not None:
+            # Bump use_count + last_used_at on the cited patterns so
+            # operators can see which patterns are actually
+            # influencing live calls (vs. stale).
+            self._memory.record_pattern_use(cited_pattern_ids)
 
         try:
             raw = await self._generate(model, prompt, timeout_s)
@@ -279,6 +301,62 @@ class Advisor:
         if parsed is None:
             return (None, raw, model, duration)
         return (parsed, None, model, duration)
+
+    def _build_memory_preamble(self) -> tuple[str, list[int]]:
+        """Pull top-K distilled patterns from memory and render them as
+        a 'User preferences / Avoid' preamble. Returns
+        (preamble_text, cited_pattern_ids) so the caller can bump
+        use_count for each cited pattern.
+
+        Empty preamble when:
+          * memory not wired (Advisor constructed without memory=...)
+          * no patterns yet (cold start)
+          * patterns exist but none meet the rendering threshold
+        """
+        if self._memory is None:
+            return ("", [])
+        # Lazy import — distillation pulls in the heuristic + format
+        # helpers; no need to load them on every Advisor() construction.
+        try:
+            from .distillation import format_for_prompt
+        except ImportError:
+            # Same fallback as council import: drill loads us without
+            # a package context. Resolve by file path.
+            import importlib.util
+            from pathlib import Path
+            p = Path(__file__).parent / "distillation.py"
+            spec = importlib.util.spec_from_file_location(
+                "_sidecar_distillation_fallback", p,
+            )
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules["_sidecar_distillation_fallback"] = mod
+            spec.loader.exec_module(mod)
+            format_for_prompt = mod.format_for_prompt
+
+        patterns = self._memory.get_patterns()
+        if not patterns:
+            return ("", [])
+
+        text = format_for_prompt(patterns, max_per_kind=3)
+        if not text:
+            return ("", [])
+
+        # Citation set = top-3-of-each-kind, same logic format_for_prompt
+        # applies. Re-derive here so the use_count bump matches the
+        # rendered patterns (don't bump patterns the LLM never saw).
+        from collections import defaultdict
+        by_kind: dict[str, list[dict]] = defaultdict(list)
+        for p in patterns:
+            by_kind[p["pattern_kind"]].append(p)
+        cited: list[int] = []
+        for kind in ("preference", "mistake"):
+            sub = sorted(
+                by_kind.get(kind, []),
+                key=lambda p: p.get("confidence", 0.0),
+                reverse=True,
+            )[:3]
+            cited.extend(p["id"] for p in sub)
+        return (text, cited)
 
     def _get_or_build_council(self):
         """Lazily construct the council the first time pr_review hits.
