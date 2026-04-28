@@ -196,12 +196,18 @@ class Advisor:
         *,
         generate_fn: GenerateFn | None = None,
         ollama_url: str = "http://localhost:11434",
+        council=None,
     ) -> None:
         self._policy = policy
         self._ollama_url = ollama_url
         # Default generator → Ollama. Drill / Phase 2 swap-out plug-in
         # different generators here.
         self._generate = generate_fn or self._default_ollama_generate
+        # Optional pluggable council for the pr_review route. Lazy
+        # default in review() so an Advisor created without a
+        # council still runs single-agent for non-pr_review routes
+        # without paying the import cost of the council module.
+        self._council = council
 
     async def review(
         self, *, event_type: str, content: str,
@@ -209,6 +215,12 @@ class Advisor:
         """Run one review. Returns:
             (parsed_output_or_None, raw_text_if_unparseable,
              model_used, duration_s)
+
+        The pr_review route delegates to the council (3 specialised
+        authors → 1 cross-reviewer → 1 chair). All other routes use
+        the single-agent path below. The council is constructed
+        lazily on first pr_review call unless one was injected at
+        construction time.
         """
         t0 = time.monotonic()
         route = (
@@ -229,6 +241,19 @@ class Advisor:
                 "",
                 0.0,
             )
+
+        # ── Council path: pr_review delegates to the multi-agent
+        # AgentBoard wrapper. Other routes stay single-agent.
+        if event_type == "pr_review":
+            council = self._get_or_build_council()
+            try:
+                parsed, _raw_board = await council.review(content)
+                duration = time.monotonic() - t0
+                return (parsed, None, parsed.model_used, duration)
+            except Exception as exc:  # noqa: BLE001 — surface for retry
+                duration = time.monotonic() - t0
+                log.error("advisor_council_failed err=%s", exc)
+                return (None, f"COUNCIL_ERROR: {exc}", "", duration)
 
         model = route["model"]
         timeout_s = float(route.get("timeout_s", 60.0))
@@ -254,6 +279,21 @@ class Advisor:
         if parsed is None:
             return (None, raw, model, duration)
         return (parsed, None, model, duration)
+
+    def _get_or_build_council(self):
+        """Lazily construct the council the first time pr_review hits.
+        Caching it so a second pr_review doesn't rebuild the AgentBoard
+        + agents from scratch."""
+        if self._council is None:
+            # Import here to keep the council module's importlib
+            # gymnastics off the import path of consumers who only use
+            # single-agent advisor.review.
+            from .council import PrReviewCouncil
+            self._council = PrReviewCouncil(
+                ollama_url=self._ollama_url,
+                generate_fn=self._generate,
+            )
+        return self._council
 
     async def _default_ollama_generate(
         self, model: str, prompt: str, timeout_s: float,

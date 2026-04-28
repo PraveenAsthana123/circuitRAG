@@ -49,9 +49,14 @@ Composes with:
 * ``services/governance-svc/migrations/audit_log_partitioned`` —
   the BoardResult is the audit-row payload for "AI agent committee
   decision".
+* ``services/sidecar-advisor/council.py`` — wraps AgentBoard with
+  3 specialised author agents (code / security / test) + 1 cross-
+  reviewer + 1 chair advisor, used for the ``pr_review`` route.
 
-The Agent type is a duck-typed Protocol so callers plug in any
-async-callable. Production wiring would back the agents with
+Lives in ``libs/py/documind_core/`` so it can be shared across
+services (inference-svc, sidecar-advisor) without service-specific
+deps. The Agent type is a duck-typed Protocol so callers plug in
+any async-callable. Production wiring would back the agents with
 distinct LLM clients, prompts, or even toolsets.
 """
 from __future__ import annotations

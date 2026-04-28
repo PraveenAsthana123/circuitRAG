@@ -82,7 +82,7 @@ def step(title: str) -> None:
 # the heavy multi_hop_agent which needs documind_core. We only want
 # agent_board.py.
 def _load_agent_board():
-    p = REPO / "services" / "inference-svc" / "app" / "agents" / "agent_board.py"
+    p = REPO / "libs" / "py" / "documind_core" / "agent_board.py"
     spec = importlib.util.spec_from_file_location("agent_board_mod", p)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load spec from {p}")

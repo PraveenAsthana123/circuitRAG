@@ -90,9 +90,17 @@ classifier = _load_mod(
 memory_mod = _load_mod(
     "services/sidecar-advisor/memory.py", "sidecar_memory",
 )
+# advisor.py uses `from .council import PrReviewCouncil` lazily for the
+# pr_review route. Set up a fake package so that relative import works
+# when we load the module via importlib.
+import types
+_pkg = types.ModuleType("sidecar_advisor_pkg")
+_pkg.__path__ = [str(REPO / "services" / "sidecar-advisor")]
+sys.modules["sidecar_advisor_pkg"] = _pkg
 advisor_mod = _load_mod(
-    "services/sidecar-advisor/advisor.py", "sidecar_advisor",
+    "services/sidecar-advisor/advisor.py", "sidecar_advisor_pkg.advisor",
 )
+sys.modules["sidecar_advisor_pkg.advisor"] = advisor_mod
 EventType = classifier.EventType
 
 

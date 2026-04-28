@@ -76,7 +76,7 @@ def step(title: str) -> None:
 
 # ── Module loader ────────────────────────────────────────────────
 def _load_agent_board():
-    p = REPO / "services" / "inference-svc" / "app" / "agents" / "agent_board.py"
+    p = REPO / "libs" / "py" / "documind_core" / "agent_board.py"
     spec = importlib.util.spec_from_file_location("agent_board_mod", p)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load spec from {p}")
