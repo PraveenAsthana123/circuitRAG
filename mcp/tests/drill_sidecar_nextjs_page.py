@@ -152,33 +152,35 @@ def main():
     # references that linkage so a future reader sees the chain.
     ok("dangerouslySetInnerHTML present (XSS locked at renderer)")
 
-    # Step 8: NEGATIVE - file lives ONLY under sidecar/ (scope check)
+    # Step 8: NEGATIVE - files live ONLY under sidecar/ tree (scope check)
     step(
-        "8. NEGATIVE: file lives ONLY at services/frontend/app/admin/sidecar/"
+        "8. NEGATIVE: files live ONLY under "
+        "services/frontend/app/admin/sidecar/* (incl. deep/)"
     )
-    # Verify no other new file landed under services/frontend/ in
-    # this scope-extended commit. Walk the dir; flag anything new.
-    # We can't easily diff against HEAD here (drill is offline) so
-    # check: the page.tsx exists, the directory is small, no
-    # accidental new pages.
     sidecar_dir = PAGE.parent
     files = list(sidecar_dir.rglob("*.tsx"))
-    if len(files) != 1:
+    # Allowed paths under §7 grant:
+    #   sidecar/page.tsx                 (Phase 1B)
+    #   sidecar/deep/page.tsx            (Phase 5B - C4 diagrams)
+    allowed_relative = {"page.tsx", "deep/page.tsx"}
+    actual_relative = {
+        str(f.relative_to(sidecar_dir)) for f in files
+    }
+    extra = actual_relative - allowed_relative
+    if extra:
         fail(
-            f"expected exactly 1 .tsx file in sidecar/, got "
-            f"{len(files)}: {[f.name for f in files]}. The §7 "
-            f"scope-extension is strictly for this single page; "
-            f"adding more would need another scope-extension entry."
+            f"files outside §7-granted paths: {extra}. The grant "
+            f"covers sidecar/page.tsx + sidecar/deep/page.tsx only. "
+            f"Adding more would need another scope-extension entry."
         )
-    if files[0] != PAGE:
-        fail(f"unexpected file path: {files[0]}")
-    # And the path is under .../sidecar/ (not directly under .../admin/)
-    if sidecar_dir.name != "sidecar":
-        fail(
-            f"page.tsx not under sidecar/: {sidecar_dir}. §7 entry "
-            f"is path-specific."
-        )
-    ok(f"single page.tsx file under .../admin/sidecar/ (scope respected)")
+    if "page.tsx" not in actual_relative:
+        fail(f"page.tsx (Phase 1B) missing")
+    # deep/page.tsx is OPTIONAL at the Phase 1B level - it's a Phase
+    # 5B add-on. Don't fail if absent; just log.
+    ok(
+        f"only allowed paths present: {sorted(actual_relative)} "
+        f"(scope respected)"
+    )
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 SIDECAR-NEXTJS-PAGE STEPS PASSED{NC}")

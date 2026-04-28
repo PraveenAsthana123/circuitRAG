@@ -117,9 +117,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-2A3 | batched council replay against unreviewed events (DispatchPool composes) | `4f5d4db` | 8 (6 negatives) |
 | Phase-1B-static | HTML dashboard renderer (pre-approved alt to Next.js UI) | `9661753` | 8 (6 negatives) |
 | Phase-1B | Next.js Server Component embedding the static dashboard (§7-granted) | `b140146` | 8 (6 negatives) |
-| Phase-5A | e2e meta-drill + capture/event-update gap fix | _this commit_ | 8 (6 negatives) |
+| Phase-5A | e2e meta-drill + capture/event-update gap fix | `06bed6c` | 8 (6 negatives) |
+| Phase-5B | C4 + per-scenario data-flow deep-dive page (`/admin/sidecar/deep`) | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 23 commits this session, 175 drill steps green across 22 board+sidecar+agent+policy+pipeline+UI drills, **264 steps via the resource-aware runner** across all 38 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 24 commits this session, 183 drill steps green across 23 sidecar/policy/pipeline/UI drills, **272 steps via the resource-aware runner** across all 39 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
@@ -238,7 +239,8 @@ When the loop wants to do something outside section 1's pre-approved scope, it l
 | Date | Request | Disposition |
 |---|---|---|
 | 2026-04-28 | Add `approver` as a 4th agent role (`policy_approver` watches the loop). User explicitly requested "one agent must track this and approve" + "if something missing the update the approval policy and go ahead". | **Granted in §1 inline** — `agents/` row now lists `approver` as a pre-approved role; landed in this commit (`Phase-3D`). |
-| 2026-04-28 | Add `services/frontend/app/admin/sidecar/` Next.js page consuming the static dashboard HTML. Operator approval signals: "I will go with next js" + "use the approval policy to move next" + "if not then create then next policy for approval to go ahead". Scope: read-only Server Component reads `.loop/dashboard.html` from disk, embeds it. No backend mutation; no API routes. | **Granted** — landed in Phase-1B (`9661753+1`). Strictly limited to `services/frontend/app/admin/sidecar/`; rest of `services/frontend/` remains gated. |
+| 2026-04-28 | Add `services/frontend/app/admin/sidecar/` Next.js page consuming the static dashboard HTML. Operator approval signals: "I will go with next js" + "use the approval policy to move next" + "if not then create then next policy for approval to go ahead". Scope: read-only Server Component reads `.loop/dashboard.html` from disk, embeds it. No backend mutation; no API routes. | **Granted** — landed in Phase-1B (`b140146`). Strictly limited to `services/frontend/app/admin/sidecar/`; rest of `services/frontend/` remains gated. |
+| 2026-04-28 | Extend Phase 1B grant to include `services/frontend/app/admin/sidecar/deep/page.tsx` for C4 model + scenario data-flow diagrams. Operator request: "add c4 mode for each UI for each scenario" + "data flow form one class to other call or other component". Read-only client component (Mermaid renders client-side); no API routes; no mutations. | **Granted** — landed in Phase-5B. Allowed paths under sidecar/: `page.tsx`, `deep/page.tsx`. Anything else still gated. |
 
 ---
 
