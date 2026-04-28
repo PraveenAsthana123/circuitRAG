@@ -1,3 +1,4 @@
+# RESOURCES: inference retrieval mcp_hr jaeger
 """
 Drill: documind.tenant_id appears as a span attribute on every
 service contributing to a multi-service trace.

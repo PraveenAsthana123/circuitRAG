@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr pg
 """
 Drill: prove the HITL admin HTTP loop end-to-end via the inference-svc.
 

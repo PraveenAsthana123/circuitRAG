@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr mcp_itsm pg
 """
 Drill: DraftReplayWorker routes each pending draft to its own
 namespace's MCP client.

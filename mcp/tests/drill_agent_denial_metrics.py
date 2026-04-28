@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr
 """
 Drill: documind_agent_denials_total increments on agent-level rejections.
 

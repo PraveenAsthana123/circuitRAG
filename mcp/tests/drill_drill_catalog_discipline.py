@@ -81,44 +81,16 @@ def main() -> int:
         return 1
     print(f"✓ step 1: catalog has {len(drills)} drills (≥50 threshold met)")
 
-    # ── Step 2: NEGATIVE — every NEW drill has # RESOURCES: tag ──
-    # The tag may appear ANYWHERE in the file. Ratchet pattern: 23
-    # pre-existing drills lack the tag (drift accumulated before
-    # Phase 6B); they're grandfathered in KNOWN_MISSING. The drill
-    # asserts:
-    #   * No NEW drill is missing the tag (gates regression).
-    #   * The grandfathered set can SHRINK (someone fixed one) —
-    #     that's good, but it can't appear to grow.
-    #   * Every name in KNOWN_MISSING actually corresponds to a real
-    #     file that's actually missing — keeps the list honest.
-    #
-    # Phase 6C will sweep the grandfathered drills and add tags;
-    # this drill catches new drift in the meantime.
-    KNOWN_MISSING = {
-        "drill_admin_api.py",
-        "drill_agent_denial_audit.py",
-        "drill_agent_denial_metrics.py",
-        "drill_agent_idempotency.py",
-        "drill_agent_multiserver_routing.py",
-        "drill_agent_scope_precheck.py",
-        "drill_audit.py",
-        "drill_client_error_envelope.py",
-        "drill_e2e.py",
-        "drill_health_detailed.py",
-        "drill_hitl.py",
-        "drill_mcp_server_scope.py",
-        "drill_multi_breaker_visibility.py",
-        "drill_multi_server.py",
-        "drill_prometheus_breakers.py",
-        "drill_resolve_draft_routing.py",
-        "drill_scope.py",
-        "drill_tenant_span_tags.py",
-        "drill_tool_scope_overrides.py",
-        "drill_trace.py",
-        "drill_worker.py",
-        "drill_worker_cb_aware.py",
-        "drill_worker_multi_namespace.py",
-    }
+    # ── Step 2: NEGATIVE — every drill has # RESOURCES: tag ──
+    # The tag may appear ANYWHERE in the file (some drills put it
+    # on line 2; others embed it later). The runner's parser handles
+    # any position. Phase 6C swept the original 23 grandfathered
+    # drills, adding sensible tags via parallel agents; the
+    # KNOWN_MISSING ratchet is now empty. If a future drill ships
+    # without a tag, this step fires — and the right response is to
+    # add the tag in that drill's own commit, not to grow the
+    # grandfathered set.
+    KNOWN_MISSING: set[str] = set()
     missing_resource_tag = []
     for p in drills:
         body = p.read_text()
@@ -200,11 +172,20 @@ def main() -> int:
     #   os._exit(...)         — rare; bypasses cleanup but valid
     #   asyncio.run(main()) with raise/assert — natural Python termination
     #
-    # Two pre-existing drills (frontend audits) print "complete" but
-    # never raise/exit-non-zero on failure. They're real drift but
-    # ship-stopping to fix in this iteration; grandfather them in
-    # KNOWN_NO_EXIT_SIGNAL like step 2's ratchet.
-    KNOWN_NO_EXIT_SIGNAL = {
+    # Two drills (frontend audits) intentionally never fail — they're
+    # explicitly designed as SURVEY tools, not pass/fail gates. From
+    # drill_frontend_link_audit.py's docstring: "This is an audit, not
+    # a gate — exits 0 always. Output is the broken-link list for the
+    # next loop iteration." The carve-out distinguishes "broken drill"
+    # (real drift; would be in this list) from "intentionally a
+    # survey drill" (legitimate design pattern; lives here).
+    #
+    # If you add a new audit drill that doesn't gate on findings,
+    # consider whether it belongs in mcp/tests/audit_*.py instead
+    # so the meta-drill's contract stays clear: drill_*.py = gates,
+    # audit_*.py = surveys. For now we accept the two existing
+    # drills under their original naming.
+    KNOWN_AUDIT_DRILLS = {
         "drill_frontend_link_audit.py",
         "drill_frontend_template_coverage_audit.py",
     }
@@ -223,16 +204,18 @@ def main() -> int:
         if not has_explicit_exit and not has_async_pattern:
             no_exit_signal.append(p.name)
     actually_no_exit = set(no_exit_signal)
-    new_no_exit = actually_no_exit - KNOWN_NO_EXIT_SIGNAL
+    new_no_exit = actually_no_exit - KNOWN_AUDIT_DRILLS
     if new_no_exit:
-        print(f"✗ step 6: {len(new_no_exit)} NEW drills lack exit-code "
-              f"signal (not grandfathered): {sorted(new_no_exit)} — runner "
-              "can't distinguish pass/fail")
+        print(f"✗ step 6: {len(new_no_exit)} drills lack exit-code "
+              f"signal AND aren't on the audit-drill carve-out: "
+              f"{sorted(new_no_exit)} — either fix to gate on findings, "
+              f"or add to KNOWN_AUDIT_DRILLS with explicit rationale")
         return 1
-    grandfathered_no_exit = actually_no_exit & KNOWN_NO_EXIT_SIGNAL
-    stale_no_exit = KNOWN_NO_EXIT_SIGNAL - actually_no_exit
-    print(f"✓ step 6: 0 new drift; {len(grandfathered_no_exit)} grandfathered "
-          f"({len(stale_no_exit)} stale entries safe to remove)")
+    audit_drills_present = actually_no_exit & KNOWN_AUDIT_DRILLS
+    stale_audits = KNOWN_AUDIT_DRILLS - actually_no_exit
+    print(f"✓ step 6: 0 broken drills; {len(audit_drills_present)} "
+          f"intentional audit drills (survey-only by design); "
+          f"{len(stale_audits)} stale entries safe to remove")
 
     # ── Step 7: NEGATIVE — docstrings mention "negative" (§43.5) ──
     # Soft check: we can't COUNT actual negative assertions, but we

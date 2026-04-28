@@ -1,3 +1,4 @@
+# RESOURCES: mcp_hr inference pg
 """
 Drill: prove HITL persistence for MCP drafts.
 

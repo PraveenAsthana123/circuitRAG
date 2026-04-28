@@ -1,3 +1,4 @@
+# RESOURCES: mcp_hr
 """
 Drill: MCP server enforces per-tool scopes defence-in-depth.
 

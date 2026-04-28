@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr mcp_itsm pg
 """
 Drill: resolve_draft routes to the right MCP server by draft.tool namespace.
 

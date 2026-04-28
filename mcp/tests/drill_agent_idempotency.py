@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr
 """
 Drill: Idempotency-Key header at /api/v1/agent/ask dedupes retries.
 

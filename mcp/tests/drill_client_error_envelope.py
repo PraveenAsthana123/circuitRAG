@@ -1,3 +1,4 @@
+# RESOURCES: mcp_hr
 """
 Drill: MCPClient maps server-side 4xx responses into a structured
 ToolResult.error — and does NOT trip the circuit breaker on them.

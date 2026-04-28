@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr
 """
 Drill: Prometheus gauges track external breaker state transitions.
 

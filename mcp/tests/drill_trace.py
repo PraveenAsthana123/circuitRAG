@@ -1,3 +1,4 @@
+# RESOURCES: inference retrieval mcp_hr jaeger
 """
 Drill: verify multi-service distributed traces land in Jaeger.
 

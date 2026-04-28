@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr mcp_itsm
 """
 Drill: inference-svc's agent routes by tool namespace to the right MCP.
 

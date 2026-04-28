@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr
 """
 Drill: GET /api/v1/health/detailed surfaces internal breaker + readiness state.
 

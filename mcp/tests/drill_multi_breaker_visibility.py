@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr mcp_itsm
 """
 Drill: per-namespace MCP breakers are visible on /health/detailed AND
 the shared Prometheus gauge.

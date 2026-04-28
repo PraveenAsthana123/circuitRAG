@@ -1,3 +1,4 @@
+# RESOURCES: mcp_hr mcp_itsm
 """
 Drill: the mcp/ package can run two servers side-by-side with
 independent scope enforcement.

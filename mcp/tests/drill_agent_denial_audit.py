@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr pg
 """
 Drill: agent-layer scope denials produce a governance.audit_log row.
 

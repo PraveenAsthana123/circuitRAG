@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr
 """
 Drill: agent reads tool.required_scopes from the MCP catalog instead
 of hard-coding the ``<namespace>:write`` convention.

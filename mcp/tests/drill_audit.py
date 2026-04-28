@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr pg
 """
 Drill: prove the audit-log wiring for MCP draft lifecycle transitions.
 

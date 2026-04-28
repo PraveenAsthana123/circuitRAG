@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr pg
 """
 Drill: JWT scope enforcement on POST /api/v1/drafts/{id}/resolve.
 

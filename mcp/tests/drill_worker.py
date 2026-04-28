@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr pg
 """
 Drill: prove DraftReplayWorker sweeps pending drafts once MCP recovers.
 

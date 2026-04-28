@@ -1,3 +1,4 @@
+# RESOURCES: mcp_hr inference
 """
 End-to-end MCP drill for DEMO-DAY-3-MCP.
 

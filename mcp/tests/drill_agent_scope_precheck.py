@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr
 """
 Drill: agent pre-checks scope before spending MCP round-trip.
 

@@ -1,3 +1,4 @@
+# RESOURCES: inference mcp_hr pg
 """
 Drill: DraftReplayWorker skips cycles when the MCP CB is OPEN.
 
