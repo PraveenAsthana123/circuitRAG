@@ -57,6 +57,7 @@ distinct LLM clients, prompts, or even toolsets.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -64,6 +65,89 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 log = logging.getLogger(__name__)
+
+
+# ── Prometheus metrics ───────────────────────────────────────────
+# Wrapped in try/except so the module imports cleanly in test
+# environments without prometheus_client. The _bump / _observe
+# helpers below are no-ops when the import failed — callers don't
+# branch on import availability, the helpers do.
+#
+# Metric design:
+#   *_runs_total{outcome,advisor_id} — one row per board.run().
+#     outcome ∈ {ok, partial, advisor_failed, all_authors_failed}.
+#       ok               → all authors + reviewers + advisor green
+#       partial          → ≥1 author OR ≥1 reviewer errored, advisor green
+#       advisor_failed   → advisor crashed; fallback advice surfaced
+#       all_authors_failed → no usable drafts; degraded result
+#   *_duration_seconds{outcome,advisor_id} — histogram of board wall time.
+#     Histograms cost more than counters; the cardinality is bounded
+#     by (advisor_id × outcome), small.
+#   *_authors_total{outcome} — per-draft counter (outcome ∈ {ok, error}).
+#   *_reviews_total{outcome} — per-review counter (outcome ∈ {ok, error,
+#     skipped_upstream}).
+#
+# PromQL examples:
+#   sum by(outcome) (rate(documind_agent_board_runs_total[5m]))
+#     → board outcome mix
+#   histogram_quantile(0.95, sum by(le) (
+#     rate(documind_agent_board_duration_seconds_bucket[5m])))
+#     → p95 board latency
+#   rate(documind_agent_board_runs_total{outcome="advisor_failed"}[5m])
+#     → advisor failure rate
+try:
+    from prometheus_client import Counter as _PromCounter, Histogram as _PromHistogram
+
+    _board_runs_total = _PromCounter(
+        "documind_agent_board_runs_total",
+        "AgentBoard.run() invocations, labelled by outcome and advisor_id.",
+        labelnames=["outcome", "advisor_id"],
+    )
+    _board_duration_seconds = _PromHistogram(
+        "documind_agent_board_duration_seconds",
+        "AgentBoard.run() wall-clock duration in seconds.",
+        labelnames=["outcome", "advisor_id"],
+        # Buckets: sub-second through 30s. Boards that take longer
+        # than 30s should already be timing out at the per-agent layer.
+        buckets=(0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0),
+    )
+    _board_authors_total = _PromCounter(
+        "documind_agent_board_authors_total",
+        "Per-draft outcomes across all board runs.",
+        labelnames=["outcome"],  # ok | error
+    )
+    _board_reviews_total = _PromCounter(
+        "documind_agent_board_reviews_total",
+        "Per-review outcomes across all board runs.",
+        labelnames=["outcome"],  # ok | error | skipped_upstream
+    )
+except ImportError:  # pragma: no cover — prometheus_client is optional in tests
+    _board_runs_total = None
+    _board_duration_seconds = None
+    _board_authors_total = None
+    _board_reviews_total = None
+
+
+def _bump_run(outcome: str, advisor_id: str) -> None:
+    if _board_runs_total is not None:
+        _board_runs_total.labels(outcome=outcome, advisor_id=advisor_id).inc()
+
+
+def _observe_duration(outcome: str, advisor_id: str, seconds: float) -> None:
+    if _board_duration_seconds is not None:
+        _board_duration_seconds.labels(
+            outcome=outcome, advisor_id=advisor_id,
+        ).observe(seconds)
+
+
+def _bump_author(outcome: str) -> None:
+    if _board_authors_total is not None:
+        _board_authors_total.labels(outcome=outcome).inc()
+
+
+def _bump_review(outcome: str) -> None:
+    if _board_reviews_total is not None:
+        _board_reviews_total.labels(outcome=outcome).inc()
 
 
 @runtime_checkable
@@ -120,6 +204,20 @@ class BoardResult:
     # consumers don't re-derive from drafts/reviews.
     failed_authors: list[str] = field(default_factory=list)
     failed_reviews: list[tuple[str, str]] = field(default_factory=list)
+    # Outcome label that matches the Prometheus _board_runs_total
+    # outcome enum: ok | partial | advisor_failed | all_authors_failed.
+    # Surfaced on the result so downstream audit-row writers (next
+    # iteration) get the same classification as the metric without
+    # re-deriving it from the failed_* fields.
+    outcome: str = "ok"
+    # Versioning — §38.4 "Version everything that changes behavior."
+    # Hash of (review_prompt + advisor_prompt) so a change to either
+    # template lands as a distinct version automatically. Operators
+    # filtering audit rows by version can attribute behaviour drift
+    # to a specific prompt edit. Truncated to 12 chars for log
+    # readability; full hash isn't load-bearing here (collision space
+    # of 16^12 is fine for human attribution, not for security).
+    prompt_version: str = ""
 
 
 class AgentBoard:
@@ -199,6 +297,14 @@ class AgentBoard:
         self._max_parallel = max_parallel
         self._review_prompt = review_prompt_template
         self._advisor_prompt = advisor_prompt_template
+        # Pre-computed once: prompt_version is the same for every run
+        # of this AgentBoard instance, so hash at construction not on
+        # every run. SHA-256 of the concatenated templates, truncated
+        # to 12 chars — see BoardResult.prompt_version docstring for
+        # rationale on the truncation length.
+        self._prompt_version = hashlib.sha256(
+            (review_prompt_template + "\x00" + advisor_prompt_template).encode()
+        ).hexdigest()[:12]
 
     async def run(self, task: str) -> BoardResult:
         """Run one board cycle: draft → review → advise. Returns a
@@ -226,6 +332,63 @@ class AgentBoard:
             (r.draft_author_id, r.reviewer_id) for r in reviews if r.error is not None
         ]
 
+        # ── Outcome classification ─────────────────────────────────
+        # Order matters: advisor_failed wins over partial because the
+        # operator-visible signal "the synthesizer crashed" is the
+        # higher-priority alert. all_authors_failed wins over
+        # advisor_failed because if no authors produced anything, the
+        # advisor's state is moot.
+        ok_drafts = [d for d in drafts if d.error is None]
+        if not ok_drafts:
+            outcome = "all_authors_failed"
+        elif advisor_err is not None:
+            outcome = "advisor_failed"
+        elif failed_authors or failed_reviews:
+            outcome = "partial"
+        else:
+            outcome = "ok"
+
+        # ── Per-draft + per-review counters ────────────────────────
+        for d in drafts:
+            _bump_author("error" if d.error is not None else "ok")
+        for r in reviews:
+            if r.error is not None:
+                # Distinguish "reviewer crashed" from "skipped because
+                # author errored" — different operator action: a
+                # reviewer crash is a reviewer-agent regression; a
+                # skipped review is fallout from an author crash.
+                if r.error.startswith("upstream_author_error"):
+                    _bump_review("skipped_upstream")
+                else:
+                    _bump_review("error")
+            else:
+                _bump_review("ok")
+
+        # ── Run-level metric + structured log ──────────────────────
+        _bump_run(outcome=outcome, advisor_id=self._advisor_id)
+        _observe_duration(
+            outcome=outcome, advisor_id=self._advisor_id, seconds=duration,
+        )
+
+        # Structured log: one canonical event per run, structured for
+        # Loki / structured-log search. PII rule (§4.5 + §38.4):
+        # NEVER include the raw task text — task hashes survive (for
+        # joining the log row to an audit row) but the body doesn't.
+        # The advice body also doesn't go in the log; the audit row
+        # carries it instead.
+        task_hash = hashlib.sha256(task.encode()).hexdigest()[:12]
+        log.info(
+            "agent_board_run "
+            "outcome=%s advisor_id=%s prompt_version=%s "
+            "task_hash=%s duration_s=%.3f "
+            "authors_total=%d authors_failed=%d "
+            "reviews_total=%d reviews_failed=%d",
+            outcome, self._advisor_id, self._prompt_version,
+            task_hash, duration,
+            len(drafts), len(failed_authors),
+            len(reviews), len(failed_reviews),
+        )
+
         return BoardResult(
             task=task,
             drafts=drafts,
@@ -236,6 +399,8 @@ class AgentBoard:
             error=advisor_err,
             failed_authors=failed_authors,
             failed_reviews=failed_reviews,
+            outcome=outcome,
+            prompt_version=self._prompt_version,
         )
 
     # ── Internal phases ───────────────────────────────────────────
