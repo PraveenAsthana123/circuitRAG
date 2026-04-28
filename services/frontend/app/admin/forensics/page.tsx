@@ -29,7 +29,8 @@
  */
 
 import Link from 'next/link';
-import { useCallback, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import DeepDiveCrossRefs from '../../../components/DeepDiveCrossRefs';
 import {
@@ -56,17 +57,20 @@ function reviewBadgeClass(status: string): string {
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default function ForensicsPage() {
+function ForensicsContent() {
+  const searchParams = useSearchParams();
   const [correlationId, setCorrelationId] = useState('');
   const [tenantId, setTenantId] = useState('');
   const [data, setData] = useState<TraceLinkResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const autoFiredRef = useRef(false);
 
-  const lookup = useCallback(async () => {
-    const cid = correlationId.trim();
-    const tid = tenantId.trim();
+  // Inner: does the actual fetch given explicit args.
+  // Public `lookup()` wraps this with current state; auto-fire path
+  // calls it with URL params directly (no waiting on setState).
+  const fireLookup = useCallback(async (cid: string, tid: string) => {
     if (!cid || !tid) {
       setError('Both correlation_id and tenant_id are required.');
       return;
@@ -87,6 +91,15 @@ export default function ForensicsPage() {
     try {
       const resp = await api.traceLink(cid, tid, ac.signal);
       setData(resp);
+      // Update URL so the result is a shareable deep-link without a
+      // full page reload. replaceState (not pushState) — operators
+      // typically don't want every lookup in their back-button history.
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('correlation_id', cid);
+        url.searchParams.set('tenant_id', tid);
+        window.history.replaceState(null, '', url.toString());
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       const msg =
@@ -100,7 +113,29 @@ export default function ForensicsPage() {
     } finally {
       setLoading(false);
     }
-  }, [correlationId, tenantId]);
+  }, []);
+
+  const lookup = useCallback(() => {
+    void fireLookup(correlationId.trim(), tenantId.trim());
+  }, [fireLookup, correlationId, tenantId]);
+
+  // Deep-link: ?correlation_id=...&tenant_id=... pre-fills the form
+  // AND auto-fires the lookup when both UUIDs validate. Enables one-
+  // click links from alerts / Jira tickets / draft & HITL list pages
+  // / future ticket-detail pages without those callers needing to
+  // know anything except the URL pattern. Fires exactly once on
+  // mount; subsequent typing in the form is normal.
+  useEffect(() => {
+    if (autoFiredRef.current) return;
+    const cidParam = searchParams.get('correlation_id') || '';
+    const tidParam = searchParams.get('tenant_id') || '';
+    if (cidParam) setCorrelationId(cidParam);
+    if (tidParam) setTenantId(tidParam);
+    if (cidParam && tidParam && UUID_RX.test(cidParam) && UUID_RX.test(tidParam)) {
+      autoFiredRef.current = true;
+      void fireLookup(cidParam, tidParam);
+    }
+  }, [searchParams, fireLookup]);
 
   const isEmpty =
     data
@@ -479,8 +514,22 @@ export default function ForensicsPage() {
         <Link href="/admin/tracing/deep#baggage-propagation" style={{ color: '#2563eb' }}>
           BaggageContextMiddleware
         </Link>
-        ).
+        ). Deep-link directly with{' '}
+        <code>/admin/forensics?correlation_id=...&amp;tenant_id=...</code> —
+        URL is shareable; auto-fires the lookup on landing.
       </p>
     </div>
+  );
+}
+
+// Wrap in Suspense — Next.js App Router requires this for any
+// component that calls useSearchParams. The fallback is empty
+// because the form renders fine before params arrive (it just
+// won't pre-fill on first paint without them).
+export default function ForensicsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ForensicsContent />
+    </Suspense>
   );
 }
