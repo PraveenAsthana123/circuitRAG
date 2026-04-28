@@ -215,6 +215,27 @@ const SCENARIO_4 = `sequenceDiagram
   PR->>DB: VACUUM (reclaim disk)
   PR-->>CRON: stdout JSON report`;
 
+const SCENARIO_5 = `sequenceDiagram
+  autonumber
+  actor OP as Operator
+  actor CRON as Cron Daily 00:05
+  participant LOG as council_runs.log
+  participant SNAP as council_stats_snapshot.py
+  participant JSONL as council_stats_daily.jsonl
+  participant STATS as council_filter_stats.py
+  participant PROM as node_exporter textfile
+  participant UI as /admin/sidecar/telemetry
+  CRON->>SNAP: 5 0 * * *
+  SNAP->>LOG: read yesterday's entries by UTC date prefix
+  SNAP->>JSONL: append one row {date, total, fired, filtered, ...}
+  CRON->>STATS: --prometheus --from-snapshot --prometheus-out file.prom
+  STATS->>JSONL: read deduped (latest snapshot_taken_at per date)
+  STATS->>PROM: atomic write date-keyed samples (tmp + rename)
+  OP->>UI: GET /admin/sidecar/telemetry
+  UI->>JSONL: fs.readFile at request time
+  UI-->>OP: daily table (deduped, newest first)
+  Note over JSONL,UI: 5N writes → 5W exports → 5S renders<br/>same source of truth, three consumption paths`;
+
 const CSS = `
 .section { background: white; border-radius: 8px;
   padding: 20px; margin-bottom: 24px;
@@ -253,7 +274,7 @@ export default function SidecarDeepPage() {
           paths converge on advisor.db + .loop/*.log as the single
           source of truth. External: Ollama (council LLMs).
         </p>
-        <Mermaid src={C4_CONTEXT} />
+        <Mermaid chart={C4_CONTEXT} />
       </div>
 
       <div className="section">
@@ -263,7 +284,7 @@ export default function SidecarDeepPage() {
           entry points), library (sidecar-advisor/). Persistence is
           the boundary between in-memory state and durable audit.
         </p>
-        <Mermaid src={C4_CONTAINER} />
+        <Mermaid chart={C4_CONTAINER} />
       </div>
 
       <div className="section">
@@ -277,7 +298,7 @@ export default function SidecarDeepPage() {
             Council telemetry persists; event row backfills with
             advisor_output (Phase 5A bug fix).
           </p>
-          <Mermaid src={SCENARIO_1} />
+          <Mermaid chart={SCENARIO_1} />
         </div>
 
         <div className="scenario">
@@ -287,7 +308,7 @@ export default function SidecarDeepPage() {
             find_events_without_council_run yields the worklist;
             DispatchPool fires the council with bounded LLM concurrency.
           </p>
-          <Mermaid src={SCENARIO_2} />
+          <Mermaid chart={SCENARIO_2} />
         </div>
 
         <div className="scenario">
@@ -297,7 +318,7 @@ export default function SidecarDeepPage() {
             failed drills; verdict log feeds replay_verdict_log; operator
             decides --apply (default dry-run) for actual reverts.
           </p>
-          <Mermaid src={SCENARIO_3} />
+          <Mermaid chart={SCENARIO_3} />
         </div>
 
         <div className="scenario">
@@ -307,7 +328,19 @@ export default function SidecarDeepPage() {
             JSON each); weekly prune deletes older-than-90-days rows.
             advisor_events stays — separate retention horizons.
           </p>
-          <Mermaid src={SCENARIO_4} />
+          <Mermaid chart={SCENARIO_4} />
+        </div>
+
+        <div className="scenario">
+          <h3>3.5 — Telemetry: daily snapshot → prom export → live page</h3>
+          <p>
+            Phase 5K-5W chain. council_filter_stats names filters,
+            council_stats_snapshot writes one row per UTC date,
+            --from-snapshot exports to Prometheus, /admin/sidecar/telemetry
+            renders the deduped daily table. Three consumption paths
+            (Grafana / live page / CLI alerts) on one source of truth.
+          </p>
+          <Mermaid chart={SCENARIO_5} />
         </div>
       </div>
 
@@ -317,6 +350,10 @@ export default function SidecarDeepPage() {
           <li>
             <a href="/admin/sidecar">/admin/sidecar</a> — the live
             dashboard rendered by render_dashboard.py
+          </li>
+          <li>
+            <a href="/admin/sidecar/telemetry">/admin/sidecar/telemetry</a>{" "}
+            — daily-snapshot table reading council_stats_daily.jsonl
           </li>
           <li>
             <a href="/admin/c4-model/deep">/admin/c4-model/deep</a> —
