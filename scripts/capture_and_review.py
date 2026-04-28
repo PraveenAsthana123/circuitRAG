@@ -109,16 +109,20 @@ async def capture_and_record(
         })
         return result
 
-    if not gc.is_likely_pr_review(capture):
+    filter_reason = gc.pr_review_filter_reason(capture)
+    if filter_reason is not None:
         # Heuristic says "noise" - skip both event + council.
         # We still log the skip so operators can see the filter
-        # working (and eyeball misclassifications).
+        # working (and eyeball misclassifications). The reason
+        # names the SPECIFIC filter that tripped (Phase 5K) — old
+        # format dumped all signals, which left operators guessing.
         result = CaptureResult(
             fired=False, filtered=True,
             reason=(
-                f"filtered: payload_lines={capture.payload_lines}, "
+                f"filtered: {filter_reason} "
+                f"(payload={capture.payload_lines}, "
                 f"files={len(capture.files_touched)}, "
-                f"binary={capture.has_binary}"
+                f"binary={capture.has_binary})"
             ),
             event_id=None, council_run_id=None,
             duration_s=time.monotonic() - t_start,

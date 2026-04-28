@@ -200,38 +200,72 @@ def capture_diff(
 MIN_PAYLOAD_LINES = 5
 
 
+_BINARY_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".pdf",
+                ".zip", ".tar", ".gz", ".whl")
+_DOC_EXTS = (".md", ".rst", ".txt")
+
+
+def _commit_subject(msg: str) -> str:
+    """First line of a commit message (git's subject-line convention).
+
+    Empty string for empty messages. We deliberately do NOT trim leading
+    whitespace — a malformed message with leading blank lines has no
+    subject and shouldn't accidentally match a token on later lines."""
+    return msg.split("\n", 1)[0] if msg else ""
+
+
+def pr_review_filter_reason(capture: DiffCapture) -> str | None:
+    """Return None if the diff should fire the council, else a short
+    string naming the SPECIFIC filter that tripped.
+
+    This is the granular sibling of is_likely_pr_review. Operators
+    inspecting council_runs.log can read the filter name directly
+    instead of guessing from a dump of all signals.
+
+    Filter names (stable contract — drill_filter_reason_granularity locks
+    them so future refactors can't silently rename):
+
+      capture_error  — git operation failed
+      empty_diff     — diff body is empty / whitespace-only
+      skip_token     — operator put [skip-council] / [no-council] in
+                       the commit MESSAGE SUBJECT LINE (line 1 only)
+      too_short      — payload_lines < MIN_PAYLOAD_LINES (typo-shaped)
+      all_binary     — every touched file is a binary extension
+      doc_only       — every touched file is .md / .rst / .txt
+    """
+    if capture.error:
+        return "capture_error"
+    if capture.is_empty:
+        return "empty_diff"
+    # Subject-line-only match. A commit message that DESCRIBES the
+    # skip-token feature (e.g. "feat: ship [skip-council] opt-out") puts
+    # the literal token in its subject — that's the rare case where the
+    # author MUST quote-escape or rephrase. By matching ONLY line 1, body
+    # paragraphs that explain the token (changelog, release notes pasted
+    # into the message) don't accidentally suppress review. Mirrors the
+    # GitHub Actions [skip ci] contract.
+    subject = _commit_subject(capture.commit_message)
+    if subject and _SKIP_COUNCIL_RE.search(subject):
+        return "skip_token"
+    if capture.payload_lines < MIN_PAYLOAD_LINES:
+        return f"too_short (payload={capture.payload_lines})"
+    if capture.has_binary and not any(
+        not f.endswith(_BINARY_EXTS)
+        for f in capture.files_touched
+    ):
+        return "all_binary"
+    if capture.files_touched and all(
+        f.endswith(_DOC_EXTS) for f in capture.files_touched
+    ):
+        return "doc_only"
+    return None
+
+
 def is_likely_pr_review(capture: DiffCapture) -> bool:
     """Heuristic: should this diff be sent to the pr_review council?
 
-    Returns False for:
-      * empty / errored captures
-      * commit-message opt-out: [skip-council] / [no-council] (case-insensitive)
-      * diffs with fewer than MIN_PAYLOAD_LINES content changes
-      * pure-binary diffs (council can't review binary)
-      * doc-only diffs (every file ends in .md / .rst / .txt)
-
-    The caller can override - this is advisory. For Phase 2A the
-    auto-pipeline only fires the council when this returns True.
+    Thin wrapper over pr_review_filter_reason for backward compatibility.
+    New code preferring a specific reason should call the sibling
+    function directly.
     """
-    if capture.error or capture.is_empty:
-        return False
-    # Operator opt-out wins over every downstream check. We deliberately
-    # only match the COMMIT MESSAGE: tokens in the diff body (e.g. an
-    # added comment that contains "[skip-council]") must NOT suppress
-    # review of unrelated code.
-    if capture.commit_message and _SKIP_COUNCIL_RE.search(capture.commit_message):
-        return False
-    if capture.payload_lines < MIN_PAYLOAD_LINES:
-        return False
-    if capture.has_binary and not any(
-        not f.endswith((".png", ".jpg", ".jpeg", ".gif", ".pdf",
-                        ".zip", ".tar", ".gz", ".whl"))
-        for f in capture.files_touched
-    ):
-        return False  # all-binary
-    if capture.files_touched and all(
-        f.endswith(".md") or f.endswith(".rst") or f.endswith(".txt")
-        for f in capture.files_touched
-    ):
-        return False  # doc-only
-    return True
+    return pr_review_filter_reason(capture) is None

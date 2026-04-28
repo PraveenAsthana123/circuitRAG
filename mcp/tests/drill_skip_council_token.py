@@ -8,11 +8,11 @@ Phase 5J ships an operator opt-out token: putting `[skip-council]`
 council. This drill locks the contract so a future refactor of
 `is_likely_pr_review` can't silently drop the opt-out.
 
-Eight steps. Six negative assertions.
+Nine steps. Seven negative assertions.
 
   1. capture_diff populates DiffCapture.commit_message from
      `git log -1 --format=%B HEAD` for HEAD-mode capture.
-  2. NEGATIVE: with [skip-council] in the message, is_likely_pr_review
+  2. NEGATIVE: with [skip-council] in the SUBJECT LINE, is_likely_pr_review
      returns False even when payload_lines is large enough on its own
      to pass.
   3. NEGATIVE: token match is case-insensitive — [SKIP-COUNCIL],
@@ -30,6 +30,11 @@ Eight steps. Six negative assertions.
   8. POSITIVE: a normal commit message + a real diff still routes to
      the council (returns True). Sanity check that we didn't break
      the happy path.
+  9. NEGATIVE (Phase 5K): a commit whose BODY (line 2+) mentions the
+     token does NOT suppress. Subject-line-only matching mirrors the
+     GitHub Actions [skip ci] contract — release notes, changelog
+     paste, design rationale that describes the feature can't
+     accidentally invoke it.
 
 Run: python3 mcp/tests/drill_skip_council_token.py
 """
@@ -202,7 +207,36 @@ def main() -> int:
         return 1
     print("✓ step 8: normal commit routes to council (happy path intact)")
 
-    print("\nALL 8 STEPS PASSED")
+    # ── Step 9: NEGATIVE — token in BODY (line 2+) does NOT suppress ──
+    # Phase 5K tightening: skip-token must match ONLY the subject line
+    # (line 1). A commit whose BODY mentions the token (release notes,
+    # changelog paste, design rationale describing the feature) must
+    # NOT suppress review. This is what bit Phase 5J's own commit —
+    # the message DESCRIBED the feature and accidentally invoked it.
+    body_only_variants = [
+        "feat: ship cost-discipline opt-out\n\n"
+        "Adds [skip-council] / [no-council] tokens for operator opt-out.",
+
+        "feat: ship cost-discipline opt-out\n\n"
+        "See ADR-XYZ. The tokens [skip-council] and [no-council] both work.",
+
+        "refactor: cleanup council code\n\n"
+        "Note: [SKIP-COUNCIL] mentioned in body should NOT trigger.",
+
+        "docs: changelog\n\n"
+        "## v2.0\n- Added [skip-council] feature\n- Other fixes",
+    ]
+    for msg in body_only_variants:
+        c = _make_capture(gc, message=msg, payload_lines=30)
+        if not gc.is_likely_pr_review(c):
+            print(f"✗ step 9: body-only token suppressed review; "
+                  f"regex isn't subject-line-only. msg subject="
+                  f"{msg.split(chr(10), 1)[0]!r}")
+            return 1
+    print(f"✓ step 9: {len(body_only_variants)} body-only token "
+          f"variants all route to council (subject-line-only contract)")
+
+    print("\nALL 9 STEPS PASSED")
     return 0
 
 
