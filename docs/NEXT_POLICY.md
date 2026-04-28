@@ -119,9 +119,11 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-1B | Next.js Server Component embedding the static dashboard (§7-granted) | `b140146` | 8 (6 negatives) |
 | Phase-5A | e2e meta-drill + capture/event-update gap fix | `06bed6c` | 8 (6 negatives) |
 | Phase-5B | C4 + per-scenario data-flow deep-dive page (`/admin/sidecar/deep`) | `d2fefc0` | 8 (6 negatives) |
-| Phase-5C | ADR-014 documenting the autonomous-loop architecture | _this commit_ | 8 (6 negatives) |
+| Phase-5C | ADR-014 documenting the autonomous-loop architecture | `9c804bc` | 8 (6 negatives) |
+| Migrate-1 | Tier-1 AI cache migration (73 GB) — policy + script + runbook | `e264e22` | runtime-verified |
+| Migrate-2 | Migration script drills (Tier-1 + Ollama Tier-2 structural) | _this commit_ | 16 (12 negatives) |
 
-**Cumulative:** 25 commits this session, 191 drill steps green across 24 sidecar/policy/pipeline/UI/ADR drills, **280 steps via the resource-aware runner** across all 40 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 26 commits this session, 207 drill steps green across 26 sidecar/policy/pipeline/UI/ADR/migrate drills, **296 steps via the resource-aware runner** across all 42 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier). Tier-1 cache migration shipped + verified (73 GB now resident on `/mnt/deepa`; 73 GB still in `.bak-*` on `/` until operator runs `--finalize`).
 
 ### Queued (autonomous loop picks from here)
 
