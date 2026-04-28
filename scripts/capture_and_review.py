@@ -268,43 +268,45 @@ def cli() -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    # Lazy build advisor + memory only when we actually need them
+    # Lazy build advisor + memory only when we actually need them.
+    # The wire-up uses the same package-context pattern as the drills
+    # so advisor.py's lazy `from .council import` resolves correctly
+    # when run as a CLI subprocess (e.g. from the post-commit hook).
     advisor = None
     memory = None
     if not args.no_council:
-        # Production wire-up. Loading these lazily keeps the
-        # --no-council fast path from importing the full sidecar
-        # surface (which pulls in httpx, agents/, council, etc.).
         try:
-            sys.path.insert(0, str(REPO / "services"))
-            spec = importlib.util.spec_from_file_location(
-                "_sidecar_pkg",
-                REPO / "services" / "sidecar-advisor" / "__init__.py",
-            )
-            # The package has hyphenated path; load by file
+            import types
+            pkg = types.ModuleType("sidecar_advisor_pkg")
+            pkg.__path__ = [str(REPO / "services" / "sidecar-advisor")]
+            sys.modules["sidecar_advisor_pkg"] = pkg
+
             import yaml
             policy = yaml.safe_load(
                 (REPO / "services" / "sidecar-advisor" / "policy.yaml").read_text()
             )
-            # Memory + advisor: imported via importlib for the same
-            # reason the drills do (sidecar-advisor isn't pip-installed).
+
+            # Load memory + advisor under the package namespace so
+            # advisor's `from .council import PrReviewCouncil`
+            # (called lazily in _get_or_build_council) resolves.
             mem_path = REPO / "services" / "sidecar-advisor" / "memory.py"
             mem_spec = importlib.util.spec_from_file_location(
-                "_capture_memory_mod", mem_path,
+                "sidecar_advisor_pkg.memory", mem_path,
             )
             mem_mod = importlib.util.module_from_spec(mem_spec)
-            sys.modules["_capture_memory_mod"] = mem_mod
+            sys.modules["sidecar_advisor_pkg.memory"] = mem_mod
             mem_spec.loader.exec_module(mem_mod)
 
             adv_path = REPO / "services" / "sidecar-advisor" / "advisor.py"
             adv_spec = importlib.util.spec_from_file_location(
-                "_capture_advisor_mod", adv_path,
+                "sidecar_advisor_pkg.advisor", adv_path,
             )
             adv_mod = importlib.util.module_from_spec(adv_spec)
-            sys.modules["_capture_advisor_mod"] = adv_mod
+            sys.modules["sidecar_advisor_pkg.advisor"] = adv_mod
             adv_spec.loader.exec_module(adv_mod)
 
             memory = mem_mod.AdvisorMemory(args.db)
+            memory.set_policy_version("default")
             advisor = adv_mod.Advisor(policy)
         except Exception as exc:  # noqa: BLE001
             log.warning(
