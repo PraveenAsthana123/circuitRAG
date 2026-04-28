@@ -303,6 +303,14 @@ const GROUPS: Group[] = [
       { href: '/admin/code-quality/deep#pep8-auto-formatting-python', label: 'PEP 8 · Ruff + Black + Mypy strict' },
     ],
   },
+  {
+    heading: 'Tech evolution + efficiency',
+    items: [
+      { href: '/admin/tech-evolution/deep', label: 'Tech evolution — overview' },
+      { href: '/admin/tech-evolution/deep#tech-radar-paved-road', label: 'Tech Radar + paved road + deprecation' },
+      { href: '/admin/tech-evolution/deep#finops-devex', label: 'FinOps + DevEx (sustainability pair)' },
+    ],
+  },
 ];
 
 /** Left-menu nav. Grouped so the 10+ links are scannable. */
