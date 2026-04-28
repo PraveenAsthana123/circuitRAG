@@ -20,6 +20,7 @@
  * second-to-second and shouldn't be cached at the SSR layer.
  */
 
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import {
   api,
@@ -34,6 +35,7 @@ import {
   type ToolStats,
   type TraceLinkAuditRow,
   type TraceLinkDraftRow,
+  type TraceLinkHitlRow,
   type TraceLinkResponse,
   type UpstreamHealthRow,
 } from '../../lib/api';
@@ -295,6 +297,29 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      <div className="card">
+        <div className="card-header" style={{ marginBottom: 12 }}>
+          <strong>Deep dives</strong>
+          <div className="field-help">
+            Interview-grade explanations for the load-bearing topics: Python,
+            LLMOps, databases, MCP, breakers, RAG, microservices, chatbot
+            system design, the Lang family, and compiler/runtime fit.
+          </div>
+        </div>
+        <div className="page-actions">
+          <a href="/admin/python/deep" className="btn">Python</a>
+          <a href="/admin/llmops/deep" className="btn">LLMOps</a>
+          <a href="/admin/database/deep" className="btn">Databases</a>
+          <a href="/admin/mcp/deep" className="btn">MCP</a>
+          <a href="/admin/breakers/deep" className="btn">Breakers</a>
+          <a href="/admin/rag/deep" className="btn">RAG</a>
+          <a href="/admin/microservices/deep" className="btn">Microservices</a>
+          <a href="/admin/system-design/chatbot" className="btn">Chatbot design</a>
+          <a href="/admin/lang-family/rag" className="btn">Lang family</a>
+          <a href="/admin/compiler-stack/rag" className="btn">LLVM / MLIR fit</a>
+        </div>
+      </div>
 
       <div className="card">
         <div className="card-header" style={{ marginBottom: 12 }}>
@@ -836,6 +861,105 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
+            {/* HITL queue rows — added with the forensics endpoint
+                extension that joined governance.hitl_queue. The
+                inline form on the dashboard now matches the
+                dedicated /admin/forensics page in coverage. */}
+            <div style={{ marginTop: 16 }}>
+              <strong style={{ fontSize: 14 }}>
+                HITL queue ({trace.hitl_rows.length}) — human-review evidence
+              </strong>
+              {trace.hitl_rows.length === 0 ? (
+                <div className="field-help" style={{ marginTop: 4 }}>
+                  No HITL items for this correlation_id (the answer
+                  was not flagged for human review).
+                </div>
+              ) : (
+                <div className="table-wrap" style={{ marginTop: 6 }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Question</th>
+                        <th>Confidence</th>
+                        <th>Flag reason</th>
+                        <th>Review</th>
+                        <th>Reviewer</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trace.hitl_rows.map((row: TraceLinkHitlRow) => (
+                        <tr key={row.id}>
+                          <td>
+                            <code style={{ fontSize: 11 }}>
+                              {row.id.slice(0, 8)}…
+                            </code>
+                          </td>
+                          <td
+                            title={row.question}
+                            style={{
+                              maxWidth: 320,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {row.question}
+                          </td>
+                          <td>
+                            <code>
+                              {row.confidence !== null && row.confidence !== undefined
+                                ? row.confidence.toFixed(3)
+                                : '—'}
+                            </code>
+                          </td>
+                          <td>
+                            {row.flag_reason ?? <span className="field-help">—</span>}
+                          </td>
+                          <td>
+                            <span
+                              className={
+                                row.review_status === 'approved'
+                                  ? 'badge badge-active'
+                                  : row.review_status === 'rejected'
+                                    ? 'badge badge-failed'
+                                    : 'badge badge-parsing'
+                              }
+                            >
+                              {row.review_status}
+                            </span>
+                          </td>
+                          <td>
+                            {row.reviewer_id ? (
+                              <code style={{ fontSize: 11 }}>
+                                {row.reviewer_id.slice(0, 8)}…
+                              </code>
+                            ) : (
+                              <span className="field-help">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            {/* Open in dedicated Forensics page — useful when an
+                operator wants the larger view, deep-link to
+                share, or richer table layout. The inline form
+                here remains because some operators prefer to
+                stay on the dashboard. */}
+            {traceQuery.trim() && traceTenant.trim() && (
+              <div className="field-help" style={{ marginTop: 16 }}>
+                <Link
+                  href={`/admin/forensics?correlation_id=${encodeURIComponent(traceQuery.trim())}&tenant_id=${encodeURIComponent(traceTenant.trim())}`}
+                  style={{ color: '#2563eb', textDecoration: 'none' }}
+                >
+                  Open in Forensics →
+                </Link>
+              </div>
+            )}
           </>
         )}
       </div>

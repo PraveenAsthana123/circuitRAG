@@ -18,6 +18,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+
 import {
   api,
   ApiError,
@@ -217,9 +219,27 @@ export default function ClientErrorsPage() {
                       </td>
                       <td>
                         {r.correlation_id ? (
-                          <code style={{ fontSize: 11 }}>
-                            {r.correlation_id}
-                          </code>
+                          // Deep-link into /admin/forensics with the cid
+                          // pre-filled. Tenant_id is NOT in the client-
+                          // error record (browser doesn't always know its
+                          // own tenant), so the operator supplies tenant
+                          // on landing — the auto-fire only triggers
+                          // when both UUIDs validate, so leaving tenant
+                          // empty just pre-fills the form, no surprise
+                          // request fires. One click → cid pre-filled,
+                          // operator types tenant → Look up.
+                          <Link
+                            href={`/admin/forensics?correlation_id=${encodeURIComponent(r.correlation_id)}`}
+                            title="Open in Forensics (cid pre-filled)"
+                            style={{
+                              fontFamily: 'ui-monospace, monospace',
+                              fontSize: 11,
+                              color: '#2563eb',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            {r.correlation_id} →
+                          </Link>
                         ) : (
                           <span className="field-help">—</span>
                         )}
