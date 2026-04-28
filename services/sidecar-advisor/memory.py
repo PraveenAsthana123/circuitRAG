@@ -28,7 +28,7 @@ def _content_hash(content: str) -> str:
 
 class AdvisorMemory:
     """Thin SQLite wrapper. Pure synchronous — Phase 1 caller is
-    Streamlit (sync) or a CLI; the volume is one event per user paste,
+    a Next.js BFF endpoint or a CLI; the volume is one event per user paste,
     not high-throughput."""
 
     def __init__(self, db_path: str | Path = "advisor.db") -> None:

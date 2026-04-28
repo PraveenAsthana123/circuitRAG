@@ -45,17 +45,19 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Sidecar-2C | Rated-event → memory pattern distillation | `05b17a2` | 8 (5 negatives) |
 | Sidecar-2E | Council telemetry → audit table | `ca4115a` | 8 (5 negatives) |
 | Policy-1 | NEXT_POLICY ledger + Kimi K2 cloud-tier catalogue | `058f22c` | docs only |
-| Phase-3A | multi_hop_agent parallel sub-question fanout | _this commit_ | 8 (6 negatives) |
+| Phase-3A | multi_hop_agent parallel sub-question fanout | `adc618c` | 8 (6 negatives) |
+| Phase-3B | DispatchPool — 100+ task fanout w/ bounded LLM concurrency | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 8 commits this session, 55 drill steps green across 7 board+sidecar+agent drills, 23 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 9 commits this session, 63 drill steps green across 8 board+sidecar+agent drills, 24 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
 | ID | Title | Status | Composes with | Blocker |
 |---|---|---|---|---|
 | ~~3A~~ | `multi_hop_agent` parallel sub-query fanout | **shipped** in this commit | inference-svc | — |
-| 3B | Parallel-agent task orchestrator (pulls from this ledger, dispatches to AgentBoard) | designed | AgentBoard + this ledger | — |
-| 1B | Sidecar Streamlit UI (paste box → Review → Rate → audit history) | not started | Sidecar-1A | — |
+| ~~3B~~ | DispatchPool — 100+ task fanout with bounded LLM concurrency | **shipped** in this commit | AgentBoard + Sidecar council | — |
+| 1B | Sidecar **Next.js** UI (paste box → Review → Rate → audit history) | not started — uses existing `services/frontend/` App Router pattern | Sidecar-1A | — |
+| 3C | Wire DispatchPool to Sidecar council for bulk PR-file review | not started | Phase-3B + Sidecar-2D | — |
 | 2A | Git-diff capture (file watcher → auto-classify on commit) | not started | Sidecar-1A | — |
 | 2B | Claude / Codex routes for `architecture` event_type | not started | Sidecar-2D council | needs API keys (gated) |
 | 2F | Council retention policy (purge advisor_council_runs > N days) | not started | Sidecar-2E | none |
