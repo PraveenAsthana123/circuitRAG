@@ -123,11 +123,15 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Migrate-1 | Tier-1 AI cache migration (73 GB) — policy + script + runbook | `e264e22` | runtime-verified |
 | Migrate-2 | Migration script drills (Tier-1 + Ollama Tier-2 structural) | `7c39bbc` | 16 (12 negatives) |
 | Migrate-3 | Tier-1 finalized (73 GB freed on /); Ollama dry-run sudo bug fixed | `4089699` | runtime-verified |
-| Phase-5D | sidecar_bootstrap.sh — one-command operator setup (the loop goes from "shipped" to "live") + drill | _this commit_ | 8 (6 negatives) |
+| Phase-5D | sidecar_bootstrap.sh — one-command operator setup (the loop goes from "shipped" to "live") + drill | `87e1c02` | 8 (6 negatives) |
+| Hot-fix-1 | capture_and_review CLI relative-import bug (real-world activation caught it) | `573e223` | self-applied via post-commit |
+| Phase-5E | drill_cli_package_context: locks the drill-vs-CLI gap that hot-fix-1 exposed | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 28 commits this session, 215 drill steps green across 27 sidecar/policy/pipeline/UI/ADR/migrate/bootstrap drills, **304 steps via the resource-aware runner** across all 43 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 30 commits this session, 223 drill steps green across 28 sidecar/policy/pipeline/UI/ADR/migrate/bootstrap drills, **312 steps via the resource-aware runner** across all 44 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 **System disk freed**: `/` was 81% (167 GB free) → now 72% (239 GB free). Ollama Tier-2 (additional 42 GB) staged for operator's sudo.
+
+**The loop is LIVE end-to-end on this repo**: post-commit hook installed; advisor.db has 3 events + 2 council_runs; watcher.log has 25 entries; council_runs.log has 5 entries. The hot-fix self-verified by triggering its own council run.
 
 ### Queued (autonomous loop picks from here)
 
