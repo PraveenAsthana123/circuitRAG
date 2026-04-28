@@ -368,6 +368,103 @@ def build_webhook_payload(
     }
 
 
+# Phase 5U: Prometheus textfile-collector format.
+# Standard risk levels we emit zero-valued samples for so dashboards
+# don't blank when a level is absent in the current window.
+_PROM_RISK_LEVELS = ("LOW", "MEDIUM", "HIGH", "UNKNOWN")
+# Filter buckets to emit even at zero — the canonical set + 'legacy' for
+# pre-5K log entries. Drill verifies we don't accidentally drop a
+# category when the histogram has no entries in it.
+_PROM_FILTER_BUCKETS = tuple(sorted(KNOWN_FILTERS | {"legacy"}))
+
+
+def _prom_escape_label(value: str) -> str:
+    """Escape a Prometheus label value per the exposition format spec.
+
+    Order matters: backslash MUST be escaped first so it can't double-
+    escape the others. Newline is `\\n`, quote is `\\\"`, backslash is
+    `\\\\`. Everything else is raw."""
+    return (
+        value
+        .replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+    )
+
+
+def render_prometheus(summary: dict) -> str:
+    """Emit summary as Prometheus textfile-collector format.
+
+    Conventions:
+      * One blank line between metrics (textfile parsers tolerate it).
+      * Every metric has HELP + TYPE preceding samples.
+      * Zero-valued samples are emitted for known buckets so Grafana
+        panels don't blank out when a category has no entries in the
+        current window.
+      * 'gauge' type — these are point-in-time counts of historical
+        events; gauge is correct for windowed reads of an append log.
+    """
+    out: list[str] = []
+
+    out.append("# HELP council_filter_total Total council_runs.log entries observed.")
+    out.append("# TYPE council_filter_total gauge")
+    out.append(f"council_filter_total {int(summary.get('total', 0))}")
+    out.append("")
+
+    fired_by_risk = summary.get("fired_by_risk", {})
+    out.append("# HELP council_filter_fired Successful council fires by risk level.")
+    out.append("# TYPE council_filter_fired gauge")
+    # Emit zeros for every standard risk; merge with any non-standard
+    # risks the data carries (sorted for deterministic output).
+    seen_risks = set(fired_by_risk.keys()) | set(_PROM_RISK_LEVELS)
+    for risk in sorted(seen_risks):
+        n = int(fired_by_risk.get(risk, 0))
+        out.append(f'council_filter_fired{{risk="{_prom_escape_label(risk)}"}} {n}')
+    out.append("")
+
+    filtered_by_reason = summary.get("filtered_by_reason", {})
+    out.append("# HELP council_filter_filtered Filtered (skipped) entries by canonical filter name.")
+    out.append("# TYPE council_filter_filtered gauge")
+    seen_filters = set(filtered_by_reason.keys()) | set(_PROM_FILTER_BUCKETS)
+    for reason in sorted(seen_filters):
+        n = int(filtered_by_reason.get(reason, 0))
+        out.append(f'council_filter_filtered{{reason="{_prom_escape_label(reason)}"}} {n}')
+    out.append("")
+
+    skipped_by_reason = summary.get("skipped_by_reason", {})
+    # Skipped buckets are open-ended (any leading word of the reason),
+    # so we emit only what we actually saw rather than padding zeros.
+    out.append("# HELP council_filter_skipped Operator-opt-out entries by reason.")
+    out.append("# TYPE council_filter_skipped gauge")
+    if skipped_by_reason:
+        for reason in sorted(skipped_by_reason.keys()):
+            n = int(skipped_by_reason[reason])
+            out.append(f'council_filter_skipped{{reason="{_prom_escape_label(reason)}"}} {n}')
+    else:
+        # No samples → leave the HELP/TYPE only. Prom format permits this.
+        pass
+    out.append("")
+
+    out.append("# HELP council_filter_council_errors Council errors (fired but errored).")
+    out.append("# TYPE council_filter_council_errors gauge")
+    out.append(f"council_filter_council_errors {int(summary.get('council_errors', 0))}")
+
+    # Trailing newline — node_exporter's textfile parser is lenient,
+    # but Prometheus format strictly requires LF-terminated final line.
+    return "\n".join(out) + "\n"
+
+
+def write_prometheus_atomic(path: Path, content: str) -> None:
+    """Write `content` to `path` atomically: write `<path>.tmp`, then
+    rename. node_exporter's textfile collector has a known race where
+    it reads a partially-written file mid-write; atomic rename avoids
+    that. POSIX rename is atomic within a single filesystem."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content)
+    os.replace(tmp, path)
+
+
 def post_webhook(
     url: str,
     payload: dict,
@@ -711,6 +808,16 @@ def cli() -> int:
         help="payload shape (default: generic JSON). slack uses Block Kit; "
              "discord uses embeds.",
     )
+    parser.add_argument(
+        "--prometheus", action="store_true",
+        help="emit Prometheus textfile-collector format instead of "
+             "text/JSON. Combine with --prometheus-out to write atomically.",
+    )
+    parser.add_argument(
+        "--prometheus-out", default=None, metavar="PATH",
+        help="write prometheus output to PATH (atomic via tmp+rename). "
+             "Use with cron/node_exporter textfile collector.",
+    )
     args = parser.parse_args()
 
     # Parse every --alert-on up front so a typo fails fast (before
@@ -751,6 +858,29 @@ def cli() -> int:
         # Not an error — pre-bootstrap state. Render an empty report
         # so operators know the script ran.
         print(f"council_runs.log not found at {log_path}", file=sys.stderr)
+
+    # Prometheus output mode — short-circuits the human-readable
+    # report and the alert pipeline. Operators wanting alerts on prom
+    # data should consume the metrics from a Grafana / Alertmanager
+    # rule, not from this script's exit code.
+    if args.prometheus:
+        if args.weekly:
+            print("--prometheus uses single-window data; --weekly ignored",
+                  file=sys.stderr)
+        if args.json:
+            print("--json ignored when --prometheus is set", file=sys.stderr)
+        if alert_exprs:
+            print("--alert-on ignored when --prometheus is set "
+                  "(use Alertmanager on the metrics instead)",
+                  file=sys.stderr)
+        summary = summarize(log_path, args.days)
+        prom_text = render_prometheus(summary)
+        if args.prometheus_out:
+            write_prometheus_atomic(Path(args.prometheus_out), prom_text)
+            print(f"prometheus: wrote {args.prometheus_out}", file=sys.stderr)
+        else:
+            sys.stdout.write(prom_text)
+        return 0
 
     if args.weekly:
         if args.days is not None:
