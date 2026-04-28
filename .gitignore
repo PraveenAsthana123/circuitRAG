@@ -112,3 +112,8 @@ Desktop.ini
 
 # Phase 4B: LoopWatcher runtime artifacts
 .loop/
+
+# Phase 1A: Sidecar Advisor local state
+advisor.db
+advisor.db-wal
+advisor.db-shm
