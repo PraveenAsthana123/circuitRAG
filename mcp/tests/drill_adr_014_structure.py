@@ -166,14 +166,18 @@ def main():
             f"ADR-013 missing: numbering is sequential per §47.3, no "
             f"gaps allowed"
         )
-    # Verify 015 doesn't exist (haven't reused or skipped)
-    adr_015 = list(ADR_DIR.glob("015-*.md"))
-    if adr_015:
+    # Verify ADR-014 numbering is unique (no duplicate ADR-014 files).
+    # The original assertion here checked "015 doesn't yet exist" —
+    # a poorly-designed forward-looking check that broke when
+    # ADR-015 legitimately landed in Phase 6F. The right invariant
+    # is "no two files share a number," not "this is the latest."
+    adr_014_files = list(ADR_DIR.glob("014-*.md"))
+    if len(adr_014_files) != 1:
         fail(
-            f"ADR-015 already exists: {adr_015}. ADRs are immutable + "
+            f"ADR-014 numbering not unique: {adr_014_files}. ADRs "
             f"never-reuse-numbers per §47.3."
         )
-    ok(f"ADR-014 at canonical path; 013 exists; 015 doesn't yet")
+    ok(f"ADR-014 at canonical path; 013 exists; numbering unique")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 ADR-014 STRUCTURE STEPS PASSED{NC}")

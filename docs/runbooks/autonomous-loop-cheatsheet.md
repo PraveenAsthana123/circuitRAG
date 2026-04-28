@@ -200,5 +200,6 @@ mcp/tests/drill_*.py               # drill catalog (~119 total, ~55 tier-1)
 - **`~/.claude/policies/autonomous-feature-loop.md`** — the policy that defines activation, stop conditions, iteration shape
 - **`~/.claude/CLAUDE.md`** §42 (operational autonomy), §43 (drill discipline), §49 (compose-footer)
 - **`docs/architecture/adr/014-autonomous-loop-architecture.md`** (ADR-014) — the advisory contract that lets failing commits land but logs them
+- **`docs/architecture/adr/015-ratchet-pattern-for-discipline-drift.md`** (ADR-015) — the ratchet pattern (grandfather current drift, gate growth, reward shrinkage); applies to drill catalog discipline + UI scope grants + future per-rule sets
 - **`docs/runbooks/council-telemetry.md`** — the deeper runbook for the 5K-5BB telemetry surface
 - **`docs/NEXT_POLICY.md`** — the session ledger; every phase entry includes drill score
