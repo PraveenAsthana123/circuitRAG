@@ -20,7 +20,6 @@ here so tests and code review can exercise the control flow.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -32,6 +31,8 @@ from documind_core.breakers import (
 )
 
 from app.services import OllamaClient, PromptBuilder, RetrievalClient
+
+from .multi_hop_fanout import fanout_retrieval
 
 log = logging.getLogger(__name__)
 
@@ -64,12 +65,19 @@ class MultiHopRagAgent:
         prompts: PromptBuilder,
         token_breaker: TokenCircuitBreaker,
         max_hops: int = 4,
+        max_parallel: int = 4,
     ) -> None:
         self._retrieval = retrieval
         self._ollama = ollama
         self._prompts = prompts
         self._token_breaker = token_breaker
         self._max_hops = max_hops
+        # max_parallel caps simultaneous in-flight retrievals during
+        # sub-question fanout. Default 4 — same rationale as
+        # AgentBoard's max_parallel: high enough to amortize latency,
+        # low enough not to flood the retrieval-svc's per-tenant
+        # rate limit.
+        self._max_parallel = max_parallel
 
     async def run(
         self,
@@ -99,37 +107,32 @@ class MultiHopRagAgent:
         )
         loop_cb.start()
 
-        trace: list[dict[str, Any]] = []
-        gathered_context: list[str] = []
-
         # Planner stub — turn the question into N sub-questions.
         sub_questions = self._plan(question)
 
-        for sub_q in sub_questions:
-            stop = loop_cb.check_before_step()
-            if stop is not AgentStopReason.NONE:
-                break
-
-            chunks = await self._retrieval.retrieve(
+        # Pre-flight: total cohort budget. If we're already over,
+        # skip retrieval and let the synthesizer guard handle the
+        # downstream stop.
+        cohort_stop = loop_cb.check_before_step()
+        if cohort_stop is AgentStopReason.NONE:
+            # Parallel sub-question fanout — replaces the prior
+            # sequential per-question loop. 3 hops at ~200ms each
+            # ran ~600ms wall sequential; parallel runs ~200ms wall.
+            trace, gathered_context, _walk_stop = await fanout_retrieval(
+                retriever=self._retrieval,
                 tenant_id=tenant_id,
                 correlation_id=correlation_id,
-                query=sub_q,
-                top_k=3,
-                strategy="hybrid",
+                sub_questions=sub_questions,
+                loop_cb=loop_cb,
+                stop_sentinel=AgentStopReason.NONE,
+                max_parallel=self._max_parallel,
+                max_hops=self._max_hops,
+                total_timeout_s=120.0,
+                per_hop_timeout_s=30.0,
             )
-            result_hash = hashlib.sha256(
-                ("".join(c.get("chunk_id", "") for c in chunks)).encode()
-            ).hexdigest()[:12]
-
-            trace.append(
-                {"step": "retrieve", "sub_q": sub_q, "chunks": len(chunks), "result_hash": result_hash}
-            )
-
-            stop = loop_cb.record_step(action="retrieve", result_hash=result_hash)
-            if stop is not AgentStopReason.NONE:
-                break
-
-            gathered_context.append(f"Q: {sub_q}\n" + "\n".join(c.get("text", "") for c in chunks))
+        else:
+            trace = []
+            gathered_context = []
 
         # Synthesize — single final step, guarded too.
         synth_stop = loop_cb.check_before_step()

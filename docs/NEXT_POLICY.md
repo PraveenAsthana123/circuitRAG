@@ -44,14 +44,16 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Sidecar-2D | pr_review delegates to AgentBoard council | `4aa7bcd` | 8 (5 negatives) |
 | Sidecar-2C | Rated-event → memory pattern distillation | `05b17a2` | 8 (5 negatives) |
 | Sidecar-2E | Council telemetry → audit table | `ca4115a` | 8 (5 negatives) |
+| Policy-1 | NEXT_POLICY ledger + Kimi K2 cloud-tier catalogue | `058f22c` | docs only |
+| Phase-3A | multi_hop_agent parallel sub-question fanout | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 6 commits, 47 drill steps green across 6 board+sidecar drills, 21 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed.
+**Cumulative:** 8 commits this session, 55 drill steps green across 7 board+sidecar+agent drills, 23 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
 | ID | Title | Status | Composes with | Blocker |
 |---|---|---|---|---|
-| **3A** | `multi_hop_agent` parallel sub-query fanout (gap #1 from original punch list) | scaffolded — in-progress | inference-svc | none |
+| ~~3A~~ | `multi_hop_agent` parallel sub-query fanout | **shipped** in this commit | inference-svc | — |
 | 3B | Parallel-agent task orchestrator (pulls from this ledger, dispatches to AgentBoard) | designed | AgentBoard + this ledger | — |
 | 1B | Sidecar Streamlit UI (paste box → Review → Rate → audit history) | not started | Sidecar-1A | — |
 | 2A | Git-diff capture (file watcher → auto-classify on commit) | not started | Sidecar-1A | — |
