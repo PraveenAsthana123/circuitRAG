@@ -210,12 +210,33 @@ export interface TraceLinkDraftRow {
   replayed_at: string | null;
 }
 
+// HITL queue projection — completes the trace → draft → audit → HITL
+// loop. Mirrors backend TraceLinkHitlRow per
+// services/inference-svc/app/schemas/__init__.py.
+export interface TraceLinkHitlRow {
+  id: string;
+  tenant_id: string | null;
+  question: string;
+  confidence: number | null;
+  flag_reason: string | null;
+  // pending | approved | rejected | edited
+  review_status: string;
+  reviewer_id: string | null;
+  review_notes: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
 export interface TraceLinkResponse {
   correlation_id: string;
   observed_at: string;
   db_reachable: boolean;
   audit_rows: TraceLinkAuditRow[];
   draft_rows: TraceLinkDraftRow[];
+  // hitl_rows is empty for the common case (answer not flagged); non-empty
+  // means human-in-the-loop intervened. Critical for EU AI Act Art. 14
+  // (human oversight) audit evidence per /admin/explainability/deep.
+  hitl_rows: TraceLinkHitlRow[];
   // Jaeger deep-link if DOCUMIND_JAEGER_URL is configured server-side
   jaeger_url: string | null;
 }
