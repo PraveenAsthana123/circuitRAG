@@ -40,12 +40,15 @@ Eight steps. Six negative assertions.
      entry point + `sys.exit(...)`. The runner subprocesses each
      drill and reads the exit code; without this, subprocess
      output is ambiguous.
-  7. NEGATIVE: every drill mentions "negative" (case-insensitive)
-     in its docstring. The §43.5 contract: ≥1 negative assertion
-     per drill. Without "NEGATIVE" markers in the doc, future
-     readers can't tell which steps are happy-path and which lock
-     invariants. (Soft check — only enforces presence in doc text;
-     can't actually count assertions.)
+  7. NEGATIVE: every NEW drill mentions "negative" (case-insensitive)
+     in its docstring. Per §43.5, ≥1 negative assertion per drill.
+     Without the marker in the doc, future readers can't tell which
+     steps are happy-path and which lock invariants. Phase 6D ratchet:
+     34 pre-existing drills are grandfathered in KNOWN_MISSING_NEG_MARKER
+     (they likely have negative assertions but their docs predate the
+     §43.5 marker convention); new drills must include the marker.
+     (Soft check — only enforces docstring presence; AST-parsing the
+     actual assertion count is out of scope.)
   8. POSITIVE: catalog spans tier-1 (readonly) AND tier-≥2 — both
      are needed. A catalog of only readonly drills suggests the
      test surface stops at the API layer; only resourced drills
@@ -217,14 +220,57 @@ def main() -> int:
           f"intentional audit drills (survey-only by design); "
           f"{len(stale_audits)} stale entries safe to remove")
 
-    # ── Step 7: NEGATIVE — docstrings mention "negative" (§43.5) ──
-    # Soft check: we can't COUNT actual negative assertions, but we
-    # can require the doc text mentions them. Drills missing this
-    # signal are likely happy-path-only.
+    # ── Step 7: NEGATIVE — drill docs mention "negative" (§43.5) ──
+    # §43.5 requires ≥1 negative assertion per drill. We can't AST-
+    # parse and count assertions across 133 drills, but we can at
+    # least require the docstring mention them — operators reading
+    # `--list` should see the negative-step count or a marker.
+    #
+    # Phase 6D ratchet: 34 pre-existing drills lack the marker but
+    # likely DO have negative assertions; mechanically slapping
+    # "negative" in their docstrings without verifying would be
+    # dishonest. Grandfather them in KNOWN_MISSING_NEG_MARKER.
+    # New drills must include the marker; old drills can be uplifted
+    # organically when their owner next touches them.
+    KNOWN_MISSING_NEG_MARKER = {
+        "drill_admin_api.py",
+        "drill_agent_denial_metrics.py",
+        "drill_agent_idempotency.py",
+        "drill_agent_multiserver_routing.py",
+        "drill_agent_scope_precheck.py",
+        "drill_audit.py",
+        "drill_audit_actor_type.py",
+        "drill_audit_seal.py",
+        "drill_audit_verifier.py",
+        "drill_breaker_transitions.py",
+        "drill_client_error_envelope.py",
+        "drill_drill_server.py",
+        "drill_e2e.py",
+        "drill_frontend_link_audit.py",
+        "drill_frontend_template_coverage_audit.py",
+        "drill_health_detailed.py",
+        "drill_hitl.py",
+        "drill_mcp_server_scope.py",
+        "drill_mcp_tool_call_metrics.py",
+        "drill_multi_breaker_visibility.py",
+        "drill_multi_server.py",
+        "drill_prometheus_breakers.py",
+        "drill_resolve_draft_routing.py",
+        "drill_runner_hardening.py",
+        "drill_runner_junit.py",
+        "drill_runner_scheduler.py",
+        "drill_scope.py",
+        "drill_tenant_span_tags.py",
+        "drill_tool_catalog_ttl.py",
+        "drill_tool_scope_overrides.py",
+        "drill_trace.py",
+        "drill_worker.py",
+        "drill_worker_cb_aware.py",
+        "drill_worker_multi_namespace.py",
+    }
     no_negative_mention = []
     for p in drills:
         body = p.read_text()
-        # Extract module docstring text: first triple-quoted block
         m = re.search(r'"""(.*?)"""', body, re.DOTALL)
         if not m:
             m = re.search(r"'''(.*?)'''", body, re.DOTALL)
@@ -234,19 +280,19 @@ def main() -> int:
         doc_text = m.group(1).lower()
         if "negative" not in doc_text:
             no_negative_mention.append(p.name)
-    # We grandfather older drills — cap the failure to NEW or recently
-    # written drills only would be ideal but we can't easily detect age
-    # here. Instead: assert the COUNT of compliant docstrings is ≥80%
-    # of catalog. If older drills lack the marker, that's drift but
-    # doesn't fail this iteration; new drills must include it.
-    threshold = int(len(drills) * 0.4)  # ≥40% must mention "negative"
-    compliant = len(drills) - len(no_negative_mention)
-    if compliant < threshold:
-        print(f"✗ step 7: only {compliant}/{len(drills)} drill docs mention "
-              f"'negative' (threshold ≥{threshold}); §43.5 discipline drifting")
+    actually_no_neg = set(no_negative_mention)
+    new_no_neg = actually_no_neg - KNOWN_MISSING_NEG_MARKER
+    if new_no_neg:
+        print(f"✗ step 7: {len(new_no_neg)} NEW drills lack 'negative' "
+              f"docstring marker: {sorted(new_no_neg)}. Add a step "
+              f"description like 'NEGATIVE: ...' to the docstring, or "
+              f"add to KNOWN_MISSING_NEG_MARKER if the drill is "
+              f"intentionally happy-path-only.")
         return 1
-    print(f"✓ step 7: {compliant}/{len(drills)} drill docs mention 'negative' "
-          f"(soft §43.5 marker; threshold {threshold})")
+    grandfathered_neg = actually_no_neg & KNOWN_MISSING_NEG_MARKER
+    stale_neg = KNOWN_MISSING_NEG_MARKER - actually_no_neg
+    print(f"✓ step 7: 0 new drift; {len(grandfathered_neg)} grandfathered "
+          f"({len(stale_neg)} stale entries safe to remove)")
 
     # ── Step 8: POSITIVE — catalog spans readonly + resourced ──
     readonly_count = 0
