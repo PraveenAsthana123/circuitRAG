@@ -293,6 +293,11 @@ export interface ClientErrorRecord {
   route: string | null;
   user_agent: string | null;
   correlation_id: string | null;
+  // Tenant captured server-side from request.state (TenantContextMiddleware
+  // reads X-Tenant-ID on the inbound report POST). Lets the admin
+  // /admin/client-errors → /admin/forensics deep-link fully pre-fill
+  // cid + tid, which triggers the auto-fire on landing.
+  tenant_id: string | null;
   extra: Record<string, unknown>;
 }
 

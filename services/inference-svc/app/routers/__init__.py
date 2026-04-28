@@ -590,7 +590,9 @@ _client_errors: _deque[ClientErrorRecord] = _deque(maxlen=_CLIENT_ERROR_BUFFER_C
     status_code=201,
     summary="Frontend-reported client-side error event",
 )
-async def admin_client_error_report(body: ClientErrorReport) -> ClientErrorRecord:
+async def admin_client_error_report(
+    body: ClientErrorReport, request: Request,
+) -> ClientErrorRecord:
     """
     Frontend posts uncaught JS errors / unhandled promise rejections /
     React error-boundary catches here. The server stores them in a
@@ -601,6 +603,14 @@ async def admin_client_error_report(body: ClientErrorReport) -> ClientErrorRecor
     error message can't blow memory. No auth on this endpoint —
     in dev, the gateway / network policy gates browser access; in
     prod, this would be replaced by Sentry / Faro / equivalent.
+
+    Server-side tenant capture: TenantContextMiddleware reads
+    X-Tenant-ID from the inbound request (the api.ts wrapper sends
+    it on every call) and writes it to request.state.tenant_id. We
+    stamp it onto the record so the admin /admin/client-errors →
+    /admin/forensics deep-link can fully pre-fill cid + tid and the
+    auto-fire kicks in. Nullable when not present (e.g. an error
+    fires before the tenant is known).
     """
     from datetime import UTC, datetime
     import uuid as _uuid
@@ -612,6 +622,12 @@ async def admin_client_error_report(body: ClientErrorReport) -> ClientErrorRecor
         # framework frames).
         stack = "...[truncated]...\n" + stack[-_CLIENT_ERROR_STACK_CAP:]
 
+    # Pull tenant_id from request.state (TenantContextMiddleware
+    # populates this from X-Tenant-ID). Empty string → None so the
+    # JSON response carries `null` rather than `""`, matching the
+    # nullable shape advertised on ClientErrorRecord.
+    tenant = getattr(request.state, "tenant_id", "") or None
+
     record = ClientErrorRecord(
         id=_uuid.uuid4().hex[:12],
         received_at=datetime.now(UTC).isoformat(),
@@ -621,6 +637,7 @@ async def admin_client_error_report(body: ClientErrorReport) -> ClientErrorRecor
         route=body.route,
         user_agent=body.user_agent,
         correlation_id=body.correlation_id,
+        tenant_id=tenant,
         extra=body.extra or {},
     )
     _client_errors.appendleft(record)  # newest first

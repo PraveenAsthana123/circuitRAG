@@ -562,6 +562,19 @@ class ClientErrorRecord(BaseModel):
     route: str | None = None
     user_agent: str | None = None
     correlation_id: str | None = None
+    tenant_id: str | None = Field(
+        default=None,
+        description=(
+            "Tenant the browser was acting under when the error fired, "
+            "captured server-side from request.state (populated by "
+            "TenantContextMiddleware reading X-Tenant-ID). Lets the admin "
+            "/admin/client-errors → /admin/forensics deep-link auto-fire "
+            "the trace lookup with both UUIDs pre-filled. Nullable: errors "
+            "fired before auth completes (e.g. a 401 chain) carry no "
+            "tenant — the deep-link still works, operator types tenant "
+            "manually on landing."
+        ),
+    )
     extra: dict[str, Any] = Field(default_factory=dict)
 
 

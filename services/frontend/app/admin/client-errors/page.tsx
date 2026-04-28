@@ -219,18 +219,29 @@ export default function ClientErrorsPage() {
                       </td>
                       <td>
                         {r.correlation_id ? (
-                          // Deep-link into /admin/forensics with the cid
-                          // pre-filled. Tenant_id is NOT in the client-
-                          // error record (browser doesn't always know its
-                          // own tenant), so the operator supplies tenant
-                          // on landing — the auto-fire only triggers
-                          // when both UUIDs validate, so leaving tenant
-                          // empty just pre-fills the form, no surprise
-                          // request fires. One click → cid pre-filled,
-                          // operator types tenant → Look up.
+                          // Deep-link into /admin/forensics with cid (and
+                          // tid when known) pre-filled. tenant_id is now
+                          // captured server-side from request.state via
+                          // TenantContextMiddleware reading X-Tenant-ID;
+                          // when both are present, the auto-fire kicks
+                          // in on landing — operator clicks once and
+                          // sees the trace + drafts + audit + HITL view
+                          // already populated. tenant_id may still be
+                          // null (errors before auth completes); in
+                          // that case the cid pre-fills and the
+                          // operator types tenant manually.
                           <Link
-                            href={`/admin/forensics?correlation_id=${encodeURIComponent(r.correlation_id)}`}
-                            title="Open in Forensics (cid pre-filled)"
+                            href={
+                              `/admin/forensics?correlation_id=${encodeURIComponent(r.correlation_id)}`
+                              + (r.tenant_id
+                                ? `&tenant_id=${encodeURIComponent(r.tenant_id)}`
+                                : '')
+                            }
+                            title={
+                              r.tenant_id
+                                ? 'Open in Forensics (cid + tid pre-filled, auto-fires)'
+                                : 'Open in Forensics (cid pre-filled; tenant unknown, type on landing)'
+                            }
                             style={{
                               fontFamily: 'ui-monospace, monospace',
                               fontSize: 11,
