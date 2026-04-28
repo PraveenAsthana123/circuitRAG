@@ -33,6 +33,23 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  # Nightly drift-detection run. Catches:
+  #   * pip / OTel / structlog dep updates that quietly break a drill
+  #     between PRs (no PR landed → no PR-time signal).
+  #   * Postgres / Alpine image base updates (ubuntu-latest +
+  #     postgres:16-alpine drift over time).
+  #   * Drills that depend on the current calendar month (e.g.
+  #     drill_audit_log_partitioned bootstraps current+next-2 months,
+  #     so on the 1st of each month a fresh CI cluster could regress
+  #     if the helper's date arithmetic broke; nightly catches this
+  #     exactly when it would happen, not "next PR + a month later").
+  # Time chosen for low CI-runner contention; UTC midnight + 30 min
+  # offset so it doesn't pile on with everyone's :00 cron jobs.
+  schedule:
+    - cron: "30 0 * * *"
+  # Manual trigger for ad-hoc verification (e.g. operator runs after
+  # tweaking a drill or upgrading a base image).
+  workflow_dispatch:
 
 env:
   PYTHON_VERSION: "3.11"
