@@ -115,9 +115,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-2A2 | capture_and_review pipeline → council on every code commit | `1ba5f42` | 8 (6 negatives) |
 | Phase-2F | council retention purge — prune_council_runs + CLI | `dfddcd4` | 8 (6 negatives) |
 | Phase-2A3 | batched council replay against unreviewed events (DispatchPool composes) | `4f5d4db` | 8 (6 negatives) |
-| Phase-1B-static | HTML dashboard renderer (pre-approved alt to Next.js UI) | _this commit_ | 8 (6 negatives) |
+| Phase-1B-static | HTML dashboard renderer (pre-approved alt to Next.js UI) | `9661753` | 8 (6 negatives) |
+| Phase-1B | Next.js Server Component embedding the static dashboard (§7-granted) | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 21 commits this session, 159 drill steps green across 20 board+sidecar+agent+policy+pipeline+UI drills, 36 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 22 commits this session, 167 drill steps green across 21 board+sidecar+agent+policy+pipeline+UI drills, 37 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
@@ -127,7 +128,8 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | ~~3B~~ | DispatchPool — 100+ task fanout with bounded LLM concurrency | **shipped** `ae06ded` | AgentBoard + Sidecar council | — |
 | ~~3D~~ | agents/ registry — first-class agent files; policy_approver added | **shipped** in this commit | Sidecar-2D | — |
 | ~~1B-static~~ | static HTML dashboard renderer | **shipped** in this commit | Sidecar-1A | run: `python3 scripts/render_dashboard.py > .loop/dashboard.html` |
-| 1B | Sidecar **Next.js** UI (paste box → Review → Rate → audit history) | not started — uses existing `services/frontend/` App Router pattern | Sidecar-1A | **needs §7 scope-extension** for `services/frontend/` edits |
+| ~~1B~~ | Sidecar Next.js Server Component at `/admin/sidecar` reading `.loop/dashboard.html` | **shipped** in this commit (§7 granted 2026-04-28) | Phase-1B-static | navigate to `/admin/sidecar` after running `render_dashboard.py` |
+| 1B-2 | Live data via better-sqlite3 + rating buttons + drill-down | not started | Phase-1B | needs new §7 entry to add a write/rating endpoint |
 | ~~3C~~ | BulkPrReview composes DispatchPool × council | **shipped** in this commit | Phase-3B + Sidecar-2D | — |
 | ~~4A~~ | LoopWatcher — deterministic policy_approver gate (5 rules) | **shipped** in this commit | Phase-3D approver agent | — |
 | ~~4B~~ | post-commit hook auto-fires LoopWatcher; verdict log at .loop/watcher.log | **shipped** in this commit | Phase-4A | install: `scripts/install_loop_watcher_hook.sh` |
@@ -235,6 +237,7 @@ When the loop wants to do something outside section 1's pre-approved scope, it l
 | Date | Request | Disposition |
 |---|---|---|
 | 2026-04-28 | Add `approver` as a 4th agent role (`policy_approver` watches the loop). User explicitly requested "one agent must track this and approve" + "if something missing the update the approval policy and go ahead". | **Granted in §1 inline** — `agents/` row now lists `approver` as a pre-approved role; landed in this commit (`Phase-3D`). |
+| 2026-04-28 | Add `services/frontend/app/admin/sidecar/` Next.js page consuming the static dashboard HTML. Operator approval signals: "I will go with next js" + "use the approval policy to move next" + "if not then create then next policy for approval to go ahead". Scope: read-only Server Component reads `.loop/dashboard.html` from disk, embeds it. No backend mutation; no API routes. | **Granted** — landed in Phase-1B (`9661753+1`). Strictly limited to `services/frontend/app/admin/sidecar/`; rest of `services/frontend/` remains gated. |
 
 ---
 
