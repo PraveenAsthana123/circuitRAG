@@ -226,3 +226,9 @@ After this checklist is green, the drill catalog is **enforced**, not
 documentation. A future PR that breaks W3C baggage propagation, the
 log formatter contract, or audit_log RLS fails the build without a
 human noticing in review.
+
+---
+
+## Related ops docs
+
+- [`docs/ops/audit-log-partitioned-cutover.md`](ops/audit-log-partitioned-cutover.md) — phased cutover runbook for migration 009 (audit log partitioning). The drills-pg tier exercises the partitioned-schema contract on every PR; this runbook is what ops runs when actually flipping the schema in a target environment.

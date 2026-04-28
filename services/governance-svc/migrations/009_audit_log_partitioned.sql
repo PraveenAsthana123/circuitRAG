@@ -186,3 +186,8 @@ $bootstrap$;
 --     After retention horizon (7y for regulated): DROP TABLE
 --     governance.audit_log; rename audit_log_partitioned →
 --     audit_log if desired.
+--
+-- FULL OPERATIONS RUNBOOK with explicit SQL + verification per
+-- phase + sign-off checklist:
+--   docs/ops/audit-log-partitioned-cutover.md
+-- Drill: mcp/tests/drill_audit_log_partitioned.py (8/8 green).
