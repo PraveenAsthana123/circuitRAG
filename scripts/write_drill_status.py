@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -47,6 +48,14 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_STATUS_PATH = REPO / ".loop" / "last_drill_outcome.json"
+
+# Match run_drills.py's interpreter resolution. drills like
+# drill_tool_catalog_ttl import from `mcp` which needs documind_core
+# on PYTHONPATH. The dev venv at /tmp/documind-venv has it
+# pre-installed; system python doesn't. Fall back to sys.executable
+# only if the venv is missing.
+_VENV_PY = Path(os.environ.get("PYTHON_BIN", "/tmp/documind-venv/bin/python"))
+PY_BIN = str(_VENV_PY) if _VENV_PY.exists() else sys.executable
 
 log = logging.getLogger("write_drill_status")
 
@@ -77,13 +86,20 @@ def run_drill(
     cwd = cwd or REPO
     name = drill_path.stem
     t0 = time.monotonic()
+    # Match run_drills.py's env: PYTHONPATH=REPO so drills that
+    # `from mcp import ...` or `from documind_core import ...`
+    # resolve correctly. PY_BIN points at the dev venv (where
+    # documind_core lives) when available.
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO) + os.pathsep + env.get("PYTHONPATH", "")
     try:
         result = subprocess.run(
-            [sys.executable, str(drill_path)],
+            [PY_BIN, str(drill_path)],
             capture_output=True,
             text=True,
             timeout=timeout_s,
             cwd=str(cwd),
+            env=env,
         )
         duration = time.monotonic() - t0
         if result.returncode == 0:

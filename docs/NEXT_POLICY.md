@@ -126,9 +126,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-5D | sidecar_bootstrap.sh — one-command operator setup (the loop goes from "shipped" to "live") + drill | `87e1c02` | 8 (6 negatives) |
 | Hot-fix-1 | capture_and_review CLI relative-import bug (real-world activation caught it) | `573e223` | self-applied via post-commit |
 | Phase-5E | drill_cli_package_context: locks the drill-vs-CLI gap that hot-fix-1 exposed | `58c04b2` | 8 (6 negatives) |
-| Phase-5F | pre-commit hook refreshes drill status when stale (closes rule-1 staleness gap) | _this commit_ | 8 (6 negatives) |
+| Phase-5F | pre-commit hook refreshes drill status when stale (closes rule-1 staleness gap) | `430ade1` | 8 (6 negatives) |
+| Phase-5G | write_drill_status uses PY_BIN + PYTHONPATH (interpreter mismatch fix); rule 1 now sees REAL status | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 31 commits this session, 231 drill steps green across 29 sidecar/policy/pipeline/UI/ADR/migrate/bootstrap drills, **320 steps via the resource-aware runner** across all 45 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 32 commits this session, 239 drill steps green across 30 sidecar/policy/pipeline/UI/ADR/migrate/bootstrap drills, **328 steps via the resource-aware runner** across all 46 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 **System disk freed**: `/` was 81% (167 GB free) → now 72% (239 GB free). Ollama Tier-2 (additional 42 GB) staged for operator's sudo.
 
