@@ -33,9 +33,16 @@ typically:
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# Operator opt-out tokens. Either bracketed form bypasses the council
+# (case-insensitive). Token must appear in the COMMIT MESSAGE — not the
+# diff body — so a code change that mentions the token in a comment
+# doesn't accidentally suppress review.
+_SKIP_COUNCIL_RE = re.compile(r"\[(?:skip|no)[-_ ]council\]", re.IGNORECASE)
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +59,7 @@ class DiffCapture:
     payload_lines: int = 0        # only +/- content lines (excludes ---/+++ headers)
     has_binary: bool = False
     error: str | None = None      # populated when capture failed
+    commit_message: str = ""      # full HEAD commit message (empty for staged mode)
 
     @property
     def is_empty(self) -> bool:
@@ -163,6 +171,15 @@ def capture_diff(
     has_binary = ("Binary files" in diff_out
                   or "GIT binary patch" in diff_out)
 
+    # 6. Capture the commit message (empty for staged mode — no commit yet).
+    # Used by is_likely_pr_review to honor [skip-council] / [no-council]
+    # tokens. Best-effort; absent message doesn't fail the capture.
+    commit_message = ""
+    if not staged:
+        ok_msg, msg_out, _ = _run_git(["log", "-1", "--format=%B", ref], repo)
+        if ok_msg:
+            commit_message = msg_out
+
     return DiffCapture(
         content=diff_out,
         source=source,
@@ -171,6 +188,7 @@ def capture_diff(
         line_count=diff_out.count("\n"),
         payload_lines=_count_payload_lines(diff_out),
         has_binary=has_binary,
+        commit_message=commit_message,
     )
 
 
@@ -187,6 +205,7 @@ def is_likely_pr_review(capture: DiffCapture) -> bool:
 
     Returns False for:
       * empty / errored captures
+      * commit-message opt-out: [skip-council] / [no-council] (case-insensitive)
       * diffs with fewer than MIN_PAYLOAD_LINES content changes
       * pure-binary diffs (council can't review binary)
       * doc-only diffs (every file ends in .md / .rst / .txt)
@@ -195,6 +214,12 @@ def is_likely_pr_review(capture: DiffCapture) -> bool:
     auto-pipeline only fires the council when this returns True.
     """
     if capture.error or capture.is_empty:
+        return False
+    # Operator opt-out wins over every downstream check. We deliberately
+    # only match the COMMIT MESSAGE: tokens in the diff body (e.g. an
+    # added comment that contains "[skip-council]") must NOT suppress
+    # review of unrelated code.
+    if capture.commit_message and _SKIP_COUNCIL_RE.search(capture.commit_message):
         return False
     if capture.payload_lines < MIN_PAYLOAD_LINES:
         return False

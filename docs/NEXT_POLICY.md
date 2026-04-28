@@ -129,13 +129,14 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-5F | pre-commit hook refreshes drill status when stale (closes rule-1 staleness gap) | `430ade1` | 8 (6 negatives) |
 | Phase-5G | write_drill_status uses PY_BIN + PYTHONPATH (interpreter mismatch fix); rule 1 now sees REAL status | `25758e9` | 8 (6 negatives) |
 | Phase-5H | verdict-log audit: all 12 historical REJECTs were pre-5G drill_status bugs; chain operationally honest | by inspection | — |
-| Phase-5I | scripts/loop_status.py — operator one-shot health report | _this commit_ | 8 (6 negatives) |
+| Phase-5I | scripts/loop_status.py — operator one-shot health report | `7d54e18` | 8 (6 negatives) |
+| Phase-5J | `[skip-council]` / `[no-council]` commit-message opt-out (cost discipline) + drill | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 33 commits this session, 247 drill steps green across 31 sidecar/policy/pipeline/UI/ADR/migrate/bootstrap drills, **336 steps via the resource-aware runner** across all 47 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 34 commits this session, 255 drill steps green across 32 sidecar/policy/pipeline/UI/ADR/migrate/bootstrap drills, **344 steps via the resource-aware runner** across all 48 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 **System disk freed**: `/` was 81% (167 GB free) → now 72% (239 GB free). Ollama Tier-2 (additional 42 GB) staged for operator's sudo.
 
-**The loop is LIVE end-to-end on this repo**: pre-commit refreshes drill status; post-commit fires watcher + council; advisor.db has 4 events + 3 council_runs; watcher.log has 27 entries; council_runs.log has 6 entries. Hot-fix self-verified via its own council run.
+**The loop is LIVE end-to-end on this repo**: pre-commit refreshes drill status; post-commit fires watcher + council; advisor.db has 4 events + 3 council_runs; watcher.log has 27 entries; council_runs.log has 6 entries. Hot-fix self-verified via its own council run. Operators can opt out of council for any single commit by adding `[skip-council]` or `[no-council]` to the commit message (Phase 5J).
 
 ### Queued (autonomous loop picks from here)
 
