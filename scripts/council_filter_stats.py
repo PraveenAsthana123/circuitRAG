@@ -51,6 +51,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import logging
 import os
@@ -552,6 +553,111 @@ def render_prometheus_weekly(weekly: dict) -> str:
     return "\n".join(out) + "\n"
 
 
+def render_prometheus_snapshots(snapshots: list[dict]) -> str:
+    """Emit date-keyed prom samples from a list of daily snapshot rows
+    (the shape produced by scripts/council_stats_snapshot.py).
+
+    Each row has its own classification roll-up already (fired_by_risk,
+    filtered_by_reason, skipped_by_reason, council_errors). We don't
+    re-classify — we just project.
+
+    Conventions match render_prometheus_weekly:
+      * Same metric NAMES as single-window output
+      * Zero-padding for KNOWN_FILTERS + standard risks PER DATE that
+        has a snapshot row (no phantom-padding for absent dates).
+      * Skipped buckets stay observed-only (no canonical set).
+      * Date label is the snapshot's ISO date string (YYYY-MM-DD).
+    """
+    out: list[str] = []
+
+    if not snapshots:
+        # Empty — emit only metadata so dashboards don't 404
+        for metric, help_text in [
+            ("council_filter_total", "Total council_runs.log entries by snapshot date."),
+            ("council_filter_fired", "Successful council fires by date + risk level."),
+            ("council_filter_filtered", "Filtered entries by date + canonical filter."),
+            ("council_filter_skipped", "Operator-opt-out entries by date + reason."),
+            ("council_filter_council_errors", "Council errors by date."),
+        ]:
+            out.append(f"# HELP {metric} {help_text}")
+            out.append(f"# TYPE {metric} gauge")
+            out.append("")
+        return "\n".join(out) + "\n"
+
+    # ── total ──
+    out.append("# HELP council_filter_total Total council_runs.log entries by snapshot date.")
+    out.append("# TYPE council_filter_total gauge")
+    for snap in snapshots:
+        date_lbl = _prom_escape_label(str(snap.get("date", "")))
+        out.append(f'council_filter_total{{date="{date_lbl}"}} {int(snap.get("total", 0))}')
+    out.append("")
+
+    # ── fired by risk ──
+    out.append("# HELP council_filter_fired Successful council fires by date + risk level.")
+    out.append("# TYPE council_filter_fired gauge")
+    for snap in snapshots:
+        date_lbl = _prom_escape_label(str(snap.get("date", "")))
+        risks = snap.get("fired_by_risk", {})
+        seen = set(risks.keys()) | set(_PROM_RISK_LEVELS)
+        for risk in sorted(seen):
+            n = int(risks.get(risk, 0))
+            risk_lbl = _prom_escape_label(risk)
+            out.append(
+                f'council_filter_fired{{date="{date_lbl}",risk="{risk_lbl}"}} {n}'
+            )
+    out.append("")
+
+    # ── filtered by reason ──
+    out.append("# HELP council_filter_filtered Filtered entries by date + canonical filter.")
+    out.append("# TYPE council_filter_filtered gauge")
+    for snap in snapshots:
+        date_lbl = _prom_escape_label(str(snap.get("date", "")))
+        reasons = snap.get("filtered_by_reason", {})
+        seen = set(reasons.keys()) | set(_PROM_FILTER_BUCKETS)
+        for reason in sorted(seen):
+            n = int(reasons.get(reason, 0))
+            reason_lbl = _prom_escape_label(reason)
+            out.append(
+                f'council_filter_filtered{{date="{date_lbl}",reason="{reason_lbl}"}} {n}'
+            )
+    out.append("")
+
+    # ── skipped (open-ended; observed-only) ──
+    out.append("# HELP council_filter_skipped Operator-opt-out entries by date + reason.")
+    out.append("# TYPE council_filter_skipped gauge")
+    for snap in snapshots:
+        date_lbl = _prom_escape_label(str(snap.get("date", "")))
+        reasons = snap.get("skipped_by_reason", {})
+        for reason in sorted(reasons.keys()):
+            n = int(reasons[reason])
+            reason_lbl = _prom_escape_label(reason)
+            out.append(
+                f'council_filter_skipped{{date="{date_lbl}",reason="{reason_lbl}"}} {n}'
+            )
+    out.append("")
+
+    # ── council_errors ──
+    out.append("# HELP council_filter_council_errors Council errors by date.")
+    out.append("# TYPE council_filter_council_errors gauge")
+    for snap in snapshots:
+        date_lbl = _prom_escape_label(str(snap.get("date", "")))
+        n = int(snap.get("council_errors", 0))
+        out.append(f'council_filter_council_errors{{date="{date_lbl}"}} {n}')
+
+    return "\n".join(out) + "\n"
+
+
+def _load_read_snapshots():
+    """Lazily load council_stats_snapshot.read_snapshots — single
+    source of truth for dedup-by-date logic. importlib keeps this
+    file standalone (no package-level coupling)."""
+    p = Path(__file__).resolve().parent / "council_stats_snapshot.py"
+    spec = importlib.util.spec_from_file_location("_snap_for_prom", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.read_snapshots
+
+
 def write_prometheus_atomic(path: Path, content: str) -> None:
     """Write `content` to `path` atomically: write `<path>.tmp`, then
     rename. node_exporter's textfile collector has a known race where
@@ -916,6 +1022,17 @@ def cli() -> int:
         help="write prometheus output to PATH (atomic via tmp+rename). "
              "Use with cron/node_exporter textfile collector.",
     )
+    parser.add_argument(
+        "--from-snapshot", action="store_true",
+        help="with --prometheus, read .loop/council_stats_daily.jsonl "
+             "(written by council_stats_snapshot.py) and emit date-keyed "
+             "samples — long-term history that survives log rotation.",
+    )
+    parser.add_argument(
+        "--snapshot-source", default=None, metavar="PATH",
+        help="override snapshot file path (default: .loop/council_stats_daily.jsonl). "
+             "Only meaningful with --from-snapshot.",
+    )
     args = parser.parse_args()
 
     # Parse every --alert-on up front so a typo fails fast (before
@@ -968,7 +1085,26 @@ def cli() -> int:
             print("--alert-on ignored when --prometheus is set "
                   "(use Alertmanager on the metrics instead)",
                   file=sys.stderr)
-        if args.weekly:
+        # Phase 5W: --from-snapshot is mutually exclusive with --weekly
+        # because the snapshot already pre-aggregates per UTC date —
+        # adding a week label on top would double-key the data.
+        if args.from_snapshot and args.weekly:
+            print("--from-snapshot is mutually exclusive with --weekly "
+                  "(snapshot is already per-day; pick one lens)",
+                  file=sys.stderr)
+            return 1
+        if args.snapshot_source and not args.from_snapshot:
+            print("--snapshot-source has no effect without --from-snapshot",
+                  file=sys.stderr)
+
+        if args.from_snapshot:
+            # Phase 5W: read snapshots and emit date-keyed samples.
+            snap_path = Path(args.snapshot_source) if args.snapshot_source \
+                else REPO / ".loop" / "council_stats_daily.jsonl"
+            read_snapshots = _load_read_snapshots()
+            snapshots = read_snapshots(snap_path)
+            prom_text = render_prometheus_snapshots(snapshots)
+        elif args.weekly:
             # Phase 5V: per-week labels. Same metric NAMES as the
             # single-window output so dashboards can roll up via
             # `sum without (week) (council_filter_filtered)`.
@@ -977,6 +1113,7 @@ def cli() -> int:
         else:
             summary = summarize(log_path, args.days)
             prom_text = render_prometheus(summary)
+
         if args.prometheus_out:
             write_prometheus_atomic(Path(args.prometheus_out), prom_text)
             print(f"prometheus: wrote {args.prometheus_out}", file=sys.stderr)
