@@ -53,12 +53,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_LOG_PATH = REPO / ".loop" / "council_runs.log"
@@ -260,6 +263,141 @@ def check_alerts_weekly(
             if is_fired:
                 fired.append((expr, row.get("week"), observed))
     return fired
+
+
+# Phase 5T: alert webhook formats. Three formats cover the common
+# operator targets (Slack incoming-webhook, Discord webhook, generic
+# JSON for everything else — pagerduty, custom routers, etc).
+WEBHOOK_FORMATS = ("generic", "slack", "discord")
+DEFAULT_WEBHOOK_TIMEOUT_S = 5.0  # don't stall CI on a hung webhook
+
+
+def _normalize_fired(
+    fired: list[tuple],
+) -> list[dict]:
+    """Normalize fired-alert tuples to a list of dicts with consistent
+    fields. Single-window check_alerts returns (expr, observed);
+    weekly check_alerts_weekly returns (expr, week, observed). The
+    builder needs one shape, so flatten here."""
+    out = []
+    for item in fired:
+        if len(item) == 2:
+            expr, observed = item
+            week = None
+        else:  # 3-tuple from weekly path
+            expr, week, observed = item
+        out.append({
+            "expr": expr.raw,
+            "bucket": expr.bucket,
+            "op": expr.op,
+            "threshold": expr.threshold,
+            "observed": observed,
+            "week": week,
+        })
+    return out
+
+
+def build_webhook_payload(
+    fired_normalized: list[dict],
+    context: dict,
+    fmt: str,
+) -> dict:
+    """Build the JSON payload for a given format.
+
+    fired_normalized: list of dicts from _normalize_fired
+    context: extra fields shown alongside the alerts (log_path, weekly,
+        weeks, alert_week_mode, etc) — passed straight through in
+        generic; rendered into prose for slack/discord
+    fmt: 'generic' | 'slack' | 'discord'
+    """
+    if fmt not in WEBHOOK_FORMATS:
+        raise ValueError(f"webhook-format must be one of {WEBHOOK_FORMATS}; got {fmt!r}")
+
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    n = len(fired_normalized)
+
+    if fmt == "generic":
+        return {
+            "fired_alerts": fired_normalized,
+            "context": context,
+            "timestamp": timestamp,
+        }
+
+    # Shared prose for slack + discord
+    summary_line = (
+        f"Council filter alert ({n} expression{'s' if n != 1 else ''} fired)"
+    )
+    detail_lines = []
+    for f in fired_normalized:
+        week_tag = f"week {f['week']} " if f.get("week") else ""
+        detail_lines.append(
+            f"`{f['expr']}` — {week_tag}observed {f['bucket']}={f['observed']:.3f} "
+            f"vs threshold {f['threshold']}"
+        )
+
+    if fmt == "slack":
+        # Slack incoming-webhook format with Block Kit blocks. The
+        # 'text' field is the fallback for clients that don't render
+        # blocks (mobile preview, screen readers).
+        return {
+            "text": summary_line,
+            "blocks": [
+                {"type": "header", "text": {
+                    "type": "plain_text", "text": summary_line}},
+                *[{"type": "section", "text": {
+                    "type": "mrkdwn", "text": f"*ALERT:* {line}"}}
+                  for line in detail_lines],
+            ],
+        }
+
+    # discord
+    # Discord webhooks accept embeds. Limit to 10 (Discord's hard cap).
+    color = 13369855  # red-ish — matches the ALERT semantic
+    return {
+        "content": summary_line,
+        "embeds": [
+            {"title": f"ALERT: {f['expr']}",
+             "description": (
+                 f"{('week ' + f['week']) if f.get('week') else 'aggregate'}, "
+                 f"observed {f['bucket']}={f['observed']:.3f} "
+                 f"vs threshold {f['threshold']}"
+             ),
+             "color": color}
+            for f in fired_normalized[:10]
+        ],
+    }
+
+
+def post_webhook(
+    url: str,
+    payload: dict,
+    timeout_s: float = DEFAULT_WEBHOOK_TIMEOUT_S,
+) -> tuple[bool, str]:
+    """Best-effort POST. Returns (success, error_msg).
+
+    Never raises — all network exceptions captured as error_msg.
+    Webhook failures must NOT change the script's exit code; the
+    alerts already fired (exit 1), and a notification miss shouldn't
+    flip the verdict. Operators discover the miss via stderr."""
+    body = json.dumps(payload).encode("utf-8")
+    req = Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urlopen(req, timeout=timeout_s) as resp:
+            status = resp.status
+            if 200 <= status < 300:
+                return (True, f"HTTP {status}")
+            return (False, f"HTTP {status}")
+    except HTTPError as exc:
+        return (False, f"HTTP {exc.code}: {exc.reason}")
+    except URLError as exc:
+        return (False, f"URLError: {exc.reason}")
+    except (OSError, ValueError) as exc:
+        return (False, f"{type(exc).__name__}: {exc}")
 
 
 def parse_filter_reason(reason: str) -> str:
@@ -562,6 +700,17 @@ def cli() -> int:
              "'latest' (most recent week only), "
              "'aggregate' (rollup; same as no --weekly).",
     )
+    parser.add_argument(
+        "--webhook", default=os.environ.get("COUNCIL_STATS_WEBHOOK"),
+        metavar="URL",
+        help="POST fired alerts to this webhook URL (or env COUNCIL_STATS_WEBHOOK). "
+             "Best-effort: webhook failure does NOT change the exit code.",
+    )
+    parser.add_argument(
+        "--webhook-format", choices=WEBHOOK_FORMATS, default="generic",
+        help="payload shape (default: generic JSON). slack uses Block Kit; "
+             "discord uses embeds.",
+    )
     args = parser.parse_args()
 
     # Parse every --alert-on up front so a typo fails fast (before
@@ -575,6 +724,25 @@ def cli() -> int:
         except ValueError as exc:
             print(f"--alert-on: {exc}", file=sys.stderr)
             return 1
+
+    def _maybe_post_webhook(fired_tuples: list[tuple], context: dict) -> None:
+        """If --webhook is set and any alert fired, POST best-effort.
+        Logs success/failure to stderr; never changes exit code."""
+        if not args.webhook or not fired_tuples:
+            return
+        normalized = _normalize_fired(fired_tuples)
+        try:
+            payload = build_webhook_payload(normalized, context, args.webhook_format)
+        except ValueError as exc:
+            print(f"webhook: payload build failed: {exc}", file=sys.stderr)
+            return
+        ok, msg = post_webhook(args.webhook, payload)
+        if ok:
+            print(f"webhook: posted {len(normalized)} alert(s) "
+                  f"({args.webhook_format}) → {msg}", file=sys.stderr)
+        else:
+            print(f"webhook: POST failed ({msg}); alerts still fired",
+                  file=sys.stderr)
 
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
 
@@ -608,6 +776,12 @@ def cli() -> int:
                         f"vs threshold {expr.threshold})",
                         file=sys.stderr,
                     )
+                _maybe_post_webhook(fired, {
+                    "log_path": str(log_path),
+                    "weekly": True,
+                    "weeks": args.weeks,
+                    "alert_week_mode": args.alert_week_mode,
+                })
                 return 1
             print(
                 f"alerts: {len(alert_exprs)} expression(s) all passed "
@@ -636,6 +810,11 @@ def cli() -> int:
                     f"vs threshold {expr.threshold})",
                     file=sys.stderr,
                 )
+            _maybe_post_webhook(fired, {
+                "log_path": str(log_path),
+                "weekly": False,
+                "days": args.days,
+            })
             return 1
         print(f"alerts: {len(alert_exprs)} expression(s) all passed",
               file=sys.stderr)
