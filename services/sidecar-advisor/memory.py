@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
@@ -373,6 +373,79 @@ class AdvisorMemory:
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
+
+    def prune_council_runs(
+        self,
+        *,
+        older_than_days: int = 90,
+        dry_run: bool = True,
+    ) -> dict:
+        """Delete advisor_council_runs rows older than N days.
+
+        The drafts_json + reviews_json columns can be 10-50 KB
+        each; without retention the table grows unbounded. This
+        method is the operator-controlled prune.
+
+        Args:
+            older_than_days: rows with created_at < (now - N days)
+                are eligible for deletion. Default 90 - 3 months
+                of council telemetry is enough for most forensic
+                lookups; older data lives in cold archives or
+                git's commit history.
+            dry_run: when True (default), counts what WOULD be
+                deleted but doesn't actually delete. Operator
+                runs with dry_run=False to apply.
+
+        Returns: {
+            "would_delete": N if dry_run else 0,
+            "deleted": N if not dry_run else 0,
+            "kept": M,
+            "threshold_iso": "2026-01-28T...",
+            "dry_run": bool,
+        }
+
+        Companion advisor_events rows are NOT pruned by this
+        method - they're cheap (small KB each), preserve the
+        "we reviewed X commits at time Y" audit trail, and
+        Phase 2F+ can add a separate event-retention if needed.
+        """
+        if older_than_days < 0:
+            raise ValueError(
+                f"older_than_days must be >= 0, got {older_than_days}"
+            )
+        threshold_dt = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        threshold_iso = threshold_dt.isoformat(timespec="seconds")
+
+        with self._connect() as conn:
+            # Count by partition (older / newer-or-equal)
+            cur = conn.execute(
+                "SELECT COUNT(*) AS n FROM advisor_council_runs "
+                "WHERE created_at < ?",
+                (threshold_iso,),
+            )
+            to_delete = int(cur.fetchone()["n"])
+            cur = conn.execute(
+                "SELECT COUNT(*) AS n FROM advisor_council_runs "
+                "WHERE created_at >= ?",
+                (threshold_iso,),
+            )
+            to_keep = int(cur.fetchone()["n"])
+
+            if not dry_run and to_delete > 0:
+                conn.execute(
+                    "DELETE FROM advisor_council_runs "
+                    "WHERE created_at < ?",
+                    (threshold_iso,),
+                )
+
+        return {
+            "would_delete": to_delete if dry_run else 0,
+            "deleted": to_delete if not dry_run else 0,
+            "kept": to_keep,
+            "threshold_iso": threshold_iso,
+            "older_than_days": older_than_days,
+            "dry_run": dry_run,
+        }
 
     def record_pattern_use(self, pattern_ids: list[int]) -> int:
         """Bump use_count + set last_used_at for each cited pattern.
