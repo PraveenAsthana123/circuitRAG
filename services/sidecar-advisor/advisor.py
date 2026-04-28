@@ -219,10 +219,16 @@ class Advisor:
 
     async def review(
         self, *, event_type: str, content: str,
-    ) -> tuple[AdvisorOutput | None, str | None, str, float]:
+    ) -> tuple[AdvisorOutput | None, str | None, str, float, dict | None]:
         """Run one review. Returns:
             (parsed_output_or_None, raw_text_if_unparseable,
-             model_used, duration_s)
+             model_used, duration_s, council_telemetry_or_None)
+
+        council_telemetry is the raw_board dict from
+        PrReviewCouncil.review() for the pr_review route — None
+        otherwise. Callers persist it via memory.record_council_run
+        for the audit log; see services/sidecar-advisor/migrations/
+        002_council_runs.sql.
 
         The pr_review route delegates to the council (3 specialised
         authors → 1 cross-reviewer → 1 chair). All other routes use
@@ -248,6 +254,7 @@ class Advisor:
                 None,
                 "",
                 0.0,
+                None,
             )
 
         # ── Council path: pr_review delegates to the multi-agent
@@ -255,20 +262,20 @@ class Advisor:
         if event_type == "pr_review":
             council = self._get_or_build_council()
             try:
-                parsed, _raw_board = await council.review(content)
+                parsed, raw_board = await council.review(content)
                 duration = time.monotonic() - t0
-                return (parsed, None, parsed.model_used, duration)
+                return (parsed, None, parsed.model_used, duration, raw_board)
             except Exception as exc:  # noqa: BLE001 — surface for retry
                 duration = time.monotonic() - t0
                 log.error("advisor_council_failed err=%s", exc)
-                return (None, f"COUNCIL_ERROR: {exc}", "", duration)
+                return (None, f"COUNCIL_ERROR: {exc}", "", duration, None)
 
         model = route["model"]
         timeout_s = float(route.get("timeout_s", 60.0))
         template = _PROMPT_TEMPLATES.get(event_type)
         if template is None:
             log.warning("advisor_no_template event_type=%s", event_type)
-            return (None, None, model, 0.0)
+            return (None, None, model, 0.0, None)
 
         # Inject distilled memory patterns as a preamble. The preamble
         # is empty when memory is cold or no patterns of this kind
@@ -294,13 +301,13 @@ class Advisor:
                 event_type, model, exc,
             )
             duration = time.monotonic() - t0
-            return (None, f"GENERATE_ERROR: {exc}", model, duration)
+            return (None, f"GENERATE_ERROR: {exc}", model, duration, None)
 
         parsed = AdvisorOutput.parse(raw, model_used=model)
         duration = time.monotonic() - t0
         if parsed is None:
-            return (None, raw, model, duration)
-        return (parsed, None, model, duration)
+            return (None, raw, model, duration, None)
+        return (parsed, None, model, duration, None)
 
     def _build_memory_preamble(self) -> tuple[str, list[int]]:
         """Pull top-K distilled patterns from memory and render them as

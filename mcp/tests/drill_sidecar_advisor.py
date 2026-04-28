@@ -250,7 +250,7 @@ async def main() -> None:
         generate_fn=_make_stub_generator(GOOD_JSON_RESPONSE),
     )
     for event_type in ["prompt", "code", "architecture", "pr_review", "debug"]:
-        parsed, raw, model_used, duration = await advisor.review(
+        parsed, raw, model_used, duration, _telemetry = await advisor.review(
             event_type=event_type, content="test content",
         )
         if parsed is None:
@@ -269,7 +269,7 @@ async def main() -> None:
         "6. NEGATIVE: unknown event_type returns placeholder, NOT silent "
         "fallthrough to default model"
     )
-    parsed, raw, model_used, duration = await advisor.review(
+    parsed, raw, model_used, duration, _telemetry = await advisor.review(
         event_type="not_a_real_route", content="x",
     )
     if parsed is None:

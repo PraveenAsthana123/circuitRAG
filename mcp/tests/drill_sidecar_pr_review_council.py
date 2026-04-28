@@ -351,7 +351,7 @@ async def main() -> None:
     )
     counting_gen = RecordingGenerator()
     advisor = advisor_mod.Advisor(policy, generate_fn=counting_gen)
-    parsed4, raw, model_used, duration = await advisor.review(
+    parsed4, raw, model_used, duration, telemetry = await advisor.review(
         event_type="pr_review", content="def foo(): pass",
     )
     if parsed4 is None:

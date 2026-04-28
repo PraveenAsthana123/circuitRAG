@@ -299,6 +299,81 @@ class AdvisorMemory:
                 )
         return True
 
+    # ── Council audit rows (Phase 2E) ───────────────────────────
+    def record_council_run(
+        self,
+        *,
+        event_id: int | None,
+        telemetry: dict,
+    ) -> int:
+        """Persist the council telemetry from a pr_review invocation.
+
+        Args:
+            event_id: the advisor_events.id for the user-visible
+                summary, or None for council runs without a parent
+                (operator-triggered backfills, future replay tooling).
+            telemetry: the raw_board dict produced by
+                PrReviewCouncil.review — must contain the keys this
+                method reads (outcome, prompt_version, duration_s,
+                drafts, reviews, failed_authors, advisor_error).
+                Missing keys default to safe sentinels rather than
+                raise — the audit row should land even if telemetry
+                is partial.
+
+        Returns:
+            The advisor_council_runs.id of the inserted row.
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO advisor_council_runs (
+                    event_id, created_at, outcome, advisor_id,
+                    prompt_version, duration_s, advisor_error,
+                    failed_authors, drafts_json, reviews_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    _utcnow_iso(),
+                    str(telemetry.get("outcome", "unknown")),
+                    str(telemetry.get("advisor_id", "")),
+                    str(telemetry.get("prompt_version", "")),
+                    float(telemetry.get("duration_s", 0.0)),
+                    telemetry.get("advisor_error"),
+                    json.dumps(telemetry.get("failed_authors", [])),
+                    json.dumps(telemetry.get("drafts", [])),
+                    json.dumps(telemetry.get("reviews", [])),
+                ),
+            )
+            return cur.lastrowid or 0
+
+    def get_council_runs(
+        self,
+        *,
+        event_id: int | None = None,
+        outcome: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Read council audit rows. Optional filters by event_id (the
+        natural join) or outcome (for the dashboard's failure-mode
+        filter)."""
+        sql = "SELECT * FROM advisor_council_runs"
+        clauses: list[str] = []
+        params: list = []
+        if event_id is not None:
+            clauses.append("event_id = ?")
+            params.append(event_id)
+        if outcome is not None:
+            clauses.append("outcome = ?")
+            params.append(outcome)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
     def record_pattern_use(self, pattern_ids: list[int]) -> int:
         """Bump use_count + set last_used_at for each cited pattern.
         Called by the advisor when patterns get folded into a prompt.
