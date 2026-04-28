@@ -1,23 +1,31 @@
 #!/bin/bash
-# Pre-commit hook: refresh drill status if older than $STALE_AFTER.
+# Pre-commit hook: refresh drill status + surface failures when
+# high-blast-radius file patterns are staged.
 #
-# Closes the gap where Phase 4B's post-commit watcher reads
+# Phase 5F closed the gap where Phase 4B's post-commit watcher reads
 # .loop/last_drill_outcome.json but never updates it. Without this
 # pre-commit refresh, rule 1 of LoopWatcher fires REJECT on every
 # commit because it sees yesterday's drill failures.
 #
+# Phase 5Y closes a SECOND gap: when staged changes touch high-blast-
+# radius surfaces (frontend pages with cross-cutting drill assertions),
+# the operator should SEE the failing drills NOW — not later via the
+# post-commit verdict log. Phase 5S landed with two existing drills
+# silently failing; the verdict log caught it but I missed the warning
+# during the iteration. 5Y makes the warning loud.
+#
 # Behavior:
-#   * If status file fresh (< STALE_AFTER seconds): skip; zero cost.
-#   * If status file stale or missing: run write_drill_status.py
-#     synchronously. Tier-1 drills take ~12s wall.
-#   * NEVER blocks the commit. Drill failures land in the status
-#     file; LoopWatcher decides verdict on post-commit.
+#   * Status fresh (< STALE_AFTER) AND no high-blast-radius staged:
+#       skip; zero cost.
+#   * Otherwise: refresh synchronously. Tier-1 drills ~12s wall.
+#   * High-blast-radius staged + failing drills: PRINT WARNING
+#     listing the failing drill names. Hook still exits 0 (advisory).
 #
 # Override:
 #   SKIP_DRILL_STATUS=1 git commit ...   # skip refresh entirely
 #   STALE_AFTER=60 git commit ...        # tighter freshness window
 #
-# Per Phase 5F + ADR-014.
+# Per Phase 5F + 5Y + ADR-014.
 
 set -e
 
@@ -30,14 +38,28 @@ if [ -n "${SKIP_DRILL_STATUS:-}" ]; then
     exit 0
 fi
 
-# If status is fresh, skip. Zero overhead on rapid commits.
-if [ -f "$STATUS" ]; then
+# Phase 5Y: high-blast-radius staged files force a fresh drill run.
+# Frontend files under sidecar/* have multiple cross-cutting drill
+# assertions (drill_sidecar_deep_page step 5 counts scenarios;
+# drill_sidecar_nextjs_page step 8 enforces §7 scope-grant). A change
+# to one of these files can silently break a drill the operator wasn't
+# editing. Forcing a fresh sweep + loud warning catches it pre-commit.
+HIGH_BLAST_RADIUS=0
+if git diff --cached --name-only 2>/dev/null \
+        | grep -qE '^(services/frontend/app/admin/sidecar/|mcp/server.*\.py$|services/sidecar-advisor/)'; then
+    HIGH_BLAST_RADIUS=1
+fi
+
+# If status is fresh AND no high-blast-radius file staged, skip.
+if [ "$HIGH_BLAST_RADIUS" -eq 0 ] && [ -f "$STATUS" ]; then
     age=$(( $(date +%s) - $(stat -c %Y "$STATUS") ))
     if [ "$age" -lt "$STALE_AFTER" ]; then
         # Fresh; nothing to do.
         exit 0
     fi
     echo "[pre-commit] drill status stale (${age}s old, threshold ${STALE_AFTER}s); refreshing..." >&2
+elif [ "$HIGH_BLAST_RADIUS" -eq 1 ]; then
+    echo "[pre-commit] high-blast-radius staged files; forcing drill refresh..." >&2
 else
     echo "[pre-commit] drill status missing; running drill suite..." >&2
 fi
@@ -50,6 +72,34 @@ fi
 python3 "$REPO_ROOT/scripts/write_drill_status.py" \
     --only-readonly \
     --status-path "$STATUS" >/dev/null 2>&1 || true
+
+# Phase 5Y: when high-blast-radius is staged, parse the status JSON
+# and surface failing drills loudly. Operator sees the names BEFORE
+# the commit lands; can fix immediately or `--no-verify` knowingly.
+if [ "$HIGH_BLAST_RADIUS" -eq 1 ] && [ -f "$STATUS" ]; then
+    failed=$(python3 -c "
+import json, sys
+try:
+    s = json.load(open('$STATUS'))
+    f = s.get('failed_drills', [])
+    if f:
+        print(','.join(f))
+except Exception:
+    pass
+" 2>/dev/null)
+    if [ -n "$failed" ]; then
+        echo "" >&2
+        echo "============================================" >&2
+        echo "[pre-commit] WARNING: drill failures detected" >&2
+        echo "[pre-commit] high-blast-radius surface staged" >&2
+        echo "[pre-commit] failing drills:" >&2
+        echo "$failed" | tr ',' '\n' | sed 's/^/[pre-commit]   - /' >&2
+        echo "[pre-commit] LoopWatcher will REJECT this commit" >&2
+        echo "[pre-commit] (commit proceeds; advisory contract per ADR-014)" >&2
+        echo "============================================" >&2
+        echo "" >&2
+    fi
+fi
 
 echo "[pre-commit] drill status refreshed; commit proceeding." >&2
 exit 0
