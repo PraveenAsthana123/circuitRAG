@@ -1,0 +1,14 @@
+#!/bin/bash
+# Post-commit hook: invokes the LoopWatcher advisory check.
+#
+# Always exits 0 - post-commit hooks can't block anyway, and the
+# watcher is advisory. Verdict is appended to .loop/watcher.log
+# for the operator + downstream loop iterations to consult.
+#
+# Install: from repo root, run `scripts/install_loop_watcher_hook.sh`
+# Or manually: `git config core.hooksPath scripts/git-hooks`
+set -e
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+python3 "$REPO_ROOT/scripts/loop_watcher_hook.py" --print 2>&1 || true
+exit 0

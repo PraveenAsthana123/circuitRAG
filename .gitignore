@@ -109,3 +109,6 @@ Desktop.ini
 *.bak
 *.old
 .remember/tmp/
+
+# Phase 4B: LoopWatcher runtime artifacts
+.loop/
