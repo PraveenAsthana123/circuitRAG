@@ -30,6 +30,71 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# W3C propagation helpers — inline (rather than imported from
+# mcp.server_common) to keep documind_core free of a back-dep on the
+# mcp package. The OTel API used here (propagate.inject / extract +
+# context.attach / detach) is the SAME contract the helpers wrap;
+# the global propagator (CompositePropagator with TraceContext +
+# W3CBaggage) is set process-wide by setup_server_otel, so a fresh
+# propagate.inject() here writes the same headers the httpx auto-
+# instrumentation does.
+#
+# Optional: degrades gracefully when OTel SDK is missing — Kafka
+# events still publish + consume, just without baggage.
+# ---------------------------------------------------------------------------
+try:
+    from opentelemetry import context as _otel_context  # noqa: F401 — used at call sites below
+    from opentelemetry import propagate as _otel_propagate
+    _OTEL_AVAILABLE = True
+except ImportError:  # pragma: no cover — degraded mode
+    _otel_context = None  # type: ignore[assignment]
+    _otel_propagate = None  # type: ignore[assignment]
+    _OTEL_AVAILABLE = False
+
+
+def _inject_kafka_headers(headers: list[tuple[str, bytes]]) -> None:
+    """Append W3C ``traceparent`` + ``baggage`` headers (when present in
+    the current OTel context) to a Kafka headers list, mutating in place.
+
+    Kafka headers are ``list[tuple[str, bytes]]``; OTel's
+    ``propagate.inject`` writes a flat ``dict[str, str]``. We bridge
+    the two formats here. No-op when OTel SDK isn't installed.
+    """
+    if not _OTEL_AVAILABLE:
+        return
+    carrier: dict[str, str] = {}
+    _otel_propagate.inject(carrier)
+    for k, v in carrier.items():
+        # Kafka header keys are conventionally lowercase; OTel emits
+        # 'traceparent' + 'baggage' lowercase per W3C spec — pass
+        # through unchanged.
+        headers.append((k, v.encode()))
+
+
+def _extract_kafka_context(headers: list[tuple[str, bytes]] | None):  # noqa: ANN201
+    """Extract W3C trace context + baggage from a Kafka message's headers
+    and attach to the OTel context. Returns the context token (caller
+    must detach in finally) or ``None`` when OTel is unavailable.
+    """
+    if not _OTEL_AVAILABLE or not headers:
+        return None
+    carrier: dict[str, str] = {}
+    for k, v in headers:
+        # AIOKafka delivers headers as (str, bytes); decode for inject.
+        # If anything is non-UTF-8 the decode raises — let that bubble
+        # rather than silently dropping context (a corrupt header is a
+        # signal worth surfacing).
+        try:
+            carrier[k] = v.decode("utf-8") if isinstance(v, (bytes, bytearray)) else str(v)
+        except UnicodeDecodeError:
+            # One bad header shouldn't poison the rest. Skip + log.
+            log.warning("kafka_header_non_utf8 key=%s — skipping for propagation", k)
+            continue
+    ctx = _otel_propagate.extract(carrier)
+    return _otel_context.attach(ctx)
+
+
+# ---------------------------------------------------------------------------
 # Producer
 # ---------------------------------------------------------------------------
 class EventProducer:
@@ -113,17 +178,26 @@ class EventProducer:
             envelope["subject"] = subject
 
         payload = json.dumps(envelope, separators=(",", ":"), default=str).encode()
+        # Build Kafka headers list. The CloudEvents fields (id / type /
+        # tenantid / correlationid) are domain-level metadata callers
+        # routinely filter on. The W3C propagation headers (traceparent
+        # + baggage) are added next so a Kafka consumer can rebuild the
+        # OTel context — turning the async event flow into a continuation
+        # of the upstream trace instead of a discontinuity. See
+        # /admin/tracing/deep#baggage-propagation for the contract.
+        headers: list[tuple[str, bytes]] = [
+            ("id", envelope["id"].encode()),
+            ("type", type.encode()),
+            ("tenantid", tenant_id.encode()),
+            ("correlationid", correlation_id.encode()),
+        ]
+        _inject_kafka_headers(headers)
         try:
             await self._producer.send_and_wait(
                 topic=topic,
                 value=payload,
                 key=(key or tenant_id).encode(),
-                headers=[
-                    ("id", envelope["id"].encode()),
-                    ("type", type.encode()),
-                    ("tenantid", tenant_id.encode()),
-                    ("correlationid", correlation_id.encode()),
-                ],
+                headers=headers,
             )
         except Exception as exc:
             log.error("kafka_publish_failed topic=%s type=%s err=%s", topic, type, exc)
@@ -230,6 +304,21 @@ class IdempotentConsumer:
             log.debug("kafka_dup_skip id=%s", event_id)
             return
 
+        # Extract W3C trace context + baggage from the message headers
+        # BEFORE calling the handler. The producer (EventProducer) injects
+        # them on send; this restores the OTel context for the duration
+        # of the handler so:
+        #   * baggage_get("tenant_id") works inside the handler without
+        #     re-deriving from envelope["tenantid"]
+        #   * outbound httpx calls in the handler auto-carry baggage to
+        #     downstream services (HTTPXClientInstrumentor reads the
+        #     attached context)
+        #   * structlog _inject_baggage processor stamps every log line
+        #     in the handler with tenant_id / user_id / request_id
+        #     without explicit kwargs
+        # Token is detached in finally so the OTel context returns to
+        # whatever the consumer poll loop ran with.
+        token = _extract_kafka_context(msg.headers)
         try:
             await self._handler(envelope)
             await self._dedup_mark(event_id)
@@ -237,3 +326,6 @@ class IdempotentConsumer:
             # Don't mark as processed — Kafka will redeliver on next commit.
             log.exception("kafka_handler_error id=%s topic=%s", event_id, msg.topic)
             raise
+        finally:
+            if token is not None and _otel_context is not None:
+                _otel_context.detach(token)
