@@ -83,7 +83,7 @@ print_status() {
     df -h / /mnt/deepa | sed 's/^/  /'
     echo ""
     echo "Ollama daemon:"
-    sudo systemctl is-active ollama 2>/dev/null || echo "  inactive"
+    systemctl is-active ollama 2>/dev/null || echo "  inactive"
     echo ""
     if sudo test -d "$OLLAMA_SRC"; then
         echo "Source size: $(sudo du -sh $OLLAMA_SRC 2>/dev/null | cut -f1)"
