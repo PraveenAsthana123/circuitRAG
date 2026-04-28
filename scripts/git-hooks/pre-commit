@@ -1,0 +1,55 @@
+#!/bin/bash
+# Pre-commit hook: refresh drill status if older than $STALE_AFTER.
+#
+# Closes the gap where Phase 4B's post-commit watcher reads
+# .loop/last_drill_outcome.json but never updates it. Without this
+# pre-commit refresh, rule 1 of LoopWatcher fires REJECT on every
+# commit because it sees yesterday's drill failures.
+#
+# Behavior:
+#   * If status file fresh (< STALE_AFTER seconds): skip; zero cost.
+#   * If status file stale or missing: run write_drill_status.py
+#     synchronously. Tier-1 drills take ~12s wall.
+#   * NEVER blocks the commit. Drill failures land in the status
+#     file; LoopWatcher decides verdict on post-commit.
+#
+# Override:
+#   SKIP_DRILL_STATUS=1 git commit ...   # skip refresh entirely
+#   STALE_AFTER=60 git commit ...        # tighter freshness window
+#
+# Per Phase 5F + ADR-014.
+
+set -e
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+STATUS="$REPO_ROOT/.loop/last_drill_outcome.json"
+STALE_AFTER="${STALE_AFTER:-600}"   # 10 minutes default
+
+# Operator escape hatch
+if [ -n "${SKIP_DRILL_STATUS:-}" ]; then
+    exit 0
+fi
+
+# If status is fresh, skip. Zero overhead on rapid commits.
+if [ -f "$STATUS" ]; then
+    age=$(( $(date +%s) - $(stat -c %Y "$STATUS") ))
+    if [ "$age" -lt "$STALE_AFTER" ]; then
+        # Fresh; nothing to do.
+        exit 0
+    fi
+    echo "[pre-commit] drill status stale (${age}s old, threshold ${STALE_AFTER}s); refreshing..." >&2
+else
+    echo "[pre-commit] drill status missing; running drill suite..." >&2
+fi
+
+# Synchronous refresh. ~12s wall on tier-1. Never blocks the commit.
+# `|| true` because drill FAILURES are signal — they land in the
+# status file and LoopWatcher's rule 1 REJECTs the commit accordingly.
+# A non-zero exit here would block the commit, which is the wrong
+# layer for that decision.
+python3 "$REPO_ROOT/scripts/write_drill_status.py" \
+    --only-readonly \
+    --status-path "$STATUS" >/dev/null 2>&1 || true
+
+echo "[pre-commit] drill status refreshed; commit proceeding." >&2
+exit 0
