@@ -1,0 +1,170 @@
+name: Drills (stack)
+
+# Tier 3a: drills that need a live MCP HR server in addition to
+# Postgres. ~29 drills (23 tier-2 + 6 tier-3a unique). Deliberately
+# triggered ONLY by schedule + workflow_dispatch — NOT every PR —
+# because the cold-start cost (PG service container + uvicorn boot
+# + health-wait) runs ~3-5 minutes, too expensive for the per-PR
+# budget.
+#
+# Tier-3b/3c (inference-svc, retrieval-svc, qdrant, kafka, frontend,
+# playwright) are deferred to follow-up commits. The dependency
+# graph for inference-svc alone (Ollama + retrieval-svc +
+# governance-svc + identity-svc) bumps cost into the 8-15 min
+# range; better split into its own job once ROI is clear.
+#
+# What this catches that tier 1+2 can't:
+#   * MCP scope-grant audit log paths (drill_scope_denial_actor_attribution)
+#   * MCP idempotency cache (drill_idempotency_durable)
+#   * MCP per-tool telemetry (drill_mcp_per_tool_telemetry)
+#   * Cross-server MCP routing (drill_agent_multiserver_routing)
+#   * Worker auto-reject path (drill_worker_auto_reject)
+#
+# SECURITY: same shape as drills.yml + ci.yml — env: constants only,
+# NO untrusted github.event.* inputs interpolated into run: steps.
+
+on:
+  # NOT on push or pull_request - too expensive for the per-PR budget.
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+  MCP_HR_PORT: "8090"
+  HEALTH_TIMEOUT_S: "60"
+
+jobs:
+
+  drills-stack:
+    name: Drills (PG + MCP HR)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: documind
+          POSTGRES_PASSWORD: documind
+          POSTGRES_DB: documind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U documind"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: documind
+      PGPASSWORD: documind
+      PGDATABASE: documind
+      DOCUMIND_PG_HOST: localhost
+      DOCUMIND_PG_PORT: "5432"
+      DOCUMIND_PG_DB: documind
+      # MCP HR connects to PG as the non-BYPASSRLS app role per the
+      # production code path (mcp/server_hr.py reads DOCUMIND_PG_USER
+      # and defaults to documind_app).
+      DOCUMIND_PG_USER: documind_app
+      DOCUMIND_PG_PASSWORD: documind_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install runtime + drill deps
+        run: |
+          pip install -U pip
+          pip install -e libs/py
+          pip install \
+            fastapi httpx structlog uvicorn \
+            opentelemetry-api opentelemetry-sdk \
+            opentelemetry-exporter-otlp-proto-grpc \
+            opentelemetry-instrumentation-fastapi \
+            opentelemetry-instrumentation-httpx \
+            opentelemetry-instrumentation-asyncpg \
+            opentelemetry-instrumentation-redis \
+            aiokafka redis asyncpg
+      - name: Install psql client
+        run: sudo apt-get install -y --no-install-recommends postgresql-client
+      - name: Bootstrap PG schemas + roles (postgres-init.sql)
+        env:
+          PGUSER: documind
+          PGPASSWORD: documind
+        run: psql -f scripts/postgres-init.sql
+      - name: Apply per-service migrations
+        env:
+          PGUSER: documind
+          PGPASSWORD: documind
+          # migrate.py uses these:
+          DOCUMIND_PG_USER: documind
+          DOCUMIND_PG_PASSWORD: documind
+        run: |
+          for svc in identity-svc ingestion-svc evaluation-svc \
+                    governance-svc finops-svc observability-svc; do
+            mig_dir="services/$svc/migrations"
+            if [ -d "$mig_dir" ]; then
+              echo "-- $svc migrations --"
+              python scripts/migrate.py "$mig_dir" "$svc"
+            fi
+          done
+
+      # ── Start MCP HR server in background ─────────────────────
+      # Uvicorn boots in <1s but the FastAPI lifespan opens a PG
+      # connection pool; give it a few seconds before health-poll.
+      # setsid + disown so the process survives the shell exit;
+      # log goes to /tmp so it can be uploaded as an artifact on
+      # failure for diagnostics.
+      - name: Start MCP HR server (uvicorn)
+        run: |
+          mkdir -p /tmp/drill-stack-logs
+          PYTHONUNBUFFERED=1 \
+            setsid python -m mcp.server_hr \
+            > /tmp/drill-stack-logs/mcp_hr.log 2>&1 &
+          disown
+      - name: Wait for MCP HR health
+        env:
+          DEADLINE_S: ${{ env.HEALTH_TIMEOUT_S }}
+        run: |
+          # Poll /health until it returns 200 or DEADLINE_S elapses.
+          # No long sleep - short polls so total wait is bounded but
+          # also fast on the happy path.
+          end=$(( $(date +%s) + DEADLINE_S ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            if curl -sf "http://127.0.0.1:${MCP_HR_PORT}/health" >/dev/null 2>&1; then
+              echo "mcp_hr ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::mcp_hr did not become healthy within ${DEADLINE_S}s"
+          tail -100 /tmp/drill-stack-logs/mcp_hr.log
+          exit 1
+
+      # ── Run the tier-3a drill set ─────────────────────────────
+      - name: Run pg + mcp_hr drills (--allow-resources=pg,mcp_hr)
+        env:
+          DOCUMIND_PG_DSN: postgresql://documind:documind@localhost:5432/documind
+          DOCUMIND_PG_APP_DSN: postgresql://documind_app:documind_app@localhost:5432/documind
+          MCP_HR_URL: http://127.0.0.1:${{ env.MCP_HR_PORT }}
+        run: |
+          python scripts/run_drills.py \
+            --allow-resources=pg,mcp_hr \
+            --parallel 2 \
+            --report junit=drill-results-stack.xml || drill_status=$?
+          # Always grab MCP HR log tail for the GH Actions step view -
+          # makes failure post-mortem one-page instead of digging
+          # into artifacts.
+          echo "---- mcp_hr.log (tail 100) ----"
+          tail -100 /tmp/drill-stack-logs/mcp_hr.log || true
+          exit "${drill_status:-0}"
+      - name: Upload JUnit report + service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drill-results-stack
+          path: |
+            drill-results-stack.xml
+            /tmp/drill-stack-logs/
+          if-no-files-found: warn

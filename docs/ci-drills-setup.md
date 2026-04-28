@@ -19,7 +19,9 @@ drill file + filtered by `scripts/run_drills.py --allow-resources=...`.
 |------|--------------|--------|-------|---------------|
 | **1 — fast** | `drills-fast` | 15 | Python only | ~10s |
 | **2 — pg** | `drills-pg` | 23 | + Postgres service container | ~30s with cold-start |
-| **3 — stack** | _(not yet wired)_ | 60 | + docker-compose (MCP + inference + retrieval + Redis + Kafka) | ~5 min cold-start |
+| **3a — stack (PG + MCP HR)** | `drills-stack` | 29 | + Postgres + MCP HR uvicorn | ~3 min cold-start |
+| **3b — stack (+ inference)** | _(deferred)_ | 63 | + inference-svc + retrieval-svc + Ollama + governance-svc + identity-svc | ~8–15 min |
+| **3c — stack (+ frontend / playwright / qdrant / kafka)** | _(deferred)_ | 83 | + Next.js + Playwright + Qdrant + Kafka | ~15+ min |
 
 **Tier 1 covers:** baggage propagation, log formatter, Kafka inject/extract,
 runner scheduler, eval gate, JWT contract, PII redaction, retrieval-side
@@ -68,8 +70,9 @@ Required checks (search by job name):
 - [x] **CI / go** *(existing, matrix)*
 - [x] **CI / frontend** *(existing)*
 - [x] **CI / docker-build** *(existing)*
-- [x] **Drills / Drills (zero infra)** ← **add**
-- [x] **Drills / Drills (Postgres tier)** ← **add**
+- [x] **Drills / Drills (zero infra)** ← **add (PR-time gate)**
+- [x] **Drills / Drills (Postgres tier)** ← **add (PR-time gate)**
+- [ ] **Drills (stack) / Drills (PG + MCP HR)** ← **do NOT add as required for PRs** — runs on schedule only; cold-start cost too high for the per-PR budget. Monitored via the Actions tab + nightly run.
 
 Other recommended toggles (per `~/.claude/CLAUDE.md` §15):
 
@@ -170,22 +173,43 @@ keeps GitHub Actions runner contention lower.
 
 ---
 
-## 6. Adding tier 3 (`drills-stack`) later — TODO
+## 6. Tier 3 progressive rollout
 
-The remaining ~60 drills exercise the live app stack. Wiring them
-requires:
+### Tier 3a (shipped) — `drills-stack`
 
-1. `docker compose up -d --wait` for postgres + kafka + redis + qdrant
-   + the MCP servers + inference-svc + retrieval-svc + frontend.
-2. Apply migrations + seed dev tenants.
-3. Wait for `/health` + `/health/ready` on every service.
-4. Run drills with `--allow-resources=pg,inference,mcp_hr,...,frontend,playwright`.
-5. `docker compose down -v` cleanup.
+`.github/workflows/drills-stack.yml` covers Postgres + MCP HR (29
+drills, ~3 min cold-start). Triggered by `schedule: cron "0 1 * * *"`
++ `workflow_dispatch`. The workflow:
 
-Realistic CI cost: ~5 min cold-start + ~3 min drill wall = ~8 min
-per run. Reasonable for nightly; expensive for every PR. Suggested
-shape: nightly only, plus manual `workflow_dispatch` for operator
-verification before risky merges.
+1. PG service container + bootstrap + migrations.
+2. `setsid python -m mcp.server_hr` in background, log to
+   `/tmp/drill-stack-logs/mcp_hr.log`.
+3. Curl-poll `/health` until 200 (60s deadline).
+4. `--allow-resources=pg,mcp_hr` + JUnit + log artifact upload.
+
+### Tier 3b (deferred) — `drills-stack-inference`
+
+Adds inference-svc (+40 drills, total 63). Inference-svc requires:
+retrieval-svc, governance-svc, identity-svc, Ollama-style LLM, Redis.
+Cost jumps to ~8 min per run. Suggested shape: separate workflow
+file, schedule-only, possibly weekly rather than nightly.
+
+### Tier 3c (deferred) — `drills-stack-full`
+
+Adds frontend (Next.js), Playwright (browser drills), Qdrant
+(vector DB), Kafka (event-driven drills). +20 drills, total 83.
+Cost ~15+ min. Suggested shape: weekly schedule + manual trigger
+before release branches.
+
+For each tier, the `--allow-resources` filter makes selection
+mechanical:
+
+```bash
+# Locally verify which drills a tier picks up before wiring CI:
+python scripts/run_drills.py --allow-resources=pg,mcp_hr --list
+python scripts/run_drills.py --allow-resources=pg,mcp_hr,inference --list
+python scripts/run_drills.py --allow-resources=pg,mcp_hr,inference,frontend,playwright,qdrant,kafka,retrieval --list
+```
 
 ---
 
