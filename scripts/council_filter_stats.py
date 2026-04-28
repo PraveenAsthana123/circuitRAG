@@ -30,14 +30,32 @@ Operator usage:
     python3 scripts/council_filter_stats.py --json     # for piping
     python3 scripts/council_filter_stats.py --log-path /custom/path
 
-Exit code: 0 always (read-only). Stderr-only on log-file errors.
+Exit code: 0 by default (read-only).
+              1 if any --alert-on EXPR matched (CI/cron failure hook).
+
+Alert mode (Phase 5O):
+    --alert-on <bucket><op><value>     can repeat; any match → exit 1
+
+  bucket: filter name (skip_token, too_short, all_binary, doc_only,
+          capture_error, empty_diff, legacy)
+          OR meta-bucket (fired, filtered, skipped, council_errors)
+  op:     >  >=  <  <=  =  !=
+  value:  fraction 0.0-1.0 (interpreted as share of total entries)
+
+Examples:
+    --alert-on too_short>0.5      # too_short rate above 50%
+    --alert-on filtered>0.8       # overall filter rate above 80%
+    --alert-on fired<0.3          # fire rate below 30% (tuning broken?)
+    --alert-on skip_token>0.2     # skip-token over-use (cost discipline)
 """
 from __future__ import annotations
 
 import argparse
 import json
 import logging
+import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
@@ -53,7 +71,109 @@ KNOWN_FILTERS = {
     "too_short", "all_binary", "doc_only",
 }
 
+# Phase 5O alert expression grammar.
+# Meta-buckets sum the canonical filters / outcome classes and let
+# operators write business-level alerts ("alert when filter rate > 80%")
+# instead of having to enumerate every filter name.
+META_BUCKETS = {"fired", "filtered", "skipped", "council_errors"}
+# 'legacy' is a synthetic bucket for pre-5K log entries — not in
+# KNOWN_FILTERS but valid in alert expressions for completeness.
+ALERT_BUCKETS = KNOWN_FILTERS | META_BUCKETS | {"legacy", "unknown"}
+# Order matters: longer ops first so '>=' isn't matched as '>'.
+_ALERT_OPS = (">=", "<=", "!=", ">", "<", "=")
+_ALERT_RE = re.compile(
+    r"^(?P<bucket>[a-zA-Z_]+)\s*"
+    r"(?P<op>>=|<=|!=|>|<|=)\s*"
+    r"(?P<value>\d+(?:\.\d+)?)\s*$"
+)
+
 log = logging.getLogger("council_filter_stats")
+
+
+@dataclass(frozen=True)
+class AlertExpr:
+    """Parsed --alert-on expression."""
+    bucket: str       # canonical filter name OR meta-bucket name
+    op: str           # one of _ALERT_OPS
+    threshold: float  # fraction-of-total (0.0..1.0)
+    raw: str          # original CLI string for error messages
+
+    def evaluate(self, summary: dict) -> tuple[bool, float]:
+        """Return (fired, observed_fraction).
+
+        observed_fraction is the bucket count / total. When total is 0,
+        the alert NEVER fires (avoid divide-by-zero firing on empty logs)."""
+        total = summary.get("total", 0)
+        if total == 0:
+            return (False, 0.0)
+        n = self._bucket_count(summary)
+        frac = n / total
+        return (self._compare(frac), frac)
+
+    def _bucket_count(self, summary: dict) -> int:
+        if self.bucket in META_BUCKETS:
+            if self.bucket == "fired":
+                return sum(summary.get("fired_by_risk", {}).values())
+            if self.bucket == "filtered":
+                return sum(summary.get("filtered_by_reason", {}).values())
+            if self.bucket == "skipped":
+                return sum(summary.get("skipped_by_reason", {}).values())
+            if self.bucket == "council_errors":
+                return int(summary.get("council_errors", 0))
+        # canonical filter name (or 'legacy' / 'unknown')
+        return int(summary.get("filtered_by_reason", {}).get(self.bucket, 0))
+
+    def _compare(self, observed: float) -> bool:
+        t = self.threshold
+        return {
+            ">":  observed >  t,
+            ">=": observed >= t,
+            "<":  observed <  t,
+            "<=": observed <= t,
+            "=":  observed == t,
+            "!=": observed != t,
+        }[self.op]
+
+
+def parse_alert_expr(s: str) -> AlertExpr:
+    """Parse one --alert-on expression. Raises ValueError on bad form.
+
+    Strictness: bucket must be a known name (canonical filter, meta-
+    bucket, 'legacy', or 'unknown'). Threshold must be 0.0..1.0
+    (fractions, not raw counts — keeps the alert language consistent
+    across log volumes)."""
+    m = _ALERT_RE.match(s)
+    if not m:
+        raise ValueError(
+            f"alert expression must be '<bucket><op><number>'; got {s!r}"
+        )
+    bucket = m.group("bucket")
+    op = m.group("op")
+    try:
+        threshold = float(m.group("value"))
+    except ValueError as exc:
+        raise ValueError(f"alert {s!r}: bad threshold") from exc
+    if bucket not in ALERT_BUCKETS:
+        valid = ", ".join(sorted(ALERT_BUCKETS))
+        raise ValueError(
+            f"alert {s!r}: unknown bucket {bucket!r}. Valid: {valid}"
+        )
+    if not (0.0 <= threshold <= 1.0):
+        raise ValueError(
+            f"alert {s!r}: threshold {threshold} out of [0.0, 1.0]"
+        )
+    return AlertExpr(bucket=bucket, op=op, threshold=threshold, raw=s)
+
+
+def check_alerts(summary: dict, exprs: list[AlertExpr]) -> list[tuple[AlertExpr, float]]:
+    """Return list of (expr, observed_fraction) for every expression
+    that fired. Empty list = all alerts passed."""
+    fired = []
+    for expr in exprs:
+        is_fired, observed = expr.evaluate(summary)
+        if is_fired:
+            fired.append((expr, observed))
+    return fired
 
 
 def parse_filter_reason(reason: str) -> str:
@@ -341,7 +461,27 @@ def cli() -> int:
         "--json", action="store_true",
         help="emit machine-readable JSON instead of text report",
     )
+    parser.add_argument(
+        "--alert-on", action="append", default=[],
+        metavar="EXPR",
+        help="alert expression like 'too_short>0.5'; can repeat. "
+             "Any match → exit 1 (CI/cron failure hook). "
+             "Buckets: filter names, fired, filtered, skipped, "
+             "council_errors. Threshold is a 0.0–1.0 fraction.",
+    )
     args = parser.parse_args()
+
+    # Parse every --alert-on up front so a typo fails fast (before
+    # we walk the log file). argparse would have surfaced a
+    # parse_known errors here, but we get a cleaner error message
+    # by failing in our own parser.
+    alert_exprs: list[AlertExpr] = []
+    for raw in args.alert_on:
+        try:
+            alert_exprs.append(parse_alert_expr(raw))
+        except ValueError as exc:
+            print(f"--alert-on: {exc}", file=sys.stderr)
+            return 1
 
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
 
@@ -355,17 +495,44 @@ def cli() -> int:
         if args.days is not None:
             print("--days is ignored with --weekly; use --weeks N",
                   file=sys.stderr)
+        if alert_exprs:
+            # v1 scope: alerts compare against a single summary. Per-
+            # week alerts would require an aggregation choice (each
+            # week, latest week, average?); we'd rather operators be
+            # explicit. Future Phase 5P could add --alert-on-week.
+            print("--alert-on requires single-window mode (drop --weekly)",
+                  file=sys.stderr)
+            return 1
         weekly = summarize_by_week(log_path, args.weeks)
         if args.json:
             print(json.dumps(weekly, indent=2))
         else:
             print(render_weekly(weekly))
+        return 0
+
+    summary = summarize(log_path, args.days)
+    if args.json:
+        print(json.dumps(summary, indent=2))
     else:
-        summary = summarize(log_path, args.days)
-        if args.json:
-            print(json.dumps(summary, indent=2))
-        else:
-            print(render(summary))
+        print(render(summary))
+
+    # ── Alert evaluation ─────────────────────────────────────────
+    # Run AFTER the report so operators always see the breakdown,
+    # even when an alert is going to fire and exit nonzero. The
+    # report is the data; the alert is the verdict.
+    if alert_exprs:
+        fired = check_alerts(summary, alert_exprs)
+        if fired:
+            for expr, observed in fired:
+                print(
+                    f"ALERT: {expr.raw} "
+                    f"(observed {expr.bucket}={observed:.3f} "
+                    f"vs threshold {expr.threshold})",
+                    file=sys.stderr,
+                )
+            return 1
+        print(f"alerts: {len(alert_exprs)} expression(s) all passed",
+              file=sys.stderr)
     return 0
 
 
