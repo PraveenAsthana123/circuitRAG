@@ -62,6 +62,42 @@ response vs. <5s for 7B).
 | StarCoder2 | `starcoder2:15b` | 9 GB | Cross-language reasoning (Rust, Go, OCaml) |
 | CodeGemma | `codegemma:7b-code` (FIM-tuned) | 5 GB | Pure infill / completion, not chat |
 
+### Cloud tier (no local install — needs Ollama Cloud subscription)
+
+| Model | Tag | License | Strength | Trade-off |
+|---|---|---|---|---|
+| Kimi K2 | `kimi-k2:1t-cloud` | Modified MIT | 1T-param MoE — flagship-tier reasoning + code synthesis | Cloud-only; no local install (would need ~100 GB VRAM); paid Ollama Cloud |
+| Kimi K2.5 | `kimi-k2.5:cloud` | Modified MIT | Latest stable Kimi K-series | Same |
+| Kimi K2.6 | `kimi-k2.6:cloud` | Modified MIT | Newest variant | Same |
+| Kimi K2-Thinking | `kimi-k2-thinking:cloud` | Modified MIT | Chain-of-thought variant for hard reasoning | Same |
+
+**To use Kimi (when ready):**
+
+```
+ollama signin                                         # one-time Ollama Cloud signup
+ollama pull kimi-k2-thinking:cloud                    # registers cloud routing
+curl http://localhost:11434/api/generate -d '{
+  "model": "kimi-k2-thinking:cloud",
+  "prompt": "...",
+  "stream": false
+}'
+```
+
+**Why Kimi isn't in `drill_ollama_coder_models`:** the drill verifies
+LOCAL pull + sanity prompt. Cloud-only models would false-pass
+("model registered" without testing the cloud endpoint). When Kimi-2
+ships (per `docs/NEXT_POLICY.md` ledger), a separate
+`drill_ollama_cloud_models.py` with `# RESOURCES: ollama_cloud` tag
+will exercise the cloud-routing path.
+
+**Where Kimi fits in the council:** when wired (Phase Kimi-2), Kimi
+becomes the chair of the `pr_review` council — replacing DeepSeek
+in `services/sidecar-advisor/council.py:ADVISOR_MODEL`. The 7B-class
+authors stay local (cheap, fast, parallel); the chair upgrades to
+1T cloud for synthesis quality. Cost gate: Phase Kimi-2 must add a
+per-tenant Ollama-Cloud token budget before the chair is rerouted,
+otherwise a single PR review burns the budget.
+
 ## Operational
 
 ### Daemon
