@@ -167,19 +167,32 @@ def main() -> int:
           "0 false-positives)")
 
     # ── Step 6: NEGATIVE — PYTHON_BIN env override ──
+    # Check the "would install" block ONLY — not the whole stdout.
+    # The dry-run also prints the operator's CURRENT crontab (which
+    # may contain unrelated lines using the default interpreter from
+    # previous installations); checking the whole output would
+    # falsely flag those.
     custom_python = "/some/custom/python3.42"
     rc, out, _ = _run(["--dry-run"], env_override={"PYTHON_BIN": custom_python})
     if rc != 0:
         print(f"✗ step 6: --dry-run with PYTHON_BIN exit {rc}, expected 0")
         return 1
-    if custom_python not in out:
-        print(f"✗ step 6: PYTHON_BIN={custom_python!r} not in cron line "
-              "output. Override path must take precedence.")
+    # Extract just the "would install:" block (stops at the next
+    # "[DRY-RUN]" header).
+    would_install_match = re.search(
+        r"\[DRY-RUN\] would install:\s*\n(.*?)(?:\n\[DRY-RUN\]|\Z)",
+        out, re.DOTALL,
+    )
+    if not would_install_match:
+        print(f"✗ step 6: 'would install:' block not found in output")
         return 1
-    if "/tmp/documind-venv/bin/python " in out:
-        # Note the trailing space: we're checking the cron line's
-        # interpreter slot, not other mentions in the source.
-        print(f"✗ step 6: default interpreter still in cron line "
+    would_install_block = would_install_match.group(1)
+    if custom_python not in would_install_block:
+        print(f"✗ step 6: PYTHON_BIN={custom_python!r} not in cron line. "
+              f"would-install block:\n{would_install_block}")
+        return 1
+    if "/tmp/documind-venv/bin/python " in would_install_block:
+        print(f"✗ step 6: default interpreter still in would-install line "
               "even with PYTHON_BIN set")
         return 1
     print(f"✓ step 6: PYTHON_BIN override changes cron line to {custom_python!r}")
