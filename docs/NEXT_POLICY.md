@@ -114,9 +114,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-2A | git-diff capture (capture_diff + is_likely_pr_review heuristic) | `5655d4e` | 8 (6 negatives) |
 | Phase-2A2 | capture_and_review pipeline → council on every code commit | `1ba5f42` | 8 (6 negatives) |
 | Phase-2F | council retention purge — prune_council_runs + CLI | `dfddcd4` | 8 (6 negatives) |
-| Phase-2A3 | batched council replay against unreviewed events (DispatchPool composes) | _this commit_ | 8 (6 negatives) |
+| Phase-2A3 | batched council replay against unreviewed events (DispatchPool composes) | `4f5d4db` | 8 (6 negatives) |
+| Phase-1B-static | HTML dashboard renderer (pre-approved alt to Next.js UI) | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 20 commits this session, 151 drill steps green across 19 board+sidecar+agent+policy+pipeline drills, 35 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 21 commits this session, 159 drill steps green across 20 board+sidecar+agent+policy+pipeline+UI drills, 36 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
@@ -125,7 +126,8 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | ~~3A~~ | `multi_hop_agent` parallel sub-query fanout | **shipped** in this commit | inference-svc | — |
 | ~~3B~~ | DispatchPool — 100+ task fanout with bounded LLM concurrency | **shipped** `ae06ded` | AgentBoard + Sidecar council | — |
 | ~~3D~~ | agents/ registry — first-class agent files; policy_approver added | **shipped** in this commit | Sidecar-2D | — |
-| 1B | Sidecar **Next.js** UI (paste box → Review → Rate → audit history) | not started — uses existing `services/frontend/` App Router pattern | Sidecar-1A | — |
+| ~~1B-static~~ | static HTML dashboard renderer | **shipped** in this commit | Sidecar-1A | run: `python3 scripts/render_dashboard.py > .loop/dashboard.html` |
+| 1B | Sidecar **Next.js** UI (paste box → Review → Rate → audit history) | not started — uses existing `services/frontend/` App Router pattern | Sidecar-1A | **needs §7 scope-extension** for `services/frontend/` edits |
 | ~~3C~~ | BulkPrReview composes DispatchPool × council | **shipped** in this commit | Phase-3B + Sidecar-2D | — |
 | ~~4A~~ | LoopWatcher — deterministic policy_approver gate (5 rules) | **shipped** in this commit | Phase-3D approver agent | — |
 | ~~4B~~ | post-commit hook auto-fires LoopWatcher; verdict log at .loop/watcher.log | **shipped** in this commit | Phase-4A | install: `scripts/install_loop_watcher_hook.sh` |
