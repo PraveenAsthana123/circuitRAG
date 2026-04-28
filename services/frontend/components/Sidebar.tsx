@@ -295,6 +295,14 @@ const GROUPS: Group[] = [
       { href: '/admin/explainability/deep#audit-rag-contract-regulation', label: 'Audit row · RAG four-part · EU AI Act' },
     ],
   },
+  {
+    heading: 'Code quality — lint + format + types',
+    items: [
+      { href: '/admin/code-quality/deep', label: 'Code quality — overview' },
+      { href: '/admin/code-quality/deep#linting-strategy-three-tier', label: 'Linting · 3-tier (IDE + pre-commit + CI)' },
+      { href: '/admin/code-quality/deep#pep8-auto-formatting-python', label: 'PEP 8 · Ruff + Black + Mypy strict' },
+    ],
+  },
 ];
 
 /** Left-menu nav. Grouped so the 10+ links are scannable. */
