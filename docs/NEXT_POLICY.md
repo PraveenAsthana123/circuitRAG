@@ -118,9 +118,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-1B-static | HTML dashboard renderer (pre-approved alt to Next.js UI) | `9661753` | 8 (6 negatives) |
 | Phase-1B | Next.js Server Component embedding the static dashboard (§7-granted) | `b140146` | 8 (6 negatives) |
 | Phase-5A | e2e meta-drill + capture/event-update gap fix | `06bed6c` | 8 (6 negatives) |
-| Phase-5B | C4 + per-scenario data-flow deep-dive page (`/admin/sidecar/deep`) | _this commit_ | 8 (6 negatives) |
+| Phase-5B | C4 + per-scenario data-flow deep-dive page (`/admin/sidecar/deep`) | `d2fefc0` | 8 (6 negatives) |
+| Phase-5C | ADR-014 documenting the autonomous-loop architecture | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 24 commits this session, 183 drill steps green across 23 sidecar/policy/pipeline/UI drills, **272 steps via the resource-aware runner** across all 39 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 25 commits this session, 191 drill steps green across 24 sidecar/policy/pipeline/UI/ADR drills, **280 steps via the resource-aware runner** across all 40 tier-1 drills, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
