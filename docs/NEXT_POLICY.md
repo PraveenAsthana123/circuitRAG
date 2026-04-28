@@ -105,9 +105,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-3A | multi_hop_agent parallel sub-question fanout | `adc618c` | 8 (6 negatives) |
 | Phase-3B | DispatchPool — 100+ task fanout w/ bounded LLM concurrency | `ae06ded` | 8 (6 negatives) |
 | Phase-3D | agents/ registry — 6 first-class agents (incl. policy_approver) | `069b7ed` | 8 (5 negatives) |
-| Phase-3E | NEXT_POLICY 40-row proposed-approvals matrix + structure drill | _this commit_ | 8 (5 negatives) |
+| Phase-3E | NEXT_POLICY 40-row proposed-approvals matrix + structure drill | `aab7b65` | 8 (5 negatives) |
+| Phase-3C | BulkPrReview — DispatchPool × council for N-file PR review | _this commit_ | 8 (5 negatives) |
 
-**Cumulative:** 11 commits this session, 79 drill steps green across 10 board+sidecar+agent+policy drills, 26 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 12 commits this session, 87 drill steps green across 11 board+sidecar+agent+policy drills, 27 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
@@ -117,7 +118,7 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | ~~3B~~ | DispatchPool — 100+ task fanout with bounded LLM concurrency | **shipped** `ae06ded` | AgentBoard + Sidecar council | — |
 | ~~3D~~ | agents/ registry — first-class agent files; policy_approver added | **shipped** in this commit | Sidecar-2D | — |
 | 1B | Sidecar **Next.js** UI (paste box → Review → Rate → audit history) | not started — uses existing `services/frontend/` App Router pattern | Sidecar-1A | — |
-| 3C | Wire DispatchPool to Sidecar council for bulk PR-file review | not started | Phase-3B + Sidecar-2D | — |
+| ~~3C~~ | BulkPrReview composes DispatchPool × council | **shipped** in this commit | Phase-3B + Sidecar-2D | — |
 | 4A | Wire policy_approver to live commit watcher (auto-gate next iteration) | not started | Phase-3D approver agent | — |
 | 2A | Git-diff capture (file watcher → auto-classify on commit) | not started | Sidecar-1A | — |
 | 2B | Claude / Codex routes for `architecture` event_type | not started | Sidecar-2D council | needs API keys (gated) |
