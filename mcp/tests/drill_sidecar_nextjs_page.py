@@ -155,14 +155,16 @@ def main():
     # Step 8: NEGATIVE - files live ONLY under sidecar/ tree (scope check)
     step(
         "8. NEGATIVE: files live ONLY under "
-        "services/frontend/app/admin/sidecar/* (incl. deep/)"
+        "services/frontend/app/admin/sidecar/* (incl. deep/, telemetry/)"
     )
     sidecar_dir = PAGE.parent
     files = list(sidecar_dir.rglob("*.tsx"))
-    # Allowed paths under §7 grant:
-    #   sidecar/page.tsx                 (Phase 1B)
-    #   sidecar/deep/page.tsx            (Phase 5B - C4 diagrams)
-    allowed_relative = {"page.tsx", "deep/page.tsx"}
+    # Allowed paths under §7 grant (each requires a scope-extension log
+    # entry per §7 of docs/NEXT_POLICY.md):
+    #   sidecar/page.tsx                 (Phase 1B - static dashboard embed)
+    #   sidecar/deep/page.tsx            (Phase 5B - C4 + scenario diagrams)
+    #   sidecar/telemetry/page.tsx       (Phase 5S - daily snapshot live view)
+    allowed_relative = {"page.tsx", "deep/page.tsx", "telemetry/page.tsx"}
     actual_relative = {
         str(f.relative_to(sidecar_dir)) for f in files
     }
@@ -170,8 +172,9 @@ def main():
     if extra:
         fail(
             f"files outside §7-granted paths: {extra}. The grant "
-            f"covers sidecar/page.tsx + sidecar/deep/page.tsx only. "
-            f"Adding more would need another scope-extension entry."
+            f"covers sidecar/page.tsx, sidecar/deep/page.tsx, and "
+            f"sidecar/telemetry/page.tsx only. "
+            f"Adding more needs another scope-extension entry in §7."
         )
     if "page.tsx" not in actual_relative:
         fail(f"page.tsx (Phase 1B) missing")
