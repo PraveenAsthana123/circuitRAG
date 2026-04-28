@@ -1,4 +1,4 @@
-# RESOURCES: readonly
+# RESOURCES: playwright
 """
 Drill: SpeechReader in-place highlighting + no floating overlay.
 

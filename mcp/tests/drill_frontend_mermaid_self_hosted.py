@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: Mermaid library is served same-origin from /mermaid.min.js,
 NOT loaded from a third-party CDN.

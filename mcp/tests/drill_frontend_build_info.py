@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: /app-meta/build-info exposes the frontend build identity so
 operators can answer 'is the running frontend the latest build?'

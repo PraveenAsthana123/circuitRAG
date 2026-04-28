@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: all 5 new deep-dive routes (/admin/mcp /breakers /rag
 /microservices /data) render 200 with the universal interview

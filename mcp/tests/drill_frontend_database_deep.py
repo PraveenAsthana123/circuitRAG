@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: /admin/database/deep renders 6 datastore roles using the
 universal 20-dimension interview framework via the new

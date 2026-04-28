@@ -483,6 +483,19 @@ def main() -> int:
                    help="Max concurrent drills (default 1 = serial)")
     p.add_argument("--only", nargs="*", default=[],
                    help="Filter drills by substring match on the name")
+    p.add_argument(
+        "--allow-resources",
+        default=None,
+        help=(
+            "Comma-separated allow-list of resource names. Only drills whose "
+            "resource set is a subset of this list (plus the always-allowed "
+            "empty-set / 'none' / 'readonly' drills) will run. Useful for "
+            "CI tiering: --allow-resources='' runs only zero-infra drills; "
+            "--allow-resources=pg adds Postgres-only drills; "
+            "--allow-resources=pg,inference,mcp_hr adds the full stack. "
+            "Flag NOT passed = no resource filter (all drills run)."
+        ),
+    )
     p.add_argument("--list", action="store_true",
                    help="List drills + resource tags, don't run")
     p.add_argument("--stop-on-fail", action="store_true",
@@ -500,6 +513,37 @@ def main() -> int:
     if not drills:
         print(f"{RED}No drills match filter: {args.only}{NC}")
         return 1
+
+    # Resource-tag tier filter — used by CI to pick a subset that
+    # matches the available infrastructure. Empty-resource drills
+    # (tagged ``none``/``readonly``) ALWAYS pass because their
+    # resource set is the empty subset of any allow-list. A non-
+    # empty allow-list gates other drills: a drill is kept only
+    # when every resource it declares is in the allow-list.
+    # ``--allow-resources=''`` (empty string) means filter is ACTIVE
+    # but the allow-list is empty — only zero-infra drills run.
+    # NOT passing the flag at all means no filter — every drill runs.
+    if args.allow_resources is not None:
+        allowed = {
+            r.strip()
+            for r in args.allow_resources.split(",")
+            if r.strip()
+        }
+        before = len(drills)
+        drills = [
+            d for d in drills
+            if {name for name, _mode in d.resources} <= allowed
+        ]
+        skipped = before - len(drills)
+        print(
+            f"{BOLD}--allow-resources={sorted(allowed)} → kept {len(drills)} "
+            f"of {before} drills (skipped {skipped} that need other "
+            f"resources){NC}"
+        )
+        if not drills:
+            print(f"{RED}No drills match resource filter{NC}")
+            return 1
+
     if args.list:
         _list(drills)
         return 0

@@ -1,4 +1,4 @@
-# RESOURCES: readonly
+# RESOURCES: playwright
 """
 Drill: ClientErrorReporter suppresses 404 cascade when backend is
 unavailable.

@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: every public catalog page renders 200 + carries the
 per-pattern Deep dive → anchors that point at the corresponding

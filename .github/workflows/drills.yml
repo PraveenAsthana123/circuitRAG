@@ -1,0 +1,171 @@
+name: Drills
+
+# Drill suite gate. Two tiers:
+#
+#   drills-fast — zero-infra drills (resource tag none/readonly).
+#   ~15 drills, ~10s wall, no service containers. Cheap PR gate.
+#
+#   drills-pg — drills that need Postgres only (~23 total = 15 fast +
+#   8 PG-specific). Spins up a Postgres service container, applies
+#   migrations, runs drills as the production-equivalent
+#   documind_app non-BYPASSRLS role so tenant-isolation tests
+#   actually exercise RLS.
+#
+# A future drills-stack tier would spin up the full docker-compose
+# (MCP servers + inference-svc + retrieval-svc) for the remaining
+# ~60 drills; deferred to a follow-up so this workflow is the
+# minimal first step.
+#
+# Per ~/.claude/CLAUDE.md §43:
+#   * Drills run real code paths (no mocks for runtime deps).
+#   * Every drill prints check/cross markers and ends with a
+#     deterministic ALL N STEPS PASSED (exit 0) or fail + exit 1.
+#   * Resource-aware parallel runner schedules disjoint drills
+#     concurrently up to --parallel N.
+#
+# SECURITY NOTE: This workflow only references constants defined
+# in env: at the top of the file or job. NO untrusted GitHub event
+# inputs (issue title, PR body, head_ref, commit message) are
+# interpolated into run: steps — same pattern as ci.yml.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+
+  drills-fast:
+    name: Drills (zero infra)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install runtime + drill deps
+        run: |
+          pip install -U pip
+          pip install -e libs/py
+          # Deps not in libs/py pyproject.toml that drills exercise
+          # directly (W3C OTel propagation, Kafka, structlog log
+          # formatter, FastAPI middleware tests).
+          pip install \
+            fastapi httpx structlog \
+            opentelemetry-api opentelemetry-sdk \
+            opentelemetry-exporter-otlp-proto-grpc \
+            opentelemetry-instrumentation-fastapi \
+            opentelemetry-instrumentation-httpx \
+            opentelemetry-instrumentation-asyncpg \
+            opentelemetry-instrumentation-redis \
+            aiokafka redis
+      - name: Run zero-infra drills (--allow-resources= + parallel 4)
+        run: |
+          python scripts/run_drills.py \
+            --allow-resources= \
+            --parallel 4 \
+            --stop-on-fail \
+            --report junit=drill-results-fast.xml
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drill-results-fast
+          path: drill-results-fast.xml
+          if-no-files-found: warn
+
+  drills-pg:
+    name: Drills (Postgres tier)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: documind
+          POSTGRES_PASSWORD: documind
+          POSTGRES_DB: documind
+        ports:
+          - 5432:5432
+        # Healthcheck so the workflow waits for PG to be ready
+        # before the install/migration steps fire SQL.
+        options: >-
+          --health-cmd "pg_isready -U documind"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: documind
+      PGPASSWORD: documind
+      PGDATABASE: documind
+      DOCUMIND_PG_HOST: localhost
+      DOCUMIND_PG_PORT: "5432"
+      DOCUMIND_PG_DB: documind
+      DOCUMIND_PG_USER: documind
+      DOCUMIND_PG_PASSWORD: documind
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install runtime + drill deps
+        run: |
+          pip install -U pip
+          pip install -e libs/py
+          pip install \
+            fastapi httpx structlog \
+            opentelemetry-api opentelemetry-sdk \
+            opentelemetry-exporter-otlp-proto-grpc \
+            opentelemetry-instrumentation-fastapi \
+            opentelemetry-instrumentation-httpx \
+            opentelemetry-instrumentation-asyncpg \
+            opentelemetry-instrumentation-redis \
+            aiokafka redis asyncpg
+      - name: Install psql client
+        run: sudo apt-get install -y --no-install-recommends postgresql-client
+      - name: Bootstrap PG schemas + roles (postgres-init.sql)
+        run: |
+          # postgres-init.sql creates schemas + the documind_app +
+          # documind_ops roles. The image's default entrypoint runs
+          # init scripts only on first cluster start; we run it
+          # explicitly here so the workflow doesn't depend on
+          # mount magic.
+          psql -f scripts/postgres-init.sql
+      - name: Apply per-service migrations
+        run: |
+          for svc in identity-svc ingestion-svc evaluation-svc \
+                    governance-svc finops-svc observability-svc; do
+            mig_dir="services/$svc/migrations"
+            if [ -d "$mig_dir" ]; then
+              echo "-- $svc migrations --"
+              python scripts/migrate.py "$mig_dir" "$svc"
+            fi
+          done
+      - name: Run zero-infra + PG drills (--allow-resources=pg)
+        env:
+          # Drills that need both an admin pool (BYPASSRLS) and an
+          # app pool (non-BYPASSRLS) read these envs. The audit-log
+          # partitioned drill in particular requires the app role
+          # to honestly exercise RLS.
+          DOCUMIND_PG_DSN: postgresql://documind:documind@localhost:5432/documind
+          DOCUMIND_PG_APP_DSN: postgresql://documind_app:documind_app@localhost:5432/documind
+        run: |
+          python scripts/run_drills.py \
+            --allow-resources=pg \
+            --parallel 2 \
+            --stop-on-fail \
+            --report junit=drill-results-pg.xml
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drill-results-pg
+          path: drill-results-pg.xml
+          if-no-files-found: warn

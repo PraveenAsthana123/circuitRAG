@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: COMPREHENSIVE Playwright-based UI validator. Single drill
 that enforces the global Playwright UI-verification policy

@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: /admin/python/deep renders 12 senior-level Python topics,
 each with the 7-lens interview structure (core concept / why it

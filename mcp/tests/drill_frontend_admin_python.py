@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: /admin/python renders 200 with the expected sections + the
 two inline SVG flowcharts. Static-content drill — no API surface

@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: /admin/llmops/deep renders 10 LLMOps capabilities, each
 with the 8-lens interview structure (core concept / 5W / IPO /

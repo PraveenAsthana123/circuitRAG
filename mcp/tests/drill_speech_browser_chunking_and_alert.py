@@ -1,4 +1,4 @@
-# RESOURCES: readonly
+# RESOURCES: playwright
 """
 Drill: SpeechReader browser-TTS chunking + no-voice diagnostic alert.
 

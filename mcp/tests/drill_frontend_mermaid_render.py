@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: Playwright-based UI verification — every deep-dive page
 renders mermaid diagrams CLEANLY (no "Syntax error in text" bombs,

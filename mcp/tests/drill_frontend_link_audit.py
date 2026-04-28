@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: AUDIT every internal link on every public deep-dive +
 catalog page. Verifies that:

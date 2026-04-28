@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: AUDIT every deep-dive page for the MASTER 36-section
 template + HLD + LLD coverage. Reports per-topic completeness so

@@ -1,4 +1,4 @@
-# RESOURCES: readonly
+# RESOURCES: playwright
 """
 Drill: SpeechReader chunks server-TTS payload to fit the 4000-char
 backend limit.

@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: /admin/llmops renders 200 with all 14 LLMOps categories
 + status badges + sidebar exposes the link.

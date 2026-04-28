@@ -1,4 +1,4 @@
-# RESOURCES: none
+# RESOURCES: frontend
 """
 Drill: at least one topic on /admin/database/deep renders the FULL
 36-section master template (+ HLD + LLD diagrams) — proof that the
