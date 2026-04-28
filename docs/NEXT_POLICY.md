@@ -113,9 +113,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-4D | verdict-log replay + opt-in --apply auto-revert | `22c278e` | 8 (6 negatives) |
 | Phase-2A | git-diff capture (capture_diff + is_likely_pr_review heuristic) | `5655d4e` | 8 (6 negatives) |
 | Phase-2A2 | capture_and_review pipeline → council on every code commit | `1ba5f42` | 8 (6 negatives) |
-| Phase-2F | council retention purge — prune_council_runs + CLI | _this commit_ | 8 (6 negatives) |
+| Phase-2F | council retention purge — prune_council_runs + CLI | `dfddcd4` | 8 (6 negatives) |
+| Phase-2A3 | batched council replay against unreviewed events (DispatchPool composes) | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 19 commits this session, 143 drill steps green across 18 board+sidecar+agent+policy+pipeline drills, 34 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 20 commits this session, 151 drill steps green across 19 board+sidecar+agent+policy+pipeline drills, 35 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
@@ -131,7 +132,8 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | ~~4C~~ | drill-status writer — populates .loop/last_drill_outcome.json | **shipped** in this commit | Phase-4B | run: `python3 scripts/write_drill_status.py --only-readonly` |
 | ~~4D~~ | verdict-log replay + opt-in `--apply` auto-revert | **shipped** in this commit | Phase-4A | run: `python3 scripts/replay_verdict_log.py [--apply]` |
 | ~~2A~~ | git-diff capture (capture_diff + is_likely_pr_review heuristic) | **shipped** in this commit | Sidecar-1A | — |
-| ~~2A2~~ | capture_and_review pipeline → council on every code commit; post-commit hook updated | **shipped** in this commit | Phase-2A + Phase-4B | — |
+| ~~2A2~~ | capture_and_review pipeline → council on every code commit; post-commit hook updated | **shipped** `1ba5f42` | Phase-2A + Phase-4B | — |
+| ~~2A3~~ | batched council replay against unreviewed events; cron-friendly | **shipped** in this commit | Phase-2A2 + Phase-3B | run nightly: `scripts/replay_council_against_events.py --apply` |
 | 2B | Claude / Codex routes for `architecture` event_type | not started | Sidecar-2D council | needs API keys (gated) |
 | ~~2F~~ | council retention purge — `prune_council_runs(older_than_days=90)` + dry-run/--apply CLI | **shipped** in this commit | Sidecar-2E | run weekly: `python3 scripts/prune_council_runs.py --apply --vacuum` |
 | Kimi-1 | Document Kimi K2 in coder catalogue (cloud tier) | this commit | Sidecar-1A catalogue | none |

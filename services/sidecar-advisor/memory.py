@@ -374,6 +374,43 @@ class AdvisorMemory:
             rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
+    def find_events_without_council_run(
+        self,
+        *,
+        event_type: str = "pr_review",
+        limit: int = 50,
+    ) -> list[dict]:
+        """Events that have no corresponding advisor_council_runs row.
+
+        Used by the batched-replay flow: events captured via Phase 2A2
+        with --no-council mode (or with a chair-error fallback) need
+        the council fired against them later. This query is the
+        worklist.
+
+        Args:
+            event_type: only return events of this type. Default
+                "pr_review" - the only event_type the council
+                processes.
+            limit: cap on rows returned. Default 50 - one batch
+                worth of work without overwhelming the LLM provider.
+
+        Returns: list of event row dicts in oldest-first order so
+        the operator can FIFO-process the backlog.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT e.* FROM advisor_events e
+                LEFT JOIN advisor_council_runs c ON c.event_id = e.id
+                WHERE e.event_type = ?
+                  AND c.id IS NULL
+                ORDER BY e.created_at ASC
+                LIMIT ?
+                """,
+                (event_type, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def prune_council_runs(
         self,
         *,
