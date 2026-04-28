@@ -109,9 +109,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Phase-3C | BulkPrReview — DispatchPool × council for N-file PR review | `19d3051` | 8 (5 negatives) |
 | Phase-4A | LoopWatcher — deterministic policy_approver gate | `901d81f` | 8 (6 negatives) |
 | Phase-4B | post-commit hook auto-fires LoopWatcher; appends verdict log | `f02f556` | 8 (6 negatives) |
-| Phase-4C | drill-status writer — populates .loop/last_drill_outcome.json | _this commit_ | 8 (6 negatives) |
+| Phase-4C | drill-status writer — populates .loop/last_drill_outcome.json | `f905ae1` | 8 (6 negatives) |
+| Phase-4D | verdict-log replay + opt-in --apply auto-revert | _this commit_ | 8 (6 negatives) |
 
-**Cumulative:** 15 commits this session, 111 drill steps green across 14 board+sidecar+agent+policy drills, 30 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 16 commits this session, 119 drill steps green across 15 board+sidecar+agent+policy drills, 31 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
@@ -125,6 +126,7 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | ~~4A~~ | LoopWatcher — deterministic policy_approver gate (5 rules) | **shipped** in this commit | Phase-3D approver agent | — |
 | ~~4B~~ | post-commit hook auto-fires LoopWatcher; verdict log at .loop/watcher.log | **shipped** in this commit | Phase-4A | install: `scripts/install_loop_watcher_hook.sh` |
 | ~~4C~~ | drill-status writer — populates .loop/last_drill_outcome.json | **shipped** in this commit | Phase-4B | run: `python3 scripts/write_drill_status.py --only-readonly` |
+| ~~4D~~ | verdict-log replay + opt-in `--apply` auto-revert | **shipped** in this commit | Phase-4A | run: `python3 scripts/replay_verdict_log.py [--apply]` |
 | 2A | Git-diff capture (file watcher → auto-classify on commit) | not started | Sidecar-1A | — |
 | 2B | Claude / Codex routes for `architecture` event_type | not started | Sidecar-2D council | needs API keys (gated) |
 | 2F | Council retention policy (purge advisor_council_runs > N days) | not started | Sidecar-2E | none |
