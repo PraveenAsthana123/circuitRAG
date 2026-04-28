@@ -454,6 +454,104 @@ def render_prometheus(summary: dict) -> str:
     return "\n".join(out) + "\n"
 
 
+def render_prometheus_weekly(weekly: dict) -> str:
+    """Emit per-week prom samples — same metrics as render_prometheus,
+    each with an extra `week` label.
+
+    Conventions:
+      * Metric NAMES match the single-window output (council_filter_total,
+        _fired, _filtered, _skipped, _council_errors). Operators can roll
+        up across weeks with `sum without (week) (council_filter_filtered)`.
+      * Zero-padding for KNOWN_FILTERS + standard risks happens PER WEEK
+        that has entries. Weeks with no entries don't appear at all
+        (would create phantom data points in Grafana).
+      * 'unparseable' rows: we emit them under week="unparseable" so
+        operators can see the count and decide whether to fix the
+        upstream timestamp source.
+      * Output rows are deterministic-sorted: newest week first, then
+        risk/reason alphabetical inside each week.
+    """
+    out: list[str] = []
+
+    rows = weekly.get("rows", [])
+    if not rows:
+        # Empty — emit only the metadata blocks so the file is still
+        # scrapable and dashboards don't 404.
+        for metric, help_text in [
+            ("council_filter_total", "Total council_runs.log entries by ISO week."),
+            ("council_filter_fired", "Successful council fires by week + risk level."),
+            ("council_filter_filtered", "Filtered entries by week + canonical filter."),
+            ("council_filter_skipped", "Operator-opt-out entries by week + reason."),
+            ("council_filter_council_errors", "Council errors by week."),
+        ]:
+            out.append(f"# HELP {metric} {help_text}")
+            out.append(f"# TYPE {metric} gauge")
+            out.append("")
+        return "\n".join(out) + "\n"
+
+    # ── total ──
+    out.append("# HELP council_filter_total Total council_runs.log entries by ISO week.")
+    out.append("# TYPE council_filter_total gauge")
+    for r in rows:
+        week_lbl = _prom_escape_label(r["week"])
+        out.append(f'council_filter_total{{week="{week_lbl}"}} {int(r.get("total", 0))}')
+    out.append("")
+
+    # ── fired by risk ──
+    out.append("# HELP council_filter_fired Successful council fires by week + risk level.")
+    out.append("# TYPE council_filter_fired gauge")
+    for r in rows:
+        week_lbl = _prom_escape_label(r["week"])
+        risks = r.get("fired_by_risk", {})
+        seen = set(risks.keys()) | set(_PROM_RISK_LEVELS)
+        for risk in sorted(seen):
+            n = int(risks.get(risk, 0))
+            risk_lbl = _prom_escape_label(risk)
+            out.append(
+                f'council_filter_fired{{week="{week_lbl}",risk="{risk_lbl}"}} {n}'
+            )
+    out.append("")
+
+    # ── filtered by reason ──
+    out.append("# HELP council_filter_filtered Filtered entries by week + canonical filter.")
+    out.append("# TYPE council_filter_filtered gauge")
+    for r in rows:
+        week_lbl = _prom_escape_label(r["week"])
+        reasons = r.get("filtered_by_reason", {})
+        seen = set(reasons.keys()) | set(_PROM_FILTER_BUCKETS)
+        for reason in sorted(seen):
+            n = int(reasons.get(reason, 0))
+            reason_lbl = _prom_escape_label(reason)
+            out.append(
+                f'council_filter_filtered{{week="{week_lbl}",reason="{reason_lbl}"}} {n}'
+            )
+    out.append("")
+
+    # ── skipped by reason (open-ended; observed-only, no zero pad) ──
+    out.append("# HELP council_filter_skipped Operator-opt-out entries by week + reason.")
+    out.append("# TYPE council_filter_skipped gauge")
+    for r in rows:
+        week_lbl = _prom_escape_label(r["week"])
+        reasons = r.get("skipped_by_reason", {})
+        for reason in sorted(reasons.keys()):
+            n = int(reasons[reason])
+            reason_lbl = _prom_escape_label(reason)
+            out.append(
+                f'council_filter_skipped{{week="{week_lbl}",reason="{reason_lbl}"}} {n}'
+            )
+    out.append("")
+
+    # ── council_errors ──
+    out.append("# HELP council_filter_council_errors Council errors by week.")
+    out.append("# TYPE council_filter_council_errors gauge")
+    for r in rows:
+        week_lbl = _prom_escape_label(r["week"])
+        n = int(r.get("council_errors", 0))
+        out.append(f'council_filter_council_errors{{week="{week_lbl}"}} {n}')
+
+    return "\n".join(out) + "\n"
+
+
 def write_prometheus_atomic(path: Path, content: str) -> None:
     """Write `content` to `path` atomically: write `<path>.tmp`, then
     rename. node_exporter's textfile collector has a known race where
@@ -864,17 +962,21 @@ def cli() -> int:
     # data should consume the metrics from a Grafana / Alertmanager
     # rule, not from this script's exit code.
     if args.prometheus:
-        if args.weekly:
-            print("--prometheus uses single-window data; --weekly ignored",
-                  file=sys.stderr)
         if args.json:
             print("--json ignored when --prometheus is set", file=sys.stderr)
         if alert_exprs:
             print("--alert-on ignored when --prometheus is set "
                   "(use Alertmanager on the metrics instead)",
                   file=sys.stderr)
-        summary = summarize(log_path, args.days)
-        prom_text = render_prometheus(summary)
+        if args.weekly:
+            # Phase 5V: per-week labels. Same metric NAMES as the
+            # single-window output so dashboards can roll up via
+            # `sum without (week) (council_filter_filtered)`.
+            weekly = summarize_by_week(log_path, args.weeks)
+            prom_text = render_prometheus_weekly(weekly)
+        else:
+            summary = summarize(log_path, args.days)
+            prom_text = render_prometheus(summary)
         if args.prometheus_out:
             write_prometheus_atomic(Path(args.prometheus_out), prom_text)
             print(f"prometheus: wrote {args.prometheus_out}", file=sys.stderr)
