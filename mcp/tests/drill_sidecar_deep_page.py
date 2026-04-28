@@ -110,18 +110,22 @@ def main():
         )
     ok(f"exactly 2 flowchart diagrams (C4 L1 + L2)")
 
-    # Step 5: 5 sequenceDiagram scenarios (Phase 5S added the
-    # telemetry-pipeline scenario as the 5th).
-    step("5. NEGATIVE: 5 scenario sequenceDiagram blocks")
+    # Step 5: 6 sequenceDiagram scenarios. Phase 5S added the
+    # telemetry-pipeline scenario as the 5th; Phase 5AA added the
+    # self-healing-arc scenario (5S→5Z→5Y verdict-log replay) as
+    # the 6th.
+    step("5. NEGATIVE: 6 scenario sequenceDiagram blocks")
     seq_count = len(re.findall(r"sequenceDiagram", text))
-    if seq_count != 5:
+    if seq_count != 6:
         fail(
-            f"expected 5 scenario sequence diagrams (auto-feed, backlog, "
-            f"verdict-revert, retention, telemetry-pipeline), got {seq_count}. "
-            f"Each represents a distinct operator workflow; dropping one "
-            f"silently reduces coverage. Adding more should bump this drill."
+            f"expected 6 scenario sequence diagrams (auto-feed, backlog, "
+            f"verdict-revert, retention, telemetry-pipeline, self-healing-arc), "
+            f"got {seq_count}. Each represents a distinct operator workflow; "
+            f"dropping one silently reduces coverage. Adding more should bump "
+            f"this drill — and the count should match the scenarios listed in "
+            f"Phase 5AA's ledger entry."
         )
-    ok(f"5 sequenceDiagram blocks (one per scenario, incl. Phase 5S telemetry)")
+    ok(f"6 sequenceDiagram blocks (one per scenario, incl. Phase 5AA self-healing)")
 
     # Step 6: NEGATIVE - concrete class names in diagrams
     step(

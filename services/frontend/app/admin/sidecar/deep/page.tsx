@@ -236,6 +236,31 @@ const SCENARIO_5 = `sequenceDiagram
   UI-->>OP: daily table (deduped, newest first)
   Note over JSONL,UI: 5N writes → 5W exports → 5S renders<br/>same source of truth, three consumption paths`;
 
+const SCENARIO_6 = `sequenceDiagram
+  autonumber
+  actor DEV1 as Iteration 5S
+  participant HOOK as pre-commit hook
+  participant DRILLS as readonly drill suite
+  participant STATUS as last_drill_outcome.json
+  participant POST as post-commit hook
+  participant WATCHER as LoopWatcher rule 1
+  participant LOG as watcher.log
+  actor DEV2 as Iteration 5Z
+  actor DEV3 as Iteration 5Y
+  DEV1->>HOOK: git commit (sidecar/ changes)
+  HOOK->>DRILLS: 5F refresh
+  DRILLS->>STATUS: failed=[deep_page, nextjs_page]
+  Note over HOOK,STATUS: Phase 5F was silent on failures — operator missed it
+  HOOK-->>DEV1: exit 0 (advisory contract preserved)
+  POST->>WATCHER: read STATUS
+  WATCHER->>LOG: verdict=REJECT, rule_fired=1
+  DEV2->>LOG: tail → discover REJECT
+  DEV2->>DRILLS: update assertions (4→5 scenarios; whitelist + telemetry/)
+  DEV2->>STATUS: 53/53 green
+  DEV3->>HOOK: extend with HBR detection (sidecar/, mcp/server*.py, sidecar-advisor/)
+  Note over HOOK,DRILLS: Phase 5Y: future HBR commits<br/>get loud === banner naming failing drills<br/>BEFORE the commit lands
+  DEV3->>STATUS: 54/54 green`;
+
 const CSS = `
 .section { background: white; border-radius: 8px;
   padding: 20px; margin-bottom: 24px;
@@ -341,6 +366,20 @@ export default function SidecarDeepPage() {
             (Grafana / live page / CLI alerts) on one source of truth.
           </p>
           <Mermaid chart={SCENARIO_5} />
+        </div>
+
+        <div className="scenario">
+          <h3>3.6 — Self-healing arc: 5S regression → 5Z fix → 5Y prevention</h3>
+          <p>
+            Phase 5S landed with two pre-existing drills silently failing.
+            LoopWatcher caught it as REJECT in watcher.log; the advisory
+            contract (ADR-014) let the commit land but flagged it. Phase
+            5Z reconciled the drift; Phase 5Y encoded the prevention so
+            the next time a high-blast-radius surface is staged, the
+            pre-commit hook prints a loud banner naming the failing
+            drills BEFORE the commit lands.
+          </p>
+          <Mermaid chart={SCENARIO_6} />
         </div>
       </div>
 
