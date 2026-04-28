@@ -48,7 +48,28 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 DRILL_DIR = REPO / "mcp" / "tests"
-PY_BIN = os.getenv("PYTHON_BIN", "/tmp/documind-venv/bin/python")
+
+
+# Interpreter resolution: prefer the venv that actually has all drill
+# runtime deps. Currently /tmp/documind-venv has them (httpx, asyncpg,
+# etc); the project-resident $REPO/.venv exists but doesn't yet carry
+# every drill dep. Operator flips the order via PYTHON_BIN env once
+# .venv is fully populated.
+# Order: PYTHON_BIN env → /tmp/documind-venv → .venv → sys.executable.
+def _resolve_py_bin() -> str:
+    override = os.environ.get("PYTHON_BIN")
+    if override and Path(override).exists():
+        return override
+    legacy = Path("/tmp/documind-venv/bin/python")
+    if legacy.exists():
+        return str(legacy)
+    repo_venv = REPO / ".venv" / "bin" / "python"
+    if repo_venv.exists():
+        return str(repo_venv)
+    return sys.executable
+
+
+PY_BIN = _resolve_py_bin()
 
 RESOURCE_TAG_RE = re.compile(r"^#\s*RESOURCES\s*:\s*(.+)$", re.MULTILINE)
 RESULT_RE = re.compile(r"ALL\s+(\d+)\s+.*STEPS\s+PASSED")

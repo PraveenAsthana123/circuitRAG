@@ -49,13 +49,28 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_STATUS_PATH = REPO / ".loop" / "last_drill_outcome.json"
 
-# Match run_drills.py's interpreter resolution. drills like
+# Match run_drills.py's interpreter resolution. Drills like
 # drill_tool_catalog_ttl import from `mcp` which needs documind_core
-# on PYTHONPATH. The dev venv at /tmp/documind-venv has it
-# pre-installed; system python doesn't. Fall back to sys.executable
-# only if the venv is missing.
-_VENV_PY = Path(os.environ.get("PYTHON_BIN", "/tmp/documind-venv/bin/python"))
-PY_BIN = str(_VENV_PY) if _VENV_PY.exists() else sys.executable
+# on PYTHONPATH PLUS runtime deps (httpx, asyncpg). Resolution order
+# prefers the venv that actually HAS the deps. Currently that's the
+# legacy /tmp/documind-venv (set up earlier in the project lifetime);
+# the project-resident .venv at $REPO/.venv exists but doesn't yet
+# carry every drill dep. Operator can flip the order via PYTHON_BIN
+# env once .venv is fully populated.
+def _resolve_py_bin() -> str:
+    override = os.environ.get("PYTHON_BIN")
+    if override and Path(override).exists():
+        return override
+    legacy = Path("/tmp/documind-venv/bin/python")
+    if legacy.exists():
+        return str(legacy)
+    repo_venv = REPO / ".venv" / "bin" / "python"
+    if repo_venv.exists():
+        return str(repo_venv)
+    return sys.executable
+
+
+PY_BIN = _resolve_py_bin()
 
 log = logging.getLogger("write_drill_status")
 
