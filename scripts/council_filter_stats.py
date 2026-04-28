@@ -176,6 +176,92 @@ def check_alerts(summary: dict, exprs: list[AlertExpr]) -> list[tuple[AlertExpr,
     return fired
 
 
+# Phase 5R: per-week alert aggregation modes.
+# `each`      = alert fires if ANY week breaches the threshold (strictest)
+# `latest`    = check only the most recent week
+# `aggregate` = roll up to single summary (= no-weekly behavior)
+ALERT_WEEK_MODES = ("each", "latest", "aggregate")
+
+
+def _aggregate_weekly_to_summary(weekly: dict) -> dict:
+    """Collapse a weekly result back into a summarize()-shaped dict.
+    Used by `aggregate` mode so alert evaluation runs against the
+    same shape as single-window summarize()."""
+    rolled = _empty_buckets()
+    for row in weekly.get("rows", []):
+        rolled["total"] += row.get("total", 0)
+        for risk, n in row.get("fired_by_risk", {}).items():
+            rolled["fired_by_risk"][risk] = rolled["fired_by_risk"].get(risk, 0) + n
+        for name, n in row.get("filtered_by_reason", {}).items():
+            rolled["filtered_by_reason"][name] = rolled["filtered_by_reason"].get(name, 0) + n
+        for name, n in row.get("skipped_by_reason", {}).items():
+            rolled["skipped_by_reason"][name] = rolled["skipped_by_reason"].get(name, 0) + n
+        rolled["council_errors"] += row.get("council_errors", 0)
+    return rolled
+
+
+def check_alerts_weekly(
+    weekly: dict,
+    exprs: list[AlertExpr],
+    mode: str = "each",
+) -> list[tuple[AlertExpr, str | None, float]]:
+    """Per-week alert evaluation with aggregation choice. Returns a list
+    of (expr, week_label_or_None, observed_fraction) for every fired
+    alert.
+
+    For `each`: week_label is the breaching week's ISO key (multiple
+        entries possible per expr — one per breached week).
+    For `latest`: week_label is the latest dated week's ISO key.
+    For `aggregate`: week_label is None (the alert is on the rollup,
+        not any individual week).
+
+    `unparseable` rows are skipped in `each` and `latest` (we can't
+    locate them on a timeline) but DO contribute to `aggregate`
+    (the data exists; it just lacks a week tag).
+
+    Empty / no-data weeks never fire (divide-by-zero safe — same
+    contract as check_alerts())."""
+    if mode not in ALERT_WEEK_MODES:
+        raise ValueError(
+            f"alert-week-mode must be one of {ALERT_WEEK_MODES}; got {mode!r}"
+        )
+    rows = weekly.get("rows", [])
+    fired: list[tuple[AlertExpr, str | None, float]] = []
+
+    if mode == "aggregate":
+        rolled = _aggregate_weekly_to_summary(weekly)
+        for expr in exprs:
+            is_fired, observed = expr.evaluate(rolled)
+            if is_fired:
+                fired.append((expr, None, observed))
+        return fired
+
+    # 'each' and 'latest' both work per-row; differ only in WHICH rows.
+    dated = [r for r in rows if r.get("week") != "unparseable"]
+    if mode == "latest":
+        # rows are already newest-first per summarize_by_week; latest = first dated
+        candidates = dated[:1]
+    else:  # each
+        candidates = dated
+
+    for row in candidates:
+        # Build a summarize()-shaped dict from this row so AlertExpr.evaluate
+        # works without modification. The roll-up keys (fired/filtered/skipped)
+        # are already populated by summarize_by_week.
+        row_summary = {
+            "total": row.get("total", 0),
+            "fired_by_risk": row.get("fired_by_risk", {}),
+            "filtered_by_reason": row.get("filtered_by_reason", {}),
+            "skipped_by_reason": row.get("skipped_by_reason", {}),
+            "council_errors": row.get("council_errors", 0),
+        }
+        for expr in exprs:
+            is_fired, observed = expr.evaluate(row_summary)
+            if is_fired:
+                fired.append((expr, row.get("week"), observed))
+    return fired
+
+
 def parse_filter_reason(reason: str) -> str:
     """Extract a canonical filter bucket from a council_runs.log
     'reason' field.
@@ -469,6 +555,13 @@ def cli() -> int:
              "Buckets: filter names, fired, filtered, skipped, "
              "council_errors. Threshold is a 0.0–1.0 fraction.",
     )
+    parser.add_argument(
+        "--alert-week-mode", choices=ALERT_WEEK_MODES, default="each",
+        help="when --weekly is used, choose the aggregation: "
+             "'each' (alert if any week breaches; strictest, default), "
+             "'latest' (most recent week only), "
+             "'aggregate' (rollup; same as no --weekly).",
+    )
     args = parser.parse_args()
 
     # Parse every --alert-on up front so a typo fails fast (before
@@ -495,19 +588,32 @@ def cli() -> int:
         if args.days is not None:
             print("--days is ignored with --weekly; use --weeks N",
                   file=sys.stderr)
-        if alert_exprs:
-            # v1 scope: alerts compare against a single summary. Per-
-            # week alerts would require an aggregation choice (each
-            # week, latest week, average?); we'd rather operators be
-            # explicit. Future Phase 5P could add --alert-on-week.
-            print("--alert-on requires single-window mode (drop --weekly)",
-                  file=sys.stderr)
-            return 1
         weekly = summarize_by_week(log_path, args.weeks)
         if args.json:
             print(json.dumps(weekly, indent=2))
         else:
             print(render_weekly(weekly))
+
+        # Phase 5R: per-week alert evaluation. Three modes share the
+        # same exit/print contract as single-window — report first,
+        # alerts second, exit 1 if any fire.
+        if alert_exprs:
+            fired = check_alerts_weekly(weekly, alert_exprs, args.alert_week_mode)
+            if fired:
+                for expr, week, observed in fired:
+                    week_tag = f"week {week} " if week else ""
+                    print(
+                        f"ALERT: {expr.raw} "
+                        f"({week_tag}{expr.bucket}={observed:.3f} "
+                        f"vs threshold {expr.threshold})",
+                        file=sys.stderr,
+                    )
+                return 1
+            print(
+                f"alerts: {len(alert_exprs)} expression(s) all passed "
+                f"(mode={args.alert_week_mode})",
+                file=sys.stderr,
+            )
         return 0
 
     summary = summarize(log_path, args.days)
