@@ -31,6 +31,62 @@ This file composes with:
 
 ---
 
+## 1.5. Comprehensive proposed-approvals matrix
+
+> Every action the loop *might* want to take, with explicit disposition. The `policy_approver` agent (registered in `services/sidecar-advisor/agents/policy_approver.py`) consults this table before allowing the next iteration to proceed.
+
+| # | Action | Disposition | Why | What unblocks (if not already approved) |
+|---|---|---|---|---|
+| 1 | Add Python files under `services/sidecar-advisor/`, `libs/py/documind_core/`, `mcp/tests/`, `scripts/`, `docs/` | **pre-approved** | Day-zero scope; never touches other teams | — |
+| 2 | Add new agent files under `services/sidecar-advisor/agents/<name>.py` (roles: author/reviewer/advisor/approver) | **pre-approved** | New agents append; `ALL_AGENTS` ordering preserved; drill enforces | — |
+| 3 | Add new SQLite migrations under `services/sidecar-advisor/migrations/NNN_*.sql` (idempotent `CREATE TABLE IF NOT EXISTS`) | **pre-approved** | Local DB, idempotent; never touches prod | — |
+| 4 | Add new drills under `mcp/tests/drill_*.py` with `# RESOURCES:` tag + ≥1 negative | **pre-approved** | §43 drill discipline; tier classification enforced by meta-drill | — |
+| 5 | Edit/delete drills | **gated** | Removing a drill removes a regression-catch; needs review | Operator says "drop drill X" |
+| 6 | Pull Ollama models from trusted registry (codellama, deepseek-coder, starcoder2, codegemma, mistral, qwen, nomic-embed-text) | **pre-approved** | Free; local disk only; sized to ≤ 10GB per model | — |
+| 7 | Pull cloud-only Ollama models (`*-cloud` tags, e.g. kimi-k2) | **gated** | Needs Ollama Cloud subscription + token cost | Operator signs into Ollama Cloud |
+| 8 | `pip install --user --break-system-packages <pkg>` for already-pinned deps (httpx, pyyaml, prometheus_client) | **pre-approved** | Already in some service's requirements.txt | — |
+| 9 | Add a NEW top-level dep not already required by any service | **gated** | Dependency surface widens; needs reasoned doc | Operator OKs the dep |
+| 10 | Edit Markdown anywhere (READMEs, ADRs, this file, `~/.claude/policies/`, skill files) | **pre-approved** | Documentation is part of the loop output | — |
+| 11 | `git mv` files within the repo | **pre-approved** | Renames preserve history; drills updated in same commit | — |
+| 12 | `git commit` with `Co-Authored-By: Claude` trailer | **pre-approved** | Per §42 autonomous policy | — |
+| 13 | `git push` to remote | **gated** | External effect; affects shared state | Operator runs `git push` themselves OR explicitly authorizes |
+| 14 | `git push --force` | **never** | Destructive; can rewrite shared history | Operator does it manually |
+| 15 | `git reset --hard`, `git clean -fd`, branch deletion | **gated** | Destructive; can lose work | Explicit operator request |
+| 16 | `git commit --no-verify` (skip pre-commit hooks) | **never** | Subverts §43 drill gate | — |
+| 17 | Modify `.github/workflows/*.yml` | **gated** | CI infra; affects every PR | Operator OKs the change |
+| 18 | Edit `services/governance-svc/`, `services/frontend/`, `services/identity-svc/` | **gated** | Other-team-owned surfaces | Explicit operator task targeting that service |
+| 19 | Edit `services/inference-svc/app/agents/multi_hop_*.py` | **pre-approved** | Co-owned with this loop's work | — |
+| 20 | Spawn background processes via `run_in_background: true` (model pulls, builds) | **pre-approved** | Bounded by explicit timeout | — |
+| 21 | Spawn long-running daemons (Postgres, Redis, Kafka brokers) | **gated** | Affects ports + system state | Operator OKs |
+| 22 | `sudo` anything | **gated** | Out-of-scope per §42 | Operator runs the command themselves |
+| 23 | `rm -rf` on directories outside `/tmp/` and `/mnt/deepa/rag/.runtime/` | **never** | Destructive; can delete user data | — |
+| 24 | Modify files outside `/mnt/deepa/rag/` (e.g. `/home/`, `/opt/`, system files) | **gated** | Scope explicitly bounded to repo | Explicit operator file path |
+| 25 | Modify `~/.claude/policies/*.md` (global Claude policies) | **pre-approved** | Markdown edits are pre-approved per §42 | — |
+| 26 | Modify `~/.claude/CLAUDE.md` (user's private global instructions) | **gated** | Persists across all projects | Explicit operator request |
+| 27 | Read sensitive files (`.env`, credentials, `~/.ssh/`, `*.key`) | **never** | PII / secrets risk per §4.5 | — |
+| 28 | Send HTTP requests to public endpoints (registry, GitHub API, npm, pypi) | **pre-approved** | Read-only metadata; no auth tokens | — |
+| 29 | Send HTTP requests to authenticated endpoints (private API, paid services) | **gated** | Cost / external state | Operator provides credential + scope |
+| 30 | Run drills that hit the production database | **never** | Per §42; production is read-only by default | — |
+| 31 | Modify production Postgres (any environment marked `prod=true`) | **never** | Per §42 | — |
+| 32 | Operate on `advisor.db` (Sidecar Advisor's local SQLite) — read, write, migrate, vacuum | **pre-approved** | Local-only; not shared state | — |
+| 33 | Generate or modify cryptographic keys (Fernet, JWT secrets) | **gated** | Affects auth surface | Operator-supplied |
+| 34 | Add a 5th agent role beyond `author/reviewer/advisor/approver` | **gated** | Role enum is the council's contract | Scope-extension log entry |
+| 35 | Run mass-data operations on `advisor.db` (DELETE FROM, TRUNCATE) | **pre-approved** | Local-only; reversible | — |
+| 36 | Ship a feature without a drill (§43 violation) | **never** | Drill discipline non-negotiable | — |
+| 37 | Same-file commits 3+ iterations in a row (§44.6 red flag) | **gated** | Loop-thrashing signal | Pause + plan iteration |
+| 38 | Skip `record_step` / metrics / audit-row write on AgentBoard runs | **never** | §38 governance — every AI decision auditable | — |
+| 39 | Issue a "release" / version-bump tag | **gated** | Externally-visible | Operator runs the tag command |
+| 40 | Open external network connection to LLM provider (OpenAI, Anthropic, etc.) | **gated** | Cost; auth | Operator provides API key |
+
+**Disposition values:**
+- `pre-approved` — loop may proceed without asking
+- `gated` — loop logs a scope-extension request in §7 and yields
+- `never` — loop refuses; surfaces "this is never autonomous" to operator
+- `pending` — proposed but not yet decided (no row currently uses this; reserved for future proposals)
+- `denied` — explicitly refused by operator (no row currently uses this)
+
+---
+
 ## 2. The pending ledger
 
 Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), `drills` (lock count), `blockers`, and `composes_with`.
@@ -48,9 +104,10 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Policy-1 | NEXT_POLICY ledger + Kimi K2 cloud-tier catalogue | `058f22c` | docs only |
 | Phase-3A | multi_hop_agent parallel sub-question fanout | `adc618c` | 8 (6 negatives) |
 | Phase-3B | DispatchPool — 100+ task fanout w/ bounded LLM concurrency | `ae06ded` | 8 (6 negatives) |
-| Phase-3D | agents/ registry — 6 first-class agents (incl. policy_approver) | _this commit_ | 8 (5 negatives) |
+| Phase-3D | agents/ registry — 6 first-class agents (incl. policy_approver) | `069b7ed` | 8 (5 negatives) |
+| Phase-3E | NEXT_POLICY 40-row proposed-approvals matrix + structure drill | _this commit_ | 8 (5 negatives) |
 
-**Cumulative:** 10 commits this session, 71 drill steps green across 9 board+sidecar+agent drills, 25 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 11 commits this session, 79 drill steps green across 10 board+sidecar+agent+policy drills, 26 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
