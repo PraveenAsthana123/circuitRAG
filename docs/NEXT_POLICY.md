@@ -17,7 +17,8 @@ This file composes with:
 
 | Area | Pre-approved | Gated (asks first) |
 |---|---|---|
-| **Code in `/mnt/deepa/rag/`** | Edit, refactor, add files within `services/sidecar-advisor/`, `services/inference-svc/app/agents/`, `libs/py/documind_core/`, `mcp/tests/`, `docs/`, `scripts/` | Edits to `services/governance-svc/`, `services/frontend/`, `services/identity-svc/` (other-team-owned surfaces) — ask if scope unclear |
+| **Code in `/mnt/deepa/rag/`** | Edit, refactor, add files within `services/sidecar-advisor/` (incl. new `agents/` subdir), `services/inference-svc/app/agents/`, `libs/py/documind_core/`, `mcp/tests/`, `docs/`, `scripts/` | Edits to `services/governance-svc/`, `services/frontend/`, `services/identity-svc/` (other-team-owned surfaces) — ask if scope unclear |
+| **Agent registry** | Add new agents under `services/sidecar-advisor/agents/<name>.py` exporting `AGENT = CoderAgent(...)`. Allowed roles: `author`, `reviewer`, `advisor`, `approver`. The registry's `__init__.py` is the single source of truth — every new agent appends to `ALL_AGENTS` (never reorder). | Adding a new ROLE category (5th role) — needs scope extension log |
 | **Drills (§43)** | Add new `mcp/tests/drill_*.py` with `# RESOURCES:` tag + ≥1 negative assertion | Removing existing drills |
 | **Ollama models** | `ollama pull` from the trusted registry (deepseek, codellama, starcoder, codegemma, qwen, mistral) | Models requiring Ollama Cloud subscription / external API keys |
 | **Local dependencies** | `pip install --user --break-system-packages` for already-pinned packages (prometheus_client, pyyaml, httpx) | New top-level deps not already required by some service |
@@ -46,18 +47,21 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | Sidecar-2E | Council telemetry → audit table | `ca4115a` | 8 (5 negatives) |
 | Policy-1 | NEXT_POLICY ledger + Kimi K2 cloud-tier catalogue | `058f22c` | docs only |
 | Phase-3A | multi_hop_agent parallel sub-question fanout | `adc618c` | 8 (6 negatives) |
-| Phase-3B | DispatchPool — 100+ task fanout w/ bounded LLM concurrency | _this commit_ | 8 (6 negatives) |
+| Phase-3B | DispatchPool — 100+ task fanout w/ bounded LLM concurrency | `ae06ded` | 8 (6 negatives) |
+| Phase-3D | agents/ registry — 6 first-class agents (incl. policy_approver) | _this commit_ | 8 (5 negatives) |
 
-**Cumulative:** 9 commits this session, 63 drill steps green across 8 board+sidecar+agent drills, 24 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
+**Cumulative:** 10 commits this session, 71 drill steps green across 9 board+sidecar+agent drills, 25 zero-infra drills total in tier 1, 4 catalogued Ollama coder models locally installed (+ Kimi K2 documented as cloud tier).
 
 ### Queued (autonomous loop picks from here)
 
 | ID | Title | Status | Composes with | Blocker |
 |---|---|---|---|---|
 | ~~3A~~ | `multi_hop_agent` parallel sub-query fanout | **shipped** in this commit | inference-svc | — |
-| ~~3B~~ | DispatchPool — 100+ task fanout with bounded LLM concurrency | **shipped** in this commit | AgentBoard + Sidecar council | — |
+| ~~3B~~ | DispatchPool — 100+ task fanout with bounded LLM concurrency | **shipped** `ae06ded` | AgentBoard + Sidecar council | — |
+| ~~3D~~ | agents/ registry — first-class agent files; policy_approver added | **shipped** in this commit | Sidecar-2D | — |
 | 1B | Sidecar **Next.js** UI (paste box → Review → Rate → audit history) | not started — uses existing `services/frontend/` App Router pattern | Sidecar-1A | — |
 | 3C | Wire DispatchPool to Sidecar council for bulk PR-file review | not started | Phase-3B + Sidecar-2D | — |
+| 4A | Wire policy_approver to live commit watcher (auto-gate next iteration) | not started | Phase-3D approver agent | — |
 | 2A | Git-diff capture (file watcher → auto-classify on commit) | not started | Sidecar-1A | — |
 | 2B | Claude / Codex routes for `architecture` event_type | not started | Sidecar-2D council | needs API keys (gated) |
 | 2F | Council retention policy (purge advisor_council_runs > N days) | not started | Sidecar-2E | none |
@@ -157,7 +161,7 @@ When the loop wants to do something outside section 1's pre-approved scope, it l
 
 | Date | Request | Disposition |
 |---|---|---|
-| _none yet_ | | |
+| 2026-04-28 | Add `approver` as a 4th agent role (`policy_approver` watches the loop). User explicitly requested "one agent must track this and approve" + "if something missing the update the approval policy and go ahead". | **Granted in §1 inline** — `agents/` row now lists `approver` as a pre-approved role; landed in this commit (`Phase-3D`). |
 
 ---
 

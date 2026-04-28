@@ -68,69 +68,57 @@ make_agent = _ab.make_agent
 GenerateFn = Callable[[str, str, float], Awaitable[str]]
 
 
-# ── Role catalogue ──────────────────────────────────────────────
-# Each role pairs a prompt template with the recommended model.
-# A council instance can override the model assignments via
-# `model_overrides` if a heavier model is locally available.
+# ── Role catalogue (now sourced from agents/ registry) ──────────
+# Pre-Phase-3D: the three author roles + reviewer + advisor were
+# hard-coded as module constants here. That made "where is the
+# code reviewer agent?" answer with "grep through council.py" —
+# not a discoverable structure.
+#
+# Now: each role lives in its own file under agents/, exported via
+# the registry. Council reads ROLE_AUTHORS / REVIEWER / ADVISOR by
+# walking the registry — adding a new agent is one new file +
+# one __init__.py edit, not a council.py edit.
+try:
+    from .agents import (
+        ALL_AGENTS as _REGISTRY,
+        CHAIR as _CHAIR,
+        CONSISTENCY_CHECK as _REVIEWER_AGENT,
+        by_role as _by_role,
+    )
+except ImportError:
+    # Drill harness fallback: when council.py is loaded via
+    # importlib without a package context, the relative `from
+    # .agents` doesn't resolve. Resolve by file path instead — the
+    # same pattern advisor.py uses for distillation.
+    import importlib.util
+    from pathlib import Path
+    _agents_init = Path(__file__).parent / "agents" / "__init__.py"
+    _spec = importlib.util.spec_from_file_location(
+        "_sidecar_agents_fallback",
+        _agents_init,
+        submodule_search_locations=[str(_agents_init.parent)],
+    )
+    _mod = importlib.util.module_from_spec(_spec)
+    sys.modules["_sidecar_agents_fallback"] = _mod
+    _spec.loader.exec_module(_mod)
+    _REGISTRY = _mod.ALL_AGENTS
+    _CHAIR = _mod.CHAIR
+    _REVIEWER_AGENT = _mod.CONSISTENCY_CHECK
+    _by_role = _mod.by_role
+
+
+# Adapt the registry into the (model, prompt) shape the existing
+# build_board() code consumes. Going forward, add new authors by
+# dropping a file in agents/ — no edit needed here.
 ROLE_AUTHORS: dict[str, tuple[str, str]] = {
-    "code_reviewer": (
-        "deepseek-coder:6.7b-instruct",
-        # Prompt — instruct-style, one focused angle.
-        "You are the Code Reviewer. Review ONLY the code below for "
-        "bugs, edge cases, code-style issues, and missing input "
-        "validation. Focus on correctness, NOT security or tests "
-        "— other reviewers cover those. Reply with ONE paragraph.\n\n"
-        "Code:\n{content}\n\nReview:",
-    ),
-    "security_auditor": (
-        "codellama:7b-instruct",
-        "You are the Security Auditor. Review ONLY for security "
-        "issues: hardcoded secrets, missing auth checks, injection "
-        "(SQL / shell / template), unsafe deserialisation, missing "
-        "input sanitisation. Focus ONLY on security — other "
-        "reviewers cover correctness and tests. Reply with ONE "
-        "paragraph.\n\n"
-        "Code:\n{content}\n\nReview:",
-    ),
-    "test_advisor": (
-        "codegemma:7b-instruct",
-        "You are the Test Advisor. Review ONLY for testability and "
-        "test coverage: missing edge cases, untested error paths, "
-        "missing assertions, fragile fixtures. Focus ONLY on "
-        "tests — other reviewers cover bugs and security. Reply "
-        "with ONE paragraph.\n\n"
-        "Code:\n{content}\n\nReview:",
-    ),
+    a.name: (a.model, a.prompt_template) for a in _by_role("author")
 }
 
-REVIEWER_MODEL = "starcoder2:7b"
-REVIEWER_PROMPT_OVERRIDE = (
-    "Score the draft review below for relevance and concreteness. "
-    "Give a SCORE from 0-10 where 10 = highly actionable + "
-    "specific to the code, 0 = vague or off-topic. "
-    "End the response with 'SCORE: <integer 0-10>'.\n\n"
-    "Code being reviewed:\n{task}\n\n"
-    "Draft review:\n{draft_text}\n\n"
-    "Critique + score:"
-)
+REVIEWER_MODEL = _REVIEWER_AGENT.model
+REVIEWER_PROMPT_OVERRIDE = _REVIEWER_AGENT.prompt_template
 
-ADVISOR_MODEL = "deepseek-coder:6.7b-instruct"
-ADVISOR_PROMPT_OVERRIDE = (
-    "You are the Chair of a code-review board. Three specialist "
-    "reviewers each wrote a one-paragraph review of the SAME code; "
-    "a fourth reviewer scored each draft. Synthesise into a SINGLE "
-    "JSON object with the top-3 most-important actions for the "
-    "developer.\n\n"
-    "Reply with JSON ONLY in this shape:\n"
-    "{{\"summary\": str (1 sentence), \"risk_level\": "
-    "\"LOW|MEDIUM|HIGH\", \"top_3_advice\": [str, str, str], "
-    "\"better_prompt_or_code\": str (suggested fix snippet), "
-    "\"next_action\": str, \"confidence\": float between 0 and 1}}\n\n"
-    "Code:\n{task}\n\n"
-    "{drafts_block}\n\n"
-    "{reviews_block}\n\n"
-    "JSON:"
-)
+ADVISOR_MODEL = _CHAIR.model
+ADVISOR_PROMPT_OVERRIDE = _CHAIR.prompt_template
 
 
 # ── Council ─────────────────────────────────────────────────────
