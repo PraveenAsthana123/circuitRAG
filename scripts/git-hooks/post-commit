@@ -1,14 +1,32 @@
 #!/bin/bash
-# Post-commit hook: invokes the LoopWatcher advisory check.
+# Post-commit hook: invokes both Phase 4B (LoopWatcher) + Phase 2A2
+# (capture_and_review). Both are advisory; both exit 0 always.
 #
-# Always exits 0 - post-commit hooks can't block anyway, and the
-# watcher is advisory. Verdict is appended to .loop/watcher.log
-# for the operator + downstream loop iterations to consult.
+# Outputs:
+#   .loop/watcher.log      - per-commit APPROVE/HOLD/REJECT verdict
+#   .loop/council_runs.log - per-commit council outcome (when diff
+#                            isn't filtered out by is_likely_pr_review)
 #
-# Install: from repo root, run `scripts/install_loop_watcher_hook.sh`
+# Install: `scripts/install_loop_watcher_hook.sh`
 # Or manually: `git config core.hooksPath scripts/git-hooks`
+#
+# Skip the council on a fresh-repo bootstrap (CAPTURE_NO_COUNCIL=1
+# in env). Operator runs `CAPTURE_NO_COUNCIL=1 git commit ...` for
+# fast bootstrap commits before Ollama is up.
 set -e
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Phase 4B - LoopWatcher verdict log
 python3 "$REPO_ROOT/scripts/loop_watcher_hook.py" --print 2>&1 || true
+
+# Phase 2A2 - council auto-feed. Default: fire the council if
+# Ollama is reachable; --no-council fallback in the script handles
+# Ollama-unavailable cases.
+CAP_FLAGS=""
+if [ -n "${CAPTURE_NO_COUNCIL:-}" ]; then
+    CAP_FLAGS="--no-council"
+fi
+python3 "$REPO_ROOT/scripts/capture_and_review.py" $CAP_FLAGS 2>&1 || true
+
 exit 0
