@@ -217,6 +217,23 @@ class Advisor:
         # not retrofitted onto callers who haven't built the memory.
         self._memory = memory
 
+    def record_rating(self, *, event_id: int, rating: str) -> bool:
+        """Persist a user rating for an existing advisor event.
+
+        This is the advisor-level write contract used by sidecar/admin
+        surfaces. It intentionally stays within the Phase 1 schema:
+
+        - stored fields: ``user_rating`` + ``rated_at``
+        - accepted values: ``useful`` or ``not_useful``
+
+        Richer review metadata such as actor id / notes requires an
+        explicit schema extension and is intentionally not smuggled
+        through this method.
+        """
+        if self._memory is None:
+            raise RuntimeError("advisor memory is not configured")
+        return self._memory.rate_event(event_id, rating)
+
     async def review(
         self, *, event_type: str, content: str,
     ) -> tuple[AdvisorOutput | None, str | None, str, float, dict | None]:

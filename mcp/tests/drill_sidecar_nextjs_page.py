@@ -164,7 +164,13 @@ def main():
     #   sidecar/page.tsx                 (Phase 1B - static dashboard embed)
     #   sidecar/deep/page.tsx            (Phase 5B - C4 + scenario diagrams)
     #   sidecar/telemetry/page.tsx       (Phase 5S - daily snapshot live view)
-    allowed_relative = {"page.tsx", "deep/page.tsx", "telemetry/page.tsx"}
+    #   sidecar/[eventId]/page.tsx       (Phase 1B-2 event drill-down)
+    allowed_relative = {
+        "page.tsx",
+        "deep/page.tsx",
+        "telemetry/page.tsx",
+        "[eventId]/page.tsx",
+    }
     actual_relative = {
         str(f.relative_to(sidecar_dir)) for f in files
     }
@@ -172,8 +178,8 @@ def main():
     if extra:
         fail(
             f"files outside §7-granted paths: {extra}. The grant "
-            f"covers sidecar/page.tsx, sidecar/deep/page.tsx, and "
-            f"sidecar/telemetry/page.tsx only. "
+            f"covers sidecar/page.tsx, sidecar/deep/page.tsx, "
+            f"sidecar/telemetry/page.tsx, and sidecar/[eventId]/page.tsx only. "
             f"Adding more needs another scope-extension entry in §7."
         )
     if "page.tsx" not in actual_relative:

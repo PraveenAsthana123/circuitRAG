@@ -244,4 +244,5 @@ mcp/tests/drill_*.py               # drill catalog (150 total, 82 tier-1 readonl
 - **`docs/architecture/adr/019-graceful-degradation-of-loop-tooling.md`** (ADR-019) — every operator-facing script must handle 5 failure modes gracefully (missing input file, bad timestamp, malformed JSON, daemon transient state, missing executable); operator-facing UX rule: one-line stderr explanation per degradation event
 - **`docs/architecture/adr/020-parallel-tool-commit-drill-audit.md`** (ADR-020) — every parallel-tool-authored commit (per ADR-018) must trigger a drill-audit pass within ≤2 autonomous-loop iterations; audit checks drill existence + negative assertion + convention compliance + project-rule audit (no hardcoded URLs, pinned deps, parameterized SQL); paydown ratchet pattern per ADR-015
 - **`docs/runbooks/council-telemetry.md`** — the deeper runbook for the 5K-5BB telemetry surface
+- **`docs/runbooks/agentic-control-plane.md`** — focused runbook for the normalized agentic project/task/approval/memory chain and the `/admin/agentic/control-plane` UI
 - **`docs/NEXT_POLICY.md`** — the session ledger; every phase entry includes drill score

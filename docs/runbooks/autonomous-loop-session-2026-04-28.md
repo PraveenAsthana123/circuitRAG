@@ -31,6 +31,7 @@ Cheatsheet → meta-drill → parallel-agent cleanup → ratchet pattern
 Most operator-visible artifacts:
 
 * `docs/runbooks/autonomous-loop-cheatsheet.md` — session-wide reference
+* `docs/runbooks/agentic-control-plane.md` — focused control-plane runbook for normalized agentic state
 * `mcp/tests/drill_drill_catalog_discipline.py` — meta-drill enforcing §43
 * `scripts/prune_loop_logs.py` — JSONL retention companion to 2F
 
@@ -177,6 +178,9 @@ to do this" to "scripts MUST do this."
   reference; cheatsheet survives, this retrospective is dated.
 * **`docs/runbooks/council-telemetry.md`** — deeper dive for
   the 5K-5BB telemetry surface.
+* **`docs/runbooks/agentic-control-plane.md`** — focused runbook
+  for the normalized project/task/run/approval/memory surfaces and
+  the `/admin/agentic/control-plane` UI.
 * **`docs/NEXT_POLICY.md`** — the per-iteration ledger;
   retrospective abstracts; ledger is authoritative.
 * **`docs/architecture/adr/014..019-*.md`** — six ADRs naming the

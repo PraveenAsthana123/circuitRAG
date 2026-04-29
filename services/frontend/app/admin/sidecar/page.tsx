@@ -23,6 +23,9 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import Link from 'next/link';
+
+import { listRecentSidecarEvents } from '@/lib/sidecar';
 
 const DASHBOARD_PATH = path.resolve(
   process.cwd(),
@@ -52,14 +55,124 @@ async function readDashboardHtml(): Promise<string> {
   }
 }
 
-export default async function SidecarDashboardPage() {
+function ratingMessage(status: string | string[] | undefined): string | null {
+  if (status === 'saved') return 'Rating saved to advisor.db.';
+  if (status === 'missing') return 'Event not found in advisor.db.';
+  if (status === 'invalid') return 'Invalid sidecar rating request.';
+  if (status === 'failed') return 'Rating request failed.';
+  return null;
+}
+
+type SidecarDashboardPageProps = {
+  searchParams?: {
+    rating?: string | string[];
+  };
+};
+
+export default async function SidecarDashboardPage({ searchParams }: SidecarDashboardPageProps) {
   const html = await readDashboardHtml();
+  const events = await listRecentSidecarEvents(12);
+  const flash = ratingMessage(searchParams?.rating);
   // Server-rendered, static; no XSS surface here because
   // render_dashboard.py html.escape()s every user-content cell.
   // The drill (drill_render_dashboard.py step 6) verifies this.
   return (
     <div className="sidecar-dashboard-frame">
       <div dangerouslySetInnerHTML={{ __html: html }} />
+      <section
+        id="live-ratings"
+        style={{
+          marginTop: 24,
+          padding: 20,
+          border: '1px solid #d7dde5',
+          borderRadius: 16,
+          background: '#fbfcfd',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'baseline' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22 }}>Live event ratings</h2>
+            <p style={{ margin: '8px 0 0', color: '#54606c' }}>
+              Rate recent advisor events directly from the sidecar surface. This writes
+              <code style={{ marginLeft: 4 }}>user_rating</code>
+              into
+              <code style={{ marginLeft: 4 }}>advisor.db</code>.
+            </p>
+          </div>
+          <a href="/admin/sidecar/deep" style={{ color: '#0b63ce', fontWeight: 600 }}>
+            Deep dive
+          </a>
+        </div>
+        {flash ? (
+          <p
+            style={{
+              marginTop: 16,
+              padding: '10px 12px',
+              borderRadius: 10,
+              background: flash === 'Rating saved to advisor.db.' ? '#e9f8ef' : '#fff4e5',
+              color: '#243341',
+            }}
+          >
+            {flash}
+          </p>
+        ) : null}
+        {events.length === 0 ? (
+          <p style={{ marginTop: 16, color: '#54606c' }}>
+            No advisor events found yet. Run the sidecar capture flow first.
+          </p>
+        ) : (
+          <div style={{ overflowX: 'auto', marginTop: 16 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '1px solid #d7dde5' }}>
+                  <th style={{ padding: '10px 8px' }}>When</th>
+                  <th style={{ padding: '10px 8px' }}>Type</th>
+                  <th style={{ padding: '10px 8px' }}>Source</th>
+                  <th style={{ padding: '10px 8px' }}>Preview</th>
+                  <th style={{ padding: '10px 8px' }}>Rating</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((event) => {
+                  const rated = event.user_rating === 'useful' || event.user_rating === 'not_useful';
+                  return (
+                    <tr key={event.id} style={{ borderBottom: '1px solid #edf1f5', verticalAlign: 'top' }}>
+                      <td style={{ padding: '12px 8px', whiteSpace: 'nowrap' }}>{event.created_at}</td>
+                      <td style={{ padding: '12px 8px' }}>{event.event_type}</td>
+                      <td style={{ padding: '12px 8px' }}>{event.source}</td>
+                      <td style={{ padding: '12px 8px', minWidth: 320, color: '#37414b' }}>
+                        <Link href={`/admin/sidecar/${event.id}`} style={{ color: '#0b63ce', fontWeight: 600 }}>
+                          Event #{event.id}
+                        </Link>
+                        <div style={{ marginTop: 6 }}>{event.content_preview}</div>
+                      </td>
+                      <td style={{ padding: '12px 8px', minWidth: 180 }}>
+                        {rated ? (
+                          <div>
+                            <strong>{event.user_rating === 'useful' ? 'Useful' : 'Not useful'}</strong>
+                            {event.rated_at ? <div style={{ color: '#6a7682', marginTop: 4 }}>{event.rated_at}</div> : null}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <form action={`/api/v1/sidecar/events/${event.id}/rating`} method="post">
+                              <input type="hidden" name="rating" value="useful" />
+                              <button type="submit">Useful</button>
+                            </form>
+                            <form action={`/api/v1/sidecar/events/${event.id}/rating`} method="post">
+                              <input type="hidden" name="rating" value="not_useful" />
+                              <button type="submit">Not useful</button>
+                            </form>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
