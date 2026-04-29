@@ -65,6 +65,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 DRILL_DIR = REPO / "mcp" / "tests"
 
+# Module-level ratchets, lifted from function-local scope (Phase 7X)
+# so drill_drift_volume_meta and operator review can see them. Both
+# were paid down to empty in Phase 6C / 6D — keeping the named
+# constants is intentional: they document the ratchet shape and
+# fire if drift recurs.
+KNOWN_MISSING: set[str] = set()
+KNOWN_MISSING_NEG_MARKER: set[str] = set()
+
 
 def _drill_files() -> list[Path]:
     """Return every mcp/tests/drill_*.py except this meta-drill itself."""
@@ -89,11 +97,11 @@ def main() -> int:
     # on line 2; others embed it later). The runner's parser handles
     # any position. Phase 6C swept the original 23 grandfathered
     # drills, adding sensible tags via parallel agents; the
-    # KNOWN_MISSING ratchet is now empty. If a future drill ships
-    # without a tag, this step fires — and the right response is to
-    # add the tag in that drill's own commit, not to grow the
-    # grandfathered set.
-    KNOWN_MISSING: set[str] = set()
+    # KNOWN_MISSING ratchet is now empty (paid down in Phase 6C).
+    # Defined at module level above for drift-volume meta-drill
+    # visibility. If a future drill ships without a tag, this step
+    # fires — the right response is to add the tag in that drill's
+    # own commit, not to grow the grandfathered set.
     missing_resource_tag = []
     for p in drills:
         body = p.read_text()
@@ -206,13 +214,12 @@ def main() -> int:
     # least require the docstring mention them — operators reading
     # `--list` should see the negative-step count or a marker.
     #
-    # Phase 6D ratchet: 34 pre-existing drills lack the marker but
-    # likely DO have negative assertions; mechanically slapping
-    # "negative" in their docstrings without verifying would be
-    # dishonest. Grandfather them in KNOWN_MISSING_NEG_MARKER.
-    # New drills must include the marker; old drills can be uplifted
-    # organically when their owner next touches them.
-    KNOWN_MISSING_NEG_MARKER: set[str] = set()
+    # Phase 6D ratchet: was 34 pre-existing drills lacking the
+    # marker; paid down to empty. KNOWN_MISSING_NEG_MARKER is now
+    # defined at module level above (Phase 7X) for drift-volume
+    # meta-drill visibility. New drills must include the marker;
+    # if an old drill regresses, this step fires and the right
+    # response is to add the marker, not to grow the set.
     no_negative_mention = []
     for p in drills:
         body = p.read_text()
