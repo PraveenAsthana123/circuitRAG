@@ -540,6 +540,538 @@ async def handle_tool_call(req: ToolCallRequest, tools: dict[str, Tool], idem: I
     ],
     interviewLine: 'We convert dependency failures into governed pending state instead of losing the action. CircuitBreaker fails fast; DraftStore preserves intent; ReplayWorker resolves async. The three together are the resilience system.',
   },
+  {
+    slug: 'mcp-feature',
+    title: '3. MCP feature surface (what it gives operators)',
+    status: 'shipped',
+    coreConcept: 'MCP is the project\'s tool-call boundary: every agent-callable action goes through a single contract that ships scope enforcement, idempotency, audit, draft fallback, OTel traces, and per-tool metrics for free — domain teams write only dispatch code.',
+    oneLiner: 'One contract. Six guarantees. Every namespace inherits them; no namespace re-implements them.',
+    businessContext: 'Without a uniform tool-call boundary, every domain (HR, ITSM, drill, finance) ends up reinventing auth + idempotency + audit + observability — and one missed primitive becomes a leak, a duplicate, or an undetected outage. MCP collapses six cross-cutting concerns into a single shared layer.',
+    fiveW: {
+      what: 'A shared tool-call contract: POST /tools/list returns the namespace catalog (name + required_scopes + JSON schema); POST /tools/call executes one tool with JWT-checked scopes, Postgres-backed idempotency, hash-chained audit, OTel spans, Prometheus histograms, and HITL-draft fallback when a downstream is unavailable.',
+      why: 'Six guarantees compose into one wire format. Domain teams cannot accidentally skip scope checks or audit writes — the shared layer enforces them before dispatch reaches the handler.',
+      where: 'Surface lives in mcp/ at the repo root (deliberately decoupled from documind_core so the package is portable). Servers per namespace in mcp/server_<ns>.py; client in mcp/client.py.',
+      when: 'Any agent-executable action: HR user creation, ITSM ticket open, drill run, finance op. The default path for "agent wants to do something" is "agent calls an MCP tool".',
+      who: 'Platform team owns mcp/server_common.py + the contract. Domain teams own per-namespace dispatch tables. Security reviews scope-table changes.',
+    },
+    interview30s: 'MCP gives the agent layer six things in one wire format: scope-checked execution, durable idempotency, hash-chained audit, draft fallback when upstream is down, full OTel tracing, and per-tool Prometheus metrics. Adding a namespace is ~50 lines of dispatch code, not a security review. The contract is ~120 lines in server_common.handle_tool_call; everything else is namespace logic. The drill catalog (drill_tool_catalog_ttl, drill_mcp_server_scope, drill_mcp_idempotency_replay, drill_worker_cb_aware) locks each guarantee.',
+    coreBuildingBlocks: [
+      'Scope enforcement — JWT roles ∩ tool.required_scopes; deny → 403 with scope_required',
+      'Idempotency — Postgres mcp_idempotency: new/in_progress/done/conflict states; dedupe by Idempotency-Key',
+      'Audit — hash-chained governance.audit_log row per tool call; fail_closed on write failure',
+      'Draft fallback — when CB on a downstream opens, persist a draft instead of failing the action',
+      'OTel traces — every tool call is a span with namespace + tool + outcome attributes',
+      'Per-tool metrics — tool_calls_total{ns,tool,outcome} + tool_call_duration_seconds histogram',
+      'Tool catalog TTL — MCPClient caches /tools/list; CB-open serves stale catalog (drill_tool_catalog_ttl)',
+      'Decoupling contract — mcp/ never imports documind_core; future standalone repo possible',
+    ],
+    architectureRelevance: {
+      backend: 'mcp/server_common.py is the only place that knows about JWT public keys, idempotency table layout, audit chain hashing. Per-namespace servers stay narrow.',
+      rag: 'Drill MCP namespace exposes drill.list / drill.run as tools; agents can run readonly drills as part of their plan.',
+      ai: 'Agent loop sequences tool calls via MCPClient. Plan + tool sequence + per-call outcome lands in the decision audit row (§48).',
+      microservices: 'Each namespace is a separate FastAPI process; Istio mTLS strict; HR outage cannot cascade to ITSM.',
+    },
+    hld: `flowchart TB
+  subgraph features[Six guarantees per tool call]
+    SC[Scope check]
+    ID[Idempotency]
+    AU[Audit chain]
+    DF[Draft fallback]
+    OT[OTel span]
+    ME[Prom metrics]
+  end
+  subgraph contract[POST /tools/call]
+    HC[handle_tool_call - server_common.py]
+  end
+  subgraph dispatch[Per-namespace dispatch]
+    HR[hr.create_user]
+    IT[itsm.open_ticket]
+    DR[drill.run]
+  end
+  HC --> SC
+  HC --> ID
+  HC --> AU
+  HC --> DF
+  HC --> OT
+  HC --> ME
+  HC --> HR
+  HC --> IT
+  HC --> DR`,
+    coreLayers: [
+      { layer: 'Contract', responsibility: '/tools/list (catalog), /tools/call (execute). Wire format frozen; servers ship behaviour.' },
+      { layer: 'Cross-cutting', responsibility: 'scope, idempotency, audit, draft fallback, OTel, metrics — all in server_common.py.' },
+      { layer: 'Dispatch', responsibility: 'Per-namespace tool handlers; type-validated args via Pydantic; pure domain logic.' },
+      { layer: 'Catalog cache', responsibility: 'MCPClient TTLs /tools/list per host; CB-open serves stale rather than failing list.' },
+    ],
+    problem: 'Every domain team would re-implement the same six primitives differently — guaranteeing drift, leaks, and undetected gaps.',
+    whyThisApproach: 'A single contract layer makes every guarantee universal. Drills lock the contract; namespaces inherit, not re-implement.',
+    whenToUse: ['Any agent-callable action with side effects', 'Multi-tenant SaaS where scope leaks have audit consequences', 'Systems where downstream outages must not lose user intent'],
+    whenNotToUse: ['Pure-read operations with no side effects (use direct queries)', 'Single-process internal calls (no isolation gain)', 'Sub-millisecond hot loops (RPC overhead unacceptable)'],
+    input: 'POST /tools/call { tool: "ns.action", args: {...}, idempotency_key?, tenant_id (header) }',
+    process: [
+      'Receive POST /tools/call with JWT + tenant header',
+      'enforce_scope: validate JWT, intersect roles with tool.required_scopes',
+      'lookup_or_register idempotency key → return cached if done',
+      'OTel span starts; baggage propagates correlation_id',
+      'Dispatch to namespace handler with validated args',
+      'On handler success: hash-chained audit row + Prometheus increment + return result',
+      'On downstream failure with CB open: persist draft + return draft_id (HITL path)',
+    ],
+    output: 'Tool result OR draft_id (HITL fallback) OR scope-deny envelope OR idempotent replay of prior result.',
+    realUseCase: 'Agent plans 3 tool calls (hr.lookup_user → hr.update_user → itsm.open_ticket). All three go through MCP. HR namespace is healthy → first two execute. ITSM is degraded → CB opens → third call persists a draft. Operator sees the draft in HITL UI; decides approve/reject; ReplayWorker re-fires.',
+    prosCons: {
+      pros: ['Six guarantees universal across namespaces', 'New namespace = dispatch code only', 'Drill catalog locks every guarantee', 'Mesh isolation per namespace'],
+      cons: ['One bug in server_common affects all namespaces', 'JWT public key rotation is centralized risk', 'Idempotency table is a shared write hotspot at scale'],
+    },
+    challenges: [
+      'Scope changes require coordinated drill updates',
+      'Idempotency table grows fast — needs partitioned retention',
+      'Catalog TTL choice trades fresh-catalog vs CB-resilience (drill_tool_catalog_ttl pins both)',
+    ],
+    edgeCases: [
+      { case: 'Stale catalog served while CB open', solution: 'drill_tool_catalog_ttl step 5: stale-serve under CB-open MUST NOT increment fetch_count' },
+      { case: 'Idempotency key reused with different args', solution: 'state machine returns conflict; original result not overwritten' },
+      { case: 'JWT signature verification fails', solution: 'Return generic 401 INVALID_TOKEN — never leak decoded claims (attacker-controlled input)' },
+    ],
+    testing: [
+      'drill_tool_catalog_ttl — TTL respect + CB-open stale-serve',
+      'drill_mcp_server_scope — scope-check happens BEFORE idempotency lookup (leaked key cannot bypass scope)',
+      'drill_mcp_idempotency_replay — durable across server restart',
+      'drill_audit_hash_chain — append-only chain integrity',
+    ],
+    failureModes: [
+      { mode: 'Scope-deny burst', detect: 'tool_calls_total{outcome="scope_denied"} spike', recover: 'audit row per deny; investigate auth bypass attempt or stale scopes' },
+      { mode: 'Idempotency table contention', detect: 'tool_call_duration p95 climbing', recover: 'partition by tenant; ADR-008 RLS already enforces tenant filter' },
+      { mode: 'CB-open on namespace', detect: 'circuit_breaker_state{name="mcp_<ns>"} == 1', recover: 'drafts persist; ReplayWorker re-fires when CB closes' },
+    ],
+    security: ['Scope check BEFORE idempotency lookup', 'JWT failure never leaks claims', 'Audit chain hash-prevents tampering', 'Tenant_id from JWT, not request body'],
+    scaling: ['Per-namespace process = per-namespace blast radius', 'Idempotency partition by tenant for hot tenants', 'OTel sampler tunable per namespace'],
+    monitoring: ['tool_calls_total by ns/tool/outcome', 'tool_call_duration_seconds histogram', 'circuit_breaker_state per namespace', 'audit_log_writes_total / audit_log_chain_break_total'],
+    alternatives: [
+      { name: 'Direct REST per service', tradeoff: 'No uniform contract; every team re-implements primitives' },
+      { name: 'gRPC + interceptors', tradeoff: 'Same shape; harder ecosystem (no Postman, harder for human-callable agents)' },
+    ],
+    maturity: {
+      mvp: 'Single namespace + scope only',
+      production: 'Six guarantees + drill catalog + draft fallback',
+      enterprise: 'Multi-region with replicated idempotency table + cross-region audit chain reconciliation',
+    },
+    limitations: ['Wire format frozen; new guarantees need a v2 contract', 'Idempotency limited to ~24h retention by default'],
+    projectFit: ['mcp/server_common.py (763 lines, six guarantees)', 'mcp/server_hr.py (255 lines)', 'mcp/server_itsm.py (241 lines)', 'mcp/server_drills.py (439 lines)', 'mcp/client.py (505 lines)'],
+    interviewLine: 'MCP gives six guarantees in one wire format — scope, idempotency, audit, draft fallback, OTel, metrics. Domain teams add ~50 lines per namespace; the platform team owns the 763-line shared layer. Drills lock every guarantee; that\'s the gate.',
+  },
+  {
+    slug: 'mcp-architect',
+    title: '4. MCP architecture (where it sits in the system)',
+    status: 'shipped',
+    coreConcept: 'MCP sits between the agent orchestrator and the action surface — orchestrator is the planner, MCP servers are the workers. The boundary is enforced by Istio mTLS-strict, protected by JWT scopes, persisted by Postgres idempotency, and observable end-to-end by OTel baggage.',
+    oneLiner: 'Planner ↔ MCP boundary = the project\'s "do something" gate. Everything that mutates external state crosses it.',
+    businessContext: 'The architecture answers: where does an AI decision become a real-world side-effect? Without a clear boundary, agents either (a) call services directly and bypass governance, or (b) get blocked by ad-hoc auth in every service. MCP is the boundary; the planner knows about it; everything else stays naive.',
+    fiveW: {
+      what: 'A boundary layer between agentic decision-making (orchestrator + planner) and the side-effect surface (HR, ITSM, drills, finance). Realised as multiple FastAPI servers in mcp/, fronted by api-gateway, behind Istio mesh.',
+      why: 'Agents reason; servers act. Mixing them creates audit gaps and policy ambiguity. Separation makes "what was decided" auditable separately from "what was done".',
+      where: 'Sits behind api-gateway, in front of every domain service. Each namespace is its own pod; mesh routes by Host header.',
+      when: 'Every action that mutates external state. Read-only RAG retrieval bypasses MCP (different surface); writes always traverse it.',
+      who: 'Architect-of-record per ADR-016 (parallel-agent allocation). Each namespace has a domain owner per ADR-018 (three-way work allocation).',
+    },
+    interview30s: 'Architecture is layered: orchestrator + planner generate plans; MCPClient executes tool calls; per-namespace MCP servers dispatch. Cross-cutting (scope, idempotency, audit, OTel) lives in server_common.py — every namespace inherits identical primitives. The boundary is mTLS-strict mesh; JWT verifies the caller; tenant_id comes from JWT, not the body. Drills (drill_*.py) lock the boundary contract. ADR-016 names this as the parallel-agent boundary; ADR-018 names the work-allocation boundary.',
+    hld: `flowchart TB
+  subgraph user[User / agent]
+    U[Operator UI / agent loop]
+  end
+  subgraph plane[Control plane]
+    O[Agent orchestrator]
+    P[Planner]
+    M[MCPClient - mcp/client.py]
+  end
+  subgraph gw[Gateway + mesh]
+    AGW[api-gateway]
+    MESH[Istio mTLS strict]
+  end
+  subgraph mcp[MCP boundary]
+    SC[server_common.py]
+    HR[server_hr.py]
+    IT[server_itsm.py]
+    DR[server_drills.py]
+  end
+  subgraph state[Stateful backends]
+    PG[(Postgres - audit + idempotency + drafts)]
+    JW[(JWT public key store)]
+    OB[(Jaeger + Prometheus)]
+  end
+  U --> O
+  O --> P
+  P --> M
+  M --> AGW
+  AGW --> MESH
+  MESH --> HR
+  MESH --> IT
+  MESH --> DR
+  HR --> SC
+  IT --> SC
+  DR --> SC
+  SC --> PG
+  SC --> JW
+  SC --> OB`,
+    networkFlow: `flowchart LR
+  A[Agent loop] -->|HTTPS+JWT| GW[api-gateway :8080]
+  GW -->|mTLS| MCP_HR[mcp_hr :8090]
+  GW -->|mTLS| MCP_IT[mcp_itsm :8091]
+  GW -->|mTLS| MCP_DR[mcp_drills :8092]
+  MCP_HR --> PG_AUD[(audit_log)]
+  MCP_HR --> PG_IDM[(mcp_idempotency)]
+  MCP_HR --> PG_DR[(action_drafts)]
+  MCP_HR --> JAE[(Jaeger collector)]
+  MCP_HR --> PROM[(Prometheus textfile)]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant Plan as Planner
+  participant Cli as MCPClient
+  participant GW as api-gateway
+  participant Srv as mcp_<ns>
+  participant Idem as Postgres idempotency
+  participant Aud as Postgres audit_log
+  participant H as Tool handler
+  Plan->>Cli: call_tool(tool, args, tenant_id)
+  Cli->>GW: POST /tools/call (JWT + Idempotency-Key)
+  GW->>Srv: forward (mTLS)
+  Srv->>Srv: enforce_scope(JWT, required_scopes)
+  Srv->>Idem: lookup_or_register(key)
+  alt cached done
+    Idem-->>Srv: prior result
+    Srv-->>Cli: 200 (idempotent replay)
+  else new
+    Srv->>H: dispatch(args)
+    H-->>Srv: result
+    Srv->>Aud: append hash-chained row
+    Srv->>Idem: mark done(result)
+    Srv-->>Cli: 200 result
+  end`,
+    coreLayers: [
+      { layer: 'L1 Context', responsibility: 'Operator + agent loop on one side; HR/ITSM/finance backends on the other.' },
+      { layer: 'L2 Container', responsibility: 'Per-namespace MCP server pod. mTLS strict ingress. Health probes (startup/liveness/readiness) per §47.8.' },
+      { layer: 'L3 Component', responsibility: 'handle_tool_call → enforce_scope → idempotency → dispatch → audit → metrics.' },
+      { layer: 'L5 Governance', responsibility: 'ADR-016 (parallel-agent boundary), ADR-008 (tenant isolation via RLS), §48 decision audit.' },
+      { layer: 'L6 Observability', responsibility: 'OTel CompositePropagator pulls baggage; tool_calls_total + tool_call_duration; per-namespace dashboards.' },
+      { layer: 'L7 Lifecycle', responsibility: 'Build → drill catalog green → canary deploy per namespace → rollback by registry per §47.7.' },
+    ],
+    problem: 'Without an explicit boundary, agent decisions and side-effects blur. Audit becomes ambiguous. Each domain reinvents auth.',
+    whyThisApproach: 'Layering = decoupling. Planner is naive about idempotency; servers are naive about LLM context. Each layer optimizes for its job; the boundary is enforced.',
+    whenToUse: ['Multi-namespace systems where each domain has different scopes', 'Audit-required environments (regulated, compliance)', 'When agent decisions need separating from execution for replay/rollback'],
+    whenNotToUse: ['Single-domain systems (overkill — direct REST is fine)', 'Pure-read systems (no audit needed)', 'In-process function calls'],
+    input: 'Agent intent (tool name, args, tenant context, correlation_id from baggage)',
+    process: [
+      'Planner emits tool sequence',
+      'MCPClient batches calls; each is one /tools/call POST',
+      'api-gateway validates JWT + tenant header, forwards via mesh',
+      'MCP server enforces scope, deduplicates by Idempotency-Key, dispatches to handler',
+      'Audit row appended with hash chain; metrics incremented; result returned',
+      'On namespace CB-open: client persists draft, returns draft_id; ReplayWorker fires when CB closes',
+    ],
+    output: 'Per-call result OR draft_id; planner aggregates; decision audit row references all tool_call request_ids.',
+    architectureRelevance: {
+      backend: 'mcp/* is decoupled from documind_core (no imports), making it portable to a future standalone repo.',
+      rag: 'Drill namespace runs evals as tool calls. Retrieval surface is read-only and bypasses MCP.',
+      ai: '§48 decision audit row stores plan + tool_call request_ids; explainability traces back through MCP audit chain.',
+      microservices: 'Per-namespace pod = per-namespace blast radius. ADR-016 names the boundary; mesh enforces mTLS.',
+    },
+    realUseCase: 'Operator asks agent to onboard a contractor. Plan: (1) hr.create_user, (2) hr.assign_role, (3) itsm.open_ticket, (4) hr.send_welcome. Steps 1-2 traverse mcp_hr; step 3 traverses mcp_itsm; step 4 traverses mcp_hr again. All four land hash-chained audit rows; the decision audit row references all four request_ids. If step 3 fails (mcp_itsm CB-open), step 3 becomes a draft; operator sees pending HITL approval.',
+    prosCons: {
+      pros: ['Clear boundary = clear audit', 'Per-namespace blast radius', 'Drills lock contracts', 'Replay/rollback via draft layer'],
+      cons: ['Extra hop adds ~5-10ms latency', 'Operational surface = N pods (one per namespace)', 'Schema evolution requires coordinated changes'],
+    },
+    limitations: ['Wire format frozen — v2 contract required for new cross-cutting guarantees', 'Per-process scope cache means scope rotation is not instant'],
+    challenges: ['Coordinating audit-chain hash across namespaces if cross-namespace transactions needed (currently each namespace has its own chain)', 'Tracing across MCP → downstream (handled by OTel baggage)'],
+    edgeCases: [
+      { case: 'Cross-namespace transaction', solution: 'Saga pattern via planner; each step is its own MCP call with compensating tool' },
+      { case: 'Mesh split-brain (Istio control plane down)', solution: 'mTLS data plane fails closed; tool calls 503 cleanly; CB opens; drafts accumulate' },
+    ],
+    testing: ['drill_baggage_log_formatter — baggage propagates through MCP', 'drill_mcp_server_scope — scope-check ordering', 'drill_audit_hash_chain — chain integrity per namespace'],
+    failureModes: [
+      { mode: 'Mesh failure', detect: 'mTLS errors in api-gateway logs', recover: 'Istio rollback per L7; data plane retains last-known config briefly' },
+      { mode: 'JWT key rotation lag', detect: '401 spike on previously-valid tokens', recover: 'JWKS refresh + dual-key window during rotation' },
+    ],
+    security: ['mTLS strict mesh = caller authenticated even without JWT', 'JWT roles intersected with tool.required_scopes', 'Tenant_id from JWT (claims), never from request body', 'Audit chain hash-prevents tampering'],
+    scaling: ['Horizontal per namespace pod', 'Idempotency table partition by tenant', 'OTel sampler 10% in prod, 100% in canary'],
+    monitoring: ['Per-namespace tool_calls_total', 'audit_log_chain_break_total (must stay 0)', 'mcp_<ns>_p95_latency_seconds', 'circuit_breaker_state per downstream'],
+    alternatives: [
+      { name: 'Direct mesh-to-service calls', tradeoff: 'Bypasses MCP guarantees; every service re-implements scope+idempotency+audit' },
+      { name: 'Single mega-MCP server', tradeoff: 'No blast-radius isolation; one bug grounds all namespaces' },
+    ],
+    maturity: {
+      mvp: 'One namespace + scope + idempotency',
+      production: 'Per-namespace pods + audit chain + draft fallback',
+      enterprise: 'Multi-region replicated audit + cross-region idempotency reconciliation',
+    },
+    projectFit: ['ADR-016 parallel-agent allocation', 'ADR-018 three-way work allocation', '§47.2 C4 7-level model', '§48 decision audit row format'],
+    interviewLine: 'Architecture is layered: agents decide, MCP gates execution. The boundary is mTLS+JWT+scopes; per-namespace pods give blast-radius isolation; per-namespace audit chains give per-domain integrity. ADRs 016 and 018 name the boundary; drills lock the contract; ~50 lines of dispatch makes a new namespace.',
+  },
+  {
+    slug: 'mcp-components',
+    title: '5. Each MCP component (file-by-file)',
+    status: 'shipped',
+    coreConcept: 'mcp/ is seven files: a shared scaffolding, three namespace servers, a smart client, a draft store, and an idempotency layer. Total ~2850 lines. Each has one job and a drill.',
+    oneLiner: 'Seven files. Seven jobs. Seven drills.',
+    fiveW: {
+      what: 'mcp/server_common.py (763 lines), mcp/client.py (505 lines), mcp/server_drills.py (439 lines), mcp/drafts.py (382 lines), mcp/idempotency.py (265 lines), mcp/server_hr.py (255 lines), mcp/server_itsm.py (241 lines).',
+      why: 'Each file has a single responsibility. Adding a new namespace touches only one file (server_<ns>.py); changing cross-cutting touches only server_common.py.',
+      where: 'mcp/ at repo root, deliberately decoupled from documind_core.',
+      when: 'Always. Every commit that touches mcp/ ships a drill update.',
+      who: 'Platform team owns server_common + client + drafts + idempotency. Domain teams own per-namespace servers.',
+    },
+    coreLayers: [
+      { layer: 'mcp/server_common.py (763)', responsibility: 'Shared scaffolding: setup_server_otel (CompositePropagator + OTLP exporter), build_auth (JWT verifier), enforce_scope (JWT roles ∩ required_scopes), handle_tool_call (idempotency + dispatch + audit), error envelope. The single place that knows about cross-cutting concerns.' },
+      { layer: 'mcp/client.py (505)', responsibility: 'MCPClient — async httpx client with circuit breaker (per-host), tool catalog cache (TTL + stale-serve under CB-open), draft fallback hook, baggage propagation, idempotency-key forwarding. Used by inference-svc, agent-orchestrator-svc, drill runner.' },
+      { layer: 'mcp/idempotency.py (265)', responsibility: 'IdempotencyStore protocol + PostgresIdempotencyStore. State machine: new → in_progress → done | conflict. Postgres-backed (governance.mcp_idempotency). ADR-003.' },
+      { layer: 'mcp/drafts.py (382)', responsibility: 'DraftStore protocol + PostgresDraftStore. Persists action drafts when downstream CB-open. State: pending → resolved | rejected. ReplayWorker (in inference-svc) re-fires on CB-close.' },
+      { layer: 'mcp/server_hr.py (255)', responsibility: 'HR namespace dispatch. Tools: hr.create_user, hr.update_user, hr.assign_role, hr.lookup_user, hr.send_welcome. Calls into HR backend via internal API.' },
+      { layer: 'mcp/server_itsm.py (241)', responsibility: 'ITSM namespace dispatch. Tools: itsm.open_ticket, itsm.update_ticket, itsm.assign_ticket, itsm.list_tickets. Backed by ServiceNow-equivalent.' },
+      { layer: 'mcp/server_drills.py (439)', responsibility: 'Drill orchestration namespace. Tools: drill.list (scope drill:read), drill.run (scope drill:run). Wraps scripts/run_drills.py as MCP tools so agents can run readonly drills.' },
+    ],
+    coreBuildingBlocks: [
+      'mcp/server_common.py — handle_tool_call, enforce_scope, setup_server_otel, build_auth, NoopCM',
+      'mcp/client.py — MCPClient (async httpx, CB, catalog TTL, draft fallback, baggage)',
+      'mcp/idempotency.py — IdempotencyStore protocol + PostgresIdempotencyStore',
+      'mcp/drafts.py — DraftStore protocol + PostgresDraftStore + audit-row writer',
+      'mcp/server_hr.py — hr.* dispatch table',
+      'mcp/server_itsm.py — itsm.* dispatch table',
+      'mcp/server_drills.py — drill.* dispatch table (drill.list / drill.run)',
+    ],
+    hld: `flowchart TB
+  subgraph layer1[Shared scaffolding - 1 file]
+    SC[server_common.py - 763 lines]
+  end
+  subgraph layer2[Smart client - 1 file]
+    CL[client.py - 505 lines]
+  end
+  subgraph layer3[State protocols + adapters - 2 files]
+    ID[idempotency.py - 265]
+    DR[drafts.py - 382]
+  end
+  subgraph layer4[Per-namespace servers - 3 files]
+    HR[server_hr.py - 255]
+    IT[server_itsm.py - 241]
+    DRS[server_drills.py - 439]
+  end
+  HR --> SC
+  IT --> SC
+  DRS --> SC
+  SC --> ID
+  SC --> DR
+  CL --> SC
+  CL --> ID
+  CL --> DR`,
+    interview30s: 'Seven files in mcp/. server_common.py is 763 lines and owns six guarantees. client.py is 505 lines and owns the smart-client semantics (CB, catalog TTL, draft fallback, baggage). idempotency.py + drafts.py (265+382) are the state protocols + Postgres adapters. server_hr / server_itsm / server_drills are three namespaces — each ~250 lines of dispatch. Total ~2850 lines for the entire MCP layer; adding a namespace is ~50 lines. Each file has a drill.',
+    problem: 'Without per-file responsibility, "where do I add scope enforcement" or "where does a draft get written" becomes a code-archaeology question.',
+    whyThisApproach: 'One file = one job. Drills are per-file. Reviewing a PR that touches mcp/server_hr.py only requires looking at one dispatch table; reviewing mcp/server_common.py requires the platform team because it changes cross-cutting behaviour.',
+    whenToUse: ['Every time you write or review MCP code', 'Onboarding a new namespace owner', 'Investigating a tool-call failure (file boundary tells you which layer)'],
+    whenNotToUse: ['Cross-namespace logic — coordinated; usually saga pattern in planner instead'],
+    input: 'A maintenance task ("add tool X" / "fix audit bug") → file selection',
+    process: [
+      'Tool dispatch logic? → mcp/server_<ns>.py',
+      'Cross-cutting (scope, audit, idempotency, OTel)? → mcp/server_common.py',
+      'Client-side behaviour (CB, catalog cache, draft fallback)? → mcp/client.py',
+      'State persistence change? → mcp/idempotency.py or mcp/drafts.py',
+      'New namespace? → new mcp/server_<ns>.py + entry in run_drills.py resource tag',
+    ],
+    output: 'A PR scoped to the right file with a drill update.',
+    realUseCase: 'Bug: scope-deny audit row missing tenant_id. File: mcp/server_common.py (audit row construction). Fix one line; update drill_audit_namespace_semantics; one file in PR. Bug: hr.create_user not idempotent. File: mcp/server_hr.py (dispatch); fix rare-args branch; idempotency.py untouched (its job is durable; HR\'s job is reproducible). Per-file separation makes both PRs clean.',
+    challenges: [
+      'server_common.py size (763 lines) — review burden if it grows beyond ~1000',
+      'Per-namespace dispatch boilerplate — slight duplication; acceptable for blast-radius isolation',
+      'Cross-file changes (e.g., new scope flow) require coordinated drill updates',
+    ],
+    edgeCases: [
+      { case: 'New namespace forgets resource tag', solution: 'drill_drill_catalog_discipline catches it (per ADR-015 ratchet)' },
+      { case: 'Cross-cutting change skips drill update', solution: 'Pre-commit hook + drill_runner_junit catches gap' },
+    ],
+    testing: [
+      'drill_tool_catalog_ttl (mcp/client.py)',
+      'drill_mcp_server_scope (mcp/server_common.py)',
+      'drill_mcp_idempotency_replay (mcp/idempotency.py)',
+      'drill_worker_cb_aware (mcp/client.py CB integration)',
+      'drill_baggage_log_formatter (mcp/server_common.py OTel wiring)',
+      'audit_frontend_link.py (uses MCP for /tools/list catalog reads)',
+    ],
+    failureModes: [
+      { mode: 'server_common bug', detect: 'multiple namespace drills failing simultaneously', recover: 'rollback server_common; investigate; ship fix with drill update' },
+      { mode: 'Per-namespace bug', detect: 'one namespace drill failing in isolation', recover: 'rollback that namespace pod; other namespaces unaffected' },
+    ],
+    security: ['server_common owns ALL JWT validation', 'Per-namespace files cannot bypass enforce_scope (linter could check)', 'Audit writer is fail_closed by default'],
+    scaling: ['Per-namespace pods scale independently', 'server_common.py is in-process per pod (no shared state)', 'idempotency + drafts are Postgres — scale via partitioning'],
+    monitoring: ['Per-file commit volume (high churn = re-think factoring)', 'Per-file drill execution time (regression budget)', 'Per-file PR-review time (file size proxy)'],
+    alternatives: [
+      { name: 'Single MCP file', tradeoff: 'Faster bootstrap, no blast-radius isolation, no per-domain ownership' },
+      { name: 'One file per tool (instead of per namespace)', tradeoff: 'Too granular; loses dispatch-table benefits' },
+    ],
+    limitations: ['Boundary discipline is convention, not enforced — platform team must review server_common changes', 'No type-level enforcement that namespace files import only sanctioned utilities from server_common'],
+    maturity: {
+      mvp: 'One server file + client',
+      production: 'Seven files, drills per file, ADR-016 boundary defined',
+      enterprise: 'Same seven roles but multiple processes per role (sharded namespaces)',
+    },
+    projectFit: ['Mirrors the §47.2 C4 layered model at file level', 'ADR-016 parallel-agent allocation = file ownership', 'Drill-per-file = §43 pattern'],
+    interviewLine: 'mcp/ is seven files, ~2850 lines, one job each, one drill each. Cross-cutting in server_common.py; smart client in client.py; durable state in idempotency.py + drafts.py; three namespace dispatch tables. Adding a namespace is ~50 lines + a drill. The file boundary IS the review boundary.',
+  },
+  {
+    slug: 'mcp-flow',
+    title: '6. End-to-end MCP flow (one tool call, every layer)',
+    status: 'shipped',
+    coreConcept: 'A single /tools/call traverses 11 distinct steps from agent intent to audit row. Every step is logged; every step has a failure mode; every step has a drill that locks behaviour.',
+    oneLiner: 'Agent → MCPClient → gateway → server_common → enforce_scope → idempotency → dispatch → handler → audit → metrics → return.',
+    interview30s: 'The flow has 11 steps. Agent decides → MCPClient adds Idempotency-Key + baggage → api-gateway validates JWT + tenant → mTLS to namespace pod → enforce_scope (JWT roles ∩ required_scopes) → idempotency lookup_or_register → if cached done, replay; else dispatch → handler executes → hash-chained audit append → Prometheus increment → response. CB-open at any downstream short-circuits to draft persist. Each step has a drill: scope ordering, idempotency replay, audit chain, baggage propagation, CB stale-serve, draft fallback. The flow is the contract; the drills are the gate.',
+    sequence: `sequenceDiagram
+  autonumber
+  participant A as Agent loop
+  participant Cli as MCPClient
+  participant GW as api-gateway
+  participant Srv as mcp_<ns> server
+  participant SC as server_common
+  participant SCO as enforce_scope
+  participant Idem as PostgresIdempotencyStore
+  participant H as Tool handler
+  participant Aud as audit_log writer
+  participant OT as OTel + Prom
+  A->>Cli: call_tool(tool, args, tenant_id, idempotency_key)
+  Cli->>Cli: check CB state for host
+  alt CB closed or half-open
+    Cli->>GW: POST /tools/call (JWT + Idem-Key + baggage)
+    GW->>Srv: forward (mTLS)
+    Srv->>SC: handle_tool_call
+    SC->>SCO: validate JWT + intersect roles
+    alt scope OK
+      SCO-->>SC: pass
+      SC->>Idem: lookup_or_register(idem-key)
+      alt new
+        Idem-->>SC: state=in_progress
+        SC->>H: dispatch(args)
+        H-->>SC: result
+        SC->>Aud: append hash-chained row
+        SC->>Idem: mark done(result)
+        SC->>OT: span attrs + prom counter
+        SC-->>GW: 200 result
+      else cached done
+        Idem-->>SC: prior result
+        SC->>OT: span attrs (replayed)
+        SC-->>GW: 200 (idempotent)
+      end
+    else scope deny
+      SCO-->>SC: 403 scope_required
+      SC->>Aud: append deny row
+      SC-->>GW: 403 envelope
+    end
+    GW-->>Cli: response
+    Cli-->>A: result OR 4xx
+  else CB open
+    Cli->>Cli: persist draft (via DraftStore)
+    Cli-->>A: draft_id (HITL fallback)
+  end`,
+    flowchart: `flowchart LR
+  s1[1. Agent intent] --> s2[2. MCPClient: CB check + Idem-Key + baggage]
+  s2 -->|CB closed| s3[3. api-gateway: JWT + tenant header]
+  s3 --> s4[4. mTLS to mcp_ns pod]
+  s4 --> s5[5. server_common.handle_tool_call]
+  s5 --> s6[6. enforce_scope]
+  s6 -->|pass| s7[7. lookup_or_register idem-key]
+  s7 -->|new| s8[8. dispatch to handler]
+  s7 -->|cached| s11[11. replay prior result]
+  s8 --> s9[9. handler returns]
+  s9 --> s10[10. audit + metrics]
+  s10 --> s11
+  s2 -.->|CB open| sd[Draft persist + return draft_id]
+  s6 -.->|deny| sde[403 + deny audit row]`,
+    coreBuildingBlocks: [
+      'Step 1 Agent: planner emits tool sequence',
+      'Step 2 Client: CB check, generate Idempotency-Key, attach baggage',
+      'Step 3 Gateway: JWT validation, tenant header forward',
+      'Step 4 Mesh: mTLS strict to namespace pod',
+      'Step 5 Server: handle_tool_call entrypoint',
+      'Step 6 Scope: JWT roles ∩ tool.required_scopes',
+      'Step 7 Idempotency: state machine new / in_progress / done',
+      'Step 8 Dispatch: per-namespace handler with Pydantic-validated args',
+      'Step 9 Handler: domain logic (HR/ITSM/drill)',
+      'Step 10 Audit + metrics: hash-chained row, Prom counter, OTel span attrs',
+      'Step 11 Return: result OR replayed result OR draft_id OR scope-deny envelope',
+    ],
+    coreLayers: [
+      { layer: 'Step 1-2 (client)', responsibility: 'Intent + idempotency-key + circuit-breaker check + baggage propagation' },
+      { layer: 'Step 3-4 (transport)', responsibility: 'JWT + mTLS + tenant header' },
+      { layer: 'Step 5-7 (cross-cutting)', responsibility: 'Scope enforcement + idempotency state machine' },
+      { layer: 'Step 8-9 (domain)', responsibility: 'Pydantic-validated dispatch + handler logic' },
+      { layer: 'Step 10-11 (audit/return)', responsibility: 'Hash-chained audit + metrics + response' },
+    ],
+    architectureRelevance: {
+      backend: 'Each step is a logged event tied to one correlation_id (baggage). 11 steps, 11 spans.',
+      rag: 'Drill flow uses the SAME 11 steps; readonly drills exit at step 8 (handler returns drill outcome).',
+      ai: '§48 decision audit row captures the 11-step flow per tool call; explainability traces back through audit chain.',
+      microservices: 'Steps 3-4 cross network boundary (gateway + mesh). Steps 5-11 are intra-pod.',
+    },
+    problem: 'Without an explicit step-by-step contract, observability is hand-wavy and drills are incomplete.',
+    whyThisApproach: '11 named steps means 11 named drills. Operators triaging a slow tool call jump straight to the step with the problem (e.g., step 7 latency spike = idempotency table contention).',
+    whenToUse: ['Always. This is the only path for tool calls.'],
+    whenNotToUse: ['Read-only RAG retrieval (separate surface)', 'Internal in-process calls (no MCP needed)'],
+    input: 'Agent intent: { tool, args, tenant_id, idempotency_key, correlation_id (baggage) }',
+    process: [
+      'Steps 1-2: Client-side prep (CB check, Idempotency-Key, baggage)',
+      'Steps 3-4: Transport (JWT, mTLS, tenant header)',
+      'Steps 5-7: Cross-cutting (scope, idempotency state machine)',
+      'Steps 8-9: Domain dispatch (Pydantic validation, handler)',
+      'Steps 10-11: Audit + metrics + return',
+    ],
+    output: 'Tool result (step 11) OR idempotent replay (step 11 short-circuit) OR draft_id (CB-open at step 2) OR 403 (scope-deny at step 6)',
+    realUseCase: 'Trace ID abc123 in Jaeger shows: span1=client-prep (step 1-2, 0.5ms), span2=api-gateway (step 3, 1ms), span3=mcp_hr (steps 4-11, 18ms). Inside span3: enforce_scope=0.3ms, idempotency_lookup=2ms (cache hit), dispatch=12ms (HR backend call), audit_write=2ms, prom_increment=0.5ms. Operator sees end-to-end latency of 19.5ms and knows the dispatch step is the dominant cost — exactly where to look for SLO regression.',
+    edgeCases: [
+      { case: 'Idempotency key reused on a step-9 failure', solution: 'State machine returns in_progress + 409 Conflict; client retries safely' },
+      { case: 'Audit write fails (step 10)', solution: 'fail_closed = abort the response; client sees 5xx; better than uncaptured side-effect' },
+      { case: 'Baggage missing (step 2)', solution: 'Server generates correlation_id; logs warn; trace tree still complete' },
+    ],
+    challenges: [
+      'Maintaining step-level drill coverage as the contract evolves',
+      'OTel sampling — high-volume tools may need per-tool sampler config to avoid cost explosion',
+      'Idempotency-Key collision across tenants (mitigated by including tenant_id in the storage key)',
+    ],
+    testing: [
+      'Step 2: drill_worker_cb_aware (CB-open behaviour)',
+      'Step 6: drill_mcp_server_scope (scope ordering)',
+      'Step 7: drill_mcp_idempotency_replay (state machine)',
+      'Step 8-9: namespace-specific drills (drill_hr_create_user, etc.)',
+      'Step 10: drill_audit_hash_chain (chain integrity)',
+      'Step 2-11: drill_baggage_log_formatter (full trace propagation)',
+    ],
+    failureModes: [
+      { mode: 'Step 2 CB open', detect: 'circuit_breaker_state{host=mcp_<ns>}=1', recover: 'draft persist; ReplayWorker fires when CB closes' },
+      { mode: 'Step 6 scope deny burst', detect: 'tool_calls_total{outcome="scope_denied"} spike', recover: 'audit row per deny; investigate auth bypass attempt' },
+      { mode: 'Step 7 idempotency contention', detect: 'tool_call_duration p95 climbing on writes', recover: 'partition idempotency table by tenant' },
+      { mode: 'Step 10 audit chain break', detect: 'audit_log_chain_break_total > 0', recover: 'STOP all writes; reconcile chain; security incident' },
+    ],
+    security: ['Step 3 JWT validation = caller identity', 'Step 6 scope check BEFORE step 7 idempotency lookup (scope-bypass impossible)', 'Step 10 hash-chained audit = tamper-evident', 'Step 11 envelope never leaks decoded JWT claims on 401'],
+    performance: [
+      'Step 2 CB check is in-process (~5µs)',
+      'Step 6 scope check is in-process JWT verify (~50µs after key cached)',
+      'Step 7 idempotency is one Postgres roundtrip (~2ms)',
+      'Step 10 audit write is one Postgres insert (~3ms)',
+      'Step 8 handler dominates total latency in healthy state',
+    ],
+    scaling: ['Steps 5-11 are per-pod; scale horizontally', 'Step 7 + Step 10 are Postgres; partition by tenant for hot paths'],
+    monitoring: [
+      'Step-level OTel spans named mcp.tool:<step>',
+      'tool_calls_total counter labelled by namespace + tool + outcome',
+      'tool_call_duration_seconds histogram per step',
+      'Step 11 outcome: success / replayed / draft / scope_denied / handler_error',
+    ],
+    alternatives: [
+      { name: 'Async tool calls (kafka)', tradeoff: 'No synchronous result; agent loop must poll; more moving parts for the simple case' },
+      { name: 'Batched /tools/call', tradeoff: 'Saves RTT; complicates partial failures + idempotency semantics' },
+    ],
+    maturity: {
+      mvp: 'Steps 1, 5, 8, 11 (intent → server → handler → return)',
+      production: 'All 11 steps + drills',
+      enterprise: 'Step 4 multi-region routing; step 7 multi-region idempotency reconciliation',
+    },
+    limitations: ['Synchronous request-response by design — async batched tool calls are out of scope', 'Step 7 + Step 10 Postgres writes are the throughput ceiling for sustained load'],
+    projectFit: ['§47.2 C4 sequence diagram (this flow IS the L3 component sequence)', '§43 drill catalog (one drill per step)', '§48 decision audit row captures the 11 steps'],
+    interviewLine: 'A tool call is 11 named steps. Each step has a span, a metric, a failure mode, a drill. Step 6 (scope) runs BEFORE step 7 (idempotency) — leaked-key scope-bypass is impossible. Step 10 (audit) is fail_closed — uncaptured side-effects do not happen. The flow IS the contract; the drills ARE the gate.',
+  },
 ];
 
 export default function MCPDeepPage() {
@@ -549,9 +1081,10 @@ export default function MCPDeepPage() {
         <div className="page-header-copy">
           <h1 className="section-title">MCP deep dive — universal interview framework</h1>
           <p className="page-subtitle">
-            Model Context Protocol primitives — server (per-namespace tool host)
-            + client (breaker + draft fallback) — explained through the
-            20-dimension template.
+            Model Context Protocol — server (per-namespace tool host),
+            client (breaker + draft fallback), feature surface, architecture,
+            every component, end-to-end flow. Six topics through the
+            universal interview framework.
           </p>
         </div>
       </div>
