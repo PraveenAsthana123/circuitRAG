@@ -31,7 +31,9 @@
 #   scripts/run_filter_pipeline.sh --skip-prometheus     # don't prom export
 #
 # Env:
-#   PYTHON_BIN   — interpreter (default: /tmp/documind-venv/bin/python)
+#   PYTHON_BIN   — interpreter (default: /mnt/deepa/rag/.venv/bin/python)
+#   COUNCIL_STATS_ENV_FILE — env file to source before flag parsing
+#                            (default: /mnt/deepa/rag/.loop/council-stats.env)
 #   COUNCIL_STATS_WEBHOOK — webhook URL (overridable via --webhook)
 #
 # Exit codes:
@@ -42,9 +44,23 @@
 set -uo pipefail   # NOT set -e: each step is independent
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHON="${PYTHON_BIN:-/tmp/documind-venv/bin/python}"
+PYTHON="${PYTHON_BIN:-$REPO/.venv/bin/python}"
 SNAPSHOT_SCRIPT="$REPO/scripts/council_stats_snapshot.py"
 STATS_SCRIPT="$REPO/scripts/council_filter_stats.py"
+ENV_FILE="${COUNCIL_STATS_ENV_FILE:-$REPO/.loop/council-stats.env}"
+
+# Load operator-provided env without forcing secrets into crontab.
+# Missing file is fine; malformed file degrades to stderr + no env values.
+if [[ -f "$ENV_FILE" ]]; then
+    set +u
+    set -a
+    # shellcheck disable=SC1090
+    if ! . "$ENV_FILE"; then
+        echo "[env] ✗ failed to load $ENV_FILE (continuing without env file)" >&2
+    fi
+    set +a
+    set -u
+fi
 
 DRY_RUN=0
 PROMETHEUS_OUT=""
@@ -57,7 +73,7 @@ ALERT_EXPRS=()
 
 usage() {
     sed -n '2,30p' "$0" >&2
-    exit 2
+    exit 0
 }
 
 while [[ $# -gt 0 ]]; do
@@ -73,7 +89,8 @@ while [[ $# -gt 0 ]]; do
         -h|--help)        usage ;;
         *)
             echo "unknown flag: $1" >&2
-            usage
+            sed -n '2,30p' "$0" >&2
+            exit 2
             ;;
     esac
 done

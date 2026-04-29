@@ -16,8 +16,8 @@
 #   scripts/install_snapshot_cron.sh --uninstall         # alias for rollback
 #
 # Env:
-#   PYTHON_BIN   — interpreter path; defaults to /tmp/documind-venv/bin/python
-#                  (matches scripts/run_drills.py and write_drill_status.py).
+#   PYTHON_BIN   — interpreter path; defaults to /mnt/deepa/rag/.venv/bin/python
+#                  so the cron contract stays on the Deepa drive.
 #
 # Exit codes:
 #   0  success
@@ -30,15 +30,17 @@
 #   is appended. So --apply == "ensure exactly one managed line exists".
 #
 # Reversibility:
-#   Every mutation writes the pre-mutation crontab to /tmp/crontab.*.bak
+#   Every mutation writes the pre-mutation crontab to
+#   /mnt/deepa/rag/.loop/cron-backups/crontab.*.bak
 #   before crontab(1) is touched. --rollback also makes a backup so an
 #   accidental rollback can be reversed by piping the .bak file back in.
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHON="${PYTHON_BIN:-/tmp/documind-venv/bin/python}"
+PYTHON="${PYTHON_BIN:-$REPO/.venv/bin/python}"
 SCRIPT="$REPO/scripts/council_stats_snapshot.py"
+BACKUP_DIR="$REPO/.loop/cron-backups"
 
 # Marker comment lets us round-trip find/replace our managed line without
 # disturbing whatever else the operator has in their crontab. Keep this
@@ -53,7 +55,7 @@ MODE="--dry-run"
 
 usage() {
     sed -n '2,30p' "$0"
-    exit 2
+    exit 0
 }
 
 # Read the operator's current crontab. crontab -l exits 1 when no crontab
@@ -69,10 +71,11 @@ strip_managed() {
 }
 
 # Write a backup so the user can recover from any mutation:
-#   crontab /tmp/crontab.before-snapshot-cron-YYYYMMDD-HHMMSS.bak
+#   crontab /mnt/deepa/rag/.loop/cron-backups/crontab.before-snapshot-cron-YYYYMMDD-HHMMSS.bak
 backup_crontab() {
     local label="$1"
-    local backup="/tmp/crontab.before-${label}-$(date +%Y%m%d-%H%M%S).bak"
+    mkdir -p "$BACKUP_DIR"
+    local backup="$BACKUP_DIR/crontab.before-${label}-$(date +%Y%m%d-%H%M%S).bak"
     current_crontab > "$backup"
     echo "$backup"
 }
@@ -138,6 +141,7 @@ case "$MODE" in
 
     *)
         echo "unknown mode: $MODE" >&2
-        usage
+        sed -n '2,30p' "$0" >&2
+        exit 2
         ;;
 esac

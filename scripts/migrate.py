@@ -12,6 +12,7 @@ Tracks applied migrations in ``public._migrations`` (created by
 from __future__ import annotations
 
 import asyncio
+import argparse
 import hashlib
 import os
 import sys
@@ -62,11 +63,17 @@ async def apply(migrations_dir: Path, service: str) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("Usage: migrate.py <migrations_dir> <service>")
-        return 2
-    migrations_dir = Path(sys.argv[1]).resolve()
-    service = sys.argv[2]
+    parser = argparse.ArgumentParser(
+        description=(
+            "Apply numbered SQL migrations for one service and record "
+            "applied filenames in public._migrations."
+        )
+    )
+    parser.add_argument("migrations_dir", help="directory containing *.sql migration files")
+    parser.add_argument("service", help="service name recorded in public._migrations")
+    args = parser.parse_args()
+    migrations_dir = Path(args.migrations_dir).resolve()
+    service = args.service
     if not migrations_dir.is_dir():
         print(f"Not a directory: {migrations_dir}")
         return 2

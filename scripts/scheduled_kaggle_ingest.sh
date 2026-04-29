@@ -23,6 +23,31 @@
 # ============================================================================
 set -euo pipefail
 
+usage() {
+    cat <<'EOF'
+Periodically ingest new articles from a Kaggle dataset into ingestion-svc.
+
+Usage:
+  scripts/scheduled_kaggle_ingest.sh
+
+Environment:
+  INGESTION_URL    ingestion service base URL
+  TENANT_ID        tenant UUID for uploads
+  KAGGLE_DATASET   Kaggle dataset slug
+  KAGGLE_FILE      CSV/TSV file inside the dataset archive
+  MAX_NEW_PER_RUN  upload budget per run
+  STATE_DIR        working directory for seen-set and temporary files
+  PYTHON_BIN       Python interpreter for the slicing helper
+EOF
+}
+
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
 INGESTION_URL="${INGESTION_URL:-http://127.0.0.1:8082}"
 TENANT_ID="${TENANT_ID:-137e2ae5-09bc-44b3-b77f-cecb3ac3fe1a}"
 KAGGLE_DATASET="${KAGGLE_DATASET:-hgultekin/bbcnewsarchive}"

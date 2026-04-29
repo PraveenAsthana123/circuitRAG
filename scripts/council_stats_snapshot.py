@@ -8,7 +8,7 @@ read pays O(n). And after log rotation / pruning, history vanishes.
 
 Phase 5N closes both gaps with a cron-friendly daily snapshot:
 
-  cron: 5 0 * * * /tmp/documind-venv/bin/python /mnt/deepa/rag/scripts/council_stats_snapshot.py
+  cron: 5 0 * * * /mnt/deepa/rag/.venv/bin/python /mnt/deepa/rag/scripts/council_stats_snapshot.py
 
 Each run computes one row for a target date (default: yesterday in
 UTC) and APPENDS it to .loop/council_stats_daily.jsonl. Append-only

@@ -4,6 +4,26 @@
 # Never use these keys outside dev.
 set -euo pipefail
 
+usage() {
+    cat <<'EOF'
+Generate an RSA keypair for local JWT signing.
+
+Usage:
+  scripts/gen-dev-keys.sh [output_dir]
+
+Arguments:
+  output_dir   destination directory for jwt-private.pem and jwt-public.pem
+               (default: scripts/dev-keys)
+EOF
+}
+
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
 OUT="${1:-scripts/dev-keys}"
 mkdir -p "$OUT"
 

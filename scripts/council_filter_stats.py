@@ -694,9 +694,17 @@ def post_webhook(
                 return (True, f"HTTP {status}")
             return (False, f"HTTP {status}")
     except HTTPError as exc:
-        return (False, f"HTTP {exc.code}: {exc.reason}")
+        try:
+            body = exc.read().decode("utf-8", errors="replace").strip()
+        except OSError:
+            body = ""
+        msg = f"HTTP {exc.code}: {exc.reason}"
+        if body:
+            msg += f" — {body[:200]}"
+        return (False, msg)
     except URLError as exc:
-        return (False, f"URLError: {exc.reason}")
+        reason = str(exc.reason)
+        return (False, f"URLError: {reason} (host={Request(url).host})")
     except (OSError, ValueError) as exc:
         return (False, f"{type(exc).__name__}: {exc}")
 

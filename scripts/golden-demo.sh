@@ -29,6 +29,30 @@
 # ============================================================================
 set -u
 
+usage() {
+    cat <<'EOF'
+Run the ten-step DocuMind golden demo against the live local stack.
+
+Usage:
+  scripts/golden-demo.sh
+
+Environment:
+  TENANT   tenant UUID used for the demo flow
+
+Prerequisites:
+  - docker-compose dependencies running
+  - ingestion, retrieval, inference services up
+  - mcp-server-hr running on :8090
+EOF
+}
+
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
 TENANT=${TENANT:-137e2ae5-09bc-44b3-b77f-cecb3ac3fe1a}
 INGESTION=http://127.0.0.1:8082
 RETRIEVAL=http://127.0.0.1:8083

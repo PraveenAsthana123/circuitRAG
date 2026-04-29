@@ -13,6 +13,7 @@ UUID for use in X-Tenant-ID headers.
 from __future__ import annotations
 
 import asyncio
+import argparse
 import os
 from pathlib import Path
 from uuid import UUID
@@ -91,5 +92,17 @@ async def seed() -> None:
     print(f"Set in frontend .env: VITE_DEMO_TENANT_ID={DEMO_TENANT_ID}")
 
 
-if __name__ == "__main__":
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Seed the demo tenant plus sample documents used by local "
+            "smoke tests and manual RAG demos."
+        )
+    )
+    parser.parse_args()
     asyncio.run(seed())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -80,6 +80,22 @@ def _read_log_tail(path: Path, limit: int = 50) -> list[dict]:
     return out
 
 
+def _trailing_reject_entries(verdicts: list[dict], limit: int = 10) -> list[dict]:
+    """Return consecutive trailing REJECT verdicts in the most-recent slice.
+
+    This intentionally ignores older rejected commits once a later APPROVE
+    has landed. For the operator morning check, the important signal is
+    whether the loop is *currently* stuck in a reject state, not whether a
+    previous broken iteration was already repaired."""
+    streak: list[dict] = []
+    for verdict in reversed(verdicts[-limit:]):
+        if verdict.get("verdict") == "REJECT":
+            streak.append(verdict)
+            continue
+        break
+    return streak
+
+
 def _query_db(sql: str, params: tuple = ()) -> list[tuple]:
     if not ADVISOR_DB.exists():
         return []
@@ -191,18 +207,25 @@ def collect_status() -> dict:
 
     # Watcher log
     verdicts = _read_log_tail(WATCHER_LOG)
+    drill_failed_now = status.get("drill_outcome") == "FAILED"
+
     if verdicts:
         latest = verdicts[-1]
         status["last_commit_verdict"] = latest.get("verdict", "?")
         status["last_commit_rule_fired"] = latest.get("rule_fired", 0)
-        # Recent REJECTs (last 10 verdicts)
-        recent = verdicts[-10:]
-        status["watcher_recent_rejects"] = sum(
-            1 for v in recent if v.get("verdict") == "REJECT"
-        )
+        # Only warn on the CURRENT reject streak, not historical rejects
+        # that were later cleared by a subsequent APPROVE.
+        trailing_rejects = _trailing_reject_entries(verdicts, limit=10)
+        status["watcher_recent_rejects"] = len(trailing_rejects)
+        if status["watcher_recent_rejects"] > 0 and not drill_failed_now:
+            # Suppress only the specific "rule 1 fired, then drills were
+            # repaired locally" case. Other live REJECTs (scope/policy/etc.)
+            # must still surface even if the latest drill snapshot is green.
+            if all(v.get("rule_fired") == 1 for v in trailing_rejects):
+                status["watcher_recent_rejects"] = 0
         if status["watcher_recent_rejects"] > 0:
             warnings.append(
-                f"{status['watcher_recent_rejects']} REJECTs in last 10 commits"
+                f"{status['watcher_recent_rejects']} trailing REJECT(s)"
             )
         status["watcher_log_entries"] = len(verdicts)
     else:

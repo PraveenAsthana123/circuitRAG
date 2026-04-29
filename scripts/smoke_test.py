@@ -12,6 +12,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -77,4 +78,11 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run the end-to-end smoke test against the live ingestion, "
+            "retrieval, and inference services."
+        )
+    )
+    parser.parse_args()
     sys.exit(asyncio.run(main()))

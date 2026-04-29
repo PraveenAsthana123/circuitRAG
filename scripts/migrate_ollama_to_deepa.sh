@@ -8,7 +8,8 @@
 #   ./migrate_ollama_to_deepa.sh                # dry-run (default)
 #   ./migrate_ollama_to_deepa.sh --apply        # actually migrate
 #   ./migrate_ollama_to_deepa.sh --rollback     # undo migration
-#   ./migrate_ollama_to_deepa.sh --finalize     # delete .bak after verified
+#   ./migrate_ollama_to_deepa.sh --finalize --yes-i-accept-delete
+#                                               # delete .bak after verified
 #
 # Apply does:
 #   1. Snapshot `ollama list` for verification later
@@ -23,7 +24,8 @@
 # Rollback undoes:
 #   - systemctl stop ollama
 #   - mv .bak back to /usr/share/ollama/.ollama
-#   - Remove the systemd Environment override
+#   - Restore previous systemd override if one existed; otherwise
+#     preserve the generated override as a dated backup
 #   - daemon-reload + start
 #
 # Log: appended to /mnt/deepa/installed-software/migration.log
@@ -39,19 +41,23 @@ SNAPSHOT_FILE="$DEEPA_ROOT/.ollama-snapshot-pre-migration"
 SYSTEMD_OVERRIDE="/etc/systemd/system/ollama.service.d/override.conf"
 
 MODE="dry-run"
-case "${1:-}" in
-    --apply)    MODE="apply" ;;
-    --rollback) MODE="rollback" ;;
-    --finalize) MODE="finalize" ;;
-    --help|-h)
-        head -30 "$0" | sed 's/^# //; s/^#//'
-        exit 0 ;;
-    "") MODE="dry-run" ;;
-    *)
-        echo "Unknown mode: $1" >&2
-        echo "Usage: $0 [--apply|--rollback|--finalize]" >&2
-        exit 1 ;;
-esac
+FINALIZE_DELETE_ACK="false"
+for arg in "$@"; do
+    case "$arg" in
+        --apply) MODE="apply" ;;
+        --rollback) MODE="rollback" ;;
+        --finalize) MODE="finalize" ;;
+        --yes-i-accept-delete) FINALIZE_DELETE_ACK="true" ;;
+        --help|-h)
+            sed -n '2,30p' "$0" | sed 's/^# //; s/^#//'
+            exit 0 ;;
+        "") ;;
+        *)
+            echo "Unknown mode: $arg" >&2
+            echo "Usage: $0 [--apply|--rollback|--finalize] [--yes-i-accept-delete]" >&2
+            exit 1 ;;
+    esac
+done
 
 ensure_log() {
     mkdir -p "$DEEPA_ROOT"
@@ -75,6 +81,33 @@ require_sudo() {
         echo "Run from a shell where 'sudo -n true' succeeds, or rerun and" >&2
         echo "type your password when prompted." >&2
         sudo -v || exit 1
+    fi
+}
+
+latest_override_backup() {
+    sudo ls -dt "${SYSTEMD_OVERRIDE}.pre-"* 2>/dev/null | head -1 || true
+}
+
+restore_override_safely() {
+    local backup
+    backup="$(latest_override_backup)"
+    if sudo test -f "$SYSTEMD_OVERRIDE"; then
+        sudo mv "$SYSTEMD_OVERRIDE" "${SYSTEMD_OVERRIDE}.generated-${DATE_TAG}"
+        log_event "override_preserved" "to=${SYSTEMD_OVERRIDE}.generated-${DATE_TAG}"
+    fi
+    if [ -n "$backup" ] && sudo test -f "$backup"; then
+        sudo cp "$backup" "$SYSTEMD_OVERRIDE"
+        log_event "override_restored" "from=$backup"
+    else
+        log_event "override_restore_missing_backup"
+    fi
+}
+
+verify_daemon_active() {
+    if ! sudo systemctl is-active ollama >/dev/null 2>&1; then
+        echo "  [FAIL] ollama service is not active after restart" >&2
+        log_event "daemon_inactive_after_restart"
+        return 1
     fi
 }
 
@@ -108,6 +141,7 @@ do_dry_run() {
         echo "          Environment=\"OLLAMA_MODELS=$OLLAMA_DST/models\""
         echo ""
         echo "  [plan]  daemon-reload + restart ollama"
+        echo "  [plan]  verify systemctl is-active ollama"
         echo "  [plan]  verify ollama list matches pre-migration snapshot"
     else
         echo "  source $OLLAMA_SRC does not exist (already migrated? not installed?)"
@@ -186,6 +220,13 @@ EOF
     sudo systemctl daemon-reload
     sudo systemctl start ollama
     sleep 3
+    if ! verify_daemon_active; then
+        echo "  Restoring previous override and restarting with original source path..." >&2
+        restore_override_safely
+        sudo systemctl daemon-reload
+        sudo systemctl restart ollama || true
+        return 1
+    fi
     log_event "daemon_restarted"
 
     # 7. Verify ollama list matches snapshot
@@ -196,6 +237,10 @@ EOF
         echo "  [FAIL] post-migration list has $new_list_count lines, snapshot had $snapshot_count" >&2
         echo "  Models may be missing from $OLLAMA_DST/models" >&2
         log_event "post_verify_failed" "new=$new_list_count" "snapshot=$snapshot_count"
+        echo "  Restoring previous override and restarting with original source path..." >&2
+        restore_override_safely
+        sudo systemctl daemon-reload
+        sudo systemctl restart ollama || true
         return 1
     fi
     log_event "post_verify_ok" "models=$new_list_count"
@@ -210,7 +255,7 @@ EOF
     log_event "apply_complete"
     echo ""
     echo "Migration complete. Verify your tools work, then run:"
-    echo "  $0 --finalize    # to free the ~42GB on /"
+    echo "  $0 --finalize --yes-i-accept-delete    # to free the ~42GB on /"
     echo "Or if anything broke:"
     echo "  $0 --rollback"
 }
@@ -244,11 +289,8 @@ do_rollback() {
     sudo mv "$bak" "$OLLAMA_SRC"
     log_event "rollback_restored_src" "from=$bak"
 
-    echo "[3/4] Remove systemd override..."
-    if sudo test -f "$SYSTEMD_OVERRIDE"; then
-        sudo rm "$SYSTEMD_OVERRIDE"
-        log_event "rollback_removed_override"
-    fi
+    echo "[3/4] Restore or preserve systemd override..."
+    restore_override_safely
     sudo systemctl daemon-reload
 
     echo "[4/4] Restart ollama..."
@@ -263,6 +305,11 @@ do_rollback() {
 
 do_finalize() {
     require_sudo
+    if [ "$FINALIZE_DELETE_ACK" != "true" ]; then
+        echo "Refusing to delete backup without explicit confirmation flag." >&2
+        echo "Run: $0 --finalize --yes-i-accept-delete" >&2
+        exit 1
+    fi
     local bak
     bak="$(sudo ls -dt /usr/share/ollama/.ollama.bak-* 2>/dev/null | head -1 || true)"
     if [ -z "$bak" ] || ! sudo test -d "$bak"; then
