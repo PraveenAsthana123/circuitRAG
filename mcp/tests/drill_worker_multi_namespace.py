@@ -15,6 +15,8 @@ pins the multi-client behavior:
   * Per-namespace CB bailout: hr's CB open doesn't stop itsm's
     drafts from being processed in the same sweep cycle.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_worker_multi_namespace.py
 """

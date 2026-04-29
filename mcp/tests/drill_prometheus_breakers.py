@@ -21,6 +21,8 @@ throughout because the OTel collector is healthy. (A separate drill
 could exercise that too, but it's slow: stopping the collector for
 ~90s to let the OCB trip.)
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_prometheus_breakers.py
 """

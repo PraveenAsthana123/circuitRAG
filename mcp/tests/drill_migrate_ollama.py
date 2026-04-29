@@ -29,9 +29,9 @@ six negative assertions.
      can't read the models even though files exist.
   7. NEGATIVE: systemd override is BACKED UP before being
      overwritten. If user already had an override (rare but
-     possible), rollback needs to restore it.
-  8. NEGATIVE: rollback path covers all three undo steps:
-     mv .bak back, REMOVE the systemd override, daemon-reload.
+     possible), rollback/failure recovery needs to restore it.
+  8. NEGATIVE: rollback preserves system files and finalize
+     requires an explicit delete-ack flag.
 
 Tag: readonly. Pure-Python -- runs in tier 1.
 """
@@ -80,8 +80,13 @@ def main():
     step("2. NEGATIVE: dry-run is default; sudo NOT invoked unconditionally")
     if 'MODE="dry-run"' not in text:
         fail("MODE doesn't default to dry-run")
-    if not re.search(r'""\)\s*MODE="dry-run"', text):
-        fail("empty-arg case missing")
+    # Older parser used `case "${1:-}"`; newer parser iterates over
+    # all args and leaves MODE at its initial dry-run default when
+    # no mode flags are supplied. Either shape is acceptable.
+    has_explicit_empty_branch = re.search(r'""\)\s*MODE="dry-run"', text)
+    has_default_initializer = re.search(r'^\s*MODE="dry-run"\s*$', text, re.MULTILINE)
+    if not has_explicit_empty_branch and not has_default_initializer:
+        fail("dry-run default missing (neither explicit empty-arg branch nor initializer found)")
     # require_sudo() must NOT be called in do_dry_run
     dr_match = re.search(r"do_dry_run\(\)\s*{(.*?)\n}", text, re.DOTALL)
     if not dr_match:
@@ -171,10 +176,10 @@ def main():
         fail("override backup doesn't tag with date — collisions possible")
     ok("existing override backed up to .pre-<DATE_TAG> before overwrite")
 
-    # Step 8: rollback covers 3 undo steps
+    # Step 8: rollback preserves override + finalize needs explicit ack
     step(
-        "8. NEGATIVE: rollback covers all 3 undo steps "
-        "(mv .bak back + remove override + daemon-reload)"
+        "8. NEGATIVE: rollback preserves override and finalize "
+        "requires explicit delete ack"
     )
     rb_match = re.search(r"do_rollback\(\)\s*{(.*?)^\}", text,
                           re.DOTALL | re.MULTILINE)
@@ -183,15 +188,25 @@ def main():
     rb_body = rb_match.group(1)
     if "mv \"$bak\" \"$OLLAMA_SRC\"" not in rb_body and "mv \"$bak\" $OLLAMA_SRC" not in rb_body:
         fail("rollback doesn't mv .bak back to source")
-    if "rm \"$SYSTEMD_OVERRIDE\"" not in rb_body and "rm $SYSTEMD_OVERRIDE" not in rb_body:
+    if "restore_override_safely" not in rb_body:
         fail(
-            "rollback doesn't remove the systemd override. Leaving it "
-            "in place after rolling back models would point the daemon "
-            "at the (now-empty) /mnt/deepa location."
+            "rollback doesn't call restore_override_safely(). "
+            "System override recovery must preserve or restore files, "
+            "not silently delete them."
         )
     if "daemon-reload" not in rb_body:
         fail("rollback doesn't run daemon-reload after override removal")
-    ok("rollback covers all 3 undo steps")
+    final_match = re.search(r"do_finalize\(\)\s*{(.*?)^\}", text,
+                            re.DOTALL | re.MULTILINE)
+    if not final_match:
+        fail("do_finalize() body not found")
+    final_body = final_match.group(1)
+    if "--yes-i-accept-delete" not in text or "FINALIZE_DELETE_ACK" not in final_body:
+        fail(
+            "finalize doesn't require an explicit delete-ack flag. "
+            "Deleting the backup must be a separate acknowledged action."
+        )
+    ok("rollback preserves override state; finalize requires explicit delete ack")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 MIGRATE-OLLAMA STEPS PASSED{NC}")

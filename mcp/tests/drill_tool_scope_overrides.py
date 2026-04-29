@@ -26,6 +26,8 @@ Prereqs: inference-svc running DOCUMIND_AUTH_REQUIRED=true + MCP
 running with MCP_AUTH_REQUIRED=true (or off; the test only cares that
 MCP replies with the catalog on /tools/list).
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_tool_scope_overrides.py
 """

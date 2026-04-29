@@ -21,7 +21,7 @@ Eight steps. Six negative assertions.
      Without a non-zero exit, a CI sanity check that runs the
      installer with a typoed flag wouldn't fail.
   4. NEGATIVE: cron line shape — the installer prints '5 0 * * *',
-     /tmp/documind-venv/bin/python (or PYTHON_BIN), the snapshot
+     /mnt/deepa/rag/.venv/bin/python (or PYTHON_BIN), the snapshot
      script absolute path, and the marker comment.
   5. NEGATIVE: marker uniqueness — the marker string appears in the
      installer source exactly enough times to support find/replace
@@ -30,7 +30,7 @@ Eight steps. Six negative assertions.
      unrelated cron lines.
   6. NEGATIVE: PYTHON_BIN env override changes the cron line target.
   7. NEGATIVE: backup-file naming pattern — the installer creates
-     /tmp/crontab.before-*.bak files only on mutating modes.
+     /mnt/deepa/rag/.loop/cron-backups/crontab.before-*.bak files only on mutating modes.
      --dry-run and --status MUST NOT create backup files.
   8. POSITIVE: idempotency design — strip_managed handles "already
      installed" by removing prior managed line before appending the
@@ -122,7 +122,7 @@ def main() -> int:
     rc, out, _ = _run(["--dry-run"])
     required = [
         "5 0 * * *",                              # schedule (00:05 UTC)
-        "/tmp/documind-venv/bin/python",           # default interpreter
+        "/mnt/deepa/rag/.venv/bin/python",         # default interpreter
         str(SNAPSHOT_SCRIPT),                      # absolute path to script
         "phase-5Q",                                # marker substring
         ">/dev/null 2>&1",                         # quiet redirection
@@ -154,7 +154,7 @@ def main() -> int:
     # Distinctiveness check: marker must NOT match common cron-line text.
     fake_cron = (
         "0 0 * * * /usr/bin/python3 /home/user/snapshot.py\n"
-        "5 0 * * * /tmp/documind-venv/bin/python /mnt/deepa/rag/scripts/x.py\n"
+        "5 0 * * * /mnt/deepa/rag/.venv/bin/python /mnt/deepa/rag/scripts/x.py\n"
     )
     proc = subprocess.run(
         ["grep", "-cF", marker_str],
@@ -191,15 +191,22 @@ def main() -> int:
         print(f"✗ step 6: PYTHON_BIN={custom_python!r} not in cron line. "
               f"would-install block:\n{would_install_block}")
         return 1
-    if "/tmp/documind-venv/bin/python " in would_install_block:
+    if "/mnt/deepa/rag/.venv/bin/python " in would_install_block:
+        pass
+    elif custom_python not in would_install_block:
+        print(f"✗ step 6: PYTHON_BIN={custom_python!r} not in cron line. "
+              f"would-install block:\n{would_install_block}")
+        return 1
+    if "/mnt/deepa/rag/.venv/bin/python " in would_install_block and custom_python != "/mnt/deepa/rag/.venv/bin/python":
         print(f"✗ step 6: default interpreter still in would-install line "
               "even with PYTHON_BIN set")
         return 1
     print(f"✓ step 6: PYTHON_BIN override changes cron line to {custom_python!r}")
 
     # ── Step 7: NEGATIVE — read-only modes don't create backups ──
-    # Snapshot the /tmp directory state for backup files BEFORE we run.
-    backup_glob = lambda: list(Path("/tmp").glob("crontab.before-*.bak"))
+    # Snapshot the Deepa-hosted backup directory state BEFORE we run.
+    backup_dir = REPO / ".loop" / "cron-backups"
+    backup_glob = lambda: list(backup_dir.glob("crontab.before-*.bak"))
     before = {p.name for p in backup_glob()}
     # Run --dry-run and --status — neither should write a backup.
     _run(["--dry-run"])

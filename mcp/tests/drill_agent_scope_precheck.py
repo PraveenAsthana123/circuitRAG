@@ -14,6 +14,8 @@ running with or without auth, the agent must:
  3. For a query that doesn't trigger intent (a plain RAG ask), the
     scope check doesn't fire at all — intent stays "answer".
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_agent_scope_precheck.py
 """

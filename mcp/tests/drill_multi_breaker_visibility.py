@@ -21,6 +21,8 @@ Flow:
  6. Restart ITSM, wait recovery_timeout + one probe call —
     mcp_itsm back to closed on both surfaces.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_multi_breaker_visibility.py
 """

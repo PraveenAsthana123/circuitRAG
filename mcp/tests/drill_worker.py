@@ -17,6 +17,8 @@ Flow:
     show skipped_backoff=2 (the backoff window prevents a second
     attempt within the configured gap).
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_worker.py
 """

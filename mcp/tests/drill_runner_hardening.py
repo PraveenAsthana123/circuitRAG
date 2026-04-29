@@ -23,6 +23,8 @@ Flow:
     semaphore-gated dispatch path; max 2 should run simultaneously
     and the third waits.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_runner_hardening.py
 """

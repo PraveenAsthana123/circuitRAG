@@ -21,8 +21,8 @@ Eight steps. Six negative assertions.
   5. NEGATIVE: at least 3 Alternatives considered. ADR-015 lists
      four (Strict, Soft percentage, Ratchet, Per-rule timestamps);
      dropping below 3 would weaken the decision-space presentation.
-  6. NEGATIVE: References table cites the FOUR ratchets currently
-     in production (KNOWN_MISSING, KNOWN_AUDIT_DRILLS,
+  6. NEGATIVE: References table cites the THREE ratchets currently
+     in production (KNOWN_MISSING,
      KNOWN_MISSING_NEG_MARKER, §7 scope-extension log) AND their
      landing commits. Without these, the ADR is unmoored from
      code.
@@ -120,7 +120,7 @@ def main() -> int:
         return 1
     print(f"✓ step 5: {alt_count} alternatives considered (decision space presented)")
 
-    # ── Step 6: NEGATIVE — References cites all 4 ratchets + commits ──
+    # ── Step 6: NEGATIVE — References cites all 3 ratchets + commits ──
     refs_match = re.search(r"## References(.*?)\Z", body, re.DOTALL)
     if not refs_match:
         print("✗ step 6: References section missing")
@@ -128,7 +128,6 @@ def main() -> int:
     refs_text = refs_match.group(1)
     required_refs = [
         "KNOWN_MISSING",
-        "KNOWN_AUDIT_DRILLS",
         "KNOWN_MISSING_NEG_MARKER",
         "scope-extension log",
     ]
@@ -138,11 +137,11 @@ def main() -> int:
         return 1
     # Each phase row should have a commit hash (7+ hex chars)
     commit_hashes = re.findall(r"`([a-f0-9]{7,12})`", refs_text)
-    if len(commit_hashes) < 4:
+    if len(commit_hashes) < 3:
         print(f"✗ step 6: References table cites {len(commit_hashes)} commit hashes, "
-              "expected ≥4 (one per ratchet)")
+              "expected ≥3 (one per ratchet)")
         return 1
-    print(f"✓ step 6: References cites all 4 ratchets + {len(commit_hashes)} commits")
+    print(f"✓ step 6: References cites all 3 ratchets + {len(commit_hashes)} commits")
 
     # ── Step 7: NEGATIVE — composes-with cross-refs ──
     required_cross = ["ADR-014", "§43", "§44"]

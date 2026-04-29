@@ -20,6 +20,8 @@ Prereqs:
   MCP HR on :8090 (auth on), MCP ITSM on :8091 (auth on, started by drill),
   inference-svc running with DOCUMIND_MCP_ITSM_URL=http://127.0.0.1:8091.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_agent_multiserver_routing.py
 """

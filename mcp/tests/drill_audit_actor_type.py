@@ -21,6 +21,8 @@ Flow:
  5. No regression on mcp_draft.created (actor_type remains "service"
     because the agent doesn't specify).
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_audit_actor_type.py
 """

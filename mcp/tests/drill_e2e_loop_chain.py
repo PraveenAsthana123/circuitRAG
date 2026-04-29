@@ -18,7 +18,7 @@ drill catches integration bugs the per-piece drills miss:
     them and the watcher.log doesn't reflect the latest commit
     until the next commit.
 
-Eight steps. Six negative assertions.
+Six exercised steps in this local drill shape. Six negative assertions.
 
   1. Set up tmpdir git repo + advisor.db; make a meaningful commit.
   2. Run loop_watcher_hook.main + capture_and_review.capture_and_record

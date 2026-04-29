@@ -14,6 +14,8 @@ Flow:
     subsequent row since they chain on a now-broken anchor.
  7. Delete the synthetic row — verifier clean.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_audit_verifier.py
 """

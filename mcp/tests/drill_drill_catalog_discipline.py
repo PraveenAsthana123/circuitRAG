@@ -19,7 +19,7 @@ the contract — drop the resources tag and break parallel scheduling,
 or `import pytest` and confuse the runner. Phase 6B locks the
 catalog-wide invariants the resource-aware runner depends on.
 
-Eight steps. Six negative assertions.
+Eight steps. Seven negative assertions.
 
   1. POSITIVE: catalog has ≥50 drills (the resource-aware runner
      is meaningless on a tiny catalog; this asserts the test
@@ -175,23 +175,9 @@ def main() -> int:
     #   os._exit(...)         — rare; bypasses cleanup but valid
     #   asyncio.run(main()) with raise/assert — natural Python termination
     #
-    # Two drills (frontend audits) intentionally never fail — they're
-    # explicitly designed as SURVEY tools, not pass/fail gates. From
-    # drill_frontend_link_audit.py's docstring: "This is an audit, not
-    # a gate — exits 0 always. Output is the broken-link list for the
-    # next loop iteration." The carve-out distinguishes "broken drill"
-    # (real drift; would be in this list) from "intentionally a
-    # survey drill" (legitimate design pattern; lives here).
-    #
-    # If you add a new audit drill that doesn't gate on findings,
-    # consider whether it belongs in mcp/tests/audit_*.py instead
-    # so the meta-drill's contract stays clear: drill_*.py = gates,
-    # audit_*.py = surveys. For now we accept the two existing
-    # drills under their original naming.
-    KNOWN_AUDIT_DRILLS = {
-        "drill_frontend_link_audit.py",
-        "drill_frontend_template_coverage_audit.py",
-    }
+    # Survey-only checks now live in mcp/tests/audit_*.py. Every
+    # drill_*.py file is expected to be a PASS/FAIL gate with real
+    # exit-code signal.
     no_exit_signal = []
     for p in drills:
         body = p.read_text()
@@ -206,19 +192,13 @@ def main() -> int:
         )
         if not has_explicit_exit and not has_async_pattern:
             no_exit_signal.append(p.name)
-    actually_no_exit = set(no_exit_signal)
-    new_no_exit = actually_no_exit - KNOWN_AUDIT_DRILLS
-    if new_no_exit:
-        print(f"✗ step 6: {len(new_no_exit)} drills lack exit-code "
-              f"signal AND aren't on the audit-drill carve-out: "
-              f"{sorted(new_no_exit)} — either fix to gate on findings, "
-              f"or add to KNOWN_AUDIT_DRILLS with explicit rationale")
+    if no_exit_signal:
+        print(f"✗ step 6: {len(no_exit_signal)} drills lack exit-code "
+              f"signal: {sorted(no_exit_signal)} — gate drills must "
+              f"fail via process exit; survey scripts belong in "
+              f"mcp/tests/audit_*.py")
         return 1
-    audit_drills_present = actually_no_exit & KNOWN_AUDIT_DRILLS
-    stale_audits = KNOWN_AUDIT_DRILLS - actually_no_exit
-    print(f"✓ step 6: 0 broken drills; {len(audit_drills_present)} "
-          f"intentional audit drills (survey-only by design); "
-          f"{len(stale_audits)} stale entries safe to remove")
+    print("✓ step 6: all drill_*.py files have exit-code signal")
 
     # ── Step 7: NEGATIVE — drill docs mention "negative" (§43.5) ──
     # §43.5 requires ≥1 negative assertion per drill. We can't AST-
@@ -232,42 +212,7 @@ def main() -> int:
     # dishonest. Grandfather them in KNOWN_MISSING_NEG_MARKER.
     # New drills must include the marker; old drills can be uplifted
     # organically when their owner next touches them.
-    KNOWN_MISSING_NEG_MARKER = {
-        "drill_admin_api.py",
-        "drill_agent_denial_metrics.py",
-        "drill_agent_idempotency.py",
-        "drill_agent_multiserver_routing.py",
-        "drill_agent_scope_precheck.py",
-        "drill_audit.py",
-        "drill_audit_actor_type.py",
-        "drill_audit_seal.py",
-        "drill_audit_verifier.py",
-        "drill_breaker_transitions.py",
-        "drill_client_error_envelope.py",
-        "drill_drill_server.py",
-        "drill_e2e.py",
-        "drill_frontend_link_audit.py",
-        "drill_frontend_template_coverage_audit.py",
-        "drill_health_detailed.py",
-        "drill_hitl.py",
-        "drill_mcp_server_scope.py",
-        "drill_mcp_tool_call_metrics.py",
-        "drill_multi_breaker_visibility.py",
-        "drill_multi_server.py",
-        "drill_prometheus_breakers.py",
-        "drill_resolve_draft_routing.py",
-        "drill_runner_hardening.py",
-        "drill_runner_junit.py",
-        "drill_runner_scheduler.py",
-        "drill_scope.py",
-        "drill_tenant_span_tags.py",
-        "drill_tool_catalog_ttl.py",
-        "drill_tool_scope_overrides.py",
-        "drill_trace.py",
-        "drill_worker.py",
-        "drill_worker_cb_aware.py",
-        "drill_worker_multi_namespace.py",
-    }
+    KNOWN_MISSING_NEG_MARKER: set[str] = set()
     no_negative_mention = []
     for p in drills:
         body = p.read_text()

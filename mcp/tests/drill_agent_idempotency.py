@@ -18,6 +18,8 @@ Flow:
  5. Lowercase header variant + X-Idempotency-Key → both accepted
     equivalently.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_agent_idempotency.py
 

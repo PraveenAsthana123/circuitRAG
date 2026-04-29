@@ -25,7 +25,7 @@ Composes with:
   * Existing governance.audit_log (UNTOUCHED by this drill) — the
     additive scaffold preserves the legacy table.
 
-Eight steps (3 negative assertions):
+Eight steps (6 negative assertions):
 
  1. Migration 009 file exists + has the expected partitioning
     structure (source scan).

@@ -19,6 +19,8 @@ Flow:
  4. Fire hr:write + leave_request happy path → NO counter increment.
  5. Fire a plain-RAG query (no intent match) → NO counter increment.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_agent_denial_metrics.py
 """

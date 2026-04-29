@@ -12,6 +12,8 @@ Run against a live MCP HR server (default localhost:8090). Covers:
   6. CB OPEN → agent persists draft instead of calling
   7. Recovery: unset failure flag, wait recovery_timeout, probe succeeds
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     MCP_BASE_URL=http://127.0.0.1:8090 python mcp/tests/drill_e2e.py
 """

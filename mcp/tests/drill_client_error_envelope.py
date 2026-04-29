@@ -21,6 +21,8 @@ Flow:
  5. Valid hr:write token → ok=True, data.ticket_id populated.
  6. CB stays CLOSED through all of the above — 4xx is not a CB trip.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_client_error_envelope.py
 """

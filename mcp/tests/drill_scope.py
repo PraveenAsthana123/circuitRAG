@@ -16,6 +16,8 @@ Flow:
  7. Second resolve with the same ``hr:write`` token → 409 DRAFT_NOT_PENDING
     (proves the scope check didn't bypass the usual state-machine)
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_scope.py
 """

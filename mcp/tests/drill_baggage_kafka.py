@@ -19,7 +19,7 @@ boundary. Commit landing alongside this drill wires:
   * IdempotentConsumer._handle_one — extracts on receive, attaches
     to OTel context for the handler call, detaches in finally
 
-Six steps:
+Three exercised steps in this local drill shape:
 
  1. _inject_kafka_headers + _extract_kafka_context exist + are used by
     EventProducer.publish + IdempotentConsumer._handle_one (source scan).

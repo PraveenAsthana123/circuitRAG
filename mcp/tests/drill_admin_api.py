@@ -16,6 +16,8 @@ Flow:
  9. POST /api/v1/drafts/DRAFT-ZZZZ/resolve → 404 DRAFT_NOT_FOUND
 
 Prereqs: same as golden-demo.sh (inference :8084, mcp-hr :8090, PG).
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_admin_api.py
 """

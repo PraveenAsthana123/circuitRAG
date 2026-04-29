@@ -18,7 +18,7 @@ subprocess) hadn't been verified — until 573e223 fixed
 capture_and_review.py to match the drill pattern. This drill locks
 the contract for both existing CLI scripts AND any future ones.
 
-Eight steps. Six negative assertions.
+Five exercised steps in this local drill shape. Six negative assertions.
 
   1. Both CLI scripts that load sidecar modules exist.
   2. NEGATIVE: capture_and_review.py sets sys.modules

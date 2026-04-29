@@ -18,7 +18,7 @@ A regression that:
     stack drill on every PR, blowing the per-PR runner budget for
     the team → caught here (step 6).
 
-Seven steps (4 negative assertions). Pure source-scan, zero infra.
+Seven steps (6 negative assertions). Pure source-scan, zero infra.
 
  1. Tier 1 (--allow-resources=) contains the named in-process
     drills that anchor the cheap PR gate: baggage_propagation,

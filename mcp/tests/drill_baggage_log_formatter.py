@@ -13,7 +13,7 @@ the OTel context, every structlog event auto-includes those fields so
 logs become tenant-filterable across services without callers needing
 explicit kwargs.
 
-Six steps:
+Four exercised steps in this local drill shape:
 
  1. _inject_baggage exists in documind_core.logging_config and is
     wired into the processor chain in setup_logging.

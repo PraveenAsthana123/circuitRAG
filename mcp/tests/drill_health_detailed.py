@@ -14,6 +14,8 @@ Flow:
     state reported should be 'closed' (or 'half_open' momentarily,
     which also counts as "breaker is probing, safe to retry").
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_health_detailed.py
 """

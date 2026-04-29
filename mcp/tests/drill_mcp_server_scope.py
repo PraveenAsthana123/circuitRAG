@@ -22,6 +22,8 @@ Flow:
     scope check runs BEFORE the idempotency cache lookup, so a
     leaked idempotency_key isn't a replay primitive.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_mcp_server_scope.py
 

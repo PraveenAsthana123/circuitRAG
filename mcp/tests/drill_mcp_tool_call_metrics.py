@@ -15,6 +15,8 @@ Flow:
  4. Call with an unknown tool name → HTTP 404 → outcome=http_404 +1.
  5. Label isolation: hr.policy_lookup counters unchanged throughout.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_mcp_tool_call_metrics.py
 """

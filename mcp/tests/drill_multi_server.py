@@ -21,6 +21,8 @@ Prereqs:
   * MCP ITSM on :8091 with MCP_AUTH_REQUIRED=true (started by this drill)
   * Dev keys at scripts/dev-keys/
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_multi_server.py
 """

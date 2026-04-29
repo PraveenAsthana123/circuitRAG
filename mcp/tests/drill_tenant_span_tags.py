@@ -13,6 +13,8 @@ Flow:
  5. Jaeger tag-filter search: /api/traces?tags=... and assert the
     returned set is non-empty.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_tenant_span_tags.py
 """

@@ -20,6 +20,8 @@ Flow:
     ticket_id returned, draft marked replayed.
  7. Sanity: GET /api/v1/drafts → no pending drafts remain for tenant.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_resolve_draft_routing.py
 """

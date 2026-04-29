@@ -17,7 +17,7 @@ This drill proves the contract WITHOUT requiring the full app stack:
 runs in-process, uses W3C inject/extract directly against a carrier
 dict (the same shape that becomes HTTP request headers).
 
-Eight steps:
+Three exercised steps in this local drill shape:
 
  1. server_common exports baggage_set / baggage_get / inject /
     extract helpers (API surface).

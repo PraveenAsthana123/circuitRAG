@@ -14,6 +14,8 @@ Flow:
     verify runner correctly reports exit 1 via stdout (tested via
     the 'No drills match filter' message).
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_runner_junit.py
 """

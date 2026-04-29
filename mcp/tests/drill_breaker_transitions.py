@@ -20,6 +20,8 @@ Flow:
  5. Counter for ``mcp_hr`` strictly > baseline; counter for
     unrelated ``retrieval-svc`` series UNCHANGED (label isolation).
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_breaker_transitions.py
 """

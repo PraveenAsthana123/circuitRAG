@@ -27,6 +27,8 @@ Flow:
 Prereqs: mcp-server-drills running on :8092, OTel collector present
 (optional). No auth required by default (MCP_AUTH_REQUIRED=false).
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_drill_server.py
 """

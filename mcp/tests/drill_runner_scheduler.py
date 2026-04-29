@@ -17,6 +17,8 @@ Flow:
 Approach: plug a fake "run" into _run_one via a spy that records
 start/end timestamps; don't actually run drill subprocesses.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_runner_scheduler.py
 """

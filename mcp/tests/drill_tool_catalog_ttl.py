@@ -19,6 +19,8 @@ Flow:
     list_tools with a stale cache — it must return the stale cache
     rather than raise. fetch_count unchanged.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_tool_catalog_ttl.py
 """

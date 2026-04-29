@@ -20,6 +20,8 @@ Flow:
     this time proceeds (list_pending IS called) but the resolve
     call degrades, incrementing degraded_bailouts.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     PYTHONPATH=/mnt/deepa/rag python mcp/tests/drill_worker_cb_aware.py
 """

@@ -15,7 +15,7 @@ populates request.state.tenant_id / user_id / correlation_id, the
 new middleware promotes those into baggage so outbound httpx calls
 auto-carry them to downstream services.
 
-Six steps:
+Three exercised steps in this local drill shape:
 
  1. BaggageContextMiddleware exported from documind_core.middleware
     (API surface).

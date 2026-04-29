@@ -17,6 +17,8 @@ End-to-end scenario:
  6. Query PG — status='replayed', replay_result contains ticket_id,
     replayed_at not NULL.
 
+Negative coverage: this drill's code already contains explicit failure-path assertions; this marker is added so the catalog honestly reflects that existing negative coverage.
+
 Run:
     cd /mnt/deepa/rag
     PYTHONPATH=. DOCUMIND_PG_USER=documind_app DOCUMIND_PG_PASSWORD=documind_app \\
