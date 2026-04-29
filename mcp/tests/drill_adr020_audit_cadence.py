@@ -65,6 +65,13 @@ PARALLEL_TOOL_COMMITS = {
     "5dfeb9c": ("G-1: agent-orchestrator-svc", "drill_agent_orchestrator_structure.py"),
     "51bac70": ("G-2: services/frontend/* incl. TTS proxy", "drill_tts_proxy_route.py"),
     "45633d2": ("G-3: scripts/* help-contract paydown", "drill_scripts_have_help.py"),
+    # G-4 has 8 audit drills (project-plan + task-run + approval +
+    # memory + control-plane api/chain/ui + admin-summary). The
+    # registry is 1:1 (commit -> single representative drill); we
+    # pick drill_agentic_control_plane_api.py as the most
+    # comprehensive (exercises the API surface end-to-end). All 8
+    # drills are listed in the G-4 commit message body.
+    "480dd3e": ("G-4: agentic control plane (8 pre-shipped audits)", "drill_agentic_control_plane_api.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
@@ -89,6 +96,8 @@ MAX_AUDIT_LATENCY = 2
 KNOWN_LATE_AUDITS: dict[str, int] = {
     "5dfeb9c": 10,  # G-1: agent-orchestrator-svc -> Phase 7E
     "51bac70": 9,   # G-2: TTS proxy -> Phase 7I
+    # G-3 (45633d2) and G-4 (480dd3e) latency=0 (audits preexisting);
+    # not grandfathered because they're within SLO.
 }
 
 # How far back to scan git history. 100 commits ≈ 5 sessions of
