@@ -6,7 +6,7 @@ Runs the runner on a narrow slice of drills that's known green +
 fast, then parses the resulting XML and asserts structure.
 
 Flow:
- 1. Invoke runner: --only tool_catalog_ttl --report junit=/tmp/dr.xml
+ 1. Invoke runner: --only baggage_log_formatter --report junit=/tmp/dr.xml
  2. XML parses without error.
  3. Root is <testsuite>; tests count matches # of drills we ran.
  4. Each testcase has a classname/name/time + a 'resources' property.
@@ -60,10 +60,10 @@ def main() -> None:
     if report_path.exists():
         report_path.unlink()
 
-    step("1. invoke runner --only tool_catalog_ttl --report junit=<path>")
+    step("1. invoke runner --only baggage_log_formatter --report junit=<path>")
     code, out = _run_runner([
         "--parallel", "1",
-        "--only", "tool_catalog_ttl",
+        "--only", "baggage_log_formatter",
         "--report", f"junit={report_path}",
     ])
     if code != 0:
@@ -107,7 +107,7 @@ def main() -> None:
 
     step("5. unknown format yields exit 2 + error message")
     code, out = _run_runner([
-        "--only", "tool_catalog_ttl",
+        "--only", "baggage_log_formatter",
         "--report", "bogus=nope",
     ])
     if code != 2:

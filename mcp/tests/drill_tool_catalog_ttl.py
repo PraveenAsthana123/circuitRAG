@@ -1,4 +1,4 @@
-# RESOURCES: readonly
+# RESOURCES: mcp_hr
 """
 Drill: MCPClient.list_tools respects a TTL — without one, catalog
 changes on the MCP server side silently go un-picked-up until
