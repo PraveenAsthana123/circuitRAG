@@ -84,6 +84,7 @@ data/kafka/
 data/zookeeper/
 data/ollama/
 data/minio/
+data/prometheus/
 logs/
 *.log
 
@@ -117,3 +118,13 @@ Desktop.ini
 advisor.db
 advisor.db-wal
 advisor.db-shm
+
+# Phase 6Z: worktree noise — local-only runtime + tooling artifacts
+.runtime/
+.playwright-mcp/
+.claude/scheduled_tasks.lock
+.claude/settings.json
+# Root-level QA screenshot artifacts (verify-* / *-shipped / *-fix)
+/*.png
+# Next.js production build dir (separate from .next/ dev build)
+services/frontend/.next-prod/
