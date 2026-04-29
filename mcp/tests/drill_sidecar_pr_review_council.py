@@ -106,6 +106,12 @@ council_mod = _load_mod(
 )
 PrReviewCouncil = council_mod.PrReviewCouncil
 ROLE_AUTHORS = council_mod.ROLE_AUTHORS
+# Canonical chair-model reference. ADVISOR_MODEL = _CHAIR.model in
+# services/sidecar-advisor/council.py — sourcing it via the module
+# (rather than hardcoding a string) is the ADR-017 structural
+# rewrite of the previous hardcoded "deepseek-coder:6.7b-instruct"
+# expectation, which broke when the chair was switched to kimi-k2.
+ADVISOR_MODEL = council_mod.ADVISOR_MODEL
 
 
 # ── Stub generator that records every (model, prompt) call ──────
@@ -249,10 +255,10 @@ async def main() -> None:
         fail(f"summary not parsed correctly: {parsed.summary!r}")
     if parsed.top_3_advice != ["add tests", "handle null", "document API"]:
         fail(f"top_3_advice wrong: {parsed.top_3_advice}")
-    if parsed.model_used != "deepseek-coder:6.7b-instruct":
+    if parsed.model_used != ADVISOR_MODEL:
         fail(
-            f"model_used should be chair's model, got "
-            f"{parsed.model_used!r}"
+            f"model_used should match council.ADVISOR_MODEL "
+            f"({ADVISOR_MODEL!r}), got {parsed.model_used!r}"
         )
     ok(f"parsed AdvisorOutput model_used={parsed.model_used}; advice={parsed.top_3_advice}")
 
