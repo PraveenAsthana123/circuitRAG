@@ -97,6 +97,67 @@ class ProjectPlanItem(BaseModel):
     task_id: str | None = None
 
 
+class ProjectPlanItemView(BaseModel):
+    plan_item_id: str
+    project_id: str
+    tenant_id: str
+    title: str
+    objective: str
+    status: str
+    risk_level: str = "LOW"
+    owner_role: str = "manager"
+    depends_on: list[str] = Field(default_factory=list)
+    acceptance_checks: list[str] = Field(default_factory=list)
+    scope_paths: list[str] = Field(default_factory=list)
+    task_id: str | None = None
+    sort_index: int = 0
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class TaskRunView(BaseModel):
+    run_id: str
+    task_id: str
+    tenant_id: str
+    project_id: str | None = None
+    phase: str
+    status: str
+    model_map: dict[str, str] = Field(default_factory=dict)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    outputs: dict[str, Any] = Field(default_factory=dict)
+    confidence: float | None = None
+    risk_level: str | None = None
+    duration_ms: int | None = None
+    error_text: str | None = None
+    created_at: str | None = None
+
+
+class ApprovalView(BaseModel):
+    approval_id: str
+    task_id: str
+    tenant_id: str
+    project_id: str | None = None
+    actor_id: str
+    decision: str
+    reason: str = ""
+    reason_codes: list[str] = Field(default_factory=list)
+    snapshot: dict[str, Any] = Field(default_factory=dict)
+    created_at: str | None = None
+
+
+class MemoryRecordView(BaseModel):
+    memory_id: str
+    tenant_id: str
+    scope_type: str
+    scope_id: str
+    memory_kind: str
+    source_type: str
+    source_id: str
+    summary: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: str | None = None
+
+
 class ProjectView(BaseModel):
     project_id: str
     tenant_id: str

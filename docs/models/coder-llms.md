@@ -25,6 +25,27 @@ parity at `mcp/tests/drill_ollama_coder_models.py`.
 
 Total disk ≈ 17 GB on top of any existing models.
 
+## Recommended ranking and role mapping
+
+| Model | Overall fit | License posture | Best use in this repo | Notes |
+|---|---|---|---|---|
+| **DeepSeek Coder** | ⭐⭐⭐⭐⭐ | Open weights | Primary coder / executor | Best local coding performance in the current installed set. |
+| **StarCoder2** | ⭐⭐⭐⭐ | Permissive | Reviewer / cross-checker | Good enterprise-safe fallback; weaker than DeepSeek as the main implementer. |
+| **Code Llama** | ⭐⭐⭐⭐ | Open weights | Security-focused advisor | Still useful, but no longer the best main coding default. |
+| **CodeGemma** | ⭐⭐⭐ | Apache 2.0 | Test-oriented local helper | Lightweight and license-friendly; smaller capability ceiling. |
+| **Kimi K2** | Cloud-tier | Modified MIT | Chair / advisor default | Strongest synthesis path; requires Ollama Cloud access. |
+| **Qwen 2.5** | Local fallback | Open weights | Local chair / advisor override | Use when cloud access is unavailable and everything must stay local. |
+
+Current live role mapping in this repo:
+
+```text
+Coder / executor           -> DeepSeek Coder
+Reviewer                   -> StarCoder2
+Security advisor           -> Code Llama
+PR-review chair / advisor  -> Kimi K2 (default) or Qwen 2.5 (local override)
+Test-focused helper        -> CodeGemma
+```
+
 ## When to use which
 
 ```
@@ -90,13 +111,23 @@ ships (per `docs/NEXT_POLICY.md` ledger), a separate
 `drill_ollama_cloud_models.py` with `# RESOURCES: ollama_cloud` tag
 will exercise the cloud-routing path.
 
-**Where Kimi fits in the council:** when wired (Phase Kimi-2), Kimi
-becomes the chair of the `pr_review` council — replacing DeepSeek
-in `services/sidecar-advisor/council.py:ADVISOR_MODEL`. The 7B-class
-authors stay local (cheap, fast, parallel); the chair upgrades to
-1T cloud for synthesis quality. Cost gate: Phase Kimi-2 must add a
-per-tenant Ollama-Cloud token budget before the chair is rerouted,
-otherwise a single PR review burns the budget.
+**Where Kimi fits in the council:** Kimi-2 wires Kimi in as the chair
+of the `pr_review` council — replacing DeepSeek in the chair/advisor
+path. The 7B-class authors stay local (cheap, fast, parallel); the
+chair upgrades to 1T cloud for synthesis quality. Live use still
+depends on active Ollama Cloud access and a per-tenant token budget,
+otherwise a single PR review can burn the budget.
+
+**Local fallback / override:** if Ollama Cloud access is unavailable,
+the repo can be switched back to local Qwen without another code edit:
+
+```bash
+export SIDECAR_CHAIR_MODEL="qwen2.5:latest"
+export AGENT_ADVISOR_MODEL="qwen2.5:latest"
+```
+
+The first override affects the Sidecar PR-review chair. The second
+affects the agent-orchestrator advisor default via service settings.
 
 ## Operational
 

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, ApiError, type AgenticApprovalSimulation, type AgenticPolicy, type AgenticProject, type AgenticRole, type AgenticTask } from '../../../lib/api';
 
@@ -215,6 +216,11 @@ export default function AgenticAdminPage() {
             Submit a bounded agentic task, choose whether approval happens manually, once after the
             plan, or automatically by policy, and let the workflow continue without repeated clicks.
           </p>
+        </div>
+        <div className="page-actions">
+          <Link className="btn" href="/admin/agentic/control-plane">
+            Open control plane
+          </Link>
         </div>
       </div>
 

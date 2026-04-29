@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import uuid
+from typing import Any
 
 from mcp import MCPClient
 
@@ -13,11 +14,15 @@ from .models import (
     AgenticPolicyUpdateRequest,
     AgenticPolicyView,
     ApprovalRequest,
+    ApprovalView,
     ApprovalSimulationRequest,
     ApprovalSimulationResponse,
     CreateProjectRequest,
     CreateTaskRequest,
+    MemoryRecordView,
+    TaskRunView,
     ProjectPlanItem,
+    ProjectPlanItemView,
     ProjectView,
     TaskView,
 )
@@ -37,7 +42,7 @@ class AgentOrchestratorService:
         ollama_timeout_seconds: float = 60.0,
         coder_model: str = "deepseek-coder:6.7b-instruct",
         reviewer_model: str = "starcoder2:7b",
-        advisor_model: str = "deepseek-coder:6.7b-instruct",
+        advisor_model: str = "kimi-k2:1t-cloud",
         security_advisor_model: str = "codellama:7b-instruct",
     ) -> None:
         self._store = store or InMemoryTaskStore()
@@ -107,9 +112,59 @@ class AgentOrchestratorService:
             audit_events=[{"role": "api", "event": "created", "at": datetime.utcnow().isoformat()}],
         )
         await self._store.save(task)
-        result = await self._graph.ainvoke({**task.model_dump(), "resume_from": "manager_plan", "policy": policy.model_dump()})
-        updated = task.model_copy(update=result)
-        await self._store.save(updated)
+        run_id = uuid.uuid4().hex
+        await self._record_task_run(
+            TaskRunView(
+                run_id=run_id,
+                task_id=task.task_id,
+                tenant_id=task.tenant_id,
+                project_id=task.project_id,
+                phase="workflow",
+                status="started",
+                model_map=self._task_model_map(),
+                inputs=self._task_run_inputs(task, policy),
+                outputs={},
+                risk_level=task.risk_level,
+            ),
+        )
+        try:
+            result = await self._graph.ainvoke({**task.model_dump(), "resume_from": "manager_plan", "policy": policy.model_dump()})
+            updated = task.model_copy(update=result)
+            await self._store.save(updated)
+            await self._record_task_run(
+                TaskRunView(
+                    run_id=run_id,
+                    task_id=updated.task_id,
+                    tenant_id=updated.tenant_id,
+                    project_id=updated.project_id,
+                    phase="workflow",
+                    status=updated.status,
+                    model_map=self._task_model_map(),
+                    inputs=self._task_run_inputs(task, policy),
+                    outputs=self._task_run_outputs(updated),
+                    confidence=updated.confidence,
+                    risk_level=updated.risk_level,
+                ),
+            )
+            if updated.status == "completed":
+                await self._record_memory(self._task_completion_memory(updated))
+        except Exception as exc:
+            await self._record_task_run(
+                TaskRunView(
+                    run_id=run_id,
+                    task_id=task.task_id,
+                    tenant_id=task.tenant_id,
+                    project_id=task.project_id,
+                    phase="workflow",
+                    status="failed",
+                    model_map=self._task_model_map(),
+                    inputs=self._task_run_inputs(task, policy),
+                    outputs={},
+                    risk_level=task.risk_level,
+                    error_text=str(exc),
+                ),
+            )
+            raise
         if req.project_id and attach_to_project:
             await self._attach_task_to_project(req.project_id, updated.task_id)
         return updated
@@ -171,6 +226,7 @@ class AgentOrchestratorService:
             ],
         )
         await self._store.save_project(project)
+        await self._persist_project_plan_items(project)
         return await self._run_project(project.project_id) or project
 
     async def list_projects(self, limit: int = 20) -> list[ProjectView]:
@@ -182,6 +238,26 @@ class AgentOrchestratorService:
         if hasattr(self._store, "get_project"):
             return await self._store.get_project(project_id)
         return None
+
+    async def list_project_plan_items(self, project_id: str) -> list[ProjectPlanItemView]:
+        if hasattr(self._store, "list_project_plan_items"):
+            return await self._store.list_project_plan_items(project_id)
+        return []
+
+    async def list_task_runs(self, task_id: str) -> list[TaskRunView]:
+        if hasattr(self._store, "list_task_runs"):
+            return await self._store.list_task_runs(task_id)
+        return []
+
+    async def list_approvals(self, task_id: str) -> list[ApprovalView]:
+        if hasattr(self._store, "list_approvals"):
+            return await self._store.list_approvals(task_id)
+        return []
+
+    async def list_memories(self, scope_type: str, scope_id: str) -> list[MemoryRecordView]:
+        if hasattr(self._store, "list_memories"):
+            return await self._store.list_memories(scope_type, scope_id)
+        return []
 
     async def simulate_approval(self, req: ApprovalSimulationRequest) -> ApprovalSimulationResponse:
         policy = await self._resolve_policy(
@@ -217,6 +293,7 @@ class AgentOrchestratorService:
         task = await self._store.get(task_id)
         if task is None:
             return None
+        approval_id = uuid.uuid4().hex
         events = list(task.audit_events)
         events.append(
             {
@@ -238,6 +315,19 @@ class AgentOrchestratorService:
                 },
             )
             await self._store.save(updated)
+            await self._record_approval(
+                ApprovalView(
+                    approval_id=approval_id,
+                    tenant_id=updated.tenant_id,
+                    task_id=updated.task_id,
+                    project_id=updated.project_id,
+                    actor_id=req.actor_id,
+                    decision="rejected",
+                    reason=req.reason or "",
+                    reason_codes=list(task.approval_reasons),
+                    snapshot=self._approval_snapshot(updated),
+                ),
+            )
             if updated.project_id:
                 await self._mark_project_blocked(updated.project_id, updated.task_id, "rejected")
             return updated
@@ -278,6 +368,21 @@ class AgentOrchestratorService:
             )
 
         await self._store.save(updated)
+        await self._record_approval(
+            ApprovalView(
+                approval_id=approval_id,
+                tenant_id=updated.tenant_id,
+                task_id=updated.task_id,
+                project_id=updated.project_id,
+                actor_id=req.actor_id,
+                decision="approved",
+                reason=req.reason or "",
+                reason_codes=list(task.approval_reasons),
+                snapshot=self._approval_snapshot(updated),
+            ),
+        )
+        if updated.status == "completed":
+            await self._record_memory(self._task_completion_memory(updated))
         if updated.project_id:
             project = await self._advance_project_after_task(updated.project_id, updated.task_id, updated.status)
             if project is not None:
@@ -335,6 +440,122 @@ class AgentOrchestratorService:
             },
         )
         await self._store.save_project(updated)
+
+    async def _persist_project_plan_items(self, project: ProjectView) -> None:
+        if not hasattr(self._store, "save_project_plan_item"):
+            return
+
+        for idx, item in enumerate(project.planned_tasks):
+            plan_item = ProjectPlanItemView(
+                plan_item_id=f"{project.project_id}:{item.step_id}",
+                tenant_id=project.tenant_id,
+                project_id=project.project_id,
+                title=item.title,
+                objective=item.goal,
+                status=item.status,
+                risk_level=item.suggested_risk.upper(),
+                owner_role="manager",
+                depends_on=[],
+                acceptance_checks=[],
+                scope_paths=[],
+                task_id=item.task_id,
+                sort_index=idx,
+            )
+            await self._store.save_project_plan_item(plan_item)
+
+    async def _record_task_run(self, run: TaskRunView) -> None:
+        if hasattr(self._store, "save_task_run"):
+            await self._store.save_task_run(run)
+
+    async def _record_approval(self, approval: ApprovalView) -> None:
+        if hasattr(self._store, "save_approval"):
+            await self._store.save_approval(approval)
+
+    async def _record_memory(self, memory: MemoryRecordView) -> None:
+        if hasattr(self._store, "save_memory"):
+            await self._store.save_memory(memory)
+
+    def _task_model_map(self) -> dict[str, str]:
+        return {spec.role_id: spec.model for spec in self._agent_specs}
+
+    @staticmethod
+    def _task_run_inputs(task: TaskView, policy: AgenticPolicyView) -> dict[str, Any]:
+        return {
+            "goal": task.goal,
+            "tool_namespace": task.tool_namespace,
+            "tool_name": task.tool_name,
+            "tool_arguments": task.tool_arguments,
+            "approval_mode": task.approval_mode,
+            "auto_advance": task.auto_advance,
+            "policy": policy.model_dump(),
+        }
+
+    @staticmethod
+    def _task_run_outputs(task: TaskView) -> dict[str, Any]:
+        return {
+            "status": task.status,
+            "plan": task.plan,
+            "worker_output": task.worker_output,
+            "reviewer_notes": task.reviewer_notes,
+            "advisor_summary": task.advisor_summary,
+            "approval_reasons": task.approval_reasons,
+            "next_action": task.next_action,
+        }
+
+    @staticmethod
+    def _approval_snapshot(task: TaskView) -> dict[str, Any]:
+        return {
+            "status": task.status,
+            "risk_level": task.risk_level,
+            "approval_mode": task.approval_mode,
+            "auto_advance": task.auto_advance,
+            "confidence": task.confidence,
+            "next_action": task.next_action,
+            "approval_reasons": task.approval_reasons,
+        }
+
+    @staticmethod
+    def _task_completion_memory(task: TaskView) -> MemoryRecordView:
+        summary = task.advisor_summary or task.worker_output or task.goal
+        return MemoryRecordView(
+            memory_id=uuid.uuid4().hex,
+            tenant_id=task.tenant_id,
+            scope_type="task",
+            scope_id=task.task_id,
+            memory_kind="episodic",
+            source_type="task_run",
+            source_id=task.task_id,
+            summary=summary[:500],
+            payload={
+                "goal": task.goal,
+                "status": task.status,
+                "confidence": task.confidence,
+                "risk_level": task.risk_level,
+                "advisor_summary": task.advisor_summary,
+                "next_action": task.next_action,
+                "approval_reasons": task.approval_reasons,
+            },
+        )
+
+    @staticmethod
+    def _project_completion_memory(project: ProjectView) -> MemoryRecordView:
+        return MemoryRecordView(
+            memory_id=uuid.uuid4().hex,
+            tenant_id=project.tenant_id,
+            scope_type="project",
+            scope_id=project.project_id,
+            memory_kind="project",
+            source_type="project",
+            source_id=project.project_id,
+            summary=f"Project completed: {project.name}",
+            payload={
+                "name": project.name,
+                "goal": project.goal,
+                "status": project.status,
+                "task_ids": project.task_ids,
+                "planned_steps": [item.step_id for item in project.planned_tasks],
+            },
+        )
 
     async def _run_project(self, project_id: str) -> ProjectView | None:
         project = await self.get_project(project_id)
@@ -428,6 +649,7 @@ class AgentOrchestratorService:
             },
         )
         await self._store.save_project(completed)
+        await self._record_memory(self._project_completion_memory(completed))
         return completed
 
     async def _advance_project_after_task(self, project_id: str, task_id: str, task_status: str) -> ProjectView | None:

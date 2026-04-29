@@ -5,7 +5,16 @@ from typing import Any
 
 from documind_core.db_client import DbClient
 
-from .models import AgenticPolicyView, ProjectPlanItem, ProjectView, TaskView
+from .models import (
+    AgenticPolicyView,
+    ApprovalView,
+    MemoryRecordView,
+    ProjectPlanItem,
+    ProjectPlanItemView,
+    ProjectView,
+    TaskRunView,
+    TaskView,
+)
 
 
 class PostgresTaskStore:
@@ -275,6 +284,210 @@ class PostgresTaskStore:
             )
         return [_row_to_project(row) for row in rows]
 
+    async def save_project_plan_item(self, item: ProjectPlanItemView) -> None:
+        async with self._db.admin_connection() as conn:
+            await conn.execute(
+                """
+                INSERT INTO orchestration.agent_project_plan_items
+                    (plan_item_id, tenant_id, project_id, title, objective, status,
+                     risk_level, owner_role, depends_on_json, acceptance_checks_json,
+                     scope_paths_json, task_id, sort_index)
+                VALUES
+                    ($1, $2, $3, $4, $5, $6,
+                     $7, $8, $9::jsonb, $10::jsonb,
+                     $11::jsonb, $12, $13)
+                ON CONFLICT (plan_item_id) DO UPDATE SET
+                    tenant_id = EXCLUDED.tenant_id,
+                    project_id = EXCLUDED.project_id,
+                    title = EXCLUDED.title,
+                    objective = EXCLUDED.objective,
+                    status = EXCLUDED.status,
+                    risk_level = EXCLUDED.risk_level,
+                    owner_role = EXCLUDED.owner_role,
+                    depends_on_json = EXCLUDED.depends_on_json,
+                    acceptance_checks_json = EXCLUDED.acceptance_checks_json,
+                    scope_paths_json = EXCLUDED.scope_paths_json,
+                    task_id = EXCLUDED.task_id,
+                    sort_index = EXCLUDED.sort_index,
+                    updated_at = NOW()
+                """,
+                item.plan_item_id,
+                item.tenant_id,
+                item.project_id,
+                item.title,
+                item.objective,
+                item.status,
+                item.risk_level,
+                item.owner_role,
+                json.dumps(item.depends_on),
+                json.dumps(item.acceptance_checks),
+                json.dumps(item.scope_paths),
+                item.task_id,
+                item.sort_index,
+            )
+
+    async def list_project_plan_items(self, project_id: str) -> list[ProjectPlanItemView]:
+        async with self._db.admin_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT plan_item_id, tenant_id, project_id, title, objective, status,
+                       risk_level, owner_role, depends_on_json, acceptance_checks_json,
+                       scope_paths_json, task_id, sort_index, created_at, updated_at
+                  FROM orchestration.agent_project_plan_items
+                 WHERE project_id = $1
+                 ORDER BY sort_index ASC, created_at ASC
+                """,
+                project_id,
+            )
+        return [_row_to_project_plan_item(row) for row in rows]
+
+    async def save_task_run(self, run: TaskRunView) -> None:
+        async with self._db.admin_connection() as conn:
+            await conn.execute(
+                """
+                INSERT INTO orchestration.agent_task_runs
+                    (run_id, tenant_id, task_id, project_id, phase, status,
+                     model_map_json, inputs_json, outputs_json,
+                     confidence, risk_level, duration_ms, error_text)
+                VALUES
+                    ($1, $2, $3, $4, $5, $6,
+                     $7::jsonb, $8::jsonb, $9::jsonb,
+                     $10, $11, $12, $13)
+                ON CONFLICT (run_id) DO UPDATE SET
+                    tenant_id = EXCLUDED.tenant_id,
+                    task_id = EXCLUDED.task_id,
+                    project_id = EXCLUDED.project_id,
+                    phase = EXCLUDED.phase,
+                    status = EXCLUDED.status,
+                    model_map_json = EXCLUDED.model_map_json,
+                    inputs_json = EXCLUDED.inputs_json,
+                    outputs_json = EXCLUDED.outputs_json,
+                    confidence = EXCLUDED.confidence,
+                    risk_level = EXCLUDED.risk_level,
+                    duration_ms = EXCLUDED.duration_ms,
+                    error_text = EXCLUDED.error_text
+                """,
+                run.run_id,
+                run.tenant_id,
+                run.task_id,
+                run.project_id,
+                run.phase,
+                run.status,
+                json.dumps(run.model_map),
+                json.dumps(run.inputs),
+                json.dumps(run.outputs),
+                run.confidence,
+                run.risk_level,
+                run.duration_ms,
+                run.error_text,
+            )
+
+    async def list_task_runs(self, task_id: str) -> list[TaskRunView]:
+        async with self._db.admin_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT run_id, tenant_id, task_id, project_id, phase, status,
+                       model_map_json, inputs_json, outputs_json,
+                       confidence, risk_level, duration_ms, error_text, created_at
+                  FROM orchestration.agent_task_runs
+                 WHERE task_id = $1
+                 ORDER BY created_at DESC
+                """,
+                task_id,
+            )
+        return [_row_to_task_run(row) for row in rows]
+
+    async def save_approval(self, approval: ApprovalView) -> None:
+        async with self._db.admin_connection() as conn:
+            await conn.execute(
+                """
+                INSERT INTO orchestration.agent_approvals
+                    (approval_id, tenant_id, task_id, project_id, actor_id, decision,
+                     reason, reason_codes_json, snapshot_json)
+                VALUES
+                    ($1, $2, $3, $4, $5, $6,
+                     $7, $8::jsonb, $9::jsonb)
+                ON CONFLICT (approval_id) DO UPDATE SET
+                    tenant_id = EXCLUDED.tenant_id,
+                    task_id = EXCLUDED.task_id,
+                    project_id = EXCLUDED.project_id,
+                    actor_id = EXCLUDED.actor_id,
+                    decision = EXCLUDED.decision,
+                    reason = EXCLUDED.reason,
+                    reason_codes_json = EXCLUDED.reason_codes_json,
+                    snapshot_json = EXCLUDED.snapshot_json
+                """,
+                approval.approval_id,
+                approval.tenant_id,
+                approval.task_id,
+                approval.project_id,
+                approval.actor_id,
+                approval.decision,
+                approval.reason,
+                json.dumps(approval.reason_codes),
+                json.dumps(approval.snapshot),
+            )
+
+    async def list_approvals(self, task_id: str) -> list[ApprovalView]:
+        async with self._db.admin_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT approval_id, tenant_id, task_id, project_id, actor_id, decision,
+                       reason, reason_codes_json, snapshot_json, created_at
+                  FROM orchestration.agent_approvals
+                 WHERE task_id = $1
+                 ORDER BY created_at DESC
+                """,
+                task_id,
+            )
+        return [_row_to_approval(row) for row in rows]
+
+    async def save_memory(self, memory: MemoryRecordView) -> None:
+        async with self._db.admin_connection() as conn:
+            await conn.execute(
+                """
+                INSERT INTO orchestration.agent_memories
+                    (memory_id, tenant_id, scope_type, scope_id, memory_kind,
+                     source_type, source_id, summary, payload_json)
+                VALUES
+                    ($1, $2, $3, $4, $5,
+                     $6, $7, $8, $9::jsonb)
+                ON CONFLICT (memory_id) DO UPDATE SET
+                    tenant_id = EXCLUDED.tenant_id,
+                    scope_type = EXCLUDED.scope_type,
+                    scope_id = EXCLUDED.scope_id,
+                    memory_kind = EXCLUDED.memory_kind,
+                    source_type = EXCLUDED.source_type,
+                    source_id = EXCLUDED.source_id,
+                    summary = EXCLUDED.summary,
+                    payload_json = EXCLUDED.payload_json
+                """,
+                memory.memory_id,
+                memory.tenant_id,
+                memory.scope_type,
+                memory.scope_id,
+                memory.memory_kind,
+                memory.source_type,
+                memory.source_id,
+                memory.summary,
+                json.dumps(memory.payload),
+            )
+
+    async def list_memories(self, scope_type: str, scope_id: str) -> list[MemoryRecordView]:
+        async with self._db.admin_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT memory_id, tenant_id, scope_type, scope_id, memory_kind,
+                       source_type, source_id, summary, payload_json, created_at
+                  FROM orchestration.agent_memories
+                 WHERE scope_type = $1 AND scope_id = $2
+                 ORDER BY created_at DESC
+                """,
+                scope_type,
+                scope_id,
+            )
+        return [_row_to_memory(row) for row in rows]
+
 
 def _row_to_task(row: Any) -> TaskView:
     return TaskView(
@@ -315,4 +528,73 @@ def _row_to_project(row: Any) -> ProjectView:
         planned_tasks=[ProjectPlanItem.model_validate(item) for item in list(row["planned_tasks_json"] or [])],
         policy_override=AgenticPolicyView.model_validate(dict(override)) if override else None,
         audit_events=list(row["audit_events_json"] or []),
+    )
+
+
+def _row_to_project_plan_item(row: Any) -> ProjectPlanItemView:
+    return ProjectPlanItemView(
+        plan_item_id=row["plan_item_id"],
+        tenant_id=row["tenant_id"],
+        project_id=row["project_id"],
+        title=row["title"],
+        objective=row["objective"],
+        status=row["status"],
+        risk_level=row["risk_level"],
+        owner_role=row["owner_role"],
+        depends_on=list(row["depends_on_json"] or []),
+        acceptance_checks=list(row["acceptance_checks_json"] or []),
+        scope_paths=list(row["scope_paths_json"] or []),
+        task_id=row["task_id"],
+        sort_index=row["sort_index"],
+        created_at=row["created_at"].isoformat() if row["created_at"] else None,
+        updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
+    )
+
+
+def _row_to_task_run(row: Any) -> TaskRunView:
+    return TaskRunView(
+        run_id=row["run_id"],
+        tenant_id=row["tenant_id"],
+        task_id=row["task_id"],
+        project_id=row["project_id"],
+        phase=row["phase"],
+        status=row["status"],
+        model_map=dict(row["model_map_json"] or {}),
+        inputs=dict(row["inputs_json"] or {}),
+        outputs=dict(row["outputs_json"] or {}),
+        confidence=row["confidence"],
+        risk_level=row["risk_level"],
+        duration_ms=row["duration_ms"],
+        error_text=row["error_text"],
+        created_at=row["created_at"].isoformat() if row["created_at"] else None,
+    )
+
+
+def _row_to_approval(row: Any) -> ApprovalView:
+    return ApprovalView(
+        approval_id=row["approval_id"],
+        tenant_id=row["tenant_id"],
+        task_id=row["task_id"],
+        project_id=row["project_id"],
+        actor_id=row["actor_id"],
+        decision=row["decision"],
+        reason=row["reason"],
+        reason_codes=list(row["reason_codes_json"] or []),
+        snapshot=dict(row["snapshot_json"] or {}),
+        created_at=row["created_at"].isoformat() if row["created_at"] else None,
+    )
+
+
+def _row_to_memory(row: Any) -> MemoryRecordView:
+    return MemoryRecordView(
+        memory_id=row["memory_id"],
+        tenant_id=row["tenant_id"],
+        scope_type=row["scope_type"],
+        scope_id=row["scope_id"],
+        memory_kind=row["memory_kind"],
+        source_type=row["source_type"],
+        source_id=row["source_id"],
+        summary=row["summary"],
+        payload=dict(row["payload_json"] or {}),
+        created_at=row["created_at"].isoformat() if row["created_at"] else None,
     )

@@ -9,7 +9,7 @@ class AgentOrchestratorSettings(BaseServiceSettings):
     ollama_timeout_seconds: float = 60.0
     agent_coder_model: str = "deepseek-coder:6.7b-instruct"
     agent_reviewer_model: str = "starcoder2:7b"
-    agent_advisor_model: str = "deepseek-coder:6.7b-instruct"
+    agent_advisor_model: str = "kimi-k2:1t-cloud"
     agent_security_advisor_model: str = "codellama:7b-instruct"
     mcp_hr_url: str = ""
     mcp_itsm_url: str = ""

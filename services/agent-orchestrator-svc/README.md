@@ -37,6 +37,29 @@ export DOCUMIND_MCP_ITSM_URL=http://localhost:8092
 export DOCUMIND_MCP_DRILLS_URL=http://localhost:8093
 ```
 
+## Fully local mode
+
+For a no-cloud setup, keep MCP on localhost and force the advisor/chair
+path onto the local Qwen model:
+
+```bash
+export DOCUMIND_MCP_HR_URL=http://127.0.0.1:8091
+export DOCUMIND_MCP_ITSM_URL=http://127.0.0.1:8092
+export DOCUMIND_MCP_DRILLS_URL=http://127.0.0.1:8093
+
+export SIDECAR_CHAIR_MODEL=qwen2.5:latest
+export DOCUMIND_AGENT_ADVISOR_MODEL=qwen2.5:latest
+```
+
+Notes:
+
+- `SIDECAR_CHAIR_MODEL` switches the Sidecar PR-review chair off the
+  Kimi cloud default and onto local Qwen.
+- `DOCUMIND_AGENT_ADVISOR_MODEL` switches the agent-orchestrator
+  advisor path onto local Qwen through service settings.
+- local coder/reviewer defaults remain unchanged unless you override
+  them separately.
+
 ## Docker build and run
 
 Build:

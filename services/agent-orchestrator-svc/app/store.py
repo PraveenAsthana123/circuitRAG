@@ -4,13 +4,25 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
-from .models import AgenticPolicyView, ProjectView, TaskView
+from .models import (
+    AgenticPolicyView,
+    ApprovalView,
+    MemoryRecordView,
+    ProjectPlanItemView,
+    ProjectView,
+    TaskRunView,
+    TaskView,
+)
 
 
 class InMemoryTaskStore:
     def __init__(self) -> None:
         self._items: dict[str, TaskView] = {}
         self._projects: dict[str, ProjectView] = {}
+        self._project_plan_items: dict[str, list[ProjectPlanItemView]] = {}
+        self._task_runs: dict[str, list[TaskRunView]] = {}
+        self._approvals: dict[str, list[ApprovalView]] = {}
+        self._memories: dict[tuple[str, str], list[MemoryRecordView]] = {}
         self._policy = AgenticPolicyView()
         self._lock = asyncio.Lock()
 
@@ -82,3 +94,46 @@ class InMemoryTaskStore:
             reverse=True,
         )
         return rows[:limit]
+
+    async def save_project_plan_item(self, item: ProjectPlanItemView) -> None:
+        async with self._lock:
+            rows = list(self._project_plan_items.get(item.project_id, []))
+            rows = [row for row in rows if row.plan_item_id != item.plan_item_id]
+            rows.append(item)
+            rows.sort(key=lambda row: row.sort_index)
+            self._project_plan_items[item.project_id] = rows
+
+    async def list_project_plan_items(self, project_id: str) -> list[ProjectPlanItemView]:
+        async with self._lock:
+            return list(self._project_plan_items.get(project_id, []))
+
+    async def save_task_run(self, run: TaskRunView) -> None:
+        async with self._lock:
+            rows = list(self._task_runs.get(run.task_id, []))
+            rows.append(run)
+            self._task_runs[run.task_id] = rows
+
+    async def list_task_runs(self, task_id: str) -> list[TaskRunView]:
+        async with self._lock:
+            return list(self._task_runs.get(task_id, []))
+
+    async def save_approval(self, approval: ApprovalView) -> None:
+        async with self._lock:
+            rows = list(self._approvals.get(approval.task_id, []))
+            rows.append(approval)
+            self._approvals[approval.task_id] = rows
+
+    async def list_approvals(self, task_id: str) -> list[ApprovalView]:
+        async with self._lock:
+            return list(self._approvals.get(task_id, []))
+
+    async def save_memory(self, memory: MemoryRecordView) -> None:
+        async with self._lock:
+            key = (memory.scope_type, memory.scope_id)
+            rows = list(self._memories.get(key, []))
+            rows.append(memory)
+            self._memories[key] = rows
+
+    async def list_memories(self, scope_type: str, scope_id: str) -> list[MemoryRecordView]:
+        async with self._lock:
+            return list(self._memories.get((scope_type, scope_id), []))

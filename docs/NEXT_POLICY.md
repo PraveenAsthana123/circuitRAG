@@ -197,7 +197,7 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | 2B | Claude / Codex routes for `architecture` event_type | not started | Sidecar-2D council | needs API keys (gated) |
 | ~~2F~~ | council retention purge — `prune_council_runs(older_than_days=90)` + dry-run/--apply CLI | **shipped** in this commit | Sidecar-2E | run weekly: `python3 scripts/prune_council_runs.py --apply --vacuum` |
 | Kimi-1 | Document Kimi K2 in coder catalogue (cloud tier) | this commit | Sidecar-1A catalogue | none |
-| Kimi-2 | Wire Kimi as Phase 3 chair model when Ollama Cloud signed in | not started | Kimi-1 | needs Ollama Cloud subscription (gated) |
+| Kimi-2 | Wire Kimi as Phase 3 chair model when Ollama Cloud signed in | wired in repo; live verification pending | Kimi-1 | needs Ollama Cloud subscription / valid cloud access for runtime verification |
 
 ### Decided-not-doing (with reason)
 

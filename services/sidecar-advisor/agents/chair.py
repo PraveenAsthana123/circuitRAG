@@ -2,18 +2,23 @@
 the three author drafts + reviewer scores into a single JSON
 AdvisorOutput.
 
-Why DeepSeek (also the code_reviewer's model): synthesising
-heterogeneous prose into structured JSON is a more demanding task
-than writing a single review - it benefits from the model with the
-highest instruct-following score in the 7B class. The author/chair
-role distinction is in the PROMPT TEMPLATE, not the model identity.
+Why Kimi Cloud: the chair is the highest-value synthesis step in the
+pipeline, so it is the one role worth upgrading from the local 7B
+fleet to a larger cloud model. Authors stay local and cheap; the
+chair gets the stronger cross-draft reasoning budget.
 """
+from __future__ import annotations
+
+import os
+
 from .base import CoderAgent
+
+DEFAULT_CHAIR_MODEL = "kimi-k2:1t-cloud"
 
 AGENT = CoderAgent(
     name="chair",
     role="advisor",
-    model="deepseek-coder:6.7b-instruct",
+    model=os.getenv("SIDECAR_CHAIR_MODEL", DEFAULT_CHAIR_MODEL),
     description="synthesises drafts + reviews into JSON top_3_advice",
     prompt_template=(
         "You are the Chair of a code-review board. Three specialist "

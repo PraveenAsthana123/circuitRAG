@@ -203,6 +203,67 @@ export interface AgenticRole {
   source_agent_name?: string | null;
 }
 
+export interface AgenticProjectPlanItem {
+  plan_item_id: string;
+  project_id: string;
+  tenant_id: string;
+  title: string;
+  objective: string;
+  status: string;
+  risk_level: string;
+  owner_role: string;
+  depends_on: string[];
+  acceptance_checks: string[];
+  scope_paths: string[];
+  task_id?: string | null;
+  sort_index: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface AgenticTaskRun {
+  run_id: string;
+  task_id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  phase: string;
+  status: string;
+  model_map: Record<string, string>;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  confidence: number | null;
+  risk_level?: string | null;
+  duration_ms?: number | null;
+  error_text?: string | null;
+  created_at?: string | null;
+}
+
+export interface AgenticApproval {
+  approval_id: string;
+  task_id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  actor_id: string;
+  decision: string;
+  reason: string;
+  reason_codes: string[];
+  snapshot: Record<string, unknown>;
+  created_at?: string | null;
+}
+
+export interface AgenticMemory {
+  memory_id: string;
+  tenant_id: string;
+  scope_type: string;
+  scope_id: string;
+  memory_kind: string;
+  source_type: string;
+  source_id: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  created_at?: string | null;
+}
+
 // -- Operator / health surfaces ---------------------------------------
 
 export interface BreakerState {
@@ -584,6 +645,24 @@ export const api = {
       timeout: 20_000,
     }),
 
+  agenticListTaskRuns: (taskId: string, signal?: AbortSignal) =>
+    request<AgenticTaskRun[]>(
+      `/api/v1/agentic/tasks/${encodeURIComponent(taskId)}/runs`,
+      {
+        timeout: 10_000,
+        signal,
+      },
+    ),
+
+  agenticListTaskApprovals: (taskId: string, signal?: AbortSignal) =>
+    request<AgenticApproval[]>(
+      `/api/v1/agentic/tasks/${encodeURIComponent(taskId)}/approvals`,
+      {
+        timeout: 10_000,
+        signal,
+      },
+    ),
+
   agenticCreateProject: (payload: {
     name: string;
     goal: string;
@@ -602,6 +681,15 @@ export const api = {
       timeout: 10_000,
       signal,
     }),
+
+  agenticListProjectPlanItems: (projectId: string, signal?: AbortSignal) =>
+    request<AgenticProjectPlanItem[]>(
+      `/api/v1/agentic/projects/${encodeURIComponent(projectId)}/plan-items`,
+      {
+        timeout: 10_000,
+        signal,
+      },
+    ),
 
   agenticListAgents: (signal?: AbortSignal) =>
     request<AgenticRole[]>('/api/v1/agentic/agents', {
@@ -655,4 +743,17 @@ export const api = {
       body: payload,
       timeout: 20_000,
     }),
+
+  agenticListMemories: (
+    scopeType: string,
+    scopeId: string,
+    signal?: AbortSignal,
+  ) =>
+    request<AgenticMemory[]>(
+      `/api/v1/agentic/memories?scope_type=${encodeURIComponent(scopeType)}&scope_id=${encodeURIComponent(scopeId)}`,
+      {
+        timeout: 10_000,
+        signal,
+      },
+    ),
 };

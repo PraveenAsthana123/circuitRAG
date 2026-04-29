@@ -9,13 +9,27 @@ from documind_core.db_client import DbClient
 from documind_core.logging_config import setup_logging
 from documind_core.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware, register_exception_handlers
 from documind_core.observability import instrument_fastapi, instrument_httpx, setup_observability
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 from mcp import MCPClient
 
 from .core.config import AgentOrchestratorSettings
-from .models import AgentRoleView, AgenticPolicyUpdateRequest, AgenticPolicyView, ApprovalRequest, CreateTaskRequest, TaskView
-from .models import ApprovalSimulationRequest, ApprovalSimulationResponse, CreateProjectRequest, ProjectView
+from .models import (
+    AgentRoleView,
+    AgenticPolicyUpdateRequest,
+    AgenticPolicyView,
+    ApprovalRequest,
+    ApprovalSimulationRequest,
+    ApprovalSimulationResponse,
+    ApprovalView,
+    CreateProjectRequest,
+    CreateTaskRequest,
+    MemoryRecordView,
+    ProjectPlanItemView,
+    ProjectView,
+    TaskRunView,
+    TaskView,
+)
 from .postgres_store import PostgresTaskStore
 from .service import AgentOrchestratorService
 from .store import InMemoryTaskStore
@@ -112,6 +126,10 @@ def create_app() -> FastAPI:
     async def list_projects(limit: int = 20) -> list[ProjectView]:
         return await app.state.service.list_projects(limit)
 
+    @app.get("/api/v1/agentic/projects/{project_id}/plan-items", response_model=list[ProjectPlanItemView])
+    async def list_project_plan_items(project_id: str) -> list[ProjectPlanItemView]:
+        return await app.state.service.list_project_plan_items(project_id)
+
     @app.get("/api/v1/agentic/policy", response_model=AgenticPolicyView)
     async def get_policy() -> AgenticPolicyView:
         return await app.state.service.get_policy()
@@ -139,12 +157,27 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="task not found")
         return task
 
+    @app.get("/api/v1/agentic/tasks/{task_id}/runs", response_model=list[TaskRunView])
+    async def list_task_runs(task_id: str) -> list[TaskRunView]:
+        return await app.state.service.list_task_runs(task_id)
+
+    @app.get("/api/v1/agentic/tasks/{task_id}/approvals", response_model=list[ApprovalView])
+    async def list_task_approvals(task_id: str) -> list[ApprovalView]:
+        return await app.state.service.list_approvals(task_id)
+
     @app.post("/api/v1/agentic/tasks/{task_id}/approve", response_model=TaskView)
     async def approve_task(task_id: str, req: ApprovalRequest) -> TaskView:
         task = await app.state.service.approve_task(task_id, req)
         if task is None:
             raise HTTPException(status_code=404, detail="task not found")
         return task
+
+    @app.get("/api/v1/agentic/memories", response_model=list[MemoryRecordView])
+    async def list_memories(
+        scope_type: str = Query(..., min_length=1),
+        scope_id: str = Query(..., min_length=1),
+    ) -> list[MemoryRecordView]:
+        return await app.state.service.list_memories(scope_type, scope_id)
 
     return app
 

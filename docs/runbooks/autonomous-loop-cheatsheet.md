@@ -187,6 +187,33 @@ grep -F '"verdict": "REJECT"' .loop/watcher.log | tail -5
 cat docs/runbooks/autonomous-loop-cheatsheet.md
 ```
 
+## Agentic control plane
+
+Operator-facing surfaces for the normalized project/task execution chain:
+
+| Surface | Purpose |
+|---|---|
+| `/admin` | compact operator summary: project count, pending approvals, latest approvals, latest memories |
+| `/admin/agentic` | create tasks/projects, set policy, approve tasks |
+| `/admin/agentic/control-plane` | full view: role routing, normalized plan rows, task runs, approvals, task/project memories |
+
+Read APIs behind the control-plane UI:
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/v1/agentic/projects/{project_id}/plan-items` | normalized project plan rows |
+| `GET /api/v1/agentic/tasks/{task_id}/runs` | started/final task run history |
+| `GET /api/v1/agentic/tasks/{task_id}/approvals` | persisted human decisions |
+| `GET /api/v1/agentic/memories?scope_type=project&scope_id=...` | project-scoped distilled memory |
+| `GET /api/v1/agentic/memories?scope_type=task&scope_id=...` | task-scoped distilled memory |
+
+Control-plane verification drills:
+
+- `python3 mcp/tests/drill_agentic_control_plane_api.py`
+- `python3 mcp/tests/drill_agentic_control_plane_ui.py`
+- `python3 mcp/tests/drill_agentic_control_plane_chain.py`
+- `python3 mcp/tests/drill_admin_agentic_summary_panel.py`
+
 ## Memory + context
 
 The loop persists state across iterations via:

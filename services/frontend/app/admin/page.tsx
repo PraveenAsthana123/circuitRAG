@@ -25,6 +25,9 @@ import { useEffect, useRef, useState } from 'react';
 import {
   api,
   ApiError,
+  type AgenticApproval,
+  type AgenticMemory,
+  type AgenticProject,
   type AgenticTask,
   type HealthDetailedResponse,
   type FrontendBuildInfoResponse,
@@ -118,6 +121,9 @@ export default function AdminPage() {
   const [prompts, setPrompts] = useState<HealthPromptsResponse | null>(null);
   const [upstreams, setUpstreams] = useState<HealthUpstreamsResponse | null>(null);
   const [agenticTasks, setAgenticTasks] = useState<AgenticTask[] | null>(null);
+  const [agenticProjects, setAgenticProjects] = useState<AgenticProject[] | null>(null);
+  const [recentApprovals, setRecentApprovals] = useState<AgenticApproval[] | null>(null);
+  const [recentMemories, setRecentMemories] = useState<AgenticMemory[] | null>(null);
   const [agenticError, setAgenticError] = useState<string | null>(null);
 
   // Trace-link panel: search-driven, not poll-driven. Operator
@@ -159,7 +165,7 @@ export default function AdminPage() {
         // window. The backend probes upstreams in parallel internally
         // too, so the worst-case latency is bounded by the slowest
         // single upstream.
-        const [resp, buildInfoResp, toolsResp, promptsResp, upstreamsResp, agenticResp] = await Promise.all([
+        const [resp, buildInfoResp, toolsResp, promptsResp, upstreamsResp, agenticResp, agenticProjectsResp] = await Promise.all([
           api.healthDetailed(ctl.signal),
           api.frontendBuildInfo(ctl.signal),
           api.healthTools(ctl.signal),
@@ -173,6 +179,7 @@ export default function AdminPage() {
             }
             return null;
           }),
+          api.agenticListProjects({ limit: 10, signal: ctl.signal }).catch(() => null),
         ]);
         if (cancelled) return;
         setData(resp);
@@ -181,7 +188,36 @@ export default function AdminPage() {
         setPrompts(promptsResp);
         setUpstreams(upstreamsResp);
         setAgenticTasks(agenticResp);
+        setAgenticProjects(agenticProjectsResp);
         if (agenticResp) setAgenticError(null);
+        if (agenticResp && agenticProjectsResp) {
+          const projectIds = agenticProjectsResp.map((project) => project.project_id).slice(0, 3);
+          const taskIds = agenticResp
+            .map((task) => task.task_id)
+            .filter(Boolean)
+            .slice(0, 3);
+          const approvalRows = await Promise.all(
+            taskIds.map((taskId) => api.agenticListTaskApprovals(taskId, ctl.signal).catch(() => [])),
+          );
+          const projectMemoryRows = await Promise.all(
+            projectIds.map((projectId) => api.agenticListMemories('project', projectId, ctl.signal).catch(() => [])),
+          );
+          const taskMemoryRows = await Promise.all(
+            taskIds.map((taskId) => api.agenticListMemories('task', taskId, ctl.signal).catch(() => [])),
+          );
+          const flattenedApprovals = approvalRows
+            .flat()
+            .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+            .slice(0, 5);
+          const flattenedMemories = [...projectMemoryRows.flat(), ...taskMemoryRows.flat()]
+            .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+            .slice(0, 5);
+          setRecentApprovals(flattenedApprovals);
+          setRecentMemories(flattenedMemories);
+        } else {
+          setRecentApprovals(null);
+          setRecentMemories(null);
+        }
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -317,9 +353,9 @@ export default function AdminPage() {
 
       <div className="card">
         <div className="card-header" style={{ marginBottom: 12 }}>
-          <strong>Agentic approvals</strong>
+          <strong>Agentic control plane summary</strong>
           <div className="field-help">
-            Review tasks that paused for human approval before they are finalized.
+            Projects, pending approvals, recent human decisions, and distilled memory highlights.
           </div>
         </div>
         {agenticError ? (
@@ -330,14 +366,43 @@ export default function AdminPage() {
           <>
             <div className="page-actions" style={{ justifyContent: 'space-between' }}>
               <div className="field-help">
-                {pendingApprovalCount != null ? `${pendingApprovalCount} pending` : 'Loading...'}
+                {agenticProjects ? `${agenticProjects.length} projects` : 'Loading projects…'}
+                {' · '}
+                {pendingApprovalCount != null ? `${pendingApprovalCount} pending approvals` : 'Loading tasks…'}
               </div>
-              <Link href="/admin/agentic" className="btn">
-                Open agentic tasks
+              <Link href="/admin/agentic/control-plane" className="btn">
+                Open control plane
               </Link>
             </div>
             {agenticTasks && (
-              <div className="table-wrap" style={{ marginTop: 12 }}>
+              <>
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 12,
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    marginTop: 12,
+                  }}
+                >
+                  <div className="surface-muted">
+                    <div className="result-meta">Projects</div>
+                    <strong style={{ fontSize: 24 }}>{agenticProjects?.length ?? '—'}</strong>
+                  </div>
+                  <div className="surface-muted">
+                    <div className="result-meta">Tracked tasks</div>
+                    <strong style={{ fontSize: 24 }}>{agenticTasks.length}</strong>
+                  </div>
+                  <div className="surface-muted">
+                    <div className="result-meta">Pending approvals</div>
+                    <strong style={{ fontSize: 24 }}>{pendingApprovalCount ?? '—'}</strong>
+                  </div>
+                  <div className="surface-muted">
+                    <div className="result-meta">Recent memories</div>
+                    <strong style={{ fontSize: 24 }}>{recentMemories?.length ?? '—'}</strong>
+                  </div>
+                </div>
+
+                <div className="table-wrap" style={{ marginTop: 12 }}>
                 <table className="table">
                   <thead>
                     <tr>
@@ -370,7 +435,52 @@ export default function AdminPage() {
                     )}
                   </tbody>
                 </table>
-              </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', marginTop: 16 }}>
+                  <div className="surface-muted">
+                    <strong>Latest approval decisions</strong>
+                    {recentApprovals && recentApprovals.length > 0 ? (
+                      <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                        {recentApprovals.map((row) => (
+                          <div key={row.approval_id}>
+                            <div>
+                              <code>{row.task_id.slice(0, 8)}</code>
+                              {' · '}
+                              <strong>{row.decision}</strong>
+                              {' · '}
+                              {row.actor_id}
+                            </div>
+                            <div className="field-help">{row.reason || 'no reason provided'}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="field-help" style={{ marginTop: 10 }}>No recent approvals yet.</div>
+                    )}
+                  </div>
+
+                  <div className="surface-muted">
+                    <strong>Latest memories</strong>
+                    {recentMemories && recentMemories.length > 0 ? (
+                      <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                        {recentMemories.map((row) => (
+                          <div key={row.memory_id}>
+                            <div>
+                              <strong>{row.scope_type}</strong>
+                              {' · '}
+                              <code>{row.scope_id.slice(0, 8)}</code>
+                            </div>
+                            <div className="field-help">{row.summary}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="field-help" style={{ marginTop: 10 }}>No recent memories yet.</div>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
           </>
         )}

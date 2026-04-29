@@ -57,7 +57,7 @@ DEFAULT_AGENT_SPECS: tuple[AgentRoleSpec, ...] = (
         role_id="advisor",
         role_type="advisor",
         display_name="Advisor",
-        model="deepseek-coder:6.7b-instruct",
+        model="kimi-k2:1t-cloud",
         description="Synthesizes execution and review results into a risk-aware recommendation.",
         source_agent_name="chair",
         prompt_template=(
@@ -113,4 +113,3 @@ def build_agent_specs(*, coder_model: str, reviewer_model: str, advisor_model: s
         )
         for spec in DEFAULT_AGENT_SPECS
     )
-
