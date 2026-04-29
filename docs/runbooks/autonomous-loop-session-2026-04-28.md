@@ -142,7 +142,7 @@ to do this" to "scripts MUST do this."
 | G-3 | Review bucket | 4 script/runtime edits by parallel tool | ADR-018 default is parallel-tool signs what it authored; operator review still allowed before landing |
 | ~~B-1~~ | Approved | Phase 1B-2 write endpoints | §7 POST/write-surface approval granted; implementation still pending |
 | ~~B-2~~ | Approved | Phase 2B Claude/Codex routes | Scope approved; execution still needs `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` |
-| ~~B-3~~ | Approved | Phase Kimi-2 chair model | Scope approved; execution still needs active Ollama Cloud subscription |
+| ~~B-3~~ | Approved | Phase Kimi-2 chair model | Repo defaults now point the chair/advisor path at `kimi-k2:1t-cloud`; live verification still needs active Ollama Cloud subscription |
 
 ## Catalog status at session end
 
@@ -169,6 +169,10 @@ to do this" to "scripts MUST do this."
 
 ## Composes with
 
+* **`docs/runbooks/autonomous-loop-session-2026-04-29.md`** —
+  next day's retrospective; Arcs 5-8 continue from this one's
+  Arc 4 close (Phase 6V). ADR-020 added there; G-1/G-2/G-3 all
+  landed there.
 * **`docs/runbooks/autonomous-loop-cheatsheet.md`** — the live
   reference; cheatsheet survives, this retrospective is dated.
 * **`docs/runbooks/council-telemetry.md`** — deeper dive for
