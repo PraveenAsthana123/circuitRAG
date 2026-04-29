@@ -22,7 +22,7 @@ two ways:
    matches `G-\\d+:` pattern). G-2 (51bac70) + G-3 (45633d2)
    are this shape.
 
-Eight steps. Five negative assertions.
+Nine steps. Six negative assertions.
 
   1. POSITIVE: discover parallel-tool commits across both
      detection paths in last 100 commits. Floor: at least one
@@ -74,6 +74,23 @@ PARALLEL_TOOL_COMMITS = {
 # while the audit drill lands within the 2-iteration SLO.
 KNOWN_UNAUDITED: dict[str, str] = {}
 
+# ADR-020 SLO: every parallel-tool commit's audit drill should
+# land within ≤2 autonomous-loop iterations of the parallel-tool
+# commit. "Iteration" = autonomous-loop commit. Latency is
+# computed via `git rev-list --count <pt_sha>..<audit_add_sha>`.
+MAX_AUDIT_LATENCY = 2
+
+# Grandfathered SLO violations — audits that landed BEFORE
+# ADR-020 was named (Phase 7F, 3b1cc02). G-1 and G-2 audits
+# landed 10 and 9 iterations late respectively. The ratchet
+# floor is the actual measured latency at landing time; any
+# future drift past these numbers means git history changed
+# (rebase / squash) and the registry needs reconciliation.
+KNOWN_LATE_AUDITS: dict[str, int] = {
+    "5dfeb9c": 10,  # G-1: agent-orchestrator-svc -> Phase 7E
+    "51bac70": 9,   # G-2: TTS proxy -> Phase 7I
+}
+
 # How far back to scan git history. 100 commits ≈ 5 sessions of
 # autonomous-loop iterations. Catches recent drift without
 # scanning the entire repo.
@@ -123,6 +140,25 @@ def _commit_message(sha: str) -> str:
 
 def _commit_exists(sha: str) -> bool:
     return bool(_git(["rev-parse", "--verify", "--quiet", sha]))
+
+
+def _audit_iteration_latency(parallel_sha: str, audit_drill_path: Path) -> int | None:
+    """Return iteration latency between parallel-tool commit and
+    audit drill landing. 0 = preexisting (audit predates parallel-
+    tool commit) or simultaneous; positive N = N commits between.
+    None = couldn't determine (audit drill never added, git error)."""
+    add_sha = _git([
+        "log", "--diff-filter=A", "--pretty=%H", "-1",
+        "--", str(audit_drill_path),
+    ]).strip()
+    if not add_sha:
+        return None
+    count_str = _git([
+        "rev-list", "--count", f"{parallel_sha}..{add_sha}",
+    ]).strip()
+    if not count_str.isdigit():
+        return None
+    return int(count_str)
 
 
 def _discover_parallel_tool_commits() -> dict[str, str]:
@@ -235,13 +271,59 @@ def main() -> int:
         )
     ok(f"{len(KNOWN_UNAUDITED)} paydown entries (all resolve)")
 
-    step("7. POSITIVE: emit per-commit audit-status table")
+    step("7. NEGATIVE: every audit's iteration latency <= MAX or grandfathered")
+    latency_violations: list[tuple[str, int, int]] = []
+    measured: dict[str, int] = {}
+    for sha, (label, drill_file) in PARALLEL_TOOL_COMMITS.items():
+        drill_path = DRILLS_DIR / drill_file
+        latency = _audit_iteration_latency(sha, drill_path)
+        if latency is None:
+            fail(
+                f"could not compute iteration latency for "
+                f"{sha} -> {drill_file} (git error or drill never added)"
+            )
+        measured[sha] = latency
+        if latency <= MAX_AUDIT_LATENCY:
+            continue
+        # Latency exceeds SLO; must be grandfathered with EXACT value.
+        # Allowing a higher value than registered means git history
+        # changed (rebase added commits between the two SHAs); the
+        # registry is now lying about reality.
+        registered = KNOWN_LATE_AUDITS.get(sha)
+        if registered is None:
+            latency_violations.append((sha, latency, MAX_AUDIT_LATENCY))
+        elif latency > registered:
+            # Grandfathered, but latency drifted UP — git history
+            # changed. Reconcile the registry.
+            latency_violations.append((sha, latency, registered))
+    if latency_violations:
+        msg = ", ".join(
+            f"{sha}: actual={lat}, max_allowed={maxv}"
+            for sha, lat, maxv in latency_violations[:5]
+        )
+        fail(
+            f"{len(latency_violations)} ADR-020 SLO violation(s): {msg}. "
+            "Either land the audit drill faster (preferred) or extend "
+            "KNOWN_LATE_AUDITS with the EXACT measured latency."
+        )
+    in_slo = sum(1 for v in measured.values() if v <= MAX_AUDIT_LATENCY)
+    grandfathered = sum(
+        1 for sha, v in measured.items()
+        if v > MAX_AUDIT_LATENCY and sha in KNOWN_LATE_AUDITS
+    )
+    ok(
+        f"latencies measured: {len(measured)} entries; "
+        f"{in_slo} within SLO (<={MAX_AUDIT_LATENCY}); "
+        f"{grandfathered} grandfathered late"
+    )
+
+    step("8. POSITIVE: emit per-commit audit-status table")
     for sha, (label, drill_file) in sorted(PARALLEL_TOOL_COMMITS.items()):
         ok(f"  AUDITED  {sha}  {label[:50]:<50} -> {drill_file}")
     for sha, label in sorted(KNOWN_UNAUDITED.items()):
         ok(f"  PAYDOWN  {sha}  {label[:50]:<50}")
 
-    step("8. POSITIVE: emit ratchet state")
+    step("9. POSITIVE: emit ratchet state + SLO summary")
     audited = len(PARALLEL_TOOL_COMMITS)
     paydown = len(KNOWN_UNAUDITED)
     total = audited + paydown
@@ -251,12 +333,18 @@ def main() -> int:
             f"({paydown} paydown). "
             f"Floor: {paydown} unaudited."
         )
+        avg_latency = sum(measured.values()) / len(measured) if measured else 0
+        ok(
+            f"SLO: max-allowed={MAX_AUDIT_LATENCY} iterations; "
+            f"in-SLO={in_slo}, grandfathered={grandfathered}, "
+            f"avg-latency={avg_latency:.1f}"
+        )
     else:
         ok("ADR-020 ratchet: 0/0 (registry empty)")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
-    print(f"{BOLD}{GREEN}  ALL 8 ADR020-AUDIT-CADENCE STEPS PASSED{NC}")
-    print(f"{BOLD}{GREEN}  (5 negative assertions: 2, 3, 4, 5, 6){NC}")
+    print(f"{BOLD}{GREEN}  ALL 9 ADR020-AUDIT-CADENCE STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  (6 negative assertions: 2, 3, 4, 5, 6, 7){NC}")
     print(f"{BOLD}{GREEN}{'=' * 50}{NC}")
     return 0
 
