@@ -85,7 +85,7 @@ Note the `reason` transition: first three are `ConnectError` (real HTTP attempts
 ```bash
 # Start the server
 cd /mnt/deepa/rag
-source /tmp/documind-venv/bin/activate
+source /mnt/deepa/rag/.venv/bin/activate
 PYTHONPATH=. python mcp/server_hr.py &
 
 # In another shell: run the drill

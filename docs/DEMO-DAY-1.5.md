@@ -144,7 +144,7 @@ cd /mnt/deepa/rag
 docker compose up -d postgres redis qdrant neo4j ollama minio
 
 # 2. Apply migrations
-source /tmp/documind-venv/bin/activate
+source /mnt/deepa/rag/.venv/bin/activate
 export DOCUMIND_PG_PORT=55432
 make migrate
 

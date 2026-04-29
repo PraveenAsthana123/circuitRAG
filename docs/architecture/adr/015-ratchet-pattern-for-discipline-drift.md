@@ -3,14 +3,19 @@
 ## Status
 
 Accepted — landed in Phases 6B, 6C, 6D + the §7 scope-extension log
-in `docs/NEXT_POLICY.md`. Four ratchets currently in production:
+in `docs/NEXT_POLICY.md`. Three ratchets currently in production:
 
 | Ratchet | Where | Locks |
 |---|---|---|
 | `KNOWN_MISSING` | drill_drill_catalog_discipline.py step 2 | `# RESOURCES:` tag presence |
-| `KNOWN_AUDIT_DRILLS` | step 6 | exit-code-signal carve-out |
 | `KNOWN_MISSING_NEG_MARKER` | step 7 | §43.5 docstring marker |
 | §7 scope-extension log | NEXT_POLICY.md | UI grant whitelist |
+
+Current repo state: the two catalog-content ratchets are fully paid
+down (`KNOWN_MISSING=0`, `KNOWN_MISSING_NEG_MARKER=0`); only the §7
+scope whitelist remains active as a non-zero structural guard. The
+ADR keeps the catalog ratchets listed because they are still the live
+control shape in code, even when their grandfathered sets are empty.
 
 ## Context
 
@@ -18,7 +23,9 @@ Phase 6B introduced a meta-drill that audits the entire drill
 catalog for §43-discipline compliance. The first run revealed 23
 drills missing the `# RESOURCES:` tag, plus 2 frontend audits with
 no exit-code signal — real drift accumulated before the meta-drill
-existed.
+existed. Those survey checks were later renamed out of the
+`drill_*.py` namespace into `audit_*.py`, which retired the
+exit-signal carve-out as a live ratchet.
 
 Three approaches were plausible:
 
@@ -70,9 +77,10 @@ contract:
    regex.
 
 5. **Document the carve-out**: when an item is in the set
-   intentionally (e.g. `KNOWN_AUDIT_DRILLS` for survey-only
-   drills), the comment near the set must explain the design
-   rationale + the future-naming convention if applicable.
+   intentionally, the comment near the set must explain the design
+   rationale + the future-naming convention if applicable. If the
+   naming or namespace debt is later paid down, the ratchet should
+   be retired rather than kept as dead history.
 
 ## Consequences
 
@@ -108,6 +116,9 @@ contract:
   the harder question is "is the rule wrong?" Always consider
   whether the rule should change before grandfathering enforces it
   forever.
+* **Retired ratchets require ADR cleanup**. Once a grandfathered
+  set disappears from code, the ADR must stop claiming it as a live
+  control or the architecture narrative drifts from the repo.
 
 ### Risks accepted
 
@@ -168,6 +179,8 @@ without any code change. Discarded.
 | 6B | `ce4e56c` | Introduced `KNOWN_MISSING` + `KNOWN_NO_EXIT_SIGNAL` |
 | 6C | `c4e65ad` | Cleaned `KNOWN_MISSING` to empty via parallel agents; renamed `KNOWN_NO_EXIT_SIGNAL` → `KNOWN_AUDIT_DRILLS` |
 | 6D | `595040c` | Replaced 6B step 7 percentage threshold with `KNOWN_MISSING_NEG_MARKER` ratchet |
+| 6H | _current worktree_ | Renamed the 2 survey-only frontend audits to `audit_*.py`; retired `KNOWN_AUDIT_DRILLS` as an active ratchet |
+| 6J | _current worktree_ | Added truthful negative-coverage markers to the last 32 grandfathered drill docstrings; emptied `KNOWN_MISSING_NEG_MARKER` |
 
 Composes with: ADR-014 (the advisory contract that lets failing
 commits land but logs them — the ratchet is the same family of

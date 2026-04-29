@@ -128,3 +128,133 @@ See [phase-02-kafka-event-architecture.md](phase-02-kafka-event-architecture.md)
 | Can graph expansion fail safely? | Yes — vector-only fallback |
 | Is audit history immutable? | Append-only; hash-chain writer planned |
 | Can events be replayed? | Yes — `eval.replay.requested.v1` |
+
+---
+
+## 6. How to explain datastore choices in interviews
+
+Do not present the stack as a shopping list. Present it as **roles**:
+
+- Postgres for transactional truth
+- Qdrant for semantic retrieval
+- Redis for cache and short-lived coordination
+- Kafka for durable async event flow
+- MinIO / S3 for raw artifacts
+- ClickHouse / Prometheus style stores for analytics and time-series behavior
+
+Use the same explanation frame for every store:
+
+1. core concept
+2. problem it solves
+3. why this store fits
+4. when to use
+5. when not to use
+6. input -> process -> output
+7. flowchart
+8. sequence
+9. tradeoffs
+10. challenges
+11. edge cases
+12. limitations
+
+### Example: Postgres + RLS
+
+**Core concept**
+
+Postgres is the system of record for transactional, relational, and
+auditable domain state.
+
+**Problem**
+
+You need ACID semantics, tenant isolation, queryable domain data, and
+privileged access that can be audited.
+
+**Why this store fits**
+
+- transactions matter
+- relational joins matter
+- tenant isolation matters
+- operational access must be explainable
+
+**When not to use**
+
+- semantic retrieval
+- append-heavy observability firehose
+- large binary objects
+- ultra-ephemeral coordination state
+
+**Input -> Process -> Output**
+
+- `Input:` tenant-scoped request + actor + domain payload
+- `Process:` service sets tenant context, query/write executes under RLS, audit emitted
+- `Output:` correct tenant-isolated transactional state
+
+**Flowchart**
+
+```text
+Request arrives
+  -> resolve tenant + actor
+  -> open transaction
+  -> set tenant context
+  -> run read/write under RLS
+  -> commit or rollback
+  -> emit audit + metrics + traces
+```
+
+**Sequence**
+
+```text
+Client -> Service: request
+Service -> Middleware: resolve tenant
+Middleware -> Postgres: SET LOCAL app.current_tenant
+Service -> Postgres: SELECT / INSERT / UPDATE
+Postgres -> RLS policy: apply tenant filter
+Postgres -> Service: rows or error
+Service -> Audit: write event
+Service -> Client: response
+```
+
+### Challenges to call out
+
+- real RLS correctness cannot be proven with mocks
+- ops-role separation increases learning curve
+- pool sizing and long-running queries can degrade the whole service
+- migrations and privilege boundaries must stay intentional
+
+### Edge cases to call out
+
+- app role missing tenant context
+- admin job needing cross-tenant reads
+- migration passes locally but breaks real policy assumptions
+- background worker accidentally using privileged connection path
+
+### Limitations to call out
+
+- relational correctness does not replace app-layer policy
+- single cluster can still be a noisy-neighbor risk
+- RLS protects row visibility, not all business semantics
+
+---
+
+## 7. Datastore decision questions
+
+Use these questions when choosing a store:
+
+1. Is this source-of-truth or derived state?
+2. Do I need ACID or eventual consistency?
+3. Is the access pattern relational, semantic, append-heavy, or ephemeral?
+4. What is the tenant/isolation boundary?
+5. What are the replay and failure-recovery requirements?
+6. What evidence and observability does this store need?
+
+### Short mapping
+
+- `Postgres` -> transactional truth
+- `Qdrant` -> semantic retrieval
+- `Redis` -> cache / session / rate-limit state
+- `Kafka` -> async event durability
+- `MinIO/S3` -> raw file storage
+- `ClickHouse / TSDB` -> analytics and observability
+
+That is the datastore story interviewers care about: **role-driven choice,
+not product-name memorization**.

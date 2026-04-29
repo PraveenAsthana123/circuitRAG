@@ -50,7 +50,7 @@ Install once via `scripts/install_snapshot_cron.sh --apply`. The
 default cron line:
 
 ```cron
-5 0 * * * /tmp/documind-venv/bin/python /mnt/deepa/rag/scripts/council_stats_snapshot.py
+5 0 * * * /mnt/deepa/rag/.venv/bin/python /mnt/deepa/rag/scripts/council_stats_snapshot.py
 ```
 
 If you want the orchestrator (snapshot + prom export + alerts +
@@ -69,47 +69,47 @@ webhook in one fire), use `scripts/run_filter_pipeline.sh`:
 
 ```bash
 # All-time outcome histogram
-python3 scripts/council_filter_stats.py
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py
 
 # Last 7 days only
-python3 scripts/council_filter_stats.py --days 7
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py --days 7
 
 # Per-week trend (newest first)
-python3 scripts/council_filter_stats.py --weekly
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py --weekly
 
 # Last 4 weeks only
-python3 scripts/council_filter_stats.py --weekly --weeks 4
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py --weekly --weeks 4
 
 # JSON for piping
-python3 scripts/council_filter_stats.py --json
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py --json
 ```
 
 ### Manual snapshot
 
 ```bash
 # Snapshot yesterday (default)
-python3 scripts/council_stats_snapshot.py
+/mnt/deepa/rag/.venv/bin/python scripts/council_stats_snapshot.py
 
 # Snapshot a specific date
-python3 scripts/council_stats_snapshot.py --date 2026-04-28
+/mnt/deepa/rag/.venv/bin/python scripts/council_stats_snapshot.py --date 2026-04-28
 
 # Read the deduped snapshot history
-python3 scripts/council_stats_snapshot.py --read
+/mnt/deepa/rag/.venv/bin/python scripts/council_stats_snapshot.py --read
 ```
 
 ### Prometheus export
 
 ```bash
 # Single-window samples (current state)
-python3 scripts/council_filter_stats.py --prometheus \
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py --prometheus \
     --prometheus-out /var/lib/node_exporter/textfile/council.prom
 
 # Per-week samples (week label)
-python3 scripts/council_filter_stats.py --prometheus --weekly \
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py --prometheus --weekly \
     --prometheus-out council.prom
 
 # Date-keyed historical samples (reads snapshot file, survives log rotation)
-python3 scripts/council_filter_stats.py --prometheus --from-snapshot \
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py --prometheus --from-snapshot \
     --prometheus-out council.prom
 ```
 
@@ -165,8 +165,8 @@ After committing Phase 5S (a UI iteration touching
 ### Step 1: re-run the named drills
 
 ```bash
-python3 mcp/tests/drill_sidecar_deep_page.py
-python3 mcp/tests/drill_sidecar_nextjs_page.py
+/mnt/deepa/rag/.venv/bin/python mcp/tests/drill_sidecar_deep_page.py
+/mnt/deepa/rag/.venv/bin/python mcp/tests/drill_sidecar_nextjs_page.py
 ```
 
 Each drill prints the failing step with a clear message. In this
@@ -195,7 +195,7 @@ the new scenario and the new sub-page), so the drills got updated:
 ### Step 3: refresh status + commit the fix
 
 ```bash
-python3 scripts/write_drill_status.py --only-readonly
+/mnt/deepa/rag/.venv/bin/python scripts/write_drill_status.py --only-readonly
 # Should print "53/53 passed" or similar
 git add ... && git commit -m "fix(loop): Phase 5Z..."
 ```
@@ -221,17 +221,17 @@ cache, (b) prints a loud === banner naming any failing drills.
 
 ```bash
 # Telemetry
-python3 scripts/council_filter_stats.py [--days N | --weekly | --prometheus | --json]
-python3 scripts/council_stats_snapshot.py [--date YYYY-MM-DD | --read]
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py [--days N | --weekly | --prometheus | --json]
+/mnt/deepa/rag/.venv/bin/python scripts/council_stats_snapshot.py [--date YYYY-MM-DD | --read]
 scripts/run_filter_pipeline.sh [--dry-run | --skip-snapshot | --skip-prometheus]
 
 # Health
-python3 scripts/loop_status.py
-python3 scripts/write_drill_status.py [--only-readonly]
+/mnt/deepa/rag/.venv/bin/python scripts/loop_status.py
+/mnt/deepa/rag/.venv/bin/python scripts/write_drill_status.py [--only-readonly]
 
 # Drills
-python3 scripts/run_drills.py --list
-python3 scripts/run_drills.py --parallel 4 [--only <substr>]
+/mnt/deepa/rag/.venv/bin/python scripts/run_drills.py --list
+/mnt/deepa/rag/.venv/bin/python scripts/run_drills.py --parallel 4 [--only <substr>]
 ```
 
 ### Operator-required (sudo or destructive)

@@ -254,3 +254,129 @@ Default staff-level questions:
 - how will operators debug it?
 - what future incident does this prevent or create?
 
+---
+
+## Interview framework for code governance topics
+
+When explaining code governance, do not recite checklists first. Start
+with the control model:
+
+1. core concept
+2. why it exists
+3. what failure it prevents
+4. where it is enforced
+5. what evidence proves it
+6. what happens if it is bypassed
+
+Use this 10-part structure for every pillar:
+
+1. core concept
+2. 5W
+3. input -> process -> output
+4. flowchart
+5. sequence
+6. challenges
+7. edge cases
+8. solutions
+9. limitations
+10. interview talking point
+
+### Example: code review process
+
+**Core concept**
+
+Code review is the human control layer above automation.
+
+**5W**
+
+- `What:` peer and owner review of code changes before merge
+- `Why:` CI catches mechanics; review catches design and risk
+- `Who:` author, peer reviewer, code owner, security SME when required
+- `When:` for every PR before merge
+- `Where:` GitHub PR workflow and status gates
+
+**Input -> Process -> Output**
+
+- `Input:` PR, tests, migration notes, rollback plan
+- `Process:` CI runs, reviewer checks behavior/risk/ownership, code owners approve
+- `Output:` mergeable or blocked change
+
+**Flowchart**
+
+```text
+Developer opens PR
+  -> CI runs
+  -> reviewer checks behavior + tests + rollback
+  -> security review if sensitive path touched
+  -> approve or request changes
+  -> merge only if all gates are green
+```
+
+**Sequence**
+
+```text
+Author -> GitHub: open PR
+GitHub -> CI: run lint/test/build/security
+Reviewer -> PR: inspect design, tests, docs
+CODEOWNER -> PR: approve or reject
+GitHub -> main: merge if required checks pass
+```
+
+### Challenges to call out in interviews
+
+- shallow rubber-stamp review
+- approvals without risk understanding
+- security-sensitive code reviewed by the wrong people
+- PRs with no rollback story
+- green CI hiding missing scenario coverage
+
+### Edge cases to call out
+
+- migration PR with tiny diff but huge operational risk
+- config-only change with bigger blast radius than code change
+- generated files or lockfiles hiding dependency risk
+- hotfix pressure pushing teams toward bypassing review
+
+### Limitations
+
+- review quality is cultural as much as procedural
+- a required approval is not proof of deep understanding
+- automated checks can pass while runtime or rollout discipline is weak
+
+---
+
+## Universal flowchart + sequence template
+
+Apply this to standards, review, audit, observability, CI, or release
+workflow topics.
+
+### Flowchart template
+
+```text
+Trigger / change request
+  -> determine which policy surface is touched
+  -> run automated gates
+  -> run human review or audit path
+  -> approve / reject / defer
+  -> merge / remediate
+```
+
+### Sequence template
+
+```text
+Author -> Control surface: submit change
+Control surface -> Automation: lint/test/build/scan
+Automation -> Reviewer/Auditor: evidence
+Reviewer/Auditor -> Control surface: approve or request changes
+Control surface -> Runtime/main branch: allow or block
+```
+
+### What interviewers want to hear
+
+- the control exists for a reason, not tradition
+- the control has evidence, not just policy text
+- the control has failure modes
+- the control has ownership
+- the control has limitations
+
+That is what turns "process" into architecture-grade reasoning.

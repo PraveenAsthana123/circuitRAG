@@ -74,7 +74,7 @@ Per `~/.claude/CLAUDE.md` §43:
 - **Drill files**: `mcp/tests/drill_*.py` with header
   `# RESOURCES: <tokens>` (or `readonly` for tier-1 safe drills).
 - **Run the suite**: `scripts/run_drills.py --parallel 4 [--only <substr>]`
-- **Tier-1 readonly** (54 drills as of Phase 5BB):
+- **Tier-1 readonly** (74 drills; 141 total catalog drills in current worktree):
   `scripts/run_drills.py --parallel 4 --only ""` filtered by `# RESOURCES: readonly`.
 
 ## Pre-commit + post-commit hook chain
@@ -103,13 +103,13 @@ POST-COMMIT HOOK (scripts/git-hooks/post-commit)
 
 ```cron
 # Daily snapshot at 00:05 UTC (5N + 5Q)
-5 0 * * * /tmp/documind-venv/bin/python /mnt/deepa/rag/scripts/council_stats_snapshot.py
+5 0 * * * /mnt/deepa/rag/.venv/bin/python /mnt/deepa/rag/scripts/council_stats_snapshot.py
 
 # Weekly council retention prune (2F)
-0 4 * * 0 /tmp/documind-venv/bin/python /mnt/deepa/rag/scripts/prune_council_runs.py --apply --vacuum
+0 4 * * 0 /mnt/deepa/rag/.venv/bin/python /mnt/deepa/rag/scripts/prune_council_runs.py --apply --vacuum
 
 # Weekly JSONL log retention prune (6E) — keeps 90 days of watcher.log + council_runs.log
-30 4 * * 0 /tmp/documind-venv/bin/python /mnt/deepa/rag/scripts/prune_loop_logs.py --apply
+30 4 * * 0 /mnt/deepa/rag/.venv/bin/python /mnt/deepa/rag/scripts/prune_loop_logs.py --apply
 
 # Or composed pipeline (5X) — snapshot + prom export + alerts/webhook in one call
 5 0 * * * /mnt/deepa/rag/scripts/run_filter_pipeline.sh \
@@ -154,11 +154,11 @@ for ln in sys.stdin:
 "
 
 # Outcome histogram (per-window or per-week)
-python3 scripts/council_filter_stats.py
-python3 scripts/council_filter_stats.py --weekly --weeks 4
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py
+/mnt/deepa/rag/.venv/bin/python scripts/council_filter_stats.py --weekly --weeks 4
 
 # One-shot health check (all rails)
-python3 scripts/loop_status.py
+/mnt/deepa/rag/.venv/bin/python scripts/loop_status.py
 # Exit 0 = healthy, 1 = warnings, 2 = errors
 
 # Run all drills (tier-1 only — readonly, ~12s)
@@ -168,7 +168,7 @@ scripts/run_drills.py --parallel 4
 scripts/run_drills.py --parallel 2 --only sidecar
 
 # Refresh the drill_status file (what LoopWatcher reads)
-python3 scripts/write_drill_status.py --only-readonly
+/mnt/deepa/rag/.venv/bin/python scripts/write_drill_status.py --only-readonly
 
 # Replay verdict log to find recent REJECTs
 grep -F '"verdict": "REJECT"' .loop/watcher.log | tail -5
@@ -192,7 +192,7 @@ The loop persists state across iterations via:
 advisor.db                         # SQLite: events + council_runs + ratings
 docs/NEXT_POLICY.md                # session ledger (every phase entry)
 docs/architecture/adr/             # ADRs (immutable; supersede, never edit)
-mcp/tests/drill_*.py               # drill catalog (~119 total, ~55 tier-1)
+mcp/tests/drill_*.py               # drill catalog (141 total, 74 tier-1 readonly)
 ```
 
 ## Composes with
