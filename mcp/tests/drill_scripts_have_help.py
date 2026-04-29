@@ -51,16 +51,7 @@ PY_BIN = "/mnt/deepa/rag/.venv/bin/python"
 # --help contract. New scripts MUST conform; this set should only
 # shrink. When you add a script, add --help support OR add an
 # explicit entry here with rationale.
-KNOWN_NO_HELP = {
-    "migrate.py",            # subcommand-style; needs explicit --help wiring
-    "seed_demo.py",          # demo-only; arg-free invocation
-    "smoke_test.py",         # smoke runner; arg-free invocation
-    "gen-dev-keys.sh",       # accepts --help but exits 1 (legacy shape)
-    "golden-demo.sh",        # demo-only
-    "install_snapshot_cron.sh",  # custom mode dispatch (--dry-run / --apply etc); --help → exit 2 by design
-    "run_filter_pipeline.sh",    # custom mode dispatch
-    "scheduled_kaggle_ingest.sh", # cron-style invocation
-}
+KNOWN_NO_HELP = set()
 
 
 def _help_runs(path: Path) -> tuple[bool, str, float]:

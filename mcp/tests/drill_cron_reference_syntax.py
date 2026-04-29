@@ -27,7 +27,8 @@ Eight steps. Six negative assertions.
   4. NEGATIVE: the three single-line cheatsheet cron entries match the
      expected canonical commands exactly.
   5. NEGATIVE: the multi-line 5X example round-trips into one single
-     crontab line with schedule + command + flags intact.
+     crontab line with schedule + command + flags intact, and does
+     not require embedding the webhook secret inline.
   6. NEGATIVE: the local crontab syntax checker exists (`-n` or `-T`).
      Without this the drill would be a regex-only placebo.
   7. NEGATIVE: the reconstructed cron examples pass crontab syntax
@@ -167,13 +168,15 @@ def main() -> int:
     required_fragments = [
         EXPECTED_PIPELINE_PREFIX,
         "--prometheus-out /var/lib/node_exporter/textfile/council.prom",
-        '--webhook "$COUNCIL_STATS_WEBHOOK"',
         "--webhook-format slack",
         '--alert-on "filtered>0.5"',
     ]
     missing = [frag for frag in required_fragments if frag not in pipeline]
     if missing:
         print(f"✗ step 5: pipeline cron entry missing fragments: {missing}")
+        return 1
+    if "--webhook " in pipeline:
+        print("✗ step 5: pipeline cron entry still embeds webhook inline; env-file contract broken")
         return 1
     print("✓ step 5: multi-line 5X example collapses into one valid cron line")
 

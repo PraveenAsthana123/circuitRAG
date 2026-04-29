@@ -4,7 +4,7 @@
 Drill: scripts/loop_status.py - operator's "is everything fine?"
 one-shot health report.
 
-Eight steps. Six negative assertions.
+Nine steps. Seven negative assertions.
 
   1. Script exists + executable.
   2. NEGATIVE: collect_status() never raises (must work even on
@@ -18,6 +18,8 @@ Eight steps. Six negative assertions.
      Without that mapping, CI can't gate on it.
   8. NEGATIVE: counts match DB content (events_total + council_runs_total
      + council_runs_pending derived correctly via LEFT JOIN).
+  9. NEGATIVE: non-rule-1 trailing REJECTs still surface as WARNING
+     even when the latest drill snapshot is green.
 
 Tag: readonly. Pure-Python -- runs in tier 1.
 """
@@ -275,9 +277,41 @@ def main():
             )
         ok(f"counts match: events=5, council_runs=2, pending=3")
 
+    # 9. Non-rule-1 trailing REJECT remains visible even with green drills
+    step("9. NEGATIVE: non-rule-1 trailing REJECT still surfaces as WARNING")
+    with tempfile.TemporaryDirectory() as tmp:
+        d = pathlib.Path(tmp)
+        loop = d / ".loop"
+        loop.mkdir()
+        mod.ADVISOR_DB = d / "advisor.db"
+        mod.LOOP_DIR = loop
+        mod.WATCHER_LOG = loop / "watcher.log"
+        mod.COUNCIL_LOG = loop / "council_runs.log"
+        mod.DRILL_STATUS = loop / "last_drill_outcome.json"
+        _seed_db_via_memory(mod.ADVISOR_DB, n_events=1, n_council=1)
+        from datetime import datetime, timezone
+        mod.DRILL_STATUS.write_text(json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "failed_drills": [],
+            "total_drills": 30,
+        }))
+        mod.WATCHER_LOG.write_text(json.dumps({
+            "timestamp": "2026-04-28T16:00:00+00:00",
+            "commit_sha": "scope1",
+            "verdict": "REJECT",
+            "rule_fired": 3,
+            "reason": "scope violation",
+        }) + "\n")
+        status = mod.collect_status()
+        if status["loop_state"] != "WARNING":
+            fail(f"expected WARNING for non-rule-1 reject, got {status['loop_state']}")
+        if status["watcher_recent_rejects"] != 1:
+            fail(f"expected 1 trailing reject, got {status['watcher_recent_rejects']}")
+        ok("non-rule-1 trailing REJECT remains visible with green drills")
+
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
-    print(f"{BOLD}{GREEN}  ALL 8 LOOP-STATUS STEPS PASSED{NC}")
-    print(f"{BOLD}{GREEN}  (6 negative assertions: 2, 4, 5, 6, 7, 8){NC}")
+    print(f"{BOLD}{GREEN}  ALL 9 LOOP-STATUS STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  (7 negative assertions: 2, 4, 5, 6, 7, 8, 9){NC}")
     print(f"{BOLD}{GREEN}{'=' * 50}{NC}")
 
 

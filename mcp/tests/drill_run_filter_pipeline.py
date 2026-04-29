@@ -8,7 +8,7 @@ into one cron-friendly call. The drill exercises ONLY --dry-run mode
 (safe: no subscripts execute) plus structural inspection of the
 script body.
 
-Eight steps. Six negative assertions.
+Nine steps. Seven negative assertions.
 
   1. POSITIVE: --dry-run prints all 3 step commands when given the
      flags that activate each step.
@@ -20,7 +20,7 @@ Eight steps. Six negative assertions.
   4. NEGATIVE: --skip-snapshot suppresses ONLY the snapshot step.
      The other steps still appear (or skip with their own messages).
   5. NEGATIVE: each step uses correct PYTHON_BIN. Default is
-     /tmp/documind-venv/bin/python; PYTHON_BIN env override changes
+     /mnt/deepa/rag/.venv/bin/python; PYTHON_BIN env override changes
      all 3 step commands.
   6. NEGATIVE: --alert-on accumulates (repeat-flag pattern). Two
      --alert-on args produce TWO --alert-on args in the alerts
@@ -31,6 +31,8 @@ Eight steps. Six negative assertions.
   8. NEGATIVE: missing --prometheus-out skips the prom step
      gracefully (with explanatory stderr message). The step is
      OPTIONAL; cron lines without prom shouldn't fail.
+  9. NEGATIVE: default env file can supply COUNCIL_STATS_WEBHOOK
+     without embedding secrets in the cron line.
 
 Run: python3 mcp/tests/drill_run_filter_pipeline.py
 """
@@ -40,6 +42,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -156,7 +159,7 @@ def main() -> int:
         return 1
     # And the default must NOT appear in step commands
     default_in_steps = re.search(
-        r"\[DRY-RUN\] \[(?:snapshot|prometheus|alerts)\]:.*?/tmp/documind-venv/bin/python",
+        r"\[DRY-RUN\] \[(?:snapshot|prometheus|alerts)\]:.*?/mnt/deepa/rag/\.venv/bin/python",
         err,
     )
     if default_in_steps:
@@ -232,7 +235,33 @@ def main() -> int:
         return 1
     print("✓ step 8: missing --prometheus-out skips prom step gracefully (cron-safe)")
 
-    print("\nALL 8 STEPS PASSED")
+    # ── Step 9: NEGATIVE — env file supplies webhook without cron secret ──
+    with tempfile.NamedTemporaryFile("w", delete=False) as fh:
+        fh.write('COUNCIL_STATS_WEBHOOK="https://hooks.example.com/from-env-file"\n')
+        env_file = fh.name
+    try:
+        rc, _, err = _run([
+            "--dry-run",
+            "--alert-on", "filtered>0.5",
+        ], env_override={"COUNCIL_STATS_ENV_FILE": env_file})
+        if rc != 0:
+            print(f"✗ step 9: env-file dry-run exit {rc}")
+            return 1
+        alerts_line = next(
+            (ln for ln in err.splitlines() if "[DRY-RUN] [alerts]" in ln),
+            None,
+        )
+        if not alerts_line:
+            print("✗ step 9: no alerts line in dry-run output")
+            return 1
+        if "--webhook https://hooks.example.com/from-env-file" not in alerts_line:
+            print(f"✗ step 9: env-file webhook missing from alerts cmd. Line: {alerts_line!r}")
+            return 1
+    finally:
+        os.unlink(env_file)
+    print("✓ step 9: default env file can supply webhook without embedding cron secrets")
+
+    print("\nALL 9 STEPS PASSED")
     return 0
 
 
