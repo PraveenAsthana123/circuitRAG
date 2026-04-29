@@ -81,9 +81,11 @@ def _adr_numbers_on_disk() -> list[int]:
         "parallel-agent",
         "forward-looking",
         "sweep-before-commit",
-        "three-way-work-allocation",  # ADR-018
+        "three-way-work-allocation",   # ADR-018
         "graceful-degradation",        # ADR-019
         "loop-tooling",                # ADR-019 alt-keyword
+        "parallel-tool",               # ADR-020
+        "drill-audit",                 # ADR-020 alt-keyword
     )
     nums = []
     for p in sorted(ADR_DIR.glob("*.md")):
