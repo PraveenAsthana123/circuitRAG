@@ -201,5 +201,6 @@ mcp/tests/drill_*.py               # drill catalog (141 total, 74 tier-1 readonl
 - **`~/.claude/CLAUDE.md`** §42 (operational autonomy), §43 (drill discipline), §49 (compose-footer)
 - **`docs/architecture/adr/014-autonomous-loop-architecture.md`** (ADR-014) — the advisory contract that lets failing commits land but logs them
 - **`docs/architecture/adr/015-ratchet-pattern-for-discipline-drift.md`** (ADR-015) — the ratchet pattern (grandfather current drift, gate growth, reward shrinkage); applies to drill catalog discipline + UI scope grants + future per-rule sets
+- **`docs/architecture/adr/016-parallel-agent-allocation-for-independent-n-file-work.md`** (ADR-016) — when to spawn parallel agents (5 preconditions) vs single-thread; three allocation patterns observed across phases 5S, 6C, 6J, 6K
 - **`docs/runbooks/council-telemetry.md`** — the deeper runbook for the 5K-5BB telemetry surface
 - **`docs/NEXT_POLICY.md`** — the session ledger; every phase entry includes drill score
