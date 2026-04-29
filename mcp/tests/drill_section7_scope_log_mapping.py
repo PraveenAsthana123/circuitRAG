@@ -79,10 +79,20 @@ def main() -> int:
         fail(f"NEXT_POLICY missing granted routes: {missing}")
     ok("NEXT_POLICY mentions all granted sidecar routes")
 
-    step("3. NEGATIVE: allowlist has exactly 3 entries")
-    if allowlist != {"page.tsx", "deep/page.tsx", "telemetry/page.tsx"}:
-        fail(f"unexpected allowlist: {sorted(allowlist)}")
-    ok("allowlist matches expected 3-entry grant")
+    step("3. NEGATIVE: allowlist has at least 3 entries (structural)")
+    # Structural rewrite per ADR-017: hardcoding "exactly 3 entries"
+    # was a forward-looking-check anti-pattern that broke every
+    # time §7 scope grew (e.g., when [eventId]/page.tsx was added).
+    # The structural shape is "≥3 entries" (the original three
+    # never disappear) plus per-entry consistency checks in
+    # steps 4-6.
+    if len(allowlist) < 3:
+        fail(f"allowlist shrunk below 3 entries: {sorted(allowlist)}")
+    canonical_3 = {"page.tsx", "deep/page.tsx", "telemetry/page.tsx"}
+    if not canonical_3 <= allowlist:
+        missing = canonical_3 - allowlist
+        fail(f"original 3-entry grant missing from allowlist: {sorted(missing)}")
+    ok(f"allowlist has {len(allowlist)} entries; original 3 still present")
 
     step("4. NEGATIVE: every allowlist entry exists on disk")
     missing = [rel for rel in sorted(allowlist) if not (SIDECAR_DIR / rel).exists()]
@@ -90,16 +100,27 @@ def main() -> int:
         fail(f"allowlist entries missing on disk: {missing}")
     ok("all allowlist entries exist on disk")
 
-    step("5. NEGATIVE: route mentions map 1:1 to relative file paths")
-    mapping = {
-        "/admin/sidecar": "page.tsx",
-        "/admin/sidecar/deep": "deep/page.tsx",
-        "/admin/sidecar/telemetry": "telemetry/page.tsx",
-    }
-    mismatches = [route for route, rel in mapping.items() if rel not in allowlist or route not in policy_text]
+    step("5. NEGATIVE: every allowlist entry has a corresponding route in policy")
+    # Structural rewrite per ADR-017: derive route from rel-path
+    # instead of hardcoding the 3-entry mapping. Convention:
+    #   page.tsx        -> /admin/sidecar
+    #   <segment>/page.tsx -> /admin/sidecar/<segment>
+    # This auto-extends as §7 grows (e.g. [eventId]/page.tsx ->
+    # /admin/sidecar/[eventId]).
+    mismatches: list[str] = []
+    for rel in sorted(allowlist):
+        if rel == "page.tsx":
+            route = "/admin/sidecar"
+        elif rel.endswith("/page.tsx"):
+            route = "/admin/sidecar/" + rel[: -len("/page.tsx")]
+        else:
+            mismatches.append(f"unrecognised allowlist entry shape: {rel!r}")
+            continue
+        if route not in policy_text:
+            mismatches.append(f"{rel} -> {route} (route not in NEXT_POLICY)")
     if mismatches:
         fail(f"route-to-file mapping drift: {mismatches}")
-    ok("route mentions map cleanly to relative files")
+    ok(f"all {len(allowlist)} allowlist entries map to policy-mentioned routes")
 
     step("6. NEGATIVE: no extra sidecar tsx files exist outside the allowlist")
     actual = {str(p.relative_to(SIDECAR_DIR)) for p in SIDECAR_DIR.rglob("*.tsx")}
