@@ -19,6 +19,13 @@
 
 set -euo pipefail
 
+# Standard --help / -h: print the comment header and exit 0 cleanly.
+# Matches the convention adopted in Phase 6Q for the rest of scripts/*.
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    sed -n '2,20p' "$0"
+    exit 0
+fi
+
 REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null \
             || echo "/mnt/deepa/rag")"
 cd "$REPO_ROOT"
