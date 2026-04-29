@@ -98,6 +98,8 @@ func main() {
 		api.Handle("/api/v1/documents",   proxy.NewReverseProxy(cfg.IngestionSvcURL))
 		api.Handle("/api/v1/retrieve",    proxy.NewReverseProxy(cfg.RetrievalSvcURL))
 		api.Handle("/api/v1/ask",         proxy.NewReverseProxy(cfg.InferenceSvcURL))
+		api.Handle("/api/v1/agentic/*",   proxy.NewReverseProxy(cfg.AgenticSvcURL))
+		api.Handle("/api/v1/agentic",     proxy.NewReverseProxy(cfg.AgenticSvcURL))
 		api.Handle("/api/v1/evaluation/*", proxy.NewReverseProxy(cfg.EvaluationSvcURL))
 	})
 

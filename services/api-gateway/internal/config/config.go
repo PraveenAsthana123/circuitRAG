@@ -23,6 +23,7 @@ type Config struct {
 	InferenceSvcURL   string
 	EvaluationSvcURL  string
 	GovernanceSvcURL  string
+	AgenticSvcURL     string
 }
 
 func Load() *Config {
@@ -42,6 +43,7 @@ func Load() *Config {
 		InferenceSvcURL:   env("DOCUMIND_INFERENCE_URL", "http://localhost:8084"),
 		EvaluationSvcURL:  env("DOCUMIND_EVALUATION_URL", "http://localhost:8085"),
 		GovernanceSvcURL:  env("DOCUMIND_GOVERNANCE_URL", "http://localhost:8086"),
+		AgenticSvcURL:     env("DOCUMIND_AGENTIC_URL", "http://localhost:8087"),
 	}
 }
 
