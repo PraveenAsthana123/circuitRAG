@@ -82,17 +82,39 @@ PARALLEL_TOOL_COMMITS = {
 KNOWN_UNAUDITED: dict[str, str] = {}
 
 # ADR-020 SLO: every parallel-tool commit's audit drill should
-# land within ≤2 autonomous-loop iterations of the parallel-tool
-# commit. "Iteration" = autonomous-loop commit. Latency is
-# computed via `git rev-list --count <pt_sha>..<audit_add_sha>`.
-MAX_AUDIT_LATENCY = 2
+# land within ≤MAX_AUDIT_LATENCY autonomous-loop iterations of
+# the parallel-tool commit. "Iteration" = autonomous-loop commit.
+# Latency is computed via `git rev-list --count <pt_sha>..
+# <audit_add_sha>`.
+#
+# Tightening history (per ADR-015 ratchet pattern, reward
+# shrinkage):
+#   * Phase 7J (initial): 2 (matched ADR-020 text)
+#   * Phase 7Z (now):     1 (tightened — G-3 + G-4 both shipped
+#                            at latency=0; threshold has
+#                            headroom for tightening)
+# Future tightening: drop to 0 once 3+ consecutive G-buckets ship
+# at latency=0 (consistent inverted cadence).
+MAX_AUDIT_LATENCY = 1
 
 # Grandfathered SLO violations — audits that landed BEFORE
 # ADR-020 was named (Phase 7F, 3b1cc02). G-1 and G-2 audits
-# landed 10 and 9 iterations late respectively. The ratchet
-# floor is the actual measured latency at landing time; any
-# future drift past these numbers means git history changed
-# (rebase / squash) and the registry needs reconciliation.
+# landed 10 and 9 iterations late respectively. These entries
+# are PERMANENT historical artifacts: latency is computed from
+# git history and won't shrink without a rebase (which is gated
+# per CLAUDE.md §42). The ratchet's purpose for these entries is
+# integrity-of-record (reject if latency drifts UP — implies
+# history changed) rather than paydown-toward-zero.
+#
+# True ADR-020 paydown happens via:
+#   1. Lowering MAX_AUDIT_LATENCY (gate tightening — Phase 7Z
+#      moved from 2 to 1).
+#   2. Future G-buckets shipping at latency=0 / 1 (in-SLO entries
+#      that don't enter this dict).
+#
+# Net session improvement: avg-iter-latency 6.3 → 4.8 across G-1
+# through G-4. Phase 7Z's threshold tightening makes the avg
+# trend a structural commitment going forward.
 KNOWN_LATE_AUDITS: dict[str, int] = {
     "5dfeb9c": 10,  # G-1: agent-orchestrator-svc -> Phase 7E
     "51bac70": 9,   # G-2: TTS proxy -> Phase 7I
