@@ -59,11 +59,21 @@ webhook in one fire), use `scripts/run_filter_pipeline.sh`:
 ```cron
 5 0 * * * /mnt/deepa/rag/scripts/run_filter_pipeline.sh \
     --prometheus-out /var/lib/node_exporter/textfile/council.prom \
-    --webhook "$COUNCIL_STATS_WEBHOOK" \
     --webhook-format slack \
     --alert-on "filtered>0.5" \
     --alert-on "too_short>0.5"
 ```
+
+To avoid embedding secrets in crontab, store the webhook in:
+
+```bash
+cat > /mnt/deepa/rag/.loop/council-stats.env <<'EOF'
+COUNCIL_STATS_WEBHOOK="https://REAL-WEBHOOK-URL"
+EOF
+chmod 600 /mnt/deepa/rag/.loop/council-stats.env
+```
+
+`run_filter_pipeline.sh` sources that file automatically before parsing flags.
 
 ### Manual histogram
 
@@ -265,7 +275,7 @@ scripts/migrate_ollama_to_deepa.sh --apply      # Tier-2 (sudo + systemd)
 | Snapshot file empty | `cat .loop/council_stats_daily.jsonl`; cron installed? `scripts/install_snapshot_cron.sh --status` |
 | `--prometheus-out` writes blank file | `cat .loop/council_runs.log | wc -l` — empty log = no samples |
 | Pre-commit hook hangs | `SKIP_DRILL_STATUS=1 git commit ...` to bypass while debugging |
-| Webhook never fires | `--webhook URL` + `--alert-on EXPR` BOTH required; alert with no URL is noop |
+| Webhook never fires | check `.loop/council-stats.env` or pass `--webhook URL`; alert with no URL is noop |
 
 ## Composes with
 

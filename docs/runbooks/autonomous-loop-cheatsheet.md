@@ -74,7 +74,7 @@ Per `~/.claude/CLAUDE.md` §43:
 - **Drill files**: `mcp/tests/drill_*.py` with header
   `# RESOURCES: <tokens>` (or `readonly` for tier-1 safe drills).
 - **Run the suite**: `scripts/run_drills.py --parallel 4 [--only <substr>]`
-- **Tier-1 readonly** (74 drills; 141 total catalog drills in current worktree):
+- **Tier-1 readonly** (82 drills; 150 total catalog drills in current worktree):
   `scripts/run_drills.py --parallel 4 --only ""` filtered by `# RESOURCES: readonly`.
 
 ## Pre-commit + post-commit hook chain
@@ -114,10 +114,20 @@ POST-COMMIT HOOK (scripts/git-hooks/post-commit)
 # Or composed pipeline (5X) — snapshot + prom export + alerts/webhook in one call
 5 0 * * * /mnt/deepa/rag/scripts/run_filter_pipeline.sh \
     --prometheus-out /var/lib/node_exporter/textfile/council.prom \
-    --webhook "$COUNCIL_STATS_WEBHOOK" \
     --webhook-format slack \
     --alert-on "filtered>0.5"
 ```
+
+To keep the webhook secret out of crontab, put it in:
+
+```bash
+cat > /mnt/deepa/rag/.loop/council-stats.env <<'EOF'
+COUNCIL_STATS_WEBHOOK="https://REAL-WEBHOOK-URL"
+EOF
+chmod 600 /mnt/deepa/rag/.loop/council-stats.env
+```
+
+`run_filter_pipeline.sh` loads that file automatically.
 
 Install via the dry-run-by-default script:
 
@@ -192,7 +202,7 @@ The loop persists state across iterations via:
 advisor.db                         # SQLite: events + council_runs + ratings
 docs/NEXT_POLICY.md                # session ledger (every phase entry)
 docs/architecture/adr/             # ADRs (immutable; supersede, never edit)
-mcp/tests/drill_*.py               # drill catalog (141 total, 74 tier-1 readonly)
+mcp/tests/drill_*.py               # drill catalog (150 total, 82 tier-1 readonly)
 ```
 
 ## Composes with

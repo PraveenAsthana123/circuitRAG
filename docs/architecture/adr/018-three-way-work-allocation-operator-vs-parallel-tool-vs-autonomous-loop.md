@@ -150,10 +150,12 @@ from the discipline scaffolding (drills, ratchets, ADRs).
   50-file delta needed careful scope-splitting before committing.
   If the parallel tool ships agent-orchestrator-svc faster than
   the autonomous loop can drill it, the gated commits accumulate.
-* **Operator may not realize the loop is waiting**. The 4
-  pending operator-required items (A1 finalize, A3 webhook,
-  G-1 service-code commit decision, B-1/B-2/B-3 gate-lifts)
-  could wait days without explicit notification. The cheatsheet's
+* **Operator may not realize the loop is waiting**. The
+  operator-required items (A3 real webhook secret, the open
+  landing decisions for G-1/G-2 worktree buckets, plus any
+  approved-but-unfunded integrations such as B-2/B-3
+  keys/subscription) could wait
+  days without explicit notification. The cheatsheet's
   "Recommended cron" includes alerting (5T) but that requires A3
   to be done first — bootstrapping problem.
 

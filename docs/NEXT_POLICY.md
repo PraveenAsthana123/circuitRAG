@@ -185,7 +185,7 @@ Format: each phase has `id`, `title`, `status`, `commits` (cumulative shipped), 
 | ~~3D~~ | agents/ registry — first-class agent files; policy_approver added | **shipped** in this commit | Sidecar-2D | — |
 | ~~1B-static~~ | static HTML dashboard renderer | **shipped** in this commit | Sidecar-1A | run: `python3 scripts/render_dashboard.py > .loop/dashboard.html` |
 | ~~1B~~ | Sidecar Next.js Server Component at `/admin/sidecar` reading `.loop/dashboard.html` | **shipped** in this commit (§7 granted 2026-04-28) | Phase-1B-static | navigate to `/admin/sidecar` after running `render_dashboard.py` |
-| 1B-2 | Live data via better-sqlite3 + rating buttons + drill-down | not started | Phase-1B | needs new §7 entry to add a write/rating endpoint |
+| 1B-2 | Live data via better-sqlite3 + rating buttons + drill-down | approved, not started | Phase-1B | §7 write/rating approval granted; implementation not yet landed |
 | ~~3C~~ | BulkPrReview composes DispatchPool × council | **shipped** in this commit | Phase-3B + Sidecar-2D | — |
 | ~~4A~~ | LoopWatcher — deterministic policy_approver gate (5 rules) | **shipped** in this commit | Phase-3D approver agent | — |
 | ~~4B~~ | post-commit hook auto-fires LoopWatcher; verdict log at .loop/watcher.log | **shipped** in this commit | Phase-4A | install: `scripts/install_loop_watcher_hook.sh` |

@@ -1,6 +1,6 @@
 # Session retrospective — 2026-04-28 autonomous-loop
 
-> ~70 commits across 14 hours · 6 ADRs · 71+ readonly drills green ·
+> ~70 commits across 14 hours · 6 ADRs · 82 readonly drills green ·
 > 4 cron lines deployed · 42 GB freed
 >
 > Operator-facing reference for what shipped, what was learned, and
@@ -122,7 +122,7 @@ to do this" to "scripts MUST do this."
 ## What's deployed (in the operator's host)
 
 * `/usr/share/ollama/.ollama` migrated to `/mnt/deepa/installed-software/ollama/`
-  (42 GB moved off `/`; `--finalize` pending operator verification)
+  (42 GB moved off `/`; finalize already reported "Already clean.")
 * Three cron lines installed:
   * `5 0 * * * council_stats_snapshot.py` (5N)
   * `0 4 * * 0 prune_council_runs.py --apply --vacuum` (2F)
@@ -135,22 +135,25 @@ to do this" to "scripts MUST do this."
 
 | # | Type | What | Why |
 |---|------|------|-----|
-| A1.5 | Operator | `migrate_ollama_to_deepa.sh --finalize` (after 1-2d) | Frees 42 GB on `/` |
-| A3 | Operator | Slack/Discord webhook URL | Activates 5T alerting pipeline |
-| G-1 | Gated | `services/agent-orchestrator-svc/` commit | Operator decision per ADR-018 |
-| G-2 | Gated | `services/frontend/*` page edits | Outside §7 scope grant |
-| B-1 | Gated | Phase 1B-2 write endpoints | New §7 grant for POST surface |
-| B-2 | Gated | Phase 2B Claude/Codex routes | API keys |
-| B-3 | Gated | Phase Kimi-2 chair model | Ollama Cloud subscription |
+| ~~A1.5~~ | Operator | `migrate_ollama_to_deepa.sh --finalize --yes-i-accept-delete` | **completed**; finalize reported "Already clean." |
+| A3 | Operator | Real Slack/Discord webhook URL | Pipeline + cron wiring complete; valid secret still required for live 5T delivery |
+| G-1 | Review bucket | `services/agent-orchestrator-svc/` commit | New service surface exists in worktree; landing decision still open per ADR-018 |
+| G-2 | Review bucket | `services/frontend/*` page edits | Broad frontend delta exists in worktree; scope-grant / trim decision still open |
+| G-3 | Review bucket | 4 script/runtime edits by parallel tool | ADR-018 default is parallel-tool signs what it authored; operator review still allowed before landing |
+| ~~B-1~~ | Approved | Phase 1B-2 write endpoints | §7 POST/write-surface approval granted; implementation still pending |
+| ~~B-2~~ | Approved | Phase 2B Claude/Codex routes | Scope approved; execution still needs `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` |
+| ~~B-3~~ | Approved | Phase Kimi-2 chair model | Scope approved; execution still needs active Ollama Cloud subscription |
 
 ## Catalog status at session end
 
-* Total drills: 142
-* Tier-1 readonly: 71+ (every Phase X.0 commit reports `--only-readonly` count)
-* Pre-existing environmental drill flakes: 2 (`drill_runner_junit`,
-  `drill_tool_catalog_ttl` — need MCP service running; tag mismatch
-  to clean up in a future iteration)
-* Scripts in `scripts/`: 29 (22 conform to `--help` contract; 8
+* Total drills: 150
+* Tier-1 readonly: 82 (current catalog snapshot)
+* Pre-existing environmental drill flakes: 0 — Phase 6W
+  (`5774e7f`) re-tagged `drill_tool_catalog_ttl` → `mcp_hr` and
+  swapped `drill_runner_junit`'s sub-drill from `tool_catalog_ttl`
+  to `baggage_log_formatter`, so the readonly tier is fully
+  zero-infra and the MCP-dependent drill is honestly tagged.
+* Scripts in `scripts/`: 29 (29 conform to `--help` contract; 0
   grandfathered in `KNOWN_NO_HELP`)
 * ADRs: 19 total (014–019 are loop-discipline; 001–013 are domain)
 
