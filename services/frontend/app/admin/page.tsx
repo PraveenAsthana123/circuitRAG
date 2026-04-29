@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   api,
   ApiError,
+  type AgenticTask,
   type HealthDetailedResponse,
   type FrontendBuildInfoResponse,
   type HealthPromptsResponse,
@@ -116,6 +117,8 @@ export default function AdminPage() {
   const [tools, setTools] = useState<HealthToolsResponse | null>(null);
   const [prompts, setPrompts] = useState<HealthPromptsResponse | null>(null);
   const [upstreams, setUpstreams] = useState<HealthUpstreamsResponse | null>(null);
+  const [agenticTasks, setAgenticTasks] = useState<AgenticTask[] | null>(null);
+  const [agenticError, setAgenticError] = useState<string | null>(null);
 
   // Trace-link panel: search-driven, not poll-driven. Operator
   // supplies BOTH correlation_id and tenant_id (audit_log RLS is
@@ -133,6 +136,13 @@ export default function AdminPage() {
   // is when the backend goes unreachable and refreshes start failing.
   const [lastFetchAt, setLastFetchAt] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const pendingApprovalCount = agenticTasks
+    ? agenticTasks.filter(
+        (task) =>
+          (task.status === 'waiting_for_approval' || task.status === 'waiting_for_plan_approval')
+          && task.approved == null,
+      ).length
+    : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -149,12 +159,20 @@ export default function AdminPage() {
         // window. The backend probes upstreams in parallel internally
         // too, so the worst-case latency is bounded by the slowest
         // single upstream.
-        const [resp, buildInfoResp, toolsResp, promptsResp, upstreamsResp] = await Promise.all([
+        const [resp, buildInfoResp, toolsResp, promptsResp, upstreamsResp, agenticResp] = await Promise.all([
           api.healthDetailed(ctl.signal),
           api.frontendBuildInfo(ctl.signal),
           api.healthTools(ctl.signal),
           api.healthPrompts(ctl.signal),
           api.healthUpstreams(ctl.signal),
+          api.agenticListTasks({ limit: 25, signal: ctl.signal }).catch((err: unknown) => {
+            if (err instanceof ApiError) {
+              setAgenticError(err.detail);
+            } else if ((err as Error).name !== 'AbortError') {
+              setAgenticError((err as Error).message);
+            }
+            return null;
+          }),
         ]);
         if (cancelled) return;
         setData(resp);
@@ -162,6 +180,8 @@ export default function AdminPage() {
         setTools(toolsResp);
         setPrompts(promptsResp);
         setUpstreams(upstreamsResp);
+        setAgenticTasks(agenticResp);
+        if (agenticResp) setAgenticError(null);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -280,6 +300,80 @@ export default function AdminPage() {
                 : 'runtime build id'}
           </div>
         </div>
+        <div className="metric-card">
+          <div className="metric-label">Pending approvals</div>
+          <div className="metric-value">
+            {pendingApprovalCount ?? '—'}
+          </div>
+          <div className="field-help">
+            {agenticError ? (
+              <span style={{ color: '#92400e' }}>agentic API unavailable</span>
+            ) : (
+              'Human-gated tasks awaiting decision.'
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header" style={{ marginBottom: 12 }}>
+          <strong>Agentic approvals</strong>
+          <div className="field-help">
+            Review tasks that paused for human approval before they are finalized.
+          </div>
+        </div>
+        {agenticError ? (
+          <div className="list-empty">
+            Agentic API unavailable: {agenticError}
+          </div>
+        ) : (
+          <>
+            <div className="page-actions" style={{ justifyContent: 'space-between' }}>
+              <div className="field-help">
+                {pendingApprovalCount != null ? `${pendingApprovalCount} pending` : 'Loading...'}
+              </div>
+              <Link href="/admin/agentic" className="btn">
+                Open agentic tasks
+              </Link>
+            </div>
+            {agenticTasks && (
+              <div className="table-wrap" style={{ marginTop: 12 }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Task</th>
+                      <th>Status</th>
+                      <th>Risk</th>
+                      <th>Goal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {agenticTasks
+                      .filter(
+                        (task) =>
+                          (task.status === 'waiting_for_approval' || task.status === 'waiting_for_plan_approval')
+                          && task.approved == null,
+                      )
+                      .slice(0, 5)
+                      .map((task) => (
+                        <tr key={task.task_id}>
+                          <td><code>{task.task_id.slice(0, 8)}</code></td>
+                          <td><span className="badge badge-parsing">{task.status}</span></td>
+                          <td>{task.risk_level}</td>
+                          <td>{task.goal}</td>
+                        </tr>
+                      ))}
+                    {pendingApprovalCount === 0 && (
+                      <tr>
+                        <td colSpan={4} className="field-help">No pending approvals.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Error banner — visible AND announced to assistive tech. */}

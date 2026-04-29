@@ -14,7 +14,7 @@
  */
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import Mermaid from '../../../components/Mermaid';
 
 type Level =
@@ -36,9 +36,126 @@ interface Topic {
   // Inline mermaid flowchart for topics where flow matters more than blurb.
   // Optional — most catalog topics stay compact.
   flowchart?: string;
+  // Sequence diagram for the same runtime path when caller/dependency
+  // interaction matters.
+  sequence?: string;
+  // Sequential implementation steps for interview / implementation
+  // discussion. Kept short and concrete.
+  implementationSteps?: string[];
   // Anchor on /admin/python/deep when this topic has a deep-dive entry.
   // Renders a "Deep dive →" link inline.
   deepSlug?: string;
+}
+
+function mermaidLabel(value: string): string {
+  return value.replace(/[`"]/g, '').replace(/[<>]/g, '');
+}
+
+function defaultFlowchart(topic: Topic): string {
+  const label = mermaidLabel(topic.name);
+  const repo = topic.whereInRepo ? mermaidLabel(topic.whereInRepo) : 'Apply in service or utility layer';
+  return `flowchart LR
+  i[Input: ${label}] --> p[Process: Understand rules and apply ${label}]
+  p --> c[Check: correctness + readability + safety]
+  c --> r[Repo fit: ${repo}]
+  r --> o[Output: working ${label} usage]`;
+}
+
+function defaultSequence(topic: Topic): string {
+  const label = mermaidLabel(topic.name);
+  return `sequenceDiagram
+  autonumber
+  participant Dev as Engineer
+  participant Code as Application code
+  participant Runtime as Python runtime
+  participant Repo as Repo pattern
+  Dev->>Code: implement ${label}
+  Code->>Runtime: execute ${label}
+  Runtime-->>Code: behavior / result
+  Code->>Repo: integrate with boundary
+  Repo-->>Dev: observable outcome`;
+}
+
+function defaultImplementationSteps(topic: Topic): string[] {
+  const shared = [
+    `Understand the core rule of ${topic.name} before using it in application code.`,
+    `Apply ${topic.name} first in a small, testable unit instead of a broad refactor.`,
+    `Connect ${topic.name} to the repo's existing service, schema, or observability patterns.`,
+    `Verify the behavior with tests and one realistic failure or edge case.`,
+  ];
+
+  switch (topic.level) {
+    case 'core':
+      return [
+        `Define the smallest code example that demonstrates ${topic.name}.`,
+        `Apply ${topic.name} in a function or class with explicit inputs and outputs.`,
+        `Check common runtime traps such as None handling, mutability, or control-flow ambiguity.`,
+        `Keep the final usage simple enough that another engineer can read it without hidden behavior.`,
+      ];
+    case 'intermediate':
+      return [
+        `Introduce ${topic.name} only where it improves clarity or reuse over plain code.`,
+        `Keep the abstraction narrow so the behavior stays obvious to callers.`,
+        `Test one happy path and one misuse path for ${topic.name}.`,
+        `Document the tradeoff if ${topic.name} changes control flow or readability.`,
+      ];
+    case 'advanced':
+      return [
+        `Identify the runtime problem that actually requires ${topic.name}.`,
+        `Choose the correct execution model or lifecycle for ${topic.name}.`,
+        `Add timeouts, cancellation, or failure handling where ${topic.name} crosses a boundary.`,
+        `Measure the result so the advanced abstraction solves a real performance or reliability problem.`,
+      ];
+    case 'dunder':
+      return [
+        `Use ${topic.name} only when native Python protocol support is genuinely needed.`,
+        `Keep the object contract predictable for callers of the class.`,
+        `Verify that ${topic.name} does not create surprising side effects or recursion traps.`,
+        `Add repr/tests/examples so the protocol behavior remains maintainable.`,
+      ];
+    case 'typing':
+      return [
+        `Define the type or schema contract for ${topic.name} before writing the handler logic.`,
+        `Validate the boundary where external data enters the system.`,
+        `Keep the type surface readable; avoid type complexity that obscures intent.`,
+        `Run static checks and one malformed payload test for ${topic.name}.`,
+      ];
+    case 'backend':
+      return [
+        `Place ${topic.name} at the correct backend layer: middleware, router, service, repository, or client.`,
+        `Wire explicit timeouts, logging, and error handling around ${topic.name} if it touches IO.`,
+        `Keep HTTP concerns at the edge and domain behavior in the service layer.`,
+        `Verify the path through logs, traces, or metrics after implementation.`,
+      ];
+    case 'rag':
+      return [
+        `Define where ${topic.name} sits in the ingest, retrieval, or generation pipeline.`,
+        `Keep metadata and tenant boundaries intact while applying ${topic.name}.`,
+        `Evaluate both quality impact and latency impact of ${topic.name}.`,
+        `Add one failure-path behavior so degraded retrieval or model output stays explainable.`,
+      ];
+    case 'project':
+      return [
+        `Check whether ${topic.name} already exists as a shared primitive before adding new code.`,
+        `Implement ${topic.name} once in the shared layer and reuse it through dependency wiring.`,
+        `Preserve correlation, audit, and observability behavior while applying ${topic.name}.`,
+        `Add one integration test proving the project pattern is not bypassed.`,
+      ];
+    default:
+      return shared;
+  }
+}
+
+function resolveFlowchart(topic: Topic): string {
+  return topic.flowchart ?? defaultFlowchart(topic);
+}
+
+function resolveSequence(topic: Topic): string {
+  return topic.sequence ?? defaultSequence(topic);
+}
+
+function resolveImplementationSteps(topic: Topic): string[] {
+  return topic.implementationSteps ?? defaultImplementationSteps(topic);
 }
 
 const LEVELS: Record<Level, { title: string; tone: string }> = {
@@ -75,6 +192,29 @@ const TOPICS: Topic[] = [
   ret --> log[Log + audit]
   map --> log
   map5 --> log`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant R as Router
+  participant S as Service
+  participant D as Dependency
+  participant H as Error handler
+  R->>S: call workflow()
+  S->>D: dependency call
+  alt dependency succeeds
+    D-->>S: result
+    S-->>R: domain result
+  else dependency fails
+    D-->>S: raise AppError subclass
+    S-->>R: propagate typed error
+    R->>H: map error to API response
+    H-->>R: 4xx/5xx + context
+  end`,
+    implementationSteps: [
+      'Define an AppError hierarchy for domain, validation, policy, and dependency failures.',
+      'Raise typed exceptions in services; do not raise HTTPException from domain logic.',
+      'Add one router/global error-mapping layer that converts AppError subclasses to API responses.',
+      'Log the full request context and keep retries limited to explicitly transient failures.',
+    ],
   },
   { name: 'file handling', level: 'core', blurb: 'open() with context manager (`with open(...) as f`) — always.' },
   { name: 'classes and objects', level: 'core', blurb: '__init__ for construction, methods for behavior. Instance vs class attributes.' },
@@ -91,6 +231,12 @@ const TOPICS: Topic[] = [
   c2 -->|found| call
   c2 -->|not| b[Base]
   b --> call`,
+    implementationSteps: [
+      'Prefer composition first; use inheritance only when the subtype contract is stable.',
+      'Keep the base class narrow and document what subclasses are allowed to override.',
+      'Use super() consistently across the hierarchy so cooperative multiple inheritance remains valid.',
+      'Check __mro__ when combining mixins to confirm the actual lookup order.',
+    ],
   },
   { name: 'packages', level: 'core', blurb: '__init__.py marks a package. Re-export at the package level for clean import surfaces.' },
   { name: 'virtual environments', level: 'core', blurb: 'python -m venv / poetry / uv / pixi. Project deps isolated from the system.' },
@@ -110,6 +256,23 @@ const TOPICS: Topic[] = [
   p --> n2[next()]
   n2 --> y
   y --> e[exhausted → StopIteration]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant C as Caller
+  participant G as Generator
+  C->>G: create generator
+  loop per item
+    C->>G: next()
+    G-->>C: yielded value
+  end
+  C->>G: next() after final yield
+  G-->>C: StopIteration`,
+    implementationSteps: [
+      'Identify the path where producing all results eagerly would waste memory or latency.',
+      'Refactor the function to yield items progressively instead of returning a full list.',
+      'Document single-consumption semantics so callers do not assume the generator is reusable.',
+      'Wrap the consumer side with explicit error handling if failure can happen mid-stream.',
+    ],
   },
   {
     name: 'decorators',
@@ -124,6 +287,29 @@ const TOPICS: Topic[] = [
   f --> a[After: trace end / record outcome]
   a --> r[Return result]
   f -->|raise| h[On error: log + reraise]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant C as Caller
+  participant W as Wrapper
+  participant F as Wrapped function
+  C->>W: invoke()
+  W->>W: before hook
+  W->>F: call original
+  alt success
+    F-->>W: result
+    W->>W: after hook
+    W-->>C: result
+  else error
+    F-->>W: exception
+    W->>W: log / trace / metric
+    W-->>C: re-raise
+  end`,
+    implementationSteps: [
+      'Define the cross-cutting concern clearly: retry, tracing, auth, timing, or policy.',
+      'Write a wrapper that accepts *args and **kwargs and preserves metadata with functools.wraps.',
+      'Handle sync and async functions deliberately; do not wrap async functions with sync-only logic.',
+      'Apply the decorator only where the behavior is semantically safe, especially for retries.',
+    ],
   },
   {
     name: 'context managers',
@@ -138,6 +324,30 @@ const TOPICS: Topic[] = [
   x --> done[Done]
   x2 -->|return True| done
   x2 -->|return False| reraise[Re-raise]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant C as Caller
+  participant M as Context manager
+  C->>M: __enter__()
+  M-->>C: resource handle
+  C->>C: run body
+  alt normal exit
+    C->>M: __exit__(None, None, None)
+    M-->>C: cleanup complete
+  else exception in body
+    C->>M: __exit__(exc_type, exc, tb)
+    alt suppress
+      M-->>C: True
+    else re-raise
+      M-->>C: False
+    end
+  end`,
+    implementationSteps: [
+      'Wrap resource acquisition and release in one object or contextlib helper.',
+      'Put only setup in __enter__ and only cleanup in __exit__.',
+      'Return False from __exit__ unless you intentionally want to suppress the exception.',
+      'Use async context managers for resources with async open/close behavior.',
+    ],
   },
   { name: 'lambda functions', level: 'intermediate', blurb: 'Anonymous single-expression functions. Use sparingly; named functions read better.' },
   { name: 'closures', level: 'intermediate', blurb: 'Inner function captures outer-scope variables. Watch for late-binding gotchas in loops.' },
@@ -163,6 +373,25 @@ const TOPICS: Topic[] = [
   l --> r[IO ready - wake]
   r --> rt[Resume f]
   rt --> done[Return value]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant C as Caller
+  participant Co as Coroutine
+  participant L as Event loop
+  participant IO as IO dependency
+  C->>Co: await handler()
+  Co->>IO: start async IO
+  Co->>L: suspend
+  L->>IO: keep waiting while other tasks run
+  IO-->>L: ready
+  L->>Co: resume
+  Co-->>C: return result`,
+    implementationSteps: [
+      'Make the hot-path function async only if its dependencies are async or IO-bound.',
+      'Replace blocking clients with async-native libraries such as httpx.AsyncClient or asyncpg.',
+      'Await every network, DB, and model call explicitly and set timeouts on each boundary.',
+      'Handle cancellation and backpressure so one slow dependency does not stall the whole event loop.',
+    ],
   },
   { name: 'coroutines', level: 'advanced', blurb: 'Functions defined with `async def`. Don\'t run until awaited or scheduled.', deepSlug: 'async-await' },
   { name: 'event loop', level: 'advanced', blurb: 'asyncio.run() owns one. Schedules + drives coroutines + IO. Single thread by default.', deepSlug: 'async-await' },
@@ -181,6 +410,34 @@ const TOPICS: Topic[] = [
   t3 --> r
   t2 -->|exception| c[Cancel siblings - default]
   c --> r`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant H as Handler
+  participant G as gather()
+  participant A as Task A
+  participant B as Task B
+  participant C as Task C
+  H->>G: gather(A, B, C)
+  G->>A: schedule
+  G->>B: schedule
+  G->>C: schedule
+  alt all succeed
+    A-->>G: result
+    B-->>G: result
+    C-->>G: result
+    G-->>H: aggregated tuple
+  else one task fails
+    B-->>G: exception
+    G->>A: cancel sibling
+    G->>C: cancel sibling
+    G-->>H: raise / return exception policy
+  end`,
+    implementationSteps: [
+      'Identify independent IO branches that can run concurrently instead of serially.',
+      'Create one task per branch and aggregate them with asyncio.gather or TaskGroup.',
+      'Set explicit timeout and exception policy for each branch before aggregation.',
+      'Decide whether one branch failure should cancel siblings or degrade and continue.',
+    ],
   },
   { name: 'concurrency vs parallelism', level: 'advanced', blurb: 'Concurrency = interleaved progress; parallelism = simultaneous on multiple cores. asyncio is concurrent, not parallel.' },
   { name: 'threading', level: 'advanced', blurb: 'OS threads, but GIL serializes pure-Python execution. Useful for IO-bound non-asyncio code.' },
@@ -197,6 +454,12 @@ const TOPICS: Topic[] = [
   q -->|Blocking IO library| t[threads via to_thread]
   q -->|CPU| p[multiprocessing]
   q -->|C extension - numpy/pandas| c[Threads OK - GIL released]`,
+    implementationSteps: [
+      'Classify the workload first: pure Python CPU, blocking IO, async IO, or C-extension heavy.',
+      'Use asyncio for async IO, threads for blocking IO compatibility, and processes for CPU-bound Python.',
+      'Avoid adding threads as a default scaling answer for CPU-heavy service code.',
+      'Measure event-loop latency and worker utilization before changing concurrency model.',
+    ],
   },
   { name: 'descriptors', level: 'advanced', blurb: 'Objects implementing __get__/__set__/__delete__ — power properties + ORM fields.' },
   { name: 'metaclasses', level: 'advanced', blurb: 'Classes whose instances are classes. type() at the limit. Used by ABCs + ORMs; rarely needed in app code.' },
@@ -230,6 +493,29 @@ const TOPICS: Topic[] = [
   v -->|invalid| e[422 + structured error]
   h --> rm[Response model]
   rm --> resp[Serialize JSON]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant Cl as Client
+  participant F as FastAPI
+  participant P as Pydantic
+  participant H as Handler
+  Cl->>F: JSON request
+  F->>P: validate body
+  alt valid
+    P-->>F: typed model
+    F->>H: call with model
+    H-->>F: response object
+    F->>P: validate response_model
+    P-->>Cl: JSON response
+  else invalid
+    P-->>Cl: 422 validation error
+  end`,
+    implementationSteps: [
+      'Define request and response models first, before writing handler logic.',
+      'Put parsing and type coercion at the API boundary, not inside the service body.',
+      'Use field constraints and enums to make invalid states unrepresentable as early as possible.',
+      'Keep internal domain objects separate if runtime validation is not needed on every hop.',
+    ],
   },
   // ---- backend ----
   {
@@ -245,6 +531,26 @@ const TOPICS: Topic[] = [
   repo --> svc
   svc --> r
   r --> resp[response_model serialize]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant C as Client
+  participant M as Middleware
+  participant R as Router
+  participant S as Service
+  participant Repo as Repository
+  C->>M: request
+  M->>R: cid + tenant + auth context
+  R->>S: validated input
+  S->>Repo: persistence/query call
+  Repo-->>S: domain data
+  S-->>R: response DTO
+  R-->>C: serialized response_model`,
+    implementationSteps: [
+      'Keep routers thin: validation, dependency wiring, and HTTP mapping only.',
+      'Move workflow and policy decisions into a service layer with explicit dependencies.',
+      'Isolate SQL and persistence details behind repository/store objects.',
+      'Validate both request and response shapes with Pydantic models at the edge.',
+    ],
   },
   { name: 'request/response modeling', level: 'backend', blurb: 'Pydantic in/out. Never raw dicts. Validate at boundaries.' },
   { name: 'dependency injection', level: 'backend', blurb: 'Depends() factories. Singleton services in app.state; per-request services as deps.' },
@@ -267,6 +573,36 @@ const TOPICS: Topic[] = [
   r -->|no| f[record_failure - persist draft]
   f --> ff
   s --> resp[Return]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant C as Caller
+  participant B as Breaker
+  participant D as Dependency
+  participant S as Store
+  C->>B: request(idempotency_key)
+  alt breaker open
+    B-->>C: fast-fail / degrade
+  else breaker allows
+    B->>D: call with timeout
+    alt success
+      D-->>B: result
+      B->>B: record_success
+      B-->>C: response
+    else transient failure
+      D-->>B: timeout / 5xx
+      B->>B: retry policy
+      alt retries exhausted
+        B->>S: persist draft / failure state
+        B-->>C: degraded response
+      end
+    end
+  end`,
+    implementationSteps: [
+      'Define which operations are safe to retry and add an idempotency key for writes.',
+      'Wrap the external dependency with explicit timeout, retry budget, and circuit-breaker state.',
+      'Persist a durable fallback state when side-effecting work cannot complete immediately.',
+      'Expose degraded behavior honestly instead of silently pretending the dependency succeeded.',
+    ],
   },
   { name: 'structured logging', level: 'backend', blurb: 'JSON formatter; correlation_id in every log line. Never print() in prod.' },
   {
@@ -283,6 +619,26 @@ const TOPICS: Topic[] = [
   s3 --> j
   s4 --> j
   s4 --> a[Span attrs - actor + outcome]`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant C as Client
+  participant A as API span
+  participant DB as DB span
+  participant H as HTTP span
+  participant O as OTel backend
+  C->>A: request + correlation id
+  A->>DB: child span start
+  DB-->>A: db result
+  A->>H: child span start
+  H-->>A: upstream result
+  A->>O: export trace tree
+  A-->>C: response`,
+    implementationSteps: [
+      'Start one root span at the request boundary and propagate correlation context through the stack.',
+      'Add child spans only at meaningful boundaries: DB, HTTP, model, guardrail, queue, or cache.',
+      'Attach outcome attributes that operators can query without exploding cardinality.',
+      'Make telemetry export non-blocking so tracing failure never blocks the user path.',
+    ],
   },
   { name: 'metrics emission', level: 'backend', blurb: 'prometheus_client Counter/Histogram/Gauge. Cardinality discipline: bound label sets.', deepSlug: 'observability-python' },
   // ---- rag ----
@@ -403,6 +759,21 @@ function CoroutineLifecycle() {
       <line x1="580" y1="60" x2="610" y2="95" stroke="#475569" strokeWidth="1.5" markerEnd="url(#arrow2)" />
       <line x1="580" y1="140" x2="610" y2="105" stroke="#475569" strokeWidth="1.5" markerEnd="url(#arrow2)" />
     </svg>
+  );
+}
+
+function ImplementationSteps({ steps }: { steps: string[] }) {
+  return (
+    <div style={{ padding: '8px 12px' }}>
+      <div style={{ fontWeight: 600, marginBottom: 6, color: '#1f2937' }}>
+        Sequential steps to implement
+      </div>
+      <ol style={{ margin: 0, paddingLeft: 18, color: '#374151', fontSize: 13, lineHeight: 1.6 }}>
+        {steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -533,10 +904,10 @@ export default function PythonPage() {
               </thead>
               <tbody>
                 {topics.map((t) => (
-                  <>
-                    <tr key={`${t.level}::${t.name}`}>
+                  <Fragment key={`${t.level}::${t.name}`}>
+                    <tr>
                       <td>
-                        <code>{t.name}</code>
+                        <code style={{ color: '#b91c1c', fontWeight: 700 }}>{t.name}</code>
                       </td>
                       <td>{t.blurb}</td>
                       <td>
@@ -557,22 +928,39 @@ export default function PythonPage() {
                         ) : (
                           <span className="field-help">—</span>
                         )}
-                      </td>
-                    </tr>
-                    {/* Inline flowchart row when the topic has one. Spans
-                        all 4 columns; renders the same self-hosted
-                        Mermaid component as the deep pages, so theme
-                        + CSS overrides apply uniformly. */}
-                    {t.flowchart && (
-                      <tr key={`${t.level}::${t.name}::flow`}>
-                        <td colSpan={4} style={{ padding: 0 }}>
-                          <div style={{ padding: 8, backgroundColor: '#f9fafb' }}>
-                            <Mermaid chart={t.flowchart} />
-                          </div>
                         </td>
                       </tr>
-                    )}
-                  </>
+                    {/* Inline flowchart row when the topic has one. Spans all
+                        4 columns; renders the same self-hosted Mermaid
+                        component as the deep pages. */}
+                    <tr key={`${t.level}::${t.name}::flow`}>
+                      <td colSpan={4} style={{ padding: 0 }}>
+                        <div style={{ padding: 8, backgroundColor: '#f9fafb' }}>
+                          <div style={{ fontWeight: 600, margin: '0 0 8px 0', color: '#1f2937' }}>
+                            Flowchart
+                          </div>
+                          <Mermaid chart={resolveFlowchart(t)} />
+                        </div>
+                      </td>
+                    </tr>
+                    <tr key={`${t.level}::${t.name}::sequence`}>
+                      <td colSpan={4} style={{ padding: 0 }}>
+                        <div style={{ padding: 8, backgroundColor: '#f8fafc', borderTop: '1px solid #e5e7eb' }}>
+                          <div style={{ fontWeight: 600, margin: '0 0 8px 0', color: '#1f2937' }}>
+                            Sequence diagram
+                          </div>
+                          <Mermaid chart={resolveSequence(t)} />
+                        </div>
+                      </td>
+                    </tr>
+                    <tr key={`${t.level}::${t.name}::steps`}>
+                      <td colSpan={4} style={{ padding: 0 }}>
+                        <div style={{ backgroundColor: '#ffffff', borderTop: '1px solid #e5e7eb' }}>
+                          <ImplementationSteps steps={resolveImplementationSteps(t)} />
+                        </div>
+                      </td>
+                    </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

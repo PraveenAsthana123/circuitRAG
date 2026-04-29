@@ -10,6 +10,7 @@
  */
 
 import Link from 'next/link';
+import AnswerAudioPanel from '../../../../../components/AnswerAudioPanel';
 import SpeechReader from '../../../../../components/SpeechReader';
 
 type Topic = {
@@ -242,6 +243,9 @@ export default function AudioTtsTopicsPage() {
                   <div style={{ fontSize: 13, color: '#374151', marginTop: 6 }}>{t.detail}</div>
                   <div style={{ marginTop: 8 }}>
                     <SpeechReader text={fullText} />
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <AnswerAudioPanel text={fullText} />
                   </div>
                   {t.href ? (
                     <div style={{ marginTop: 6 }}>

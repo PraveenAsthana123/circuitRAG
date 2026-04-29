@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import C4PageLinks from '../../../components/C4PageLinks';
 import Mermaid from '../../../components/Mermaid';
 import { TOOLS } from '../../../lib/tools';
 
@@ -28,10 +29,32 @@ export default function SystemDesignOverview() {
           Hover any node to read its role — diagrams render from{' '}
           <code>lib/tools.ts</code> via Mermaid.
         </p>
+        <p className="sysdesign-sub" style={{ marginTop: 8 }}>
+          For a topic-first study map anchored on a chatbot example, open{' '}
+          <Link href="/admin/system-design/chatbot" style={{ color: '#1e3a8a' }}>
+            /admin/system-design/chatbot
+          </Link>
+          . For framework/runtime choices around RAG, also see{' '}
+          <Link href="/admin/lang-family/rag" style={{ color: '#1e3a8a' }}>
+            /admin/lang-family/rag
+          </Link>
+          {' '}and{' '}
+          <Link href="/admin/compiler-stack/rag" style={{ color: '#1e3a8a' }}>
+            /admin/compiler-stack/rag
+          </Link>
+          .
+        </p>
         <Link href="/tools" className="sysdesign-back">
           ← back to tool index
         </Link>
       </header>
+
+      <C4PageLinks
+        title="System-design overview — C4 view"
+        summary="This page already shows one architecture diagram per tool. The C4 layer adds the abstraction ladder above those diagrams so you can ask: is this a context question, a container question, a component question, or a code question?"
+        focus="Use Level 2 and 3 first here, then drop to Level 4 when a specific tool implementation matters."
+        levels={['context', 'containers', 'components', 'code', 'observability']}
+      />
 
       {TOOLS.map((tool) => {
         const diagram = extractMermaid(tool.tabs.visualization.body);

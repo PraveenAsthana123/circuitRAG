@@ -374,6 +374,367 @@ async def ask(
     ],
     finalScript: 'When I lead a cross-team feature, the contract precedes the code. URL gets a version (/api/v1). Request and response are Pydantic schemas. Error envelope is standard: detail + error_code + correlation_id. Write paths take an X-Idempotency-Key, persisted 24 hours so retries are safe. Deprecation has a policy: Sunset header + warning logs + 2-cycle dual-support before removal. CI runs contract tests against both the mock and the real implementation. With the contract pinned, teams build in parallel; integration is the last step. Without it, every PR becomes a merge negotiation.',
   },
+  {
+    slug: 'ultimate-tech-lead-master-checklist',
+    title: '2. Ultimate tech lead master checklist (2026)',
+    status: 'shipped',
+    coreConcept: 'A strong tech lead does not release based on confidence or velocity. They release against an evidence-backed lifecycle checklist that covers architecture, tracing, microservices, coding quality, testing, security, deployment, observability, governance, FinOps, DevEx, technical evolution, debt, incident response, and AI-specific controls.',
+    oneLiner: 'Tech lead quality = design discipline + release discipline + operational evidence.',
+    businessContext: 'A project can look healthy in code review and still fail in production because rollback, tracing, tenant isolation, eval gates, or audit evidence were weak. The checklist forces the lead to prove readiness across the whole lifecycle instead of trusting intuition.',
+    fiveW: {
+      what: 'A 17-section tech lead release and governance checklist covering design, build, test, secure, deploy, observe, govern, evolve, and AI.',
+      why: 'It converts production-readiness from opinion into evidence. It also gives one repeatable standard for audits, interviews, release gates, and onboarding.',
+      where: 'Applied across architecture review, PR review, CI/CD sign-off, pre-release review, post-release follow-up, and audit preparation.',
+      when: 'Before every production release, during major design reviews, before compliance audits, and whenever a new service or AI capability lands.',
+      who: 'Tech lead owns it; architect, security, SRE/on-call, EM, and compliance review the parts they sign.',
+    },
+    interview30s: 'I use a full lifecycle tech lead checklist. It starts with C4, ADRs, trust boundaries, and API contracts. Then it enforces tracing, contract tests, CI/CD gates, rollback, OWASP and secrets handling, golden-signal observability, and AI-specific controls like model versioning, prompt versioning, eval thresholds, guardrails, and token-cost monitoring. My release rule is simple: if there is a security issue, no rollback, no monitoring, a breaking change, no tracing, or untested AI, we do not ship.',
+    hld: `flowchart LR
+  A[Architecture and design] --> B[Coding and tests]
+  B --> C[CI/CD and security]
+  C --> D[Deployment and observability]
+  D --> E[Governance FinOps DevEx]
+  E --> F[Tech evolution and debt]
+  F --> G[Incident response and AI controls]
+  G --> H{Hard stop clear?}
+  H -->|yes| I[Release]
+  H -->|no| J[Block release]`,
+    networkFlow: `flowchart LR
+  Dev[Engineer] --> PR[Pull request]
+  PR --> CI[CI pipeline]
+  CI --> Sec[Security gates]
+  CI --> Test[Test + contract + eval]
+  Sec --> Rel[Release manager / tech lead]
+  Test --> Rel
+  Rel --> Can[Canary or blue-green]
+  Can --> Obs[Logs metrics traces alerts]
+  Obs --> RC[Rollback or continue]`,
+    flowchart: `flowchart TD
+  Start[Ready to release?] --> S1[1 Architecture and design]
+  S1 --> S2[2 Tracing and distributed systems]
+  S2 --> S3[3 Microservices and integration]
+  S3 --> S4[4 Coding and quality]
+  S4 --> S5[5 Testing strategy]
+  S5 --> S6[6 CI CD]
+  S6 --> S7[7 Security]
+  S7 --> S8[8 Observability]
+  S8 --> S9[9 Deployment]
+  S9 --> S10[10 AI RAG controls]
+  S10 --> S11[11 Governance]
+  S11 --> S12[12 Documentation]
+  S12 --> S13[13 FinOps]
+  S13 --> S14[14 DevEx]
+  S14 --> S15[15 Technical evolution]
+  S15 --> S16[16 Technical debt]
+  S16 --> S17[17 Monitoring and incident response]
+  S17 --> Stop{Any hard stop?}
+  Stop -->|yes| Block[Do not release]
+  Stop -->|no| Ship[Release]`,
+    sequence: `sequenceDiagram
+  participant TL as Tech lead
+  participant Arch as Architect
+  participant Sec as Security
+  participant CI as CI/CD
+  participant SRE as On-call/SRE
+  participant Audit as Auditor
+  TL->>Arch: review C4 ADR boundaries
+  TL->>CI: run lint test contract eval build
+  CI-->>TL: gate results
+  TL->>Sec: confirm threats secrets OWASP
+  TL->>SRE: verify rollout rollback and alerts
+  SRE-->>TL: readiness status
+  Audit->>TL: ask for evidence
+  TL-->>Audit: checklist + linked artifacts`,
+    coreLayers: [
+      { layer: 'Architecture', responsibility: 'C4 context/container/component/code, ADRs, trust zones, system boundaries, API-first contracts.' },
+      { layer: 'Distributed systems', responsibility: 'Correlation ID, trace ID, baggage propagation, end-to-end request visibility.' },
+      { layer: 'Quality + testing', responsibility: 'Lint, typing, defensive programming, unit/integration/contract/E2E/AI eval.' },
+      { layer: 'Delivery + security', responsibility: 'Build-once CI, canary or blue-green, feature flags, SAST/SCA/secrets, rollback automation.' },
+      { layer: 'Operations + governance', responsibility: 'Golden signals, dashboards, audit logs, runbooks, FinOps, debt register, incident response.' },
+      { layer: 'AI controls', responsibility: 'Model/prompt versioning, guardrails, PII removal, output validation, token/GPU cost monitoring.' },
+    ],
+    lld: `classDiagram
+  class TechLeadChecklist {
+    +architecture
+    +tracing
+    +microservices
+    +coding
+    +testing
+    +ci_cd
+    +security
+    +observability
+    +deployment
+    +ai_controls
+    +governance
+    +finops
+    +devex
+    +technical_evolution
+    +technical_debt
+    +incident_response
+    +releaseGate()
+  }`,
+    coreBuildingBlocks: [
+      '1. Architecture and design — C4 + ADR + trust zones + separation of concerns',
+      '2. Distributed systems and tracing — correlation_id + trace_id + baggage propagation',
+      '3. Microservices and integration — domain boundaries + DB per service + async messaging + contract tests',
+      '4. Coding and quality — lint + type hints + fail-fast + boundary validation + DB query review',
+      '5. Testing strategy — unit + integration + contract + E2E + AI evaluation',
+      '6. CI/CD pipeline — fail-fast CI + immutable artifacts + canary/blue-green + rollback',
+      '7. Security — STRIDE + OWASP + secrets + encryption + container hardening',
+      '8. Observability — structured logs + p95/p99 + tracing + dashboards + alerts',
+      '9. Deployment — health probes + smoke tests + canary monitoring + rollback evidence',
+      '10. AI / RAG — model registry + prompt registry + eval metrics + guardrails + cost',
+      '11–17. Governance, documentation, FinOps, DevEx, tech evolution, debt, incident response',
+    ],
+    architectureRelevance: {
+      backend: 'Covers contract-first APIs, idempotency, migrations, rollout, golden signals, and operational readiness.',
+      rag: 'Adds evaluation sets, hallucination controls, prompt/model versioning, retrieval quality gates, and token-cost budgets.',
+      ai: 'AI sections are non-optional once prompts or models ship: eval thresholds, guardrails, output validation, and cost telemetry become release gates.',
+      microservices: 'Tracing, DB-per-service, contract tests, retries, breakers, rollback, and observability are the operational spine.',
+    },
+    problem: 'Tech leads often own delivery but lack one unified release standard. The result is partial readiness: code is merged, but tracing is weak, rollback is untested, or AI eval never became a gate.',
+    whyThisApproach: 'A single checklist keeps design, delivery, and operations aligned. It gives one release language for engineers, architects, SRE, security, auditors, and interviewers.',
+    whenToUse: [
+      'Before production releases',
+      'Architecture review and readiness review',
+      'Compliance and SOC2/ISO evidence collection',
+      'Interview answers for tech lead / staff roles',
+      'Program-level health checks across multiple services',
+    ],
+    whenNotToUse: [
+      'Throwaway spikes and notebooks',
+      'One-off internal scripts with no operational footprint',
+      'Features that will never be deployed to users',
+    ],
+    input: 'Architecture docs, ADRs, contracts, pipeline outputs, security scans, dashboards, runbooks, eval results, and deployment plans.',
+    process: [
+      'Review architecture and trust boundaries',
+      'Validate tracing and contracts across services',
+      'Check coding, testing, and CI/CD evidence',
+      'Verify security, observability, deployment, and rollback',
+      'Review governance, documentation, FinOps, DevEx, debt, and incident readiness',
+      'Run AI-specific gates where applicable',
+      'Apply hard-stop rule before release',
+    ],
+    output: 'A release decision with explicit evidence: go, block, or a list of missing controls to implement before ship.',
+    implementationSteps: [
+      { step: 'Lock architecture evidence', logic: 'C4 diagrams, ADRs, trust zones, backward-compatibility, tenant isolation, and API contracts are current.' },
+      { step: 'Enforce request traceability', logic: 'correlation_id, trace_id, baggage, logs, and traces link one request end to end.' },
+      { step: 'Gate code quality', logic: 'lint, typing, readable naming, fail-fast validation, query review, and idempotency are enforced in CI and review.' },
+      { step: 'Gate testing', logic: 'unit, integration, contract, smoke, and AI evaluation tests exist and are green.' },
+      { step: 'Gate release safety', logic: 'immutable artifact, canary/blue-green, feature flags, health probes, smoke tests, rollback automation.' },
+      { step: 'Gate operations', logic: 'dashboards, alerts, golden signals, synthetic checks, on-call ownership, incident plan, runbooks.' },
+      { step: 'Gate AI controls', logic: 'model and prompt versions tracked; guardrails, PII handling, output validation, and token-cost monitoring are live.' },
+    ],
+    codeExample: {
+      language: 'markdown',
+      code: `# Tech Lead GO / NO-GO
+- [ ] C4 + ADR + trust boundaries updated
+- [ ] Correlation ID, trace ID, baggage visible end to end
+- [ ] Contract tests and AI eval tests green
+- [ ] Canary/rollback path tested
+- [ ] OWASP + secrets + image scans green
+- [ ] Dashboards and alerts active
+- [ ] Model/prompt/version + token-cost telemetry active
+
+## Hard stop
+- [ ] no security issue
+- [ ] rollback exists and is tested
+- [ ] monitoring exists
+- [ ] no breaking change without migration path
+- [ ] tracing is live
+- [ ] AI is evaluated before release`,
+    },
+    realUseCase: 'A multi-service AI release looked ready at feature level, but the checklist blocked it because trace correlation stopped at the gateway, rollback had never been rehearsed, and the RAG answer-quality benchmark had no release threshold. Fixing those three gaps took two days and prevented a high-risk launch with no diagnostic path.',
+    prosCons: {
+      pros: [
+        'One lifecycle standard across design, delivery, and operations',
+        'Strong audit and interview artifact',
+        'Makes release blockers explicit instead of political',
+        'Brings AI controls into normal engineering governance',
+      ],
+      cons: [
+        'Feels heavy if applied to tiny work',
+        'Requires disciplined evidence linking, not just boxes checked',
+        'Can turn into ceremony if owners do not enforce go/no-go honestly',
+      ],
+    },
+    limitations: [
+      'A checklist does not replace engineering judgment',
+      'The checklist is only as strong as the evidence attached to each row',
+      'Small teams may need a lighter-weight version for low-risk internal tools',
+    ],
+    comparison: {
+      left: 'Ad hoc release confidence',
+      right: 'Tech lead master checklist',
+      rows: [
+        { aspect: 'Release decision', left: 'Gut feel', right: 'Evidence-backed gate' },
+        { aspect: 'Cross-team alignment', left: 'Slack threads and memory', right: 'Shared lifecycle standard' },
+        { aspect: 'Audit readiness', left: 'Painful reconstruction', right: 'Prepared evidence trail' },
+        { aspect: 'AI safety', left: 'Optional extra', right: 'Explicit release control' },
+      ],
+    },
+    challenges: [
+      'Keeping the checklist honest instead of aspirational',
+      'Making evidence easy to find',
+      'Preventing teams from treating AI controls as optional',
+      'Balancing speed vs. rigor for low-risk changes',
+    ],
+    edgeCases: [
+      { case: 'A tiny hotfix bypasses parts of the checklist', solution: 'Use a reduced emergency path, but never waive security, tracing, rollback, or monitoring.' },
+      { case: 'A service is non-AI but depends on AI outputs', solution: 'It still inherits AI evaluation and guardrail readiness as an upstream dependency.' },
+      { case: 'A legacy service cannot meet full standards yet', solution: 'Document exceptions with ADR + debt register + migration plan rather than pretending green.' },
+    ],
+    solutions: [
+      { problem: 'Checklist becomes ceremony', solution: 'Attach concrete evidence URL or drill to every row; unticked rows block release.' },
+      { problem: 'Ops controls drift after launch', solution: 'Review the same checklist in post-release and quarterly readiness reviews.' },
+      { problem: 'AI quality is subjective', solution: 'Define eval datasets and explicit thresholds before launch.' },
+    ],
+    bestPractices: {
+      do: [
+        'Map each checklist row to a source of truth',
+        'Use hard-stop rules with no social override',
+        'Keep AI controls in the same checklist as backend controls',
+        'Review checklist in design, release, and audit cycles',
+      ],
+      avoid: [
+        'Green-box theater with no evidence',
+        'Treating tracing or rollback as post-launch work',
+        'Shipping AI without eval thresholds',
+      ],
+      optimize: [
+        'Link deep dives, runbooks, dashboards, and ADRs directly',
+        'Automate as many rows as possible in CI/CD',
+        'Use the same checklist in interviews and audits to keep it sharp',
+      ],
+    },
+    antiPatterns: [
+      'Release because “the code looks done”',
+      'No owner for dashboards or alerts',
+      'Prompt and model changes with no version trail',
+      'Contract tests and rollback drills existing only on paper',
+    ],
+    testing: [
+      'Checklist review before release',
+      'Unit/integration/contract/E2E suites',
+      'AI evaluation set and regression thresholds',
+      'Rollback and canary drills',
+    ],
+    testTypes: [
+      'Unit tests',
+      'Integration tests',
+      'Contract tests',
+      'Smoke and E2E tests',
+      'Security scans',
+      'AI evaluation tests',
+    ],
+    testScenarios: [
+      { scenario: 'Breaking schema change proposed', expected: 'Blocked until compatibility and contract strategy are explicit.' },
+      { scenario: 'Model or prompt changes without eval baseline', expected: 'Release blocked by AI hard stop.' },
+      { scenario: 'Canary p95 breaches SLA', expected: 'Automatic rollback or manual rollback according to policy.' },
+    ],
+    testData: [
+      { type: 'Golden AI eval set', example: 'Representative retrieval and answer dataset with accuracy and hallucination thresholds.' },
+      { type: 'Release checklist artifact', example: 'PR comment or release doc linking each row to evidence.' },
+    ],
+    debuggingChecklist: [
+      'If release debate is subjective, ask which checklist row has no evidence',
+      'If a prod issue is hard to trace, verify correlation_id, trace_id, and baggage first',
+      'If rollback is unsafe, check expand/contract migration plan and artifact immutability',
+      'If AI quality is disputed, inspect eval set, threshold, and model/prompt version trail',
+    ],
+    productionIssues: [
+      { issue: 'Feature launched with no trace continuity across services', rootCause: 'Tracing was assumed, not checked as a release gate.' },
+      { issue: 'Prompt update caused answer quality drop in prod', rootCause: 'Prompt versioning existed informally but no eval threshold blocked release.' },
+      { issue: 'Rollback failed during canary', rootCause: 'Rollback path was documented but never rehearsed.' },
+    ],
+    security: [
+      'Threat modeling via STRIDE for new or changed boundaries',
+      'Secrets only in Vault/KMS, never in image or repo',
+      'OWASP controls and dependency scanning are release gates',
+      'RBAC/ABAC and tenant isolation reviewed alongside API changes',
+    ],
+    performance: [
+      'Track p95/p99, throughput, saturation, and queue depth before and during canary',
+      'Review query plans and N+1 risks before release on large-path changes',
+      'For AI, monitor latency by retrieval, prompt assembly, and generation separately',
+    ],
+    costConsiderations: [
+      'Track cost per request and per feature, not just total cloud bill',
+      'AI changes need token and GPU cost budgets before rollout',
+      'Autoscaling and idle resource cleanup belong to normal release readiness',
+    ],
+    scaling: [
+      'Checklist scales across services because it separates lifecycle sections by owner',
+      'Use templates and central evidence links to keep larger organizations consistent',
+      'Enterprise version adds ARB, tech radar, compliance mapping, and portal integration',
+    ],
+    observability: [
+      'Structured logs include correlation and tenant context',
+      'Golden signals and AI signals are dashboarded with owners',
+      'Synthetic monitoring and on-call alert paths are part of readiness',
+    ],
+    metrics: [
+      { name: 'release_gate_pass_rate', example: 'Percent of releases cleared without manual exception.' },
+      { name: 'rollback_drill_recency_days', example: 'Days since last successful rollback rehearsal.' },
+      { name: 'ai_eval_gate_pass_rate', example: 'Share of AI changes that pass benchmark threshold on first attempt.' },
+    ],
+    failureModes: [
+      { mode: 'Checklist exists but no one enforces it', detect: 'Rows marked green with no linked evidence', recover: 'Require evidence URLs and named signers.' },
+      { mode: 'Operations controls decay after launch', detect: 'Alerts silent or dashboards stale', recover: 'Run quarterly readiness review on the same checklist.' },
+      { mode: 'AI ships without objective quality bar', detect: 'No eval set or undefined threshold', recover: 'Block release until baseline and gate exist.' },
+    ],
+    tradeoffs: [
+      { decision: 'Single master checklist', tradeoff: 'Consistency is high, but small releases may need a lighter path.' },
+      { decision: 'Hard-stop rule', tradeoff: 'Protects reliability, but can slow a release when teams are under pressure.' },
+      { decision: 'AI in the same gate as backend', tradeoff: 'Better governance, but more upfront discipline is required.' },
+    ],
+    decisionMatrix: [
+      { option: 'Use full checklist', whenToUse: 'Production releases, audits, multi-service changes, AI launches.' },
+      { option: 'Use slimmed checklist', whenToUse: 'Low-risk internal changes with no user impact, but still keep hard-stop controls.' },
+      { option: 'Do not use checklist', whenToUse: 'Throwaway experiments only.' },
+    ],
+    starStory: {
+      situation: 'A platform team was moving fast, but every release review devolved into opinion and post-launch surprises.',
+      task: 'Create a repeatable tech lead standard that covered architecture, delivery, operations, and AI controls.',
+      action: 'Introduced one lifecycle checklist with hard stops, deep-dive evidence links, and explicit owners across architecture, CI/CD, security, observability, deployment, and AI.',
+      result: 'Release reviews became faster, audit evidence was straightforward, and high-risk launches were blocked before production rather than debugged after.',
+    },
+    interviewTraps: [
+      'Only talking about coding standards and ignoring rollout, tracing, or governance',
+      'Treating AI controls as separate from normal engineering readiness',
+      'Saying “we have monitoring” without naming dashboards, alerts, and owners',
+      'Using a checklist with no hard-stop rule',
+    ],
+    finalScript: 'I use a full lifecycle tech lead checklist covering C4 architecture, ADRs, tracing, service boundaries, coding quality, test strategy, secure SDLC, CI/CD, observability, deployment, governance, FinOps, DevEx, technical evolution, debt, incident response, and AI controls. My go/no-go rule is explicit: if there is a security issue, no rollback, no monitoring, a breaking change, no tracing, or untested AI, we do not release. That keeps releases scalable, secure, observable, and economically controlled instead of relying on gut feel.',
+    alternatives: [
+      { name: 'Ad hoc release review', tradeoff: 'Fast at first, but error-prone and weak for audits.' },
+      { name: 'Service-specific checklists only', tradeoff: 'Useful locally, but misses cross-cutting release controls.' },
+      { name: 'Master tech lead checklist', tradeoff: 'Most rigorous and reusable; needs disciplined upkeep.' },
+    ],
+    monitoring: [
+      'Checklist completion status per release',
+      'Open exception count per section',
+      'Hard-stop violations by team or service',
+    ],
+    maturity: {
+      mvp: 'Basic release gate covering architecture, tests, security, rollback, and monitoring.',
+      production: '17-section checklist with evidence links and explicit signers.',
+      enterprise: 'Checklist tied to ARB, Tech Radar, audit controls, developer portal, and automated evidence collection.',
+    },
+    projectFit: [
+      '/admin/checklist/deep',
+      '/admin/c4-model/deep',
+      '/admin/cicd/deep',
+      '/admin/tracing/deep',
+      '/admin/security/deep',
+      '/admin/post-release/deep',
+      '/admin/rollout/deep',
+      '/admin/rag/deep',
+      '/admin/llmops/deep',
+    ],
+    interviewLine: 'A tech lead checklist is useful only if it gates release. Mine does: architecture, tracing, contracts, CI/CD, security, observability, rollback, and AI evaluation are all explicit go/no-go controls.',
+  },
 ];
 
 export default function TechleadDeep() {
@@ -382,9 +743,9 @@ export default function TechleadDeep() {
       <header className="design-areas-header">
         <h1 className="section-title">Tech Lead — Deep Dive</h1>
         <p className="design-areas-sub">
-          The tech lead lens: cross-team API contract design, idempotency, deprecation policy.
-          Emphasis on §10 LLD, §17 Solutions, §21 Best practices, §24 Production issues. Use
-          when leading multi-team features or reviewing PRs that touch service boundaries.
+          The tech lead lens: cross-team API contract design, idempotency, deprecation policy,
+          and the full release/readiness checklist a lead uses to ship safely. Emphasis on §10
+          LLD, §17 Solutions, §21 Best practices, §24 Production issues, and explicit GO / NO-GO rules.
         </p>
       </header>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}

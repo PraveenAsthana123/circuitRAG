@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import C4PageLinks from '../../components/C4PageLinks';
 import { TOOLS, type Tool } from '../../lib/tools';
 
 /**
@@ -28,6 +29,12 @@ export default function ToolsIndex() {
         deep-dive: dashboard state, features, benefits &amp; monitoring, integration I/O,
         system design, and an interview-ready talking point.
       </p>
+      <C4PageLinks
+        title="Tool inventory — C4 view"
+        summary="This page is the best top-level map of infrastructure building blocks. Use C4 here to move from business context to deployable containers, then down into the individual components each tool supports."
+        focus="Level 2 containers for deployable units, then Level 3 components for tool ownership boundaries."
+        levels={['context', 'containers', 'components', 'governance']}
+      />
       <div className="tools-overviews">
         <Link href="/tools/system-design" className="sysdesign-cta">
           <span className="sysdesign-cta-title">📐 System Design (13 diagrams)</span>

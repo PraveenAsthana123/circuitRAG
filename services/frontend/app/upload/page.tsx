@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { api, ApiError, type UploadResponse } from '@/lib/api';
+import C4PageLinks from '@/components/C4PageLinks';
 
 export default function UploadPage() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -50,6 +51,13 @@ export default function UploadPage() {
           </p>
         </div>
       </div>
+
+      <C4PageLinks
+        title="Upload page — C4 view"
+        summary="This page maps best to the ingestion path. C4 helps show where the upload enters, which containers own parsing and indexing, and how the lifecycle continues through chunking, embedding, and document activation."
+        focus="Level 2 containers for ingestion ownership, then Level 7 lifecycle for document state transitions."
+        levels={['context', 'containers', 'components', 'lifecycle']}
+      />
 
       <div className="card">
         {error && <div className="error">{error}</div>}

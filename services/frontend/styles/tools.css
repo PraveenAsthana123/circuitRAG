@@ -373,6 +373,93 @@
   opacity: 0.9;
 }
 
+.c4-panel {
+  margin: 0 0 var(--space-6);
+  padding: var(--space-4);
+  background: linear-gradient(135deg, #f8fafc 0%, #fff7ed 100%);
+  border: 1px solid #fed7aa;
+  border-left: 4px solid #ea580c;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.c4-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+.c4-panel-kicker {
+  font-size: 0.72rem;
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9a3412;
+  margin-bottom: 4px;
+}
+.c4-panel-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+.c4-panel-master {
+  color: #9a3412;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+.c4-panel-summary {
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin-bottom: var(--space-3);
+  max-width: 860px;
+}
+.c4-panel-focus {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: var(--space-3);
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid #fdba74;
+  border-radius: 999px;
+}
+.c4-panel-focus-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9a3412;
+}
+.c4-panel-focus-value {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: #7c2d12;
+}
+.c4-panel-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.c4-panel-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #fdba74;
+  background: rgba(255, 255, 255, 0.88);
+  color: #7c2d12;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.c4-panel-link:hover {
+  text-decoration: none;
+  background: #fff;
+  border-color: #fb923c;
+}
+
 .sysdesign-page { max-width: 1100px; }
 .sysdesign-header { margin-bottom: var(--space-8); }
 .sysdesign-sub {

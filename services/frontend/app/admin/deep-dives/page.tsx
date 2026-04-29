@@ -20,6 +20,38 @@ interface DeepDiveLink {
 
 const DEEP_DIVES: DeepDiveLink[] = [
   {
+    slug: 'audio-tts-chatbot',
+    title: 'Audio / TTS for chatbot',
+    href: '/admin/audio/tts',
+    topics: 5,
+    blurb: 'TTS providers, speech architecture, repo fit, and implementation path for adding audio output to the chatbot',
+    publicSibling: { href: '/tools/ollama-vllm', label: '/tools/ollama-vllm (LLM serving)' },
+  },
+  {
+    slug: 'compiler-stack-rag',
+    title: 'LLVM / MLIR · RAG fit',
+    href: '/admin/compiler-stack/rag',
+    topics: 6,
+    blurb: 'Where compiler infrastructure fits in RAG, when to skip it, and how it compares with vLLM, ONNX Runtime, TensorRT, llama.cpp, and IREE',
+    publicSibling: { href: '/tools/ollama-vllm', label: '/tools/ollama-vllm (serving/runtime overview)' },
+  },
+  {
+    slug: 'lang-family-rag',
+    title: 'Lang family · RAG map',
+    href: '/admin/lang-family/rag',
+    topics: 8,
+    blurb: 'LangChain · LangGraph · LangSmith · LangServe · Langfuse · LlamaIndex · LlamaParse · LlamaCloud — roles, trade-offs, and MVP vs enterprise fit',
+    publicSibling: { href: '/admin/rag/deep', label: '/admin/rag/deep (RAG building blocks)' },
+  },
+  {
+    slug: 'chatbot-system-design',
+    title: 'System design · chatbot map',
+    href: '/admin/system-design/chatbot',
+    topics: 22,
+    blurb: 'Requirements · capacity · HLD · APIs · data modeling · stores · cache · retrieval · reliability · security · observability · cost · testing — all anchored on a chatbot example',
+    publicSibling: { href: '/tools/system-design', label: '/tools/system-design (tool diagrams overview)' },
+  },
+  {
     slug: 'python',
     title: 'Python',
     href: '/admin/python/deep',

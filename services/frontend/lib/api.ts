@@ -128,6 +128,81 @@ export interface AskResponse {
   debug?: Record<string, unknown>;
 }
 
+export interface AgenticTask {
+  task_id: string;
+  tenant_id: string;
+  project_id?: string | null;
+  goal: string;
+  status: string;
+  risk_level: string;
+  require_human_approval: boolean;
+  approval_mode: 'manual' | 'plan_once' | 'policy_auto';
+  auto_advance: boolean;
+  approved: boolean | null;
+  confidence: number | null;
+  plan: string[];
+  worker_output: string | null;
+  reviewer_notes: string[];
+  advisor_summary: string | null;
+  next_action: string | null;
+  tool_namespace?: string | null;
+  tool_name?: string | null;
+  tool_arguments?: Record<string, unknown>;
+  approval_reasons: string[];
+  audit_events: Array<Record<string, unknown>>;
+}
+
+export interface AgenticPolicy {
+  require_human_approval: boolean;
+  approval_mode: 'manual' | 'plan_once' | 'policy_auto';
+  auto_advance: boolean;
+  require_for_high_risk: boolean;
+  require_for_low_confidence: boolean;
+  confidence_threshold: number;
+  require_for_risk_flags: boolean;
+  require_for_destructive_tools: boolean;
+  require_for_tool_namespaces: string[];
+  updated_by?: string | null;
+  updated_at?: string | null;
+}
+
+export interface AgenticProject {
+  project_id: string;
+  tenant_id: string;
+  name: string;
+  goal: string;
+  status: string;
+  use_global_policy: boolean;
+  task_ids: string[];
+  planned_tasks: Array<{
+    step_id: string;
+    title: string;
+    goal: string;
+    suggested_risk: 'low' | 'medium' | 'high';
+    tool_namespace?: string | null;
+    tool_name?: string | null;
+    tool_arguments?: Record<string, unknown>;
+    status: string;
+  }>;
+  policy_override?: AgenticPolicy | null;
+  audit_events: Array<Record<string, unknown>>;
+}
+
+export interface AgenticApprovalSimulation {
+  effective_policy: AgenticPolicy;
+  approval_reasons: string[];
+  approval_required: boolean;
+}
+
+export interface AgenticRole {
+  role_id: string;
+  role_type: string;
+  display_name: string;
+  model: string;
+  description: string;
+  source_agent_name?: string | null;
+}
+
 // -- Operator / health surfaces ---------------------------------------
 
 export interface BreakerState {
@@ -465,5 +540,119 @@ export const api = {
       method: 'POST',
       body: payload,
       timeout: 120_000,
+    }),
+
+  agenticCreateTask: (payload: {
+    goal: string;
+    tenant_id: string;
+    project_id?: string | null;
+    risk_level?: 'low' | 'medium' | 'high';
+    use_global_policy?: boolean;
+    require_human_approval?: boolean | null;
+    approval_mode?: 'manual' | 'plan_once' | 'policy_auto';
+    auto_advance?: boolean | null;
+    tool_namespace?: string;
+    tool_name?: string;
+    tool_arguments?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  }) =>
+    request<AgenticTask>('/api/v1/agentic/tasks', {
+      method: 'POST',
+      body: payload,
+      timeout: 60_000,
+    }),
+
+  agenticListTasks: ({ limit = 20, signal }: { limit?: number; signal?: AbortSignal } = {}) =>
+    request<AgenticTask[]>(`/api/v1/agentic/tasks?limit=${limit}`, {
+      timeout: 10_000,
+      signal,
+    }),
+
+  agenticGetTask: (taskId: string, signal?: AbortSignal) =>
+    request<AgenticTask>(`/api/v1/agentic/tasks/${encodeURIComponent(taskId)}`, {
+      timeout: 10_000,
+      signal,
+    }),
+
+  agenticApproveTask: (
+    taskId: string,
+    payload: { approved: boolean; actor_id: string; reason?: string },
+  ) =>
+    request<AgenticTask>(`/api/v1/agentic/tasks/${encodeURIComponent(taskId)}/approve`, {
+      method: 'POST',
+      body: payload,
+      timeout: 20_000,
+    }),
+
+  agenticCreateProject: (payload: {
+    name: string;
+    goal: string;
+    tenant_id: string;
+    use_global_policy?: boolean;
+    policy_override?: Record<string, unknown>;
+  }) =>
+    request<AgenticProject>('/api/v1/agentic/projects', {
+      method: 'POST',
+      body: payload,
+      timeout: 30_000,
+    }),
+
+  agenticListProjects: ({ limit = 20, signal }: { limit?: number; signal?: AbortSignal } = {}) =>
+    request<AgenticProject[]>(`/api/v1/agentic/projects?limit=${limit}`, {
+      timeout: 10_000,
+      signal,
+    }),
+
+  agenticListAgents: (signal?: AbortSignal) =>
+    request<AgenticRole[]>('/api/v1/agentic/agents', {
+      timeout: 10_000,
+      signal,
+    }),
+
+  agenticGetPolicy: (signal?: AbortSignal) =>
+    request<AgenticPolicy>('/api/v1/agentic/policy', {
+      timeout: 10_000,
+      signal,
+    }),
+
+  agenticUpdatePolicy: (
+    payload: {
+      require_human_approval: boolean;
+      approval_mode: 'manual' | 'plan_once' | 'policy_auto';
+      auto_advance: boolean;
+      require_for_high_risk: boolean;
+      require_for_low_confidence: boolean;
+      confidence_threshold: number;
+      require_for_risk_flags: boolean;
+      require_for_destructive_tools: boolean;
+      require_for_tool_namespaces: string[];
+      updated_by: string;
+    },
+  ) =>
+    request<AgenticPolicy>('/api/v1/agentic/policy', {
+      method: 'PUT',
+      body: payload,
+      timeout: 20_000,
+    }),
+
+  agenticSimulatePolicy: (payload: {
+    tenant_id: string;
+    goal: string;
+    risk_level?: 'low' | 'medium' | 'high';
+    project_id?: string | null;
+    use_global_policy?: boolean;
+    require_human_approval?: boolean | null;
+    approval_mode?: 'manual' | 'plan_once' | 'policy_auto';
+    auto_advance?: boolean | null;
+    tool_namespace?: string;
+    tool_name?: string;
+    tool_arguments?: Record<string, unknown>;
+    predicted_confidence?: number;
+    predicted_risks?: string[];
+  }) =>
+    request<AgenticApprovalSimulation>('/api/v1/agentic/policy/simulate', {
+      method: 'POST',
+      body: payload,
+      timeout: 20_000,
     }),
 };

@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import C4PageLinks from '../../../components/C4PageLinks';
+import SpeechReader from '../../../components/SpeechReader';
 import CodeBlock from '../../../components/CodeBlock';
 import ToolExtrasPanel from '../../../components/ToolExtrasPanel';
 import ToolTabs from '../../../components/ToolTabs';
@@ -38,6 +40,12 @@ export default function ToolDetail({ params }: Props) {
         <div>
           <h1 className="tool-name">{tool.name}</h1>
           <p className="tool-one-line">{tool.oneLine}</p>
+          <div style={{ marginTop: 10 }}>
+            <SpeechReader
+              text={`${tool.name}. ${tool.oneLine}. Category ${tool.category}. Maturity ${tool.scoring.maturity} out of 10. Benefit ${tool.scoring.benefit} out of 10.`}
+              compact
+            />
+          </div>
           <a
             className="tool-weblink"
             href={tool.weblink}
@@ -53,6 +61,13 @@ export default function ToolDetail({ params }: Props) {
           <ScoreBlock label="Benefit" value={tool.scoring.benefit} />
         </div>
       </header>
+
+      <C4PageLinks
+        title={`${tool.name} — C4 view`}
+        summary={`Use the C4 model to place ${tool.name} in the broader system, then zoom into the deployable container, the internal component that owns it, and the code-level integration points that make it real in DocuMind.`}
+        focus="For tool pages, Level 3 components is usually the best starting point, then Level 4 code for the concrete integration."
+        levels={['containers', 'components', 'code', 'observability']}
+      />
 
       <ToolTabs tool={tool} />
 

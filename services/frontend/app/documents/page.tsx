@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type DocumentSummary } from '@/lib/api';
+import C4PageLinks from '@/components/C4PageLinks';
+import SpeechReader from '@/components/SpeechReader';
 
 export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,13 @@ export default function DocumentsPage() {
           <button className="btn" onClick={() => load()}>Refresh</button>
         </div>
       </div>
+
+      <C4PageLinks
+        title="Documents page — C4 view"
+        summary="This page is the operational view of the corpus. The useful C4 lens is not only where the document service sits, but also how ingestion lifecycle, observability, and status transitions are exposed to operators."
+        focus="Level 3 components for document state handling, plus Level 6 and 7 for observability and lifecycle."
+        levels={['containers', 'components', 'observability', 'lifecycle']}
+      />
 
       {error && <div className="error">{error}</div>}
 
@@ -119,6 +128,7 @@ export default function DocumentsPage() {
             <thead>
               <tr>
                 <th>Filename</th>
+                <th>Read</th>
                 <th>State</th>
                 <th>Pages</th>
                 <th>Chunks</th>
@@ -129,6 +139,12 @@ export default function DocumentsPage() {
               {filtered.map((d) => (
                 <tr key={d.id}>
                   <td>{d.filename}</td>
+                  <td style={{ minWidth: 120 }}>
+                    <SpeechReader
+                      text={`Document ${d.filename}. State ${d.state}. Pages ${d.page_count ?? 'unknown'}. Chunks ${d.chunk_count ?? 'unknown'}. Created ${new Date(d.created_at).toLocaleString()}.`}
+                      compact
+                    />
+                  </td>
                   <td>
                     <span className={`badge badge-${d.state}`}>{d.state}</span>
                   </td>

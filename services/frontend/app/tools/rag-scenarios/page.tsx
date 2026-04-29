@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import C4PageLinks from '../../../components/C4PageLinks';
 import DerivedRows from '../../../components/DerivedRows';
 import { LAYER_ORDER, RAG_SCENARIOS } from '../../../lib/rag-scenarios';
 
@@ -45,6 +46,13 @@ export default function RagScenariosPage() {
           ))}
         </nav>
       </header>
+
+      <C4PageLinks
+        title="RAG scenarios — C4 view"
+        summary="RAG questions usually cut across multiple abstraction levels. Use C4 here to separate user/system context, deployable RAG containers, internal retrieval and guardrail components, and the code/runtime details behind chunking, prompting, and evaluation."
+        focus="Start with Level 2 for the RAG service boundary, then Level 3 for retrieval, reranking, guardrails, and evaluation."
+        levels={['context', 'containers', 'components', 'governance', 'lifecycle']}
+      />
 
       {LAYER_ORDER.map((layer) => {
         const rows = RAG_SCENARIOS.filter((s) => s.layer === layer);

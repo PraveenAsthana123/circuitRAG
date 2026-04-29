@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * SpeechReader — click 🔊 to read text aloud with per-word highlighting.
+ * SpeechReader — click 🔊 to read text aloud with sentence highlighting.
  *
  * Features:
  * - Browser SpeechSynthesis API (free, no backend, offline-capable)
- * - Per-word highlight via onboundary event (charIndex → span)
+ * - Current-sentence highlight during browser speech
  * - Voice picker (lists all OS-provided voices; pick high-quality)
  * - Speed control (0.5× – 2.0×)
  * - Pause / resume / stop controls
@@ -185,7 +185,9 @@ const LS_KEYS = {
 } as const;
 
 export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US', compact = false, showSettingsHint = false }: Props) {
-  const spans = useMemo(() => tokenize(text), [text]);
+  const [sessionText, setSessionText] = useState<string>(cleanForSpeech(text));
+  const [domHighlightEnabled, setDomHighlightEnabled] = useState(true);
+  const spans = useMemo(() => tokenize(sessionText), [sessionText]);
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const [state, setState] = useState<'idle' | 'speaking' | 'paused' | 'server_loading'>('idle');
   const [playbackMode, setPlaybackMode] = useState<'browser' | 'server' | null>(null);
@@ -210,17 +212,16 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
   // Chrome silently stops speech after ~14s; this timer resets the engine.
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const speechStartTimeRef = useRef<number>(0);
-  const totalSpokenWordsRef = useRef<number>(0);
-  // True once a SpeechSynthesisUtterance has fired onboundary in this
-  // session — used to suppress the time-based estimator (which would
-  // otherwise fight onboundary and produce out-of-sync highlights).
-  const boundaryFiredRef = useRef(false);
-  // Cancel hook for the word-by-word loop. stop() flips cancelled=true
-  // so the in-flight speakOne(i) chain exits cleanly.
-  const wordCancelRef = useRef<{ cancelled: boolean } | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+  useEffect(() => {
+    if (state === 'idle') {
+      setSessionText(cleanForSpeech(text));
+      setDomHighlightEnabled(true);
+    }
+  }, [state, text]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -319,13 +320,6 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     return () => window.speechSynthesis.removeEventListener?.('voiceschanged', refresh);
   }, [supported, voiceName]);
 
-  const findSpanByCharIndex = useCallback((charIndex: number): number => {
-    for (let i = 0; i < spans.length; i++) {
-      if (charIndex < spans[i].end) return i;
-    }
-    return spans.length - 1;
-  }, [spans]);
-
   const stop = useCallback(() => {
     if (supported) window.speechSynthesis.cancel();
     if (audioRef.current) {
@@ -342,11 +336,6 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     if (keepAliveRef.current) {
       clearInterval(keepAliveRef.current);
       keepAliveRef.current = null;
-    }
-    // Cancel the word-by-word loop if running
-    if (wordCancelRef.current) {
-      wordCancelRef.current.cancelled = true;
-      wordCancelRef.current = null;
     }
     setActiveIdx(-1);
     setPlaybackMode(null);
@@ -400,8 +389,10 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
   }, []);
 
   const speakViaServer = useCallback(async (customText?: string) => {
-    const sourceText = (customText ?? text).trim();
+    const sourceText = cleanForSpeech(customText ?? text);
     if (!sourceText) return;
+    setSessionText(sourceText);
+    setDomHighlightEnabled(false);
     setState('server_loading');
     setPlaybackMode('server');
     setActiveIdx(-1);
@@ -510,139 +501,76 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     }
   }, []);
 
-  // Sentence-by-sentence speak loop. Each sentence is one utterance;
-  // the entire sentence is highlighted (all spans sharing sentenceIdx)
-  // before the engine speaks it. User: 'word by word is not ok ...
-  // it should highlight complete line and read as complete line'.
-  //
-  // setActiveIdx points at the FIRST word of the active sentence;
-  // the activeIdx effect below uses spans[].sentenceIdx to highlight
-  // every word in that sentence. Sync is trivially correct: one
-  // utterance per sentence; highlight set + flushed before speak().
   const speakFrom = useCallback((startIdx: number, customText?: string) => {
     if (!supported) return;
-    const sourceText = customText !== undefined ? customText : text;
+    const sourceText = cleanForSpeech(customText !== undefined ? customText : text);
     if (!sourceText) return;
     window.speechSynthesis.cancel();
+    const localSpans = tokenize(sourceText);
+    if (localSpans.length === 0) return;
 
-    // Tokenize the source. Group words by sentenceIdx into
-    // sentenceGroups[s] = [span, span, ...] in document order.
-    const wordSpans = customText !== undefined
-      ? tokenize(customText)
-      : spans.slice(startIdx);
-    if (wordSpans.length === 0) return;
-
-    const sentenceGroups: Array<{ firstSpanIdx: number; words: Span[] }> = [];
-    let curSentence = wordSpans[0].sentenceIdx;
-    let curBuf: Span[] = [];
-    let curFirstIdx = startIdx;
-    wordSpans.forEach((s, i) => {
-      if (s.sentenceIdx !== curSentence && curBuf.length > 0) {
-        sentenceGroups.push({ firstSpanIdx: curFirstIdx, words: curBuf });
-        curBuf = [];
-        curFirstIdx = startIdx + i;
-        curSentence = s.sentenceIdx;
-      }
-      curBuf.push(s);
-    });
-    if (curBuf.length > 0) {
-      sentenceGroups.push({ firstSpanIdx: curFirstIdx, words: curBuf });
-    }
-    if (sentenceGroups.length === 0) return;
-
-    startSpanRef.current = startIdx;
+    setSessionText(sourceText);
+    setDomHighlightEnabled(customText === undefined);
+    startSpanRef.current = 0;
     setPlaybackMode('browser');
     setState('speaking');
     speechStartTimeRef.current = performance.now();
-    boundaryFiredRef.current = true; // sentence-mode IS the boundary mechanism
     startKeepAlive();
-
-    const ctrl = { cancelled: false };
-    wordCancelRef.current = ctrl;
-
     const v = voices.find((x) => x.name === voiceName);
+    const sentenceGroups: Array<{ firstIdx: number; sentenceText: string }> = [];
+    let cursor = 0;
+    while (cursor < localSpans.length) {
+      const sentenceIdx = localSpans[cursor].sentenceIdx;
+      let end = cursor + 1;
+      while (end < localSpans.length && localSpans[end].sentenceIdx === sentenceIdx) end += 1;
+      sentenceGroups.push({
+        firstIdx: cursor,
+        sentenceText: localSpans.slice(cursor, end).map((span) => span.word).join(' '),
+      });
+      cursor = end;
+    }
+    if (sentenceGroups.length === 0) return;
 
-    const speakSentence = (i: number) => {
-      if (ctrl.cancelled) return;
-      if (i >= sentenceGroups.length) {
+    let cancelled = false;
+    const speakSentence = (sentenceCursor: number) => {
+      if (cancelled) return;
+      if (sentenceCursor >= sentenceGroups.length) {
         setActiveIdx(-1);
         setPlaybackMode(null);
         setState('idle');
         stopKeepAlive();
-        wordCancelRef.current = null;
         return;
       }
-      const group = sentenceGroups[i];
-      // Build sentence text from its words (preserves original spacing
-      // implicit by joining with ' '; cleanForSpeech inside
-      // applyPronunciations strips arithmetic + special chars).
-      const rawSentence = group.words.map((w) => w.word).join(' ');
-      const spokenSentence = applyPronunciations(rawSentence);
-      if (!spokenSentence.trim()) {
-        speakSentence(i + 1);
-        return;
-      }
-      // SET HIGHLIGHT FOR ENTIRE SENTENCE before queueing audio.
-      // setActiveIdx points at first word; the CSS Highlight effect
-      // detects sentenceIdx and highlights all words in this sentence.
+      const group = sentenceGroups[sentenceCursor];
       flushSync(() => {
-        setActiveIdx(group.firstSpanIdx);
+        setActiveIdx(group.firstIdx);
       });
-
-      const utter = new SpeechSynthesisUtterance(spokenSentence);
+      const utter = new SpeechSynthesisUtterance(group.sentenceText);
       utter.rate = rate;
       utter.pitch = pitch;
       utter.volume = clampVolume(volume);
       utter.lang = lang;
       if (v) utter.voice = v;
+      utter.onstart = () => {
+        setPlaybackMode('browser');
+        setState('speaking');
+      };
+      utter.onpause = () => setState('paused');
+      utter.onresume = () => setState('speaking');
       utter.onend = () => {
-        setTimeout(() => speakSentence(i + 1), 0);
+        setTimeout(() => speakSentence(sentenceCursor + 1), 0);
       };
       utter.onerror = () => {
-        setTimeout(() => speakSentence(i + 1), 0);
+        setTimeout(() => speakSentence(sentenceCursor + 1), 0);
       };
+      utterRef.current = utter;
       window.speechSynthesis.speak(utter);
     };
     speakSentence(0);
-  }, [supported, text, rate, pitch, volume, lang, voiceName, voices, spans, startKeepAlive, stopKeepAlive]);
-
-  // Time-based active-word estimator — fallback ONLY for voices that
-  // don't fire onboundary (commonly espeak-ng on Linux). The estimator
-  // is suppressed during the first 1500ms (calibration window) and
-  // permanently disabled if any onboundary event fires — onboundary is
-  // always more accurate, and running both at once was producing the
-  // out-of-sync highlight behavior the user reported.
-  //
-  // Conservative rate: ~2.0 wps × user rate (vs ~2.5 average) so the
-  // estimator stays slightly behind real speech rather than racing
-  // ahead. Falls back further if speech is paused (skip ticks while
-  // window.speechSynthesis.paused === true).
-  useEffect(() => {
-    if (state !== 'speaking') return;
-    const calibrationMs = 1500;
-    const tick = setInterval(() => {
-      // If onboundary is firing, the boundary handler is already
-      // setting activeIdx — don't overwrite.
-      if (boundaryFiredRef.current) return;
-      const elapsed = performance.now() - speechStartTimeRef.current;
-      // Stay quiet during calibration window — gives onboundary a
-      // chance to assert itself before we start estimating.
-      if (elapsed < calibrationMs) return;
-      // Skip ticks while speech is paused (engine isn't actually
-      // speaking even if React state says 'speaking').
-      if (typeof window !== 'undefined' && window.speechSynthesis.paused) return;
-      const elapsedSec = elapsed / 1000;
-      // Conservative: 2.0 wps × rate (vs naive 2.5) — better to lag
-      // slightly than race ahead.
-      const wordsPerSec = 2.0 * rate;
-      const estimatedIdx = Math.min(
-        spans.length - 1,
-        startSpanRef.current + Math.floor(elapsedSec * wordsPerSec),
-      );
-      setActiveIdx((cur) => (estimatedIdx > cur ? estimatedIdx : cur));
-    }, 200);
-    return () => clearInterval(tick);
-  }, [state, rate, spans.length]);
+    return () => {
+      cancelled = true;
+    };
+  }, [supported, text, rate, pitch, volume, lang, voiceName, voices, startKeepAlive, stopKeepAlive]);
 
   // Detect platform-specific install hint for missing voices.
   const noVoiceHint = useMemo(() => {
@@ -665,7 +593,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     const selectedText = getSelectedText();
     setActiveAction('read');
     if (supported && voices.length > 0) {
-      // Browser path — fires word-boundary highlights + pill updates.
+      // Browser path — reads and highlights one complete sentence at a time.
       speakFrom(0, selectedText || undefined);
       return;
     }
@@ -677,7 +605,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
         `No browser text-to-speech voices detected (voices.length = 0). ` +
         `Click 🔊 cannot produce sound until voices are installed. ` +
         noVoiceHint +
-        ' Word-by-word highlight + the "currently reading" pill require browser TTS — they cannot work without browser-side voices, since server TTS does not expose per-word timing.',
+        ' Sentence highlighting + the "currently reading" pill require browser TTS — they cannot work without browser-side voices, since server TTS does not expose timing metadata.',
       );
       return;
     }
@@ -750,11 +678,11 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
 
   useEffect(() => {
     if (activeIdx < 0) return;
-    const el = document.getElementById(`speech-w-${cssId(text)}-${activeIdx}`);
+    const el = document.getElementById(`speech-w-${cssId(sessionText)}-${activeIdx}`);
     if (el && typeof el.scrollIntoView === 'function') {
       el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
-  }, [activeIdx, text]);
+  }, [activeIdx, sessionText]);
 
   useEffect(() => () => stop(), [stop]);
 
@@ -799,11 +727,6 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     return () => document.removeEventListener('keydown', handler);
   }, [playbackMode, state, stop, supported]);
 
-  // In-place highlighting on the actual page content via the CSS
-  // Highlight API. Walking <main>'s text nodes and building Range
-  // objects keyed by word index; activeIdx selects which range is
-  // currently registered as the ::highlight(speech-active) target.
-  // No DOM mutation — Range + CSS::highlight is non-invasive.
   const domRangesRef = useRef<Range[]>([]);
   const buildDomRanges = useCallback((): Range[] => {
     if (typeof document === 'undefined') return [];
@@ -884,7 +807,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
 
   // Update the CSS Highlight registration whenever activeIdx changes.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !domHighlightEnabled) return;
     // CSS.highlights is the standard API (Chrome 105+, Safari 17.2+,
     // Firefox 140+). If unavailable, fall back to no-op (still speaks).
     const ANY_CSS = (window as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS;
@@ -898,28 +821,16 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     const ranges = domRangesRef.current;
     const target = ranges[activeIdx];
     if (!target) return;
-    // Sentence-mode: highlight ALL words sharing the active sentence's
-    // sentenceIdx in bright yellow (speech-active). User: 'highlight
-    // complete line and read as complete line'. The single-word
-    // highlight is dropped — sentence is the unit.
     const ActiveCtor = (window as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
     if (ActiveCtor) {
-      const sIdx = spans[activeIdx]?.sentenceIdx;
-      if (sIdx !== undefined) {
-        const sentenceRanges = spans
-          .map((s, i) => (s.sentenceIdx === sIdx ? ranges[i] : null))
-          .filter((r): r is Range => !!r);
-        if (sentenceRanges.length > 0) {
-          reg.set?.('speech-active', new ActiveCtor(...sentenceRanges));
-        } else {
-          reg.set?.('speech-active', new ActiveCtor(target));
-        }
-        // No separate sentence-underline now — the whole sentence
-        // glows; underline would be redundant.
-        reg.delete?.('speech-sentence');
-      } else {
-        reg.set?.('speech-active', new ActiveCtor(target));
-      }
+      const sentenceIdx = spans[activeIdx]?.sentenceIdx;
+      const sentenceRanges = sentenceIdx === undefined
+        ? [target]
+        : spans
+            .map((span, idx) => (span.sentenceIdx === sentenceIdx ? ranges[idx] : null))
+            .filter((range): range is Range => !!range);
+      reg.set?.('speech-active', new ActiveCtor(...(sentenceRanges.length > 0 ? sentenceRanges : [target])));
+      reg.delete?.('speech-sentence');
     }
     // Scroll into view
     try {
@@ -930,17 +841,17 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     } catch (_e) {
       // ignore
     }
-  }, [activeIdx, spans]);
+  }, [activeIdx, domHighlightEnabled]);
 
   // (Re)build DOM ranges whenever speech becomes active.
   useEffect(() => {
-    if (state === 'speaking' && domRangesRef.current.length === 0) {
+    if (state === 'speaking' && domHighlightEnabled && domRangesRef.current.length === 0) {
       domRangesRef.current = buildDomRanges();
     }
     if (state === 'idle') {
       domRangesRef.current = [];
     }
-  }, [state, buildDomRanges]);
+  }, [state, buildDomRanges, domHighlightEnabled]);
 
   if (!mounted) return null;
 
@@ -952,7 +863,7 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
     );
   }
 
-  const idText = cssId(text);
+  const idText = cssId(sessionText);
   // Filter to English; classify by gender via name heuristic.
   // US English ONLY — user requirement: 'no uk sound only USA'.
   // Some voices report 'en-US' explicitly; some report 'en_US' or
@@ -1375,7 +1286,8 @@ export default function SpeechReader({ text, rate: rateProp = 1.5, lang = 'en-US
           }}
         >
           {spans.map((s, i) => {
-            const active = i === activeIdx;
+            const activeSentenceIdx = activeIdx >= 0 ? spans[activeIdx]?.sentenceIdx : undefined;
+            const active = activeSentenceIdx !== undefined && s.sentenceIdx === activeSentenceIdx;
             return (
               <span
                 key={i}

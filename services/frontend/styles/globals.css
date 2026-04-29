@@ -182,6 +182,28 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 
+.client-recovery-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.client-recovery-banner-primary {
+  border: 1px solid #059669;
+  background: #059669;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: var(--font-weight-semibold);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+}
+
+.client-recovery-banner-primary:hover {
+  background: #047857;
+  border-color: #047857;
+}
+
 .client-recovery-banner-dismiss:hover {
   text-decoration: underline;
 }

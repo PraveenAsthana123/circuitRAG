@@ -7,6 +7,13 @@
  * concerns can land here without restructuring.
  */
 
+import AdminDeepDiveC4Strip from '../../components/AdminDeepDiveC4Strip';
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <AdminDeepDiveC4Strip />
+      {children}
+    </>
+  );
 }

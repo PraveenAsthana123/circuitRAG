@@ -48,6 +48,8 @@ const GROUPS: Group[] = [
       { href: '/admin/audio/tts', label: '4. Audio / TTS for chatbot' },
       { href: '/admin/llmops', label: 'LLMOps scorecard' },
       { href: '/admin/llmops/deep', label: 'LLMOps deep dive (interview)' },
+      { href: '/admin/techlead/deep#ultimate-tech-lead-master-checklist', label: 'Tech Lead checklist' },
+      { href: '/admin/agentic', label: 'Agentic tasks' },
       { href: '/admin/database/deep', label: 'Database deep dive (interview)' },
       { href: '/admin/database/deep#kafka', label: 'Kafka (event store)' },
       { href: '/admin/mcp/deep', label: 'MCP deep dive (interview)' },
@@ -177,7 +179,8 @@ const GROUPS: Group[] = [
     heading: 'Roles (interview lens)',
     items: [
       { href: '/admin/architect/deep', label: 'Architect — system + ADRs' },
-      { href: '/admin/techlead/deep', label: 'Tech Lead — API contract' },
+      { href: '/admin/techlead/deep', label: 'Tech Lead — API contract + checklist' },
+      { href: '/admin/techlead/deep#ultimate-tech-lead-master-checklist', label: 'Tech Lead — checklist section' },
       { href: '/admin/eng-manager/deep', label: 'Eng Manager — roadmap + risk' },
       { href: '/admin/technical-plan/deep', label: 'Technical Plan — BRD-to-code' },
     ],

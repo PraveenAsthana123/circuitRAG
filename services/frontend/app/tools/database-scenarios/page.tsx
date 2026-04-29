@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import C4PageLinks from '../../../components/C4PageLinks';
 import DerivedRows from '../../../components/DerivedRows';
 
 export const metadata = { title: 'Database Scenarios — DocuMind' };
@@ -277,6 +278,13 @@ export default function DatabaseScenarios() {
         </div>
         <Link href="/tools" className="sysdesign-back">← back to tool index</Link>
       </header>
+
+      <C4PageLinks
+        title="Database scenarios — C4 view"
+        summary="Datastores appear at multiple C4 levels: as deployable containers, as internal components inside a service boundary, and sometimes as code-level repository choices. This page is where those levels need to stay separate."
+        focus="Level 2 for store placement, then Level 3 and 4 for RLS, repository, cache, and indexing mechanics."
+        levels={['containers', 'components', 'code', 'governance', 'lifecycle']}
+      />
 
       {CATEGORY_ORDER.map((cat) => {
         const rows = SCENARIOS.filter((s) => s.category === cat);

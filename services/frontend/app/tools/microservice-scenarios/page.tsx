@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import C4PageLinks from '../../../components/C4PageLinks';
 import DerivedRows from '../../../components/DerivedRows';
 
 export const metadata = { title: 'Microservice Scenarios — DocuMind' };
@@ -157,6 +158,13 @@ export default function MicroserviceScenarios() {
         </div>
         <Link href="/tools" className="sysdesign-back">← back to tool index</Link>
       </header>
+
+      <C4PageLinks
+        title="Microservice scenarios — C4 view"
+        summary="Microservice patterns are usually container and component concerns. This page benefits from a C4 frame because it separates deployable service boundaries from lower-level implementation details like retries, sagas, outbox, and idempotency."
+        focus="Level 2 for service boundaries, Level 3 for internal service patterns, and Level 4 when implementation mechanics matter."
+        levels={['containers', 'components', 'code', 'observability']}
+      />
 
       <div className="method-grid">
         {SCENARIOS.map((s) => {
