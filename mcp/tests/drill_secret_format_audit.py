@@ -21,7 +21,7 @@ False positives are handled via KNOWN_TEST_FIXTURES: AWS docs
 publish `AKIAIOSFODNN7EXAMPLE` as a canonical fake; the
 drill_pii_redaction.py drill uses it. Allowlisted explicitly.
 
-Eight steps. Six negative assertions.
+Ten steps. Eight negative assertions.
 
   1. POSITIVE: discover scannable files (>= 1000 floor — drill
      cannot trivially pass by deleting source).
@@ -35,7 +35,12 @@ Eight steps. Six negative assertions.
   5. NEGATIVE: no GitHub token shape (`gh[poursa]_[A-Za-z0-9]{36,}`).
   6. NEGATIVE: no Google API key shape (`AIza[0-9A-Za-z_-]{35}`).
   7. NEGATIVE: no Slack token shape (`xox[baprs]-...`).
-  8. POSITIVE: emit per-pattern scan summary (file count,
+  8. NEGATIVE: no Stripe LIVE key shape (`[sp]k_live_...`).
+     Test keys (`sk_test_`/`pk_test_`) are publishable by design;
+     only live keys are secrets.
+  9. NEGATIVE: no JWT-shape token (`eyJ<header>.<payload>.<sig>`).
+     A real JWT in source = session/user-token leak.
+  10. POSITIVE: emit per-pattern scan summary (file count,
      match count) for operator visibility.
 
 Run: python3 mcp/tests/drill_secret_format_audit.py
@@ -87,6 +92,15 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # Slack tokens: xoxb (bot), xoxa (workspace), xoxp (user),
     # xoxr (refresh), xoxs (system).
     ("Slack", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{8,}")),
+    # Stripe LIVE keys (sk_live_ secret, pk_live_ publishable but
+    # still a secret in the sense that it identifies the
+    # production account). Test keys (sk_test_/pk_test_) are
+    # publishable by design and intentionally NOT matched.
+    ("Stripe_live", re.compile(r"\b[sp]k_live_[A-Za-z0-9]{24,}")),
+    # JWT: three base64url-ish segments separated by '.'. The eyJ
+    # prefix is the canonical base64 of `{"al`, so it discriminates
+    # JWTs from other dotted-tokens.
+    ("JWT", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
 ]
 
 # Floor — codebase has thousands of source files; if the drill
@@ -219,10 +233,35 @@ def main() -> int:
         )
     ok("no Slack token shape (xox[baprs]-) anywhere in source")
 
-    step("8. POSITIVE: per-pattern scan summary")
+    step("8. NEGATIVE: no Stripe LIVE key shape in any source file")
+    hits = _match_kind(files, "Stripe_live", PATTERNS[6][1])
+    pattern_summary["Stripe_live"] = len(hits)
+    if hits:
+        fail(
+            f"{len(hits)} Stripe LIVE key shape(s) found "
+            f"(SECURITY REGRESSION): {hits[:3]}. Test keys "
+            "(sk_test_/pk_test_) are publishable; only live keys flag."
+        )
+    ok("no Stripe LIVE key shape ([sp]k_live_) anywhere in source")
+
+    step("9. NEGATIVE: no JWT-shape token in any source file")
+    hits = _match_kind(files, "JWT", PATTERNS[7][1])
+    pattern_summary["JWT"] = len(hits)
+    if hits:
+        fail(
+            f"{len(hits)} JWT-shape token(s) found "
+            f"(SECURITY REGRESSION — session/user-token leak): "
+            f"{hits[:3]}"
+        )
+    ok("no JWT-shape token (eyJ<header>.<payload>.<sig>) anywhere in source")
+
+    step("10. POSITIVE: per-pattern scan summary")
     summary = ", ".join(
         f"{k}:{pattern_summary.get(k, 0)}"
-        for k in ("OpenAI", "Anthropic", "AWS_AccessKey", "GitHub", "Google", "Slack")
+        for k in (
+            "OpenAI", "Anthropic", "AWS_AccessKey", "GitHub", "Google", "Slack",
+            "Stripe_live", "JWT",
+        )
     )
     ok(
         f"scanned {len(files)} files across {len(SCANNABLE_EXTS)} extensions; "
@@ -235,8 +274,8 @@ def main() -> int:
         )
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
-    print(f"{BOLD}{GREEN}  ALL 8 SECRET-FORMAT-AUDIT STEPS PASSED{NC}")
-    print(f"{BOLD}{GREEN}  (6 negative assertions: 2, 3, 4, 5, 6, 7){NC}")
+    print(f"{BOLD}{GREEN}  ALL 10 SECRET-FORMAT-AUDIT STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  (8 negative assertions: 2, 3, 4, 5, 6, 7, 8, 9){NC}")
     print(f"{BOLD}{GREEN}{'=' * 50}{NC}")
     return 0
 
