@@ -56,6 +56,25 @@ CHEAT = REPO / "docs" / "runbooks" / "autonomous-loop-cheatsheet.md"
 ADR_DIR = REPO / "docs" / "architecture" / "adr"
 
 
+# Module-level LOOP_KEYWORDS — exported for cross-drill reuse
+# (drill_adr_categorization.py imports this as the canonical
+# reference). Adding a new loop-discipline ADR? Use a filename
+# keyword from this set OR extend the keyword list and update
+# this drill in the same commit (the structural-rewrite rule).
+LOOP_KEYWORDS: tuple[str, ...] = (
+    "autonomous-loop",
+    "ratchet",
+    "parallel-agent",
+    "forward-looking",
+    "sweep-before-commit",
+    "three-way-work-allocation",   # ADR-018
+    "graceful-degradation",        # ADR-019
+    "loop-tooling",                # ADR-019 alt-keyword
+    "parallel-tool",               # ADR-020
+    "drill-audit",                 # ADR-020 alt-keyword
+)
+
+
 def _adr_numbers_on_disk() -> list[int]:
     """Return sorted list of LOOP-RELEVANT ADR numbers.
 
@@ -70,23 +89,7 @@ def _adr_numbers_on_disk() -> list[int]:
     about worker policy but names the loop in a sentence). Filename
     is the operator's own classification — when an author chooses an
     ADR title, they pick keywords matching its subject.
-
-    Adding a new loop-discipline ADR? Use a filename keyword from this
-    set OR extend the keyword list and update this drill in the same
-    commit (the structural-rewrite rule).
     """
-    LOOP_KEYWORDS = (
-        "autonomous-loop",
-        "ratchet",
-        "parallel-agent",
-        "forward-looking",
-        "sweep-before-commit",
-        "three-way-work-allocation",   # ADR-018
-        "graceful-degradation",        # ADR-019
-        "loop-tooling",                # ADR-019 alt-keyword
-        "parallel-tool",               # ADR-020
-        "drill-audit",                 # ADR-020 alt-keyword
-    )
     nums = []
     for p in sorted(ADR_DIR.glob("*.md")):
         m = re.match(r"^(\d{3})-(.+)\.md$", p.name)
