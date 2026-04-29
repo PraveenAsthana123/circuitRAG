@@ -170,6 +170,37 @@ def _audit_iteration_latency(parallel_sha: str, audit_drill_path: Path) -> int |
     return int(count_str)
 
 
+def _commit_unix_time(sha: str) -> int | None:
+    """Author timestamp (seconds since epoch) for the given commit.
+    None on git error."""
+    s = _git(["log", "-1", "--pretty=%at", sha]).strip()
+    if not s.isdigit():
+        return None
+    return int(s)
+
+
+def _audit_time_latency_hours(parallel_sha: str, audit_drill_path: Path) -> float | None:
+    """Return wall-clock latency in hours between parallel-tool commit
+    and audit-drill add commit. Negative = audit predates parallel-
+    tool (the inverted-cadence pattern from G-4). None = git error.
+
+    Time-latency is invariant to rebases/squashes — unlike iteration-
+    latency, which counts commits between two SHAs and breaks when
+    history is rewritten. Both are emitted; operators can pick the
+    metric most relevant to their incident."""
+    add_sha = _git([
+        "log", "--diff-filter=A", "--pretty=%H", "-1",
+        "--", str(audit_drill_path),
+    ]).strip()
+    if not add_sha:
+        return None
+    pt_t = _commit_unix_time(parallel_sha)
+    add_t = _commit_unix_time(add_sha)
+    if pt_t is None or add_t is None:
+        return None
+    return (add_t - pt_t) / 3600.0
+
+
 def _discover_parallel_tool_commits() -> dict[str, str]:
     """Return {short_sha: subject} for every parallel-tool commit
     in the last HISTORY_DEPTH commits, by either detection path."""
@@ -327,10 +358,31 @@ def main() -> int:
     )
 
     step("8. POSITIVE: emit per-commit audit-status table")
+    time_latencies: dict[str, float] = {}
     for sha, (label, drill_file) in sorted(PARALLEL_TOOL_COMMITS.items()):
-        ok(f"  AUDITED  {sha}  {label[:50]:<50} -> {drill_file}")
+        lat = measured.get(sha)
+        lat_str = f"lat={lat}" if lat is not None else "lat=?"
+        slo_marker = "✓" if (lat is not None and lat <= MAX_AUDIT_LATENCY) else (
+            "GF" if sha in KNOWN_LATE_AUDITS else "!!"
+        )
+        # Wall-clock time-latency in hours. Negative = inverted
+        # cadence (audit predates parallel-tool commit, e.g. G-4).
+        drill_path = DRILLS_DIR / drill_file
+        time_h = _audit_time_latency_hours(sha, drill_path)
+        if time_h is not None:
+            time_latencies[sha] = time_h
+            time_str = (
+                f"{time_h:+.1f}h" if abs(time_h) < 48
+                else f"{time_h / 24:+.1f}d"
+            )
+        else:
+            time_str = "?"
+        ok(
+            f"  AUDITED [{slo_marker} {lat_str:<8} {time_str:>8}] "
+            f"{sha}  {label[:42]:<42} -> {drill_file}"
+        )
     for sha, label in sorted(KNOWN_UNAUDITED.items()):
-        ok(f"  PAYDOWN  {sha}  {label[:50]:<50}")
+        ok(f"  PAYDOWN                              {sha}  {label[:42]:<42}")
 
     step("9. POSITIVE: emit ratchet state + SLO summary")
     audited = len(PARALLEL_TOOL_COMMITS)
@@ -346,8 +398,19 @@ def main() -> int:
         ok(
             f"SLO: max-allowed={MAX_AUDIT_LATENCY} iterations; "
             f"in-SLO={in_slo}, grandfathered={grandfathered}, "
-            f"avg-latency={avg_latency:.1f}"
+            f"avg-iter-latency={avg_latency:.1f}"
         )
+        if time_latencies:
+            avg_time = sum(time_latencies.values()) / len(time_latencies)
+            inverted = sum(1 for v in time_latencies.values() if v < 0)
+            same_day = sum(1 for v in time_latencies.values() if 0 <= v < 24)
+            unit = "h" if abs(avg_time) < 48 else "d"
+            avg_disp = avg_time if unit == "h" else avg_time / 24
+            ok(
+                f"Wall-clock: avg-time-latency={avg_disp:+.1f}{unit}; "
+                f"inverted (audit pre-shipped)={inverted}, "
+                f"same-day={same_day}"
+            )
     else:
         ok("ADR-020 ratchet: 0/0 (registry empty)")
 
