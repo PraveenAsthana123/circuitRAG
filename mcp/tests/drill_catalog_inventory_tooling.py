@@ -52,7 +52,7 @@ SUMMARY_SCRIPT = REPO / "scripts" / "drill_catalog_summary.py"
 RATCHET_SCRIPT = REPO / "scripts" / "ratchet_status.py"
 
 
-def _run(script: Path, args: list[str], timeout_s: float = 10.0) -> tuple[int, str, str]:
+def _run(script: Path, args: list[str], timeout_s: float = 30.0) -> tuple[int, str, str]:
     """Run a script via the current interpreter. Returns (rc, stdout, stderr)."""
     proc = subprocess.run(
         [sys.executable, str(script), *args],

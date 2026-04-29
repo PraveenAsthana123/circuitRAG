@@ -91,12 +91,28 @@ def _query_db(sql: str, params: tuple = ()) -> list[tuple]:
 
 
 def _ollama_active() -> bool:
+    """Check Ollama daemon health. Tries systemctl first; falls back
+    to a real `ollama list` invocation. The fallback handles two
+    cases: (1) systemctl reports transient states like 'activating'
+    or 'reloading' during migration; (2) Ollama is running but not
+    via systemd (e.g. user-launched). If either path proves the
+    daemon is responsive, return True."""
     try:
         result = subprocess.run(
             ["systemctl", "is-active", "ollama"],
             capture_output=True, text=True, timeout=2,
         )
-        return result.stdout.strip() == "active"
+        if result.stdout.strip() == "active":
+            return True
+    except (FileNotFoundError, subprocess.SubprocessError):
+        pass
+    # systemctl says non-active OR systemctl unavailable. Probe the
+    # daemon directly — if `ollama list` returns 0 the daemon is up.
+    try:
+        result = subprocess.run(
+            ["ollama", "list"], capture_output=True, text=True, timeout=3,
+        )
+        return result.returncode == 0
     except (FileNotFoundError, subprocess.SubprocessError):
         return False
 
