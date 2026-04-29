@@ -33,10 +33,14 @@ Eight steps. Five negative assertions.
      coverage's slug-keyword check too.
   3. NEGATIVE: every ADR is categorisable — number is in
      DOMAIN_ADR_NUMBERS (explicit domain) OR slug matches at
-     least one LOOP_KEYWORDS entry. Uncategorised = the
-     regression we lock against. Failure message names the
-     unmatched slug + suggests "extend LOOP_KEYWORDS" OR
-     "extend DOMAIN_ADR_NUMBERS".
+     least one LOOP_KEYWORDS entry. On uncategorised ADRs the
+     failure message emits copy-pasteable LOOP_KEYWORDS
+     candidates (2-token, 3-token, ..., full-slug prefixes) so
+     the operator can pick a slice and add it in one edit.
+     The same step also self-tests _suggest_keywords on a
+     synthetic slug to keep the suggestion path covered even
+     when no ADR is uncategorised (per ADR-017 — drills must
+     exercise their failure paths, not just happy paths).
   4. NEGATIVE: no ADR is in BOTH categories (domain number AND
      loop-discipline keyword). Defense-in-depth — keeps the
      classification crisp.
@@ -88,6 +92,33 @@ def fail(msg: str) -> None:
 
 def step(title: str) -> None:
     print(f"\n{BOLD}-- {title} --{NC}")
+
+
+def _suggest_keywords(slug: str) -> list[str]:
+    """Suggest candidate LOOP_KEYWORDS extensions for a given slug.
+
+    Returned candidates are token prefixes of the slug, ordered
+    shortest-first (2-token, 3-token, 4-token, ...). Existing
+    LOOP_KEYWORDS entries skew toward 2-token (e.g. "parallel-tool",
+    "drill-audit") with occasional 3-token ("sweep-before-commit")
+    and rare 4-token ("three-way-work-allocation"). Operator picks
+    the right slice for the new ADR.
+
+    Always includes the full slug as the last candidate (catch-all).
+    """
+    tokens = slug.split("-")
+    out: list[str] = []
+    seen: set[str] = set()
+    for n in range(2, max(len(tokens) + 1, 3)):
+        if n > len(tokens):
+            continue
+        candidate = "-".join(tokens[:n])
+        if candidate not in seen:
+            seen.add(candidate)
+            out.append(candidate)
+    if slug not in seen:
+        out.append(slug)
+    return out
 
 
 def _import_loop_keywords() -> tuple[str, ...]:
@@ -153,13 +184,44 @@ def main() -> int:
         if not is_domain and not is_loop:
             uncategorised.append((num, slug))
     if uncategorised:
+        # Emit copy-pasteable extension hints for each uncategorised
+        # ADR. The operator picks one path (LOOP_KEYWORDS extension
+        # OR DOMAIN_ADR_NUMBERS extension); the drill makes both
+        # mechanical.
+        msg_lines = [f"{len(uncategorised)} ADR(s) uncategorised:"]
+        for num, slug in uncategorised:
+            suggestions = _suggest_keywords(slug)
+            msg_lines.append(f"  ADR-{num:03d} '{slug}'")
+            msg_lines.append(
+                f"    To classify as LOOP-DISCIPLINE, add ONE of these "
+                f"to LOOP_KEYWORDS in drill_cheatsheet_adr_coverage.py:"
+            )
+            for cand in suggestions:
+                msg_lines.append(f"      \"{cand}\",")
+            msg_lines.append(
+                f"    OR to classify as DOMAIN, add {num} to "
+                f"DOMAIN_ADR_NUMBERS in drill_adr_categorization.py."
+            )
+        fail("\n  ".join(msg_lines))
+    # Sanity-check the suggestion helper on a synthetic slug so the
+    # code path is exercised even on a clean run (otherwise the
+    # suggestion logic is forward-looking-check-prone per ADR-017).
+    test_slug = "policy-as-code-for-llm-tools"
+    test_suggestions = _suggest_keywords(test_slug)
+    if not test_suggestions or test_slug not in test_suggestions:
         fail(
-            f"{len(uncategorised)} ADR(s) uncategorised: {uncategorised[:3]}. "
-            "Either (a) extend LOOP_KEYWORDS in drill_cheatsheet_adr_"
-            "coverage.py if the ADR is loop-discipline, OR (b) extend "
-            "DOMAIN_ADR_NUMBERS in this drill if it's a domain ADR."
+            f"_suggest_keywords self-test failed: "
+            f"{test_slug} -> {test_suggestions}"
         )
-    ok(f"all {len(adr_files)} ADRs categorised (domain ∪ loop-discipline)")
+    if "policy-as" not in test_suggestions:
+        fail(
+            f"_suggest_keywords self-test missing 2-token prefix: "
+            f"{test_slug} -> {test_suggestions}"
+        )
+    ok(
+        f"all {len(adr_files)} ADRs categorised; "
+        f"_suggest_keywords self-test ok ({len(test_suggestions)} candidates)"
+    )
 
     step("4. NEGATIVE: no ADR is in both categories (defense-in-depth)")
     both: list[tuple[int, str]] = []
