@@ -1,5 +1,7 @@
 'use client';
 
+import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
+
 /**
  * Sidecar Advisor — C4 + scenario data-flow deep-dive.
  *
@@ -411,6 +413,35 @@ export default function SidecarDeepPage() {
           directly.
         </p>
       </div>
+      <DeepDiveCrossRefs
+        refs={[
+          {
+            href: '/admin/c4-model/deep',
+            label: 'C4 7-level model',
+            why: 'Sidecar scenarios use C4 L1-L2 + per-scenario sequence diagrams; the canonical C4 reference owns the level definitions',
+          },
+          {
+            href: '/admin/checklist/deep',
+            label: 'Production-readiness checklist',
+            why: 'Sidecar feeds the LoopWatcher verdict log + drill outcome; checklist gates whether those signals are healthy enough to release',
+          },
+          {
+            href: '/admin/llmops/deep',
+            label: 'LLMOps surface',
+            why: 'Sidecar telemetry (council filter histograms, daily snapshot, prom export) is the LLMOps observability surface for the autonomous loop',
+          },
+          {
+            href: '/admin/forensics',
+            label: 'Forensics (trace → draft → audit → HITL)',
+            why: 'Sidecar advisor draft-replay flow is the operator-visible side of the forensics audit chain; class-to-class flow here references the audit row schema there',
+          },
+          {
+            href: '/admin/breakers/deep',
+            label: 'Circuit breakers',
+            why: 'MCPClient circuit breaker + draft fallback is the resilience pattern Sidecar inherits; this page shows the class-level wiring, breakers/deep shows the state machine',
+          },
+        ]}
+      />
     </>
   );
 }
