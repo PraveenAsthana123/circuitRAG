@@ -2,7 +2,8 @@
 # RESOURCES: readonly
 """
 Drill: drift volume meta-metric — total grandfathered entries
-across all KNOWN_* ratchets in the drill catalog.
+across all KNOWN_* ratchets AND DOMAIN_* categorization floors
+in the drill catalog.
 
 ADR-015's ratchet pattern works by:
   * KNOWN_X = current grandfathered drift (the floor)
@@ -30,8 +31,12 @@ Eight steps. Five negative assertions.
   1. POSITIVE: discover drill files (>= 80 floor — drill cannot
      trivially pass on empty catalog).
   2. NEGATIVE: at least MIN_RATCHET_DRILLS drills have at least
-     one KNOWN_* assignment. Catalog without ratchets means the
-     ADR-015 pattern isn't in use; surfaces a structural issue.
+     one KNOWN_* OR DOMAIN_* assignment. Catalog without
+     ratchets/floors means the ADR-015 pattern isn't in use;
+     surfaces a structural issue. Categorization floors
+     (DOMAIN_*) are tracked separately from ratchets in steps
+     7-8 because they're intent-to-track-reality, not
+     intent-to-shrink.
   3. NEGATIVE: total grandfathered count <= TOTAL_BURDEN_FLOOR.
      Floor matches observed at landing; ratchet pattern gates
      growth. Future shrinkage moves the floor down (good).
@@ -114,9 +119,23 @@ def _count_literal(node: ast.AST) -> int | None:
     return None
 
 
+RATCHET_PREFIXES = ("KNOWN_",)
+CATEGORY_PREFIXES = ("DOMAIN_",)
+TRACKED_PREFIXES = RATCHET_PREFIXES + CATEGORY_PREFIXES
+
+
+def _is_ratchet(name: str) -> bool:
+    return any(name.startswith(p) for p in RATCHET_PREFIXES)
+
+
+def _is_category(name: str) -> bool:
+    return any(name.startswith(p) for p in CATEGORY_PREFIXES)
+
+
 def _scan_drill(path: Path) -> list[tuple[str, int | None]]:
-    """Return [(name, count_or_None)] for every module-level KNOWN_*
-    assignment in the file."""
+    """Return [(name, count_or_None)] for every module-level
+    KNOWN_* (ratchet) or DOMAIN_* (categorization) assignment in
+    the file."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except (SyntaxError, OSError):
@@ -137,7 +156,7 @@ def _scan_drill(path: Path) -> list[tuple[str, int | None]]:
         else:
             continue
         for name in targets:
-            if not name.startswith("KNOWN_"):
+            if not any(name.startswith(p) for p in TRACKED_PREFIXES):
                 continue
             if value is None:
                 out.append((name, None))
@@ -147,8 +166,8 @@ def _scan_drill(path: Path) -> list[tuple[str, int | None]]:
 
 
 def _scan_drill_function_local(path: Path) -> list[str]:
-    """Return KNOWN_* names found INSIDE function bodies (which would
-    fail step 5). Catches misplaced ratchets."""
+    """Return KNOWN_*/DOMAIN_* names found INSIDE function bodies
+    (which would fail step 5). Catches misplaced ratchets/floors."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except (SyntaxError, OSError):
@@ -158,13 +177,17 @@ def _scan_drill_function_local(path: Path) -> list[str]:
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for sub in ast.walk(fn):
+            tgt_name: str | None = None
             if isinstance(sub, ast.Assign):
                 for tgt in sub.targets:
-                    if isinstance(tgt, ast.Name) and tgt.id.startswith("KNOWN_"):
-                        bad.append(tgt.id)
+                    if isinstance(tgt, ast.Name):
+                        tgt_name = tgt.id
+                        break
             elif isinstance(sub, ast.AnnAssign):
-                if isinstance(sub.target, ast.Name) and sub.target.id.startswith("KNOWN_"):
-                    bad.append(sub.target.id)
+                if isinstance(sub.target, ast.Name):
+                    tgt_name = sub.target.id
+            if tgt_name and any(tgt_name.startswith(p) for p in TRACKED_PREFIXES):
+                bad.append(tgt_name)
     return bad
 
 
@@ -193,10 +216,19 @@ def main() -> int:
         )
     ok(f"{len(per_drill)} drills have at least one KNOWN_* ratchet")
 
-    # Compute total burden, ignoring entries with None (those fail step 6).
+    # Compute total burden separately for ratchets (intent-to-shrink)
+    # vs categorization (intent-to-track-reality). Total burden is
+    # the gating metric and counts ONLY ratchets — categorization
+    # floors like DOMAIN_ADR_NUMBERS aren't drift to pay down.
     total_burden = sum(
         count for _, items in per_drill
-        for _, count in items if count is not None
+        for set_name, count in items
+        if count is not None and _is_ratchet(set_name)
+    )
+    total_categorization = sum(
+        count for _, items in per_drill
+        for set_name, count in items
+        if count is not None and _is_category(set_name)
     )
 
     step("3. NEGATIVE: total grandfathered count <= TOTAL_BURDEN_FLOOR")
@@ -249,27 +281,50 @@ def main() -> int:
         )
     ok("all KNOWN_* literals parse to concrete containers")
 
-    step("7. POSITIVE: per-drill paydown table")
+    step("7. POSITIVE: per-drill paydown table (ratchets + categorization)")
     for name, items in per_drill:
-        line = ", ".join(f"{n}={c}" for n, c in items if c is not None)
-        ok(f"  {name}: {line}")
+        ratchet_parts = [
+            f"{n}={c}" for n, c in items
+            if c is not None and _is_ratchet(n)
+        ]
+        category_parts = [
+            f"{n}={c}" for n, c in items
+            if c is not None and _is_category(n)
+        ]
+        segments = []
+        if ratchet_parts:
+            segments.append("ratchets[" + ", ".join(ratchet_parts) + "]")
+        if category_parts:
+            segments.append("categories[" + ", ".join(category_parts) + "]")
+        ok(f"  {name}: {' '.join(segments)}")
 
     step("8. POSITIVE: overall paydown summary")
-    payable_zero = sum(
+    ratchet_zero = sum(
         1 for _, items in per_drill
-        for _, count in items if count == 0
+        for nm, count in items
+        if count == 0 and _is_ratchet(nm)
     )
-    payable_nonzero = sum(
+    ratchet_nonzero = sum(
         1 for _, items in per_drill
-        for _, count in items if count is not None and count > 0
+        for nm, count in items
+        if count is not None and count > 0 and _is_ratchet(nm)
     )
-    total_sets = payable_zero + payable_nonzero
+    category_count = sum(
+        1 for _, items in per_drill
+        for nm, count in items
+        if count is not None and _is_category(nm)
+    )
     ok(
-        f"DRIFT VOLUME: total={total_burden} entries across "
-        f"{len(per_drill)} drills with ratchets; {total_sets} KNOWN_* "
-        f"sets total ({payable_zero} empty, {payable_nonzero} non-empty)"
+        f"DRIFT VOLUME (ratchets only): total={total_burden} entries; "
+        f"{ratchet_zero + ratchet_nonzero} KNOWN_* sets "
+        f"({ratchet_zero} empty, {ratchet_nonzero} non-empty)"
     )
-    if payable_nonzero == 0:
+    ok(
+        f"CATEGORIZATION FLOORS: {total_categorization} entries across "
+        f"{category_count} DOMAIN_* set(s) — intent-to-track-reality, "
+        "not drift to pay down"
+    )
+    if ratchet_nonzero == 0:
         ok("  ratchet state: ALL CLEAN — every KNOWN_* set is empty")
     elif total_burden <= 5:
         ok(f"  ratchet state: HEALTHY ({total_burden} entries grandfathered)")
