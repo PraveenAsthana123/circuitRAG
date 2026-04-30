@@ -62,7 +62,7 @@ export interface Topic {
   // ---- §1. Problem / Context (START HERE) ---------------------
   slug: string;
   title: string;
-  status?: 'shipped' | 'partial' | 'open';
+  status?: 'shipped' | 'partial' | 'open' | 'planned';
   level?: { label: string; tone: string };
   coreConcept: string;
   oneLiner?: string;
