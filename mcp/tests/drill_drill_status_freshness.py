@@ -19,7 +19,7 @@ This drill catches the stale-snapshot regression at sweep time:
     pre-bootstrap message and exits 0 (per ADR-019 graceful
     degradation).
 
-Seven steps. Four negative assertions.
+Eight steps. Five negative assertions.
 
   1. POSITIVE: target path resolved (.loop/last_drill_outcome.json).
   2. POSITIVE: file exists OR pre-bootstrap state declared (exit
@@ -32,7 +32,14 @@ Seven steps. Four negative assertions.
   5. NEGATIVE: failed_drills is a list (schema-integrity).
   6. NEGATIVE: total_drills field > 0 (sanity — empty count
      means write_drill_status.py was broken at last run).
-  7. POSITIVE: emit age + status summary for operator visibility.
+  7. NEGATIVE: every per_drill key resolves to a real drill_*.py
+     on disk. Stale per_drill keys = snapshot was generated
+     against a catalog version that no longer exists; watcher
+     decisions reference dead drills. The reverse direction
+     (disk-not-in-snapshot) is expected because write_drill_
+     status.py filters to readonly tier — not every disk drill
+     appears.
+  8. POSITIVE: emit age + status summary for operator visibility.
 
 Run: python3 mcp/tests/drill_drill_status_freshness.py
 """
@@ -45,6 +52,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 DRILL_STATUS = REPO / ".loop" / "last_drill_outcome.json"
+DRILLS_DIR = REPO / "mcp" / "tests"
 
 # Pre-commit hook 5F refreshes if >600s old. Drill threshold is
 # 1.5x that to allow normal iteration gaps without firing on
@@ -76,7 +84,7 @@ def _emit_pre_bootstrap_pass() -> int:
     the drill exits 0 cleanly. The runner sees the canonical banner
     and counts the drill as PASSED."""
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
-    print(f"{BOLD}{GREEN}  ALL 7 DRILL-STATUS-FRESHNESS STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  ALL 8 DRILL-STATUS-FRESHNESS STEPS PASSED{NC}")
     print(f"{BOLD}{GREEN}  (degraded: pre-bootstrap state — snapshot absent){NC}")
     print(f"{BOLD}{GREEN}{'=' * 50}{NC}")
     return 0
@@ -146,7 +154,29 @@ def main() -> int:
         )
     ok(f"total_drills = {total}")
 
-    step("7. POSITIVE: emit age + status summary")
+    step("7. NEGATIVE: every per_drill key resolves to a real drill_*.py on disk")
+    per_drill = data.get("per_drill", {})
+    if not isinstance(per_drill, dict):
+        fail(
+            f"per_drill is {type(per_drill).__name__}, expected dict. "
+            "Schema corruption."
+        )
+    disk_drill_names = {p.stem for p in DRILLS_DIR.glob("drill_*.py")}
+    stale_keys = [k for k in per_drill if k not in disk_drill_names]
+    if stale_keys:
+        fail(
+            f"{len(stale_keys)} per_drill key(s) reference drills that "
+            f"no longer exist on disk: {stale_keys[:5]}. "
+            "write_drill_status.py was run against an older catalog; "
+            "refresh via "
+            "`scripts/write_drill_status.py --only-readonly`."
+        )
+    ok(
+        f"all {len(per_drill)} per_drill keys resolve "
+        f"(disk catalog has {len(disk_drill_names)} drills)"
+    )
+
+    step("8. POSITIVE: emit age + status summary")
     failed_count = len(failed)
     age_minutes = age_seconds / 60.0
     summary = (
@@ -160,8 +190,8 @@ def main() -> int:
         ok(f"{summary} — failures: {failed[:3]}")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
-    print(f"{BOLD}{GREEN}  ALL 7 DRILL-STATUS-FRESHNESS STEPS PASSED{NC}")
-    print(f"{BOLD}{GREEN}  (4 negative assertions: 3, 4, 5, 6){NC}")
+    print(f"{BOLD}{GREEN}  ALL 8 DRILL-STATUS-FRESHNESS STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  (5 negative assertions: 3, 4, 5, 6, 7){NC}")
     print(f"{BOLD}{GREEN}{'=' * 50}{NC}")
     return 0
 
