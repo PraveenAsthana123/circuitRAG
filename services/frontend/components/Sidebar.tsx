@@ -62,6 +62,7 @@ const GROUPS: Group[] = [
       { href: '/admin/api-gateway/deep', label: 'API gateway (BFF + planned NGINX/Go)' },
       { href: '/admin/scaling-patterns/deep', label: 'Scaling patterns (LB + page-index + vectorless RAG)' },
       { href: '/admin/agent-registry/deep', label: 'Agent registry (roles + sidecar council)' },
+      { href: '/admin/stack-architecture/deep', label: 'Stack architecture (frontend + backend)' },
       { href: '/admin/breakers/deep', label: 'Breakers deep dive (interview)' },
       { href: '/admin/forensics', label: 'Forensics (trace → draft → audit → HITL)' },
       { href: '/admin/rag/deep', label: 'RAG deep dive (interview)' },
