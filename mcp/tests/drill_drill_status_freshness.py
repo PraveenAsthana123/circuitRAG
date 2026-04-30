@@ -19,7 +19,7 @@ This drill catches the stale-snapshot regression at sweep time:
     pre-bootstrap message and exits 0 (per ADR-019 graceful
     degradation).
 
-Nine steps. Six negative assertions.
+Eight steps. Five negative assertions.
 
   1. POSITIVE: target path resolved (.loop/last_drill_outcome.json).
   2. POSITIVE: file exists OR pre-bootstrap state declared (exit
@@ -39,14 +39,15 @@ Nine steps. Six negative assertions.
      (disk-not-in-snapshot) is expected because write_drill_
      status.py filters to readonly tier — not every disk drill
      appears.
-  8. NEGATIVE: no drill_*.py file has mtime > snapshot timestamp.
-     Catches the Phase 7KK gap: snapshot is fresh-by-age (within
-     MAX_AGE_SECONDS) but stale-by-content (a drill was edited
-     after the snapshot was written). Without this check, the
-     watcher reads a snapshot whose `failed_drills` reflects a
-     prior code state, not the current one — exactly Phase 7JJ +
-     7KK's REJECT cycle.
-  9. POSITIVE: emit age + status summary for operator visibility.
+  8. POSITIVE: emit age + status summary for operator visibility.
+
+Phase 7OO note: an earlier mtime-vs-snapshot-timestamp check
+(Phase 7LL) was removed. It self-undermined: when run from
+inside write_drill_status.py during refresh, the drill read the
+OLD snapshot and fired against current drill mtimes, then got
+recorded as failed in the NEW snapshot — exactly the 3-REJECT
+pattern it was meant to prevent. Phase 7MM's hook refresh on
+drill edits is the correct layer for that contract.
 
 Run: python3 mcp/tests/drill_drill_status_freshness.py
 """
@@ -91,7 +92,7 @@ def _emit_pre_bootstrap_pass() -> int:
     the drill exits 0 cleanly. The runner sees the canonical banner
     and counts the drill as PASSED."""
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
-    print(f"{BOLD}{GREEN}  ALL 9 DRILL-STATUS-FRESHNESS STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  ALL 8 DRILL-STATUS-FRESHNESS STEPS PASSED{NC}")
     print(f"{BOLD}{GREEN}  (degraded: pre-bootstrap state — snapshot absent){NC}")
     print(f"{BOLD}{GREEN}{'=' * 50}{NC}")
     return 0
@@ -183,29 +184,7 @@ def main() -> int:
         f"(disk catalog has {len(disk_drill_names)} drills)"
     )
 
-    step("8. NEGATIVE: no drill_*.py mtime > snapshot timestamp")
-    snapshot_unix = ts.timestamp()
-    newer_drills: list[tuple[str, float]] = []
-    for p in DRILLS_DIR.glob("drill_*.py"):
-        mtime = p.stat().st_mtime
-        if mtime > snapshot_unix + 1:  # 1s tolerance for filesystem precision
-            newer_drills.append((p.name, mtime - snapshot_unix))
-    if newer_drills:
-        # Sort by largest delta first (most likely culprit at top).
-        newer_drills.sort(key=lambda t: -t[1])
-        details = ", ".join(f"{n} (+{d:.0f}s)" for n, d in newer_drills[:3])
-        fail(
-            f"{len(newer_drills)} drill file(s) edited AFTER snapshot was "
-            f"written: {details}. Snapshot is fresh-by-age but stale-by-"
-            "content. Refresh via `scripts/write_drill_status.py "
-            "--only-readonly`."
-        )
-    ok(
-        f"no drill_*.py mtime exceeds snapshot timestamp "
-        f"({snapshot_unix:.0f})"
-    )
-
-    step("9. POSITIVE: emit age + status summary")
+    step("8. POSITIVE: emit age + status summary")
     failed_count = len(failed)
     age_minutes = age_seconds / 60.0
     summary = (
@@ -219,8 +198,8 @@ def main() -> int:
         ok(f"{summary} — failures: {failed[:3]}")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
-    print(f"{BOLD}{GREEN}  ALL 9 DRILL-STATUS-FRESHNESS STEPS PASSED{NC}")
-    print(f"{BOLD}{GREEN}  (6 negative assertions: 3, 4, 5, 6, 7, 8){NC}")
+    print(f"{BOLD}{GREEN}  ALL 8 DRILL-STATUS-FRESHNESS STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  (5 negative assertions: 3, 4, 5, 6, 7){NC}")
     print(f"{BOLD}{GREEN}{'=' * 50}{NC}")
     return 0
 
