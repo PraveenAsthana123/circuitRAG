@@ -5,6 +5,7 @@ Stores the progress of a multi-step ingestion pipeline so that if the
 service crashes mid-flight, we can resume from the last completed step or
 run compensations in reverse.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,7 +38,11 @@ class SagaRepo(Repository):
                 VALUES ($1, $2::uuid, $3, $4, $5, 0, 'running', '{}'::jsonb)
                 RETURNING *
                 """,
-                saga_id, tenant_id, saga_type, subject_id, total_steps,
+                saga_id,
+                tenant_id,
+                saga_type,
+                subject_id,
+                total_steps,
             )
         log.info("saga_created id=%s type=%s subject=%s", saga_id, saga_type, subject_id)
         return dict(row)
@@ -59,7 +64,9 @@ class SagaRepo(Repository):
                     updated_at = NOW()
                 WHERE id = $3
                 """,
-                step_name, json.dumps(result), saga_id,
+                step_name,
+                json.dumps(result),
+                saga_id,
             )
 
     async def mark_complete(self, *, tenant_id: str, saga_id: UUID) -> None:
@@ -84,7 +91,9 @@ class SagaRepo(Repository):
                 SET state = 'failed', failing_step = $1, error = $2, updated_at = NOW()
                 WHERE id = $3
                 """,
-                failing_step, error, saga_id,
+                failing_step,
+                error,
+                saga_id,
             )
 
     async def mark_compensated(self, *, tenant_id: str, saga_id: UUID) -> None:

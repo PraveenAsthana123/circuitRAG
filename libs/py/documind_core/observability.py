@@ -17,6 +17,7 @@ Span naming convention
 * Don't create spans for trivial work — a span should represent something
   you'd want to see on a trace timeline.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,12 +31,14 @@ try:
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
     _OTEL_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _OTEL_AVAILABLE = False
 
 try:
     from prometheus_client import start_http_server
+
     _PROM_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _PROM_AVAILABLE = False
@@ -49,7 +52,9 @@ log = logging.getLogger(__name__)
 # Shared across every call site; concurrent readers are fine because the
 # breaker uses an asyncio Lock internally for state transitions.
 obs_breaker = ObservabilityCircuitBreaker(
-    "otlp-export", failure_threshold=3, recovery_timeout=30.0,
+    "otlp-export",
+    failure_threshold=3,
+    recovery_timeout=30.0,
 )
 
 
@@ -97,14 +102,17 @@ def setup_observability(
             breaker=obs_breaker,
         )
         reader = PeriodicExportingMetricReader(
-            metric_exporter, export_interval_millis=10_000,
+            metric_exporter,
+            export_interval_millis=10_000,
         )
         meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
         metrics.set_meter_provider(meter_provider)
 
         log.info(
             "otel_initialized endpoint=%s service=%s breaker=%s",
-            otlp_endpoint, service_name, obs_breaker.name,
+            otlp_endpoint,
+            service_name,
+            obs_breaker.name,
         )
     else:
         log.warning("otel_unavailable — install opentelemetry-sdk for tracing")
@@ -120,6 +128,7 @@ def instrument_fastapi(app) -> None:  # noqa: ANN001 — FastAPI typing pain
     """Apply FastAPI auto-instrumentation. Call after creating the app."""
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
         FastAPIInstrumentor.instrument_app(app)
     except ImportError:  # pragma: no cover
         pass
@@ -128,6 +137,7 @@ def instrument_fastapi(app) -> None:  # noqa: ANN001 — FastAPI typing pain
 def instrument_httpx() -> None:
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
         HTTPXClientInstrumentor().instrument()
     except ImportError:  # pragma: no cover
         pass
@@ -136,6 +146,7 @@ def instrument_httpx() -> None:
 def instrument_asyncpg() -> None:
     try:
         from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+
         AsyncPGInstrumentor().instrument()
     except ImportError:  # pragma: no cover
         pass
@@ -144,6 +155,7 @@ def instrument_asyncpg() -> None:
 def instrument_redis() -> None:
     try:
         from opentelemetry.instrumentation.redis import RedisInstrumentor
+
         RedisInstrumentor().instrument()
     except ImportError:  # pragma: no cover
         pass
@@ -209,9 +221,7 @@ if _OTEL_AVAILABLE:
                 return MetricExportResult.SUCCESS
             try:
                 result = self._inner.export(metrics_data, timeout_millis=timeout_millis, **kwargs)
-                self._breaker.record_result(
-                    success=(result == MetricExportResult.SUCCESS)
-                )
+                self._breaker.record_result(success=(result == MetricExportResult.SUCCESS))
                 return result
             except Exception:
                 self._breaker.record_result(success=False)
@@ -228,6 +238,7 @@ if _OTEL_AVAILABLE:
 
         def shutdown(self, timeout_millis=30_000, **kwargs):
             self._inner.shutdown(timeout_millis=timeout_millis, **kwargs)
+
 else:
     # Stubs so callers don't crash if opentelemetry isn't installed.
     class _BreakerGuardedSpanExporter:  # type: ignore[no-redef]

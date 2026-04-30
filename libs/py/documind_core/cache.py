@@ -11,6 +11,7 @@ Thin Redis wrapper that enforces:
 * **JSON serialization** — values are JSON by default; callers can opt into
   raw bytes for binary payloads (embedding vectors, PDFs).
 """
+
 from __future__ import annotations
 
 import asyncio

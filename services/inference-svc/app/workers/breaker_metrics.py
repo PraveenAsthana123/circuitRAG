@@ -26,6 +26,7 @@ The polling frequency is deliberately low (5s default) — these
 gauges don't need to chase every transition, they're for alerting
 on stuck-open breakers over minutes.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -116,8 +117,6 @@ class BreakerMetricsExporter:
         if self._obs is not None:
             inner_state = getattr(self._obs, "state", None)
             # ObservabilityCircuitBreaker.state is a StrEnum (has .value)
-            value = getattr(inner_state, "value", None) or (
-                str(inner_state) if inner_state is not None else None
-            )
+            value = getattr(inner_state, "value", None) or (str(inner_state) if inner_state is not None else None)
             if value is not None:
                 record_breaker_state(self._obs.name, value)

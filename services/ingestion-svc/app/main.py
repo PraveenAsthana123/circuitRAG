@@ -4,6 +4,7 @@ Ingestion-service FastAPI application.
 This module wires every component together. Read top-to-bottom to understand
 the service's dependency graph.
 """
+
 from __future__ import annotations
 
 import logging

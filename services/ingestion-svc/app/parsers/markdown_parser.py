@@ -1,5 +1,6 @@
 """Markdown parser — renders to HTML then reuses HtmlParser. One code path
 for the two formats instead of two subtly different ones."""
+
 from __future__ import annotations
 
 import markdown as md

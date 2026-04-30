@@ -1,4 +1,5 @@
 """gRPC/HTTP client for retrieval-svc (using HTTP+JSON here for simplicity)."""
+
 from __future__ import annotations
 
 from typing import Any

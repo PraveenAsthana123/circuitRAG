@@ -29,6 +29,7 @@ Four specialized breakers, each protecting against a failure mode the base
 All four emit Prometheus metrics under distinct names so they're
 separately trackable on the SLO dashboard.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,6 +42,7 @@ from typing import TypeVar
 
 try:
     from prometheus_client import Counter, Gauge
+
     _METRICS = True
 except ImportError:  # pragma: no cover
     _METRICS = False
@@ -60,6 +62,7 @@ T = TypeVar("T")
 # ============================================================================
 # 1. RetrievalCircuitBreaker
 # ============================================================================
+
 
 @dataclass
 class RetrievalSample:
@@ -142,9 +145,7 @@ class RetrievalCircuitBreaker(CircuitBreaker):
     ) -> None:
         """Must be called after a successful retrieval. Triggers a quality
         check; opens the breaker if the rolling avg drops below threshold."""
-        self._samples.append(
-            RetrievalSample(top_score=top_score, n_results=n_results, latency_ms=latency_ms)
-        )
+        self._samples.append(RetrievalSample(top_score=top_score, n_results=n_results, latency_ms=latency_ms))
 
         # _samples is constructed with maxlen=quality_window (line 134) so
         # maxlen is always int. Local assert narrows int | None → int.
@@ -161,27 +162,29 @@ class RetrievalCircuitBreaker(CircuitBreaker):
         # Too many empty results also counts as degraded
         empty = sum(1 for s in self._samples if s.n_results < self._min_results)
 
-        if (
-            (avg < self._min_quality or empty > len(self._samples) // 2)
-            and self._state is not State.OPEN
-        ):
-                log.warning(
-                    "retrieval_quality_breach name=%s avg_top_score=%.3f threshold=%.3f empty=%d/%d",
-                    self.name, avg, self._min_quality, empty, len(self._samples),
-                )
-                self._transition(State.OPEN)
-                self._opened_at = time.monotonic()
-                if _METRICS:
-                    _retr_opens.labels(name=self.name).inc()
+        if (avg < self._min_quality or empty > len(self._samples) // 2) and self._state is not State.OPEN:
+            log.warning(
+                "retrieval_quality_breach name=%s avg_top_score=%.3f threshold=%.3f empty=%d/%d",
+                self.name,
+                avg,
+                self._min_quality,
+                empty,
+                len(self._samples),
+            )
+            self._transition(State.OPEN)
+            self._opened_at = time.monotonic()
+            if _METRICS:
+                _retr_opens.labels(name=self.name).inc()
 
 
 # ============================================================================
 # 2. TokenCircuitBreaker
 # ============================================================================
 
+
 class TokenBreakerDecision(StrEnum):
     ALLOW = "allow"
-    WARN = "warn"            # approaching limit; proceed but log
+    WARN = "warn"  # approaching limit; proceed but log
     REJECT_DAILY = "reject_daily"
     REJECT_MONTHLY = "reject_monthly"
     REJECT_REQUEST = "reject_request"
@@ -370,6 +373,7 @@ class TokenCircuitBreaker:
 # 3. AgentLoopCircuitBreaker
 # ============================================================================
 
+
 class AgentStopReason(StrEnum):
     NONE = "none"
     MAX_STEPS = "max_steps"
@@ -514,7 +518,7 @@ class AgentLoopCircuitBreaker:
 
         # Loop detection: same action run W times in a row
         if len(self._steps) >= self._loop_window:
-            tail = self._steps[-self._loop_window:]
+            tail = self._steps[-self._loop_window :]
             if all(s.action == tail[0].action for s in tail):
                 return self._record_stop(AgentStopReason.LOOP_DETECTED)
             # Same (action, result_hash) repeating means we're hallucinating
@@ -531,7 +535,9 @@ class AgentLoopCircuitBreaker:
             _agent_stops.labels(reason=reason.value).inc()
         log.info(
             "agent_stop agent=%s reason=%s steps=%d elapsed_s=%.1f",
-            self._name, reason.value, len(self._steps),
+            self._name,
+            reason.value,
+            len(self._steps),
             time.monotonic() - self._started_at,
         )
         return reason
@@ -657,7 +663,9 @@ class ObservabilityCircuitBreaker:
         if self._state is not new:
             log.info(
                 "obs_breaker name=%s from=%s to=%s",
-                self._name, self._state.value, new.value,
+                self._name,
+                self._state.value,
+                new.value,
             )
             if _METRICS:
                 _obs_transitions.labels(name=self._name, to_state=new.value).inc()
@@ -755,7 +763,7 @@ class RepetitionSignal(CognitiveSignal):
         words = full_clean.split()
         if len(words) < self._n * 2:
             return CognitiveReading(CognitiveDecision.CONTINUE, 1.0, "ok", self.name)
-        window = " ".join(words[-self._n:])
+        window = " ".join(words[-self._n :])
         count = full_clean.count(window)
         if count > self._max:
             return CognitiveReading(
@@ -788,6 +796,7 @@ class CitationDeadlineSignal(CognitiveSignal):
             return CognitiveReading(CognitiveDecision.CONTINUE, 1.0, "pending", self.name)
         # Look for citation patterns we teach the prompt to emit
         import re  # local — signals should be import-light
+
         citations = len(re.findall(r"\[Source:[^\]]+\]", partial_output))
         if citations < self._min:
             return CognitiveReading(
@@ -811,6 +820,7 @@ class ForbiddenPatternSignal(CognitiveSignal):
 
     def __init__(self, *, patterns: list[str]) -> None:
         import re
+
         self._patterns = [re.compile(p, re.IGNORECASE) for p in patterns]
 
     def evaluate(self, partial_output: str, token_count: int) -> CognitiveReading:
@@ -855,7 +865,8 @@ class LogprobConfidenceSignal(CognitiveSignal):
         avg = sum(self._history) / len(self._history)
         if avg < self._min:
             return CognitiveReading(
-                CognitiveDecision.BLOCK, 0.0,
+                CognitiveDecision.BLOCK,
+                0.0,
                 f"logprob_avg={avg:.2f}<{self._min:.2f}",
                 self.name,
             )
@@ -990,13 +1001,9 @@ class CognitiveCircuitBreaker:
 
         if self._warnings >= self._max_warnings:
             self._last_decision = CognitiveDecision.BLOCK
-            raise CognitiveInterrupt(
-                [f"warnings_exceeded:{self._warnings}"], partial=self._partial
-            )
+            raise CognitiveInterrupt([f"warnings_exceeded:{self._warnings}"], partial=self._partial)
 
-        self._last_decision = (
-            CognitiveDecision.WARN if self._warnings > 0 else CognitiveDecision.CONTINUE
-        )
+        self._last_decision = CognitiveDecision.WARN if self._warnings > 0 else CognitiveDecision.CONTINUE
         return self._last_decision
 
     def record_logprob(self, avg_logprob: float) -> None:

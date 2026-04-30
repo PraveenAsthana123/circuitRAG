@@ -9,6 +9,7 @@ Use at service startup::
 
     app.add_middleware(BodyLimitMiddleware, max_bytes=5 * 1024 * 1024)
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,9 +37,7 @@ class BodyLimitMiddleware(BaseHTTPMiddleware):
                 return limit
         return self.max_bytes
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable]
-    ):  # noqa: ANN201
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable]):  # noqa: ANN201
         limit = self._limit_for(request.url.path)
         content_length = request.headers.get("content-length")
         if content_length is not None:

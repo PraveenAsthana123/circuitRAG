@@ -12,6 +12,7 @@ Every node carries ``tenant_id`` — every Cypher query is parameterized
 with ``$tenant_id`` as the first filter. A unit test proves cross-tenant
 queries return empty.
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,12 +32,9 @@ class Neo4jRepo:
         """Create uniqueness + existence constraints (safe to re-run)."""
         queries = [
             # Unique IDs scoped by tenant
-            "CREATE CONSTRAINT document_unique IF NOT EXISTS "
-            "FOR (d:Document) REQUIRE (d.tenant_id, d.id) IS UNIQUE",
-            "CREATE CONSTRAINT chunk_unique IF NOT EXISTS "
-            "FOR (c:Chunk) REQUIRE (c.tenant_id, c.id) IS UNIQUE",
-            "CREATE CONSTRAINT entity_unique IF NOT EXISTS "
-            "FOR (e:Entity) REQUIRE (e.tenant_id, e.name) IS UNIQUE",
+            "CREATE CONSTRAINT document_unique IF NOT EXISTS " "FOR (d:Document) REQUIRE (d.tenant_id, d.id) IS UNIQUE",
+            "CREATE CONSTRAINT chunk_unique IF NOT EXISTS " "FOR (c:Chunk) REQUIRE (c.tenant_id, c.id) IS UNIQUE",
+            "CREATE CONSTRAINT entity_unique IF NOT EXISTS " "FOR (e:Entity) REQUIRE (e.tenant_id, e.name) IS UNIQUE",
             # Indexes for tenant-scoped lookups
             "CREATE INDEX document_tenant IF NOT EXISTS FOR (d:Document) ON (d.tenant_id)",
             "CREATE INDEX chunk_tenant IF NOT EXISTS FOR (c:Chunk) ON (c.tenant_id)",
@@ -60,7 +58,9 @@ class Neo4jRepo:
                 MERGE (d:Document {tenant_id: $tid, id: $did})
                 SET d.title = $title, d.updated_at = datetime()
                 """,
-                tid=tenant_id, did=str(document_id), title=title,
+                tid=tenant_id,
+                did=str(document_id),
+                title=title,
             )
 
     async def upsert_chunks(
@@ -84,7 +84,9 @@ class Neo4jRepo:
                     ch.updated_at = datetime()
                 MERGE (d)-[:HAS_CHUNK]->(ch)
                 """,
-                tid=tenant_id, did=str(document_id), chunks=chunks,
+                tid=tenant_id,
+                did=str(document_id),
+                chunks=chunks,
             )
         log.info("neo4j_chunks_upserted document=%s n=%d", document_id, len(chunks))
 
@@ -107,7 +109,9 @@ class Neo4jRepo:
                 SET ent.type = coalesce(e.type, ent.type)
                 MERGE (ch)-[:MENTIONS]->(ent)
                 """,
-                tid=tenant_id, cid=str(chunk_id), entities=entities,
+                tid=tenant_id,
+                cid=str(chunk_id),
+                entities=entities,
             )
 
     async def delete_document(self, *, tenant_id: str, document_id: UUID) -> None:
@@ -118,7 +122,8 @@ class Neo4jRepo:
                 OPTIONAL MATCH (d)-[:HAS_CHUNK]->(ch:Chunk)
                 DETACH DELETE d, ch
                 """,
-                tid=tenant_id, did=str(document_id),
+                tid=tenant_id,
+                did=str(document_id),
             )
         log.info("neo4j_document_deleted id=%s", document_id)
 

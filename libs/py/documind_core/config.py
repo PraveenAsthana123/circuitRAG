@@ -26,6 +26,7 @@ Example — a service subclasses this::
         chunk_size: int = 512
         chunk_overlap: int = 50
 """
+
 from __future__ import annotations
 
 from functools import lru_cache

@@ -18,6 +18,7 @@ Environment:
   DOCUMIND_PG_OPS_USER      (default: documind_ops)
   DOCUMIND_PG_OPS_PASSWORD  (default: documind_ops)
 """
+
 from __future__ import annotations
 
 import os
@@ -66,7 +67,8 @@ async def test_cross_tenant_read_is_empty():
             "INSERT INTO identity.tenants (id, name, tier) VALUES "
             "($1, 'rls-test-A', 'pro'), ($2, 'rls-test-B', 'pro') "
             "ON CONFLICT (id) DO NOTHING",
-            a, b,
+            a,
+            b,
         )
         for doc_id, tid, name in [(doc_a, a, "a.pdf"), (doc_b, b, "b.pdf")]:
             await ops.execute(
@@ -77,7 +79,9 @@ async def test_cross_tenant_read_is_empty():
                 VALUES ($1, $2, $3, 'application/pdf', 10, 'x', 's3://x',
                         'uploaded', 1)
                 """,
-                doc_id, tid, name,
+                doc_id,
+                tid,
+                name,
             )
 
         # Read as tenant A through the RLS-enforced app role.
@@ -90,17 +94,13 @@ async def test_cross_tenant_read_is_empty():
 
         visible = {r["id"] for r in rows}
         assert doc_a in visible, "tenant A MUST see their own document"
-        assert doc_b not in visible, (
-            "CRITICAL: tenant A saw tenant B's document — RLS broken"
-        )
+        assert doc_b not in visible, "CRITICAL: tenant A saw tenant B's document — RLS broken"
 
         # Also prove: UNSET tenant → NO rows visible
         async with app.transaction():
             # Do not set app.current_tenant
             rows_empty = await app.fetch("SELECT id FROM ingestion.documents")
-        assert rows_empty == [], (
-            "with no app.current_tenant, app role should see ZERO rows"
-        )
+        assert rows_empty == [], "with no app.current_tenant, app role should see ZERO rows"
     finally:
         await ops.execute(
             "DELETE FROM ingestion.documents WHERE id = ANY($1::uuid[])",

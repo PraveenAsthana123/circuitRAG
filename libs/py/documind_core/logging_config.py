@@ -25,6 +25,7 @@ Usage::
     log = get_logger(__name__)
     log.info("document_uploaded", document_id=str(doc_id), size_bytes=len(body))
 """
+
 from __future__ import annotations
 
 import logging
@@ -161,9 +162,7 @@ def setup_logging(
     # Pipe the stdlib logging root into structlog so libraries that use
     # ``logging.getLogger()`` also produce structured JSON.
     handler = logging.StreamHandler(stream=sys.stdout)
-    handler.setFormatter(
-        logging.Formatter("%(message)s")  # structlog already renders JSON
-    )
+    handler.setFormatter(logging.Formatter("%(message)s"))  # structlog already renders JSON
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level.upper())

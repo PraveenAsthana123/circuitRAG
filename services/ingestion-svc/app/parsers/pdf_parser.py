@@ -1,4 +1,5 @@
 """PDF parser built on :mod:`pypdf`."""
+
 from __future__ import annotations
 
 import io
@@ -21,9 +22,7 @@ class PdfParser(DocumentParser):
         except Exception as exc:
             log.warning("pdf_parse_reader_failed filename=%s err=%s", filename, exc)
             warnings.append(f"reader_init_failed: {exc}")
-            return ParsedDocument(
-                title=filename, pages=[], metadata={"parse_warnings": warnings}
-            )
+            return ParsedDocument(title=filename, pages=[], metadata={"parse_warnings": warnings})
 
         title = (reader.metadata.title if reader.metadata else None) or filename
         pages: list[ParsedPage] = []

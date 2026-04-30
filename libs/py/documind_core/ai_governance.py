@@ -17,6 +17,7 @@ Design note — all classes are cheap (regex + cheap heuristics + cosine).
 None call an LLM themselves. An LLM-judge variant can be layered on top
 in evaluation-svc where latency budget is relaxed.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -65,10 +66,11 @@ def _bump_pii_redaction(kind: str) -> None:
 # 1. PromptInjectionDetector — SECURE AI (input side)
 # ============================================================================
 
+
 class InjectionVerdict(StrEnum):
     CLEAN = "clean"
-    SUSPICIOUS = "suspicious"   # log + flag, let through
-    BLOCK = "block"             # refuse the request
+    SUSPICIOUS = "suspicious"  # log + flag, let through
+    BLOCK = "block"  # refuse the request
 
 
 @dataclass
@@ -88,43 +90,55 @@ _INJECTION_RULES: list[tuple[str, re.Pattern[str], InjectionVerdict]] = [
     # "messages"). This excludes benign technical prose like "override
     # the method" or "don't forget to pack an umbrella" — words not
     # accompanied by a jailbreak object.
-    ("ignore_previous",
-     re.compile(
-         r"\b(ignore|disregard)\s+"
-         r"(all|any|every|the|my|your|those|these|previous|above|prior|"
-         r"prompt|prompts|system|current)"
-         r"(?:\s+\w+){0,3}\s+"
-         r"(instructions?|prompts?|rules?|rulesets?|"
-         r"polic(?:y|ies)|messages?)\b",
-         re.I,
-     ),
-     InjectionVerdict.BLOCK),
-    ("system_override",
-     re.compile(
-         r"\b(you\s+are\s+now|act\s+as|pretend\s+to\s+be|from\s+now\s+on)\b"
-         r"[^.]*\b(system|admin|root|dan|jailbreak)\b",
-         re.I,
-     ),
-     InjectionVerdict.BLOCK),
-    ("policy_leak",
-     re.compile(r"\b(reveal|show|print|output|display)\s+.*?(system\s+prompt|instructions?|policy|ruleset)\b", re.I),
-     InjectionVerdict.BLOCK),
-    ("role_reassign",
-     re.compile(r"###\s*(system|user|assistant)\s*[:\n]", re.I),
-     InjectionVerdict.SUSPICIOUS),
-    ("delimiter_spoof",
-     re.compile(r"(<\|(?:im_start|im_end|system|user|assistant)\|>|\[INST\]|\[/INST\])", re.I),
-     InjectionVerdict.BLOCK),
-    ("encoding_bypass",
-     # Base64-like blobs of suspicious length often hide instructions
-     re.compile(r"(?:[A-Za-z0-9+/]{120,}={0,2})"),
-     InjectionVerdict.SUSPICIOUS),
-    ("exec_command",
-     re.compile(r"\b(run|execute|eval)\s+(this|the following|code|command|script)\b", re.I),
-     InjectionVerdict.SUSPICIOUS),
-    ("credential_exfil",
-     re.compile(r"\b(api[\s_-]?key|password|token|credentials?)\s+(is|=|:)\s*", re.I),
-     InjectionVerdict.SUSPICIOUS),
+    (
+        "ignore_previous",
+        re.compile(
+            r"\b(ignore|disregard)\s+"
+            r"(all|any|every|the|my|your|those|these|previous|above|prior|"
+            r"prompt|prompts|system|current)"
+            r"(?:\s+\w+){0,3}\s+"
+            r"(instructions?|prompts?|rules?|rulesets?|"
+            r"polic(?:y|ies)|messages?)\b",
+            re.I,
+        ),
+        InjectionVerdict.BLOCK,
+    ),
+    (
+        "system_override",
+        re.compile(
+            r"\b(you\s+are\s+now|act\s+as|pretend\s+to\s+be|from\s+now\s+on)\b"
+            r"[^.]*\b(system|admin|root|dan|jailbreak)\b",
+            re.I,
+        ),
+        InjectionVerdict.BLOCK,
+    ),
+    (
+        "policy_leak",
+        re.compile(r"\b(reveal|show|print|output|display)\s+.*?(system\s+prompt|instructions?|policy|ruleset)\b", re.I),
+        InjectionVerdict.BLOCK,
+    ),
+    ("role_reassign", re.compile(r"###\s*(system|user|assistant)\s*[:\n]", re.I), InjectionVerdict.SUSPICIOUS),
+    (
+        "delimiter_spoof",
+        re.compile(r"(<\|(?:im_start|im_end|system|user|assistant)\|>|\[INST\]|\[/INST\])", re.I),
+        InjectionVerdict.BLOCK,
+    ),
+    (
+        "encoding_bypass",
+        # Base64-like blobs of suspicious length often hide instructions
+        re.compile(r"(?:[A-Za-z0-9+/]{120,}={0,2})"),
+        InjectionVerdict.SUSPICIOUS,
+    ),
+    (
+        "exec_command",
+        re.compile(r"\b(run|execute|eval)\s+(this|the following|code|command|script)\b", re.I),
+        InjectionVerdict.SUSPICIOUS,
+    ),
+    (
+        "credential_exfil",
+        re.compile(r"\b(api[\s_-]?key|password|token|credentials?)\s+(is|=|:)\s*", re.I),
+        InjectionVerdict.SUSPICIOUS,
+    ),
 ]
 
 
@@ -152,7 +166,7 @@ class PromptInjectionDetector:
         for rule_id, pat, verdict in self._rules:
             m = pat.search(text)
             if m:
-                snippet = text[max(0, m.start() - 20):m.end() + 20]
+                snippet = text[max(0, m.start() - 20) : m.end() + 20]
                 findings.append(
                     InjectionFinding(
                         pattern_id=rule_id,
@@ -182,20 +196,13 @@ class PromptInjectionDetector:
 
 _PII_RULES: list[tuple[str, re.Pattern[str]]] = [
     ("ssn", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
-    ("credit_card_like",
-     re.compile(r"\b(?:\d[ -]*?){13,19}\b")),
-    ("email",
-     re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)),
-    ("phone_us",
-     re.compile(r"\b(?:\+?1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b")),
-    ("ip_address",
-     re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
-    ("aws_access_key",
-     re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
-    ("private_key_pem",
-     re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----")),
-    ("passport_like",
-     re.compile(r"\b[A-Z][0-9]{8}\b")),
+    ("credit_card_like", re.compile(r"\b(?:\d[ -]*?){13,19}\b")),
+    ("email", re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)),
+    ("phone_us", re.compile(r"\b(?:\+?1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b")),
+    ("ip_address", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
+    ("aws_access_key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+    ("private_key_pem", re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----")),
+    ("passport_like", re.compile(r"\b[A-Z][0-9]{8}\b")),
 ]
 
 
@@ -222,7 +229,7 @@ class PIIScanner:
         for kind, pat in self._rules:
             for m in pat.finditer(text):
                 findings.append(PIIFinding(kind=kind, excerpt=m.group(0)[:80]))
-                if len(findings) > 20:   # cap
+                if len(findings) > 20:  # cap
                     break
         return findings
 
@@ -279,6 +286,7 @@ class PIIScanner:
 # 3. AIExplainer — EXPLAINABILITY (post-hoc, user-facing)
 # ============================================================================
 
+
 @dataclass
 class ChunkAttribution:
     """Per-chunk metadata that contributed to an answer."""
@@ -286,9 +294,9 @@ class ChunkAttribution:
     chunk_id: str
     document_id: str
     score: float
-    source: str                     # vector | graph | hybrid
+    source: str  # vector | graph | hybrid
     page_number: int
-    preview: str                    # first 180 chars
+    preview: str  # first 180 chars
 
 
 @dataclass
@@ -306,7 +314,7 @@ class Explanation:
     confidence: float
     guardrail_violations: list[str]
     cognitive_breaker: dict[str, Any]
-    why_this_answer: str             # human-readable narrative
+    why_this_answer: str  # human-readable narrative
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -412,14 +420,10 @@ class AIExplainer:
             f"The system used {retrieval_strategy} retrieval.",
             f"Top chunk came from document {top[0].document_id} page {top[0].page_number} "
             f"with score {top[0].score:.3f} (source={top[0].source}).",
-            f"Estimated confidence: {confidence:.0%} based on citation coverage and "
-            f"retrieval score.",
+            f"Estimated confidence: {confidence:.0%} based on citation coverage and " f"retrieval score.",
         ]
         if violations:
-            lines.append(
-                "Guardrails raised: " + ", ".join(violations) +
-                " — this answer was flagged for review."
-            )
+            lines.append("Guardrails raised: " + ", ".join(violations) + " — this answer was flagged for review.")
         return " ".join(lines)
 
 
@@ -427,10 +431,11 @@ class AIExplainer:
 # 4. ResponsibleAIChecker — fairness + bias + disclosure
 # ============================================================================
 
+
 @dataclass
 class FairnessSignal:
     name: str
-    score: float                    # 0.0 worst, 1.0 best
+    score: float  # 0.0 worst, 1.0 best
     message: str
 
 
@@ -456,13 +461,12 @@ class ResponsibleAIChecker:
         r"elderly|disabled|poor|rich|immigrants?)\s+(are|do|have|must|never|always)\b",
         re.I,
     )
-    _ABSOLUTE_CLAIM = re.compile(
-        r"\b(always|never|all|none|every|must|cannot\s+(?:possibly|ever))\b", re.I
-    )
+    _ABSOLUTE_CLAIM = re.compile(r"\b(always|never|all|none|every|must|cannot\s+(?:possibly|ever))\b", re.I)
     _DISCLOSURE_QUESTION = re.compile(
         r"\b(are you (?:an?|the)? (?:ai|bot|assistant|language model)|"
         r"what are you|who (?:built|made|trained) you|"
-        r"were you trained on)", re.I
+        r"were you trained on)",
+        re.I,
     )
 
     def check(self, *, question: str, answer: str, has_citations: bool) -> list[FairnessSignal]:
@@ -471,27 +475,33 @@ class ResponsibleAIChecker:
         # 1. Protected-class sweeping statements
         pc = self._PROTECTED_CLASS_WORDS.search(answer)
         if pc:
-            signals.append(FairnessSignal(
-                name="protected_class_generalization",
-                score=0.1,
-                message=f"possible bias: '{pc.group(0)}'",
-            ))
+            signals.append(
+                FairnessSignal(
+                    name="protected_class_generalization",
+                    score=0.1,
+                    message=f"possible bias: '{pc.group(0)}'",
+                )
+            )
 
         # 2. Absolute claim without citation
         if self._ABSOLUTE_CLAIM.search(answer) and not has_citations:
-            signals.append(FairnessSignal(
-                name="unsupported_absolute",
-                score=0.4,
-                message="absolute claim with no citation",
-            ))
+            signals.append(
+                FairnessSignal(
+                    name="unsupported_absolute",
+                    score=0.4,
+                    message="absolute claim with no citation",
+                )
+            )
 
         # 3. AI-disclosure asked but not given
         if self._DISCLOSURE_QUESTION.search(question) and "ai" not in answer.lower():
-            signals.append(FairnessSignal(
-                name="missing_ai_disclosure",
-                score=0.3,
-                message="user asked about AI origin; response did not disclose",
-            ))
+            signals.append(
+                FairnessSignal(
+                    name="missing_ai_disclosure",
+                    score=0.3,
+                    message="user asked about AI origin; response did not disclose",
+                )
+            )
 
         return signals
 
@@ -499,6 +509,7 @@ class ResponsibleAIChecker:
 # ============================================================================
 # 5. AdversarialInputFilter — SECURE AI (heuristics)
 # ============================================================================
+
 
 class AdversarialInputFilter:
     """
@@ -567,10 +578,11 @@ class AdversarialInputFilter:
 # 6. InterpretabilityTrace — chain-of-reasoning packaging
 # ============================================================================
 
+
 @dataclass
 class ReasoningStep:
     step_id: int
-    name: str                       # "retrieve" | "rerank" | "prompt" | "generate" | "guardrail"
+    name: str  # "retrieve" | "rerank" | "prompt" | "generate" | "guardrail"
     input_summary: str
     output_summary: str
     duration_ms: float
@@ -630,6 +642,7 @@ class _StepContext:
 
     def __init__(self, trace: InterpretabilityTrace, step_id: int, name: str) -> None:
         import time
+
         self._trace = trace
         self._id = step_id
         self._name = name

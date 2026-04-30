@@ -12,6 +12,7 @@ Rules:
   string wins.
 * Polled every 30s; governance changes propagate within that window.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -106,8 +107,7 @@ class DbBackedPromptBuilder:
         try:
             rows = await self._repo.list_active()
         except Exception as exc:  # noqa: BLE001
-            log.warning("prompt_repo_reload_failed using_cached_count=%d err=%s",
-                        len(self._cache), exc)
+            log.warning("prompt_repo_reload_failed using_cached_count=%d err=%s", len(self._cache), exc)
             return
 
         new_cache: dict[str, PromptTemplate] = dict(PROMPT_TEMPLATES)
@@ -145,6 +145,7 @@ class DbBackedPromptBuilder:
         # Delegate to the in-code builder so citation map logic stays
         # in one place. We just provide a different template lookup.
         from .prompt_builder import PromptBuilder
+
         return PromptBuilder({name: tmpl for name, tmpl in self._cache.items()}).build(
             template_name=template_name, query=query, chunks=chunks
         )

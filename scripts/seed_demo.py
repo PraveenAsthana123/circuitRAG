@@ -12,8 +12,8 @@ UUID for use in X-Tenant-ID headers.
 """
 from __future__ import annotations
 
-import asyncio
 import argparse
+import asyncio
 import os
 from pathlib import Path
 from uuid import UUID

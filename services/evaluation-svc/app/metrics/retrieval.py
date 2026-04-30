@@ -1,4 +1,5 @@
 """Retrieval metrics — precision@k, recall, MRR, NDCG."""
+
 from __future__ import annotations
 
 import math

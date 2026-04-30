@@ -17,6 +17,7 @@ Policy ladder:
 
 Counters are exposed via Prometheus so admin can watch for spikes.
 """
+
 from __future__ import annotations
 
 import logging
@@ -25,6 +26,7 @@ from enum import StrEnum
 
 try:
     from prometheus_client import Counter
+
     _METRICS = True
 except ImportError:  # pragma: no cover
     _METRICS = False
@@ -50,18 +52,23 @@ class SanitizeDecision(StrEnum):
 class SanitizeOutcome:
     decision: SanitizeDecision
     reasons: list[str]
-    redacted_text: str   # same as original if ALLOW; modified if REDACT
+    redacted_text: str  # same as original if ALLOW; modified if REDACT
 
 
 if _METRICS:
     _poison_allow = Counter(
-        "documind_ingest_chunk_allow_total", "Chunks allowed after poisoning scan",
+        "documind_ingest_chunk_allow_total",
+        "Chunks allowed after poisoning scan",
     )
     _poison_redact = Counter(
-        "documind_ingest_chunk_redact_total", "Chunks redacted", labelnames=["reason"],
+        "documind_ingest_chunk_redact_total",
+        "Chunks redacted",
+        labelnames=["reason"],
     )
     _poison_reject = Counter(
-        "documind_ingest_chunk_reject_total", "Chunks rejected", labelnames=["reason"],
+        "documind_ingest_chunk_reject_total",
+        "Chunks rejected",
+        labelnames=["reason"],
     )
 
 
@@ -95,7 +102,9 @@ class ChunkPoisoningGuard:
             if _METRICS:
                 _poison_reject.labels(reason="injection").inc()
             return SanitizeOutcome(
-                decision=decision, reasons=reasons, redacted_text=text,
+                decision=decision,
+                reasons=reasons,
+                redacted_text=text,
             )
         if suspicious:
             decision = SanitizeDecision.REDACT
@@ -121,7 +130,9 @@ class ChunkPoisoningGuard:
             _poison_allow.inc()
 
         return SanitizeOutcome(
-            decision=decision, reasons=reasons, redacted_text=text,
+            decision=decision,
+            reasons=reasons,
+            redacted_text=text,
         )
 
     def sanitize_batch(self, chunks: list[Chunk]) -> tuple[list[Chunk], list[SanitizeOutcome]]:
@@ -141,7 +152,8 @@ class ChunkPoisoningGuard:
             if oc.decision is SanitizeDecision.REJECT:
                 log.warning(
                     "chunk_rejected reasons=%s doc_hash=%s",
-                    ",".join(oc.reasons), chunk.content_hash[:12],
+                    ",".join(oc.reasons),
+                    chunk.content_hash[:12],
                 )
                 continue
             if oc.decision is SanitizeDecision.REDACT:
@@ -149,7 +161,7 @@ class ChunkPoisoningGuard:
                     content_hash=Chunk.hash_content(oc.redacted_text),
                     index=chunk.index,
                     text=oc.redacted_text,
-                    token_count=chunk.token_count,   # approx; acceptable
+                    token_count=chunk.token_count,  # approx; acceptable
                     page_number=chunk.page_number,
                     metadata={**chunk.metadata, "sanitized": True, "sanitize_reasons": oc.reasons},
                 )

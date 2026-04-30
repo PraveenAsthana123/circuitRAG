@@ -12,6 +12,7 @@ Flow:
 Everything is logged with correlation + tenant IDs. FinOps gets token
 counts via a Kafka event (elided here — see docs/design-areas/29-finops.md).
 """
+
 from __future__ import annotations
 
 import logging
@@ -75,7 +76,8 @@ class RagInferenceService:
         self._max_new_tokens = max_new_tokens
         self._temperature = temperature
         self._token_breaker = token_breaker or TokenCircuitBreaker(
-            max_tokens_per_request=32_000, warn_percent=0.8,
+            max_tokens_per_request=32_000,
+            warn_percent=0.8,
         )
         self._default_daily = default_daily_token_budget
         self._default_monthly = default_monthly_token_budget
@@ -191,7 +193,7 @@ class RagInferenceService:
                 model=request.model,
             ):
                 collected.append(delta)
-                ccb.on_tokens(delta)   # may raise CognitiveInterrupt
+                ccb.on_tokens(delta)  # may raise CognitiveInterrupt
             answer_text = "".join(collected)
             # Token counts aren't in the streaming API; estimate for FinOps.
             gen_tokens_prompt = len(user.split()) + len(system.split())
@@ -201,7 +203,9 @@ class RagInferenceService:
             ccb_snapshot = ccb.snapshot()
             log.warning(
                 "cognitive_interrupt reasons=%s partial_len=%d tenant=%s",
-                exc.reasons, len(exc.partial), tenant_id,
+                exc.reasons,
+                len(exc.partial),
+                tenant_id,
             )
             answer_text = (
                 "I don't have enough confidence in the answer I was generating. "
@@ -222,6 +226,7 @@ class RagInferenceService:
             tokens_prompt: int
             tokens_completion: int
             model: str
+
         gen = _GenResult(
             text=answer_text,
             tokens_prompt=gen_tokens_prompt,
@@ -238,9 +243,7 @@ class RagInferenceService:
 
         # 4. Guardrails
         scores = [c.get("score", 0.0) for c in chunks]
-        guard = self._guardrails.check(
-            answer=gen.text, citation_map=citation_map, retrieval_scores=scores
-        )
+        guard = self._guardrails.check(answer=gen.text, citation_map=citation_map, retrieval_scores=scores)
 
         # 5. Citations for response (only those the LLM actually cited OR
         #    the top 3 if the LLM elided them — pragmatic default)
@@ -258,7 +261,11 @@ class RagInferenceService:
 
         log.info(
             "inference_complete tenant=%s guardrails_passed=%s confidence=%.2f tokens=%d/%d",
-            tenant_id, guard.passed, guard.confidence, gen.tokens_prompt, gen.tokens_completion,
+            tenant_id,
+            guard.passed,
+            guard.confidence,
+            gen.tokens_prompt,
+            gen.tokens_completion,
         )
 
         # PII scan + responsibility lens run on the FINAL answer.
@@ -298,12 +305,9 @@ class RagInferenceService:
                 # New AI-governance sections
                 "explanation": explanation.to_dict(),
                 "interpretability_trace": trace.to_dict(),
-                "pii_findings": [
-                    {"kind": f.kind, "excerpt": f.excerpt} for f in pii_findings
-                ],
+                "pii_findings": [{"kind": f.kind, "excerpt": f.excerpt} for f in pii_findings],
                 "fairness_signals": [
-                    {"name": s.name, "score": s.score, "message": s.message}
-                    for s in fairness_signals
+                    {"name": s.name, "score": s.score, "message": s.message} for s in fairness_signals
                 ],
             }
 

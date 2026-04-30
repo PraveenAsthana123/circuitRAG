@@ -9,6 +9,7 @@ Responsibilities:
 * Kick off the saga.
 * Surface documents + chunks to the API.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -182,14 +183,10 @@ class IngestionService:
     async def list_documents(
         self, *, tenant_id: str, offset: int, limit: int, state: str | None
     ) -> tuple[list[dict[str, Any]], int]:
-        return await self._document_repo.list(
-            tenant_id=tenant_id, offset=offset, limit=limit, state=state
-        )
+        return await self._document_repo.list(tenant_id=tenant_id, offset=offset, limit=limit, state=state)
 
     async def list_chunks(self, *, tenant_id: str, document_id: UUID) -> list[dict[str, Any]]:
-        return await self._chunk_repo.list_by_document(
-            tenant_id=tenant_id, document_id=document_id
-        )
+        return await self._chunk_repo.list_by_document(tenant_id=tenant_id, document_id=document_id)
 
     async def delete_document(self, *, tenant_id: str, document_id: UUID) -> None:
         """Full cascade delete — Postgres row, chunks, vectors, graph, blob."""

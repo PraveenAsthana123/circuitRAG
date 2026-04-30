@@ -10,6 +10,7 @@ Exposes two endpoints:
 This is the lightest of the four Python services. Full shape documented in
 spec Areas 26 / 59 / 60 / 61.
 """
+
 from __future__ import annotations
 
 import logging
@@ -119,9 +120,7 @@ def create_app() -> FastAPI:
         log.info("evaluation_service_ready")
         yield
 
-    app = FastAPI(
-        title="DocuMind - Evaluation Service", version="0.1.0", lifespan=lifespan
-    )
+    app = FastAPI(title="DocuMind - Evaluation Service", version="0.1.0", lifespan=lifespan)
     # BaggageContextMiddleware first = innermost; runs after TenantContext
     # populates request.state, promoting tenant_id / user_id /
     # correlation_id into W3C baggage for outbound propagation.
@@ -149,8 +148,13 @@ def create_app() -> FastAPI:
         n = len(body.datapoints)
         if n == 0:
             return RunResponse(
-                n=0, precision_at_k=0, recall=0, mrr=0, ndcg_at_10=0,
-                faithfulness=0, answer_relevance=0,
+                n=0,
+                precision_at_k=0,
+                recall=0,
+                mrr=0,
+                ndcg_at_10=0,
+                faithfulness=0,
+                answer_relevance=0,
             )
 
         totals = {"p": 0.0, "r": 0.0, "mrr": 0.0, "ndcg": 0.0, "f": 0.0, "rel": 0.0}
@@ -211,10 +215,10 @@ def create_app() -> FastAPI:
         # Pair each metric name with (baseline_value, current_value, tolerance).
         pairs = [
             ("precision_at_k", b.precision_at_k, c.precision_at_k, t.precision_at_k),
-            ("recall",         b.recall,         c.recall,         t.recall),
-            ("mrr",            b.mrr,            c.mrr,            t.mrr),
-            ("ndcg_at_10",     b.ndcg_at_10,     c.ndcg_at_10,     t.ndcg_at_10),
-            ("faithfulness",   b.faithfulness,   c.faithfulness,   t.faithfulness),
+            ("recall", b.recall, c.recall, t.recall),
+            ("mrr", b.mrr, c.mrr, t.mrr),
+            ("ndcg_at_10", b.ndcg_at_10, c.ndcg_at_10, t.ndcg_at_10),
+            ("faithfulness", b.faithfulness, c.faithfulness, t.faithfulness),
             ("answer_relevance", b.answer_relevance, c.answer_relevance, t.answer_relevance),
         ]
         deltas: list[MetricDelta] = []
@@ -226,10 +230,16 @@ def create_app() -> FastAPI:
             metric_passed = delta >= -tol
             if not metric_passed:
                 failed.append(name)
-            deltas.append(MetricDelta(
-                metric=name, baseline=base, current=cur,
-                delta=delta, tolerance=tol, passed=metric_passed,
-            ))
+            deltas.append(
+                MetricDelta(
+                    metric=name,
+                    baseline=base,
+                    current=cur,
+                    delta=delta,
+                    tolerance=tol,
+                    passed=metric_passed,
+                )
+            )
         return RegressionGateResponse(
             passed=(not failed),
             deltas=deltas,

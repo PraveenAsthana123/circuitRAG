@@ -11,6 +11,7 @@ Orchestrates the read-path CQRS:
 Parallel fetch — ``asyncio.gather`` runs the two backends concurrently, so
 latency is max(vector, graph), not vector+graph.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -92,14 +93,10 @@ class HybridRetriever:
 
     @staticmethod
     def _cache_key(tenant_id: str, req: RetrieveRequest) -> str:
-        h = hashlib.sha256(
-            f"{req.strategy}|{req.top_k}|{req.query}|{sorted(req.filters.items())}".encode()
-        ).hexdigest()
+        h = hashlib.sha256(f"{req.strategy}|{req.top_k}|{req.query}|{sorted(req.filters.items())}".encode()).hexdigest()
         return Cache.tenant_key(tenant_id, "retr", h)
 
-    async def retrieve(
-        self, *, tenant_id: str, request: RetrieveRequest
-    ) -> RetrieveResponse:
+    async def retrieve(self, *, tenant_id: str, request: RetrieveRequest) -> RetrieveResponse:
         start = time.monotonic()
         key = self._cache_key(tenant_id, request)
 
@@ -133,7 +130,7 @@ class HybridRetriever:
         else:
             fused = self._reranker.fuse(*ranked_lists, top_k=request.top_k)
 
-        fused = fused[:request.top_k]
+        fused = fused[: request.top_k]
         chunks = [RetrievedChunk(**h) for h in fused]
 
         latency_ms = (time.monotonic() - start) * 1000
@@ -165,13 +162,20 @@ class HybridRetriever:
         else:
             log.info(
                 "retrieval_skip_cache chunks=%d backends_ok=%d/%d reason=degraded",
-                len(chunks), len(ranked_lists), len(coros),
+                len(chunks),
+                len(ranked_lists),
+                len(coros),
             )
 
         log.info(
             "retrieval_complete tenant=%s strategy=%s n=%d latency_ms=%.1f top_score=%.3f breaker=%s degraded=%s",
-            tenant_id, request.strategy, len(chunks), latency_ms,
-            top_score, self._quality_breaker.state.value, backend_failed,
+            tenant_id,
+            request.strategy,
+            len(chunks),
+            latency_ms,
+            top_score,
+            self._quality_breaker.state.value,
+            backend_failed,
         )
         return RetrieveResponse(
             chunks=chunks,
@@ -195,13 +199,19 @@ class HybridRetriever:
 
         async def _call() -> list[dict]:
             return await self._vector.search(
-                tenant_id=tenant_id, query_vector=qv, top_k=self._vector_top_k,
+                tenant_id=tenant_id,
+                query_vector=qv,
+                top_k=self._vector_top_k,
             )
+
         return await self._vector_breaker.call_async(_call)
 
     async def _do_graph(self, tenant_id: str, req: RetrieveRequest) -> list[dict]:
         async def _call() -> list[dict]:
             return await self._graph.search(
-                tenant_id=tenant_id, query=req.query, top_k=self._graph_top_k,
+                tenant_id=tenant_id,
+                query=req.query,
+                top_k=self._graph_top_k,
             )
+
         return await self._graph_breaker.call_async(_call)

@@ -4,6 +4,7 @@ Document HTTP routes (Design Area 23 — Ingestion Service API).
 These are THIN — no SQL, no business logic. The router extracts request
 data, calls the :class:`IngestionService`, and serializes the response.
 """
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -68,9 +69,7 @@ async def list_documents(
     if not tenant_id:
         raise ValidationError("X-Tenant-ID header is required")
 
-    items, total = await service.list_documents(
-        tenant_id=tenant_id, offset=offset, limit=limit, state=state
-    )
+    items, total = await service.list_documents(tenant_id=tenant_id, offset=offset, limit=limit, state=state)
     return DocumentList(
         items=[DocumentSummary(**item) for item in items],
         total=total,

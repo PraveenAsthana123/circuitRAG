@@ -12,6 +12,7 @@ Each repo:
 * Surfaces domain errors (``NotFoundError``, ``DataError``) — never raises
   raw driver exceptions to callers.
 """
+
 from .chunk_repo import ChunkRepo
 from .document_repo import DocumentRepo
 from .neo4j_repo import Neo4jRepo

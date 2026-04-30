@@ -38,6 +38,7 @@ The verification CLI that replays the chain per tenant is a follow-up;
 the schema (entry_hash, previous_hash) and writer are the load-bearing
 bits and land here.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -192,7 +193,7 @@ class AuditWriter:
                     """,
                     tenant_id,
                 )
-                previous_hash = (last["entry_hash"] if last and last["entry_hash"] else "")
+                previous_hash = last["entry_hash"] if last and last["entry_hash"] else ""
 
                 # We hash a stable textual representation of the row, but
                 # asyncpg needs a ``datetime`` for the TIMESTAMPTZ column.
@@ -239,7 +240,10 @@ class AuditWriter:
                 )
             log.info(
                 "audit_written tenant=%s action=%s resource=%s corr=%s",
-                tenant_id, action, resource_type, correlation_id,
+                tenant_id,
+                action,
+                resource_type,
+                correlation_id,
             )
         except Exception as exc:  # noqa: BLE001 — controlled re-raise on fail_closed
             # Counter + structured log are the same in both modes —
@@ -247,7 +251,8 @@ class AuditWriter:
             error_type = _classify_error(exc)
             if _audit_write_failures is not None:
                 _audit_write_failures.labels(
-                    action=action, error_type=error_type,
+                    action=action,
+                    error_type=error_type,
                 ).inc()
             posture = "fail_closed" if fail_closed else "fail_open"
             log.error(
@@ -273,8 +278,7 @@ class AuditWriter:
                 from .exceptions import DataError
 
                 raise DataError(
-                    f"audit write failed (fail_closed) action={action!r} "
-                    f"error_type={error_type}",
+                    f"audit write failed (fail_closed) action={action!r} " f"error_type={error_type}",
                     details={
                         "action": action,
                         "error_type": error_type,

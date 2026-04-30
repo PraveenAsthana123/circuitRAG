@@ -59,6 +59,7 @@ deps. The Agent type is a duck-typed Protocol so callers plug in
 any async-callable. Production wiring would back the agents with
 distinct LLM clients, prompts, or even toolsets.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -142,7 +143,8 @@ def _bump_run(outcome: str, advisor_id: str) -> None:
 def _observe_duration(outcome: str, advisor_id: str, seconds: float) -> None:
     if _board_duration_seconds is not None:
         _board_duration_seconds.labels(
-            outcome=outcome, advisor_id=advisor_id,
+            outcome=outcome,
+            advisor_id=advisor_id,
         ).observe(seconds)
 
 
@@ -334,9 +336,7 @@ class AgentBoard:
 
         duration = time.monotonic() - t_start
         failed_authors = [d.author_id for d in drafts if d.error is not None]
-        failed_reviews = [
-            (r.draft_author_id, r.reviewer_id) for r in reviews if r.error is not None
-        ]
+        failed_reviews = [(r.draft_author_id, r.reviewer_id) for r in reviews if r.error is not None]
 
         # ── Outcome classification ─────────────────────────────────
         # Order matters: advisor_failed wins over partial because the
@@ -373,7 +373,9 @@ class AgentBoard:
         # ── Run-level metric + structured log ──────────────────────
         _bump_run(outcome=outcome, advisor_id=self._advisor_id)
         _observe_duration(
-            outcome=outcome, advisor_id=self._advisor_id, seconds=duration,
+            outcome=outcome,
+            advisor_id=self._advisor_id,
+            seconds=duration,
         )
 
         # Structured log: one canonical event per run, structured for
@@ -389,10 +391,15 @@ class AgentBoard:
             "task_hash=%s duration_s=%.3f "
             "authors_total=%d authors_failed=%d "
             "reviews_total=%d reviews_failed=%d",
-            outcome, self._advisor_id, self._prompt_version,
-            task_hash, duration,
-            len(drafts), len(failed_authors),
-            len(reviews), len(failed_reviews),
+            outcome,
+            self._advisor_id,
+            self._prompt_version,
+            task_hash,
+            duration,
+            len(drafts),
+            len(failed_authors),
+            len(reviews),
+            len(failed_reviews),
         )
 
         return BoardResult(
@@ -411,7 +418,9 @@ class AgentBoard:
 
     # ── Internal phases ───────────────────────────────────────────
     async def _authors_phase(
-        self, task: str, sem: asyncio.Semaphore,
+        self,
+        task: str,
+        sem: asyncio.Semaphore,
     ) -> list[Draft]:
         async def one(author_id: str, agent: Agent) -> Draft:
             t0 = time.monotonic()
@@ -426,7 +435,8 @@ class AgentBoard:
                 except Exception as exc:  # noqa: BLE001 — error isolation
                     log.warning(
                         "agent_board_author_failed author=%s err=%s",
-                        author_id, exc,
+                        author_id,
+                        exc,
                     )
                     return Draft(
                         author_id=author_id,
@@ -435,9 +445,7 @@ class AgentBoard:
                         error=f"{type(exc).__name__}: {exc}",
                     )
 
-        results = await asyncio.gather(*[
-            one(aid, agent) for aid, agent in self._authors.items()
-        ])
+        results = await asyncio.gather(*[one(aid, agent) for aid, agent in self._authors.items()])
         # Sort by author_id for deterministic downstream consumption.
         # asyncio.gather preserves the input order in its return value
         # ALREADY, but the dict iteration order in Python 3.7+ is
@@ -446,10 +454,15 @@ class AgentBoard:
         return sorted(results, key=lambda d: d.author_id)
 
     async def _reviews_phase(
-        self, task: str, drafts: list[Draft], sem: asyncio.Semaphore,
+        self,
+        task: str,
+        drafts: list[Draft],
+        sem: asyncio.Semaphore,
     ) -> list[Review]:
         async def review_one(
-            draft: Draft, reviewer_id: str, reviewer: Agent,
+            draft: Draft,
+            reviewer_id: str,
+            reviewer: Agent,
         ) -> Review:
             # Skip drafts that errored — reviewing an empty string is
             # noise + would mask the actual upstream failure.
@@ -461,7 +474,8 @@ class AgentBoard:
                     error=f"upstream_author_error: {draft.error}",
                 )
             prompt = self._review_prompt.format(
-                task=task, draft_text=draft.text,
+                task=task,
+                draft_text=draft.text,
             )
             async with sem:
                 try:
@@ -476,7 +490,9 @@ class AgentBoard:
                 except Exception as exc:  # noqa: BLE001
                     log.warning(
                         "agent_board_review_failed reviewer=%s draft=%s err=%s",
-                        reviewer_id, draft.author_id, exc,
+                        reviewer_id,
+                        draft.author_id,
+                        exc,
                     )
                     return Review(
                         reviewer_id=reviewer_id,
@@ -487,11 +503,7 @@ class AgentBoard:
 
         # Build the N×K task list. Each draft × each reviewer = one
         # gather entry. The shared semaphore caps total parallelism.
-        tasks = [
-            review_one(d, rid, r)
-            for d in drafts
-            for rid, r in self._reviewers.items()
-        ]
+        tasks = [review_one(d, rid, r) for d in drafts for rid, r in self._reviewers.items()]
         if not tasks:
             return []
         results = await asyncio.gather(*tasks)
@@ -539,16 +551,10 @@ class AgentBoard:
         lines = ["=== REVIEWS ==="]
         for r in reviews:
             if r.error is not None:
-                lines.append(
-                    f"-- {r.reviewer_id} on {r.draft_author_id} "
-                    f"(ERROR: {r.error}) --"
-                )
+                lines.append(f"-- {r.reviewer_id} on {r.draft_author_id} " f"(ERROR: {r.error}) --")
             else:
                 score = f"score={r.score}" if r.score is not None else "no-score"
-                lines.append(
-                    f"-- {r.reviewer_id} on {r.draft_author_id} ({score}) --\n"
-                    f"{r.critique}"
-                )
+                lines.append(f"-- {r.reviewer_id} on {r.draft_author_id} ({score}) --\n" f"{r.critique}")
         return "\n".join(lines)
 
     @staticmethod
@@ -557,6 +563,7 @@ class AgentBoard:
         None if not found — most reviewer agents will include it
         because the default prompt asks for it, but no guarantee."""
         import re
+
         m = re.search(r"SCORE\s*:\s*(\d+(?:\.\d+)?)", critique, re.IGNORECASE)
         if not m:
             return None
@@ -568,7 +575,8 @@ class AgentBoard:
 
     @staticmethod
     def _fallback_advice(
-        drafts: list[Draft], reviews: list[Review],
+        drafts: list[Draft],
+        reviews: list[Review],
     ) -> str:
         """When the advisor fails, return the highest-mean-scored
         non-errored draft. Better than empty string; signals to the
@@ -578,16 +586,13 @@ class AgentBoard:
         for r in reviews:
             if r.error is None and r.score is not None:
                 scores.setdefault(r.draft_author_id, []).append(r.score)
-        ranked = [
-            (aid, sum(s) / len(s)) for aid, s in scores.items() if s
-        ]
+        ranked = [(aid, sum(s) / len(s)) for aid, s in scores.items() if s]
         ranked.sort(key=lambda x: x[1], reverse=True)
         good_drafts = {d.author_id: d for d in drafts if d.error is None}
         for aid, _score in ranked:
             if aid in good_drafts:
                 return (
-                    f"(advisor failed; falling back to highest-scored draft "
-                    f"from {aid})\n\n{good_drafts[aid].text}"
+                    f"(advisor failed; falling back to highest-scored draft " f"from {aid})\n\n{good_drafts[aid].text}"
                 )
         # No scored drafts; return the first non-errored draft
         for d in drafts:
@@ -602,7 +607,9 @@ class AgentBoard:
 def make_agent(fn: Callable[[str], Awaitable[str]]) -> Agent:
     """Wrap any async callable as an Agent. Useful for tests + demos
     where the agent is a one-off lambda."""
+
     class _CallableAgent:
         async def __call__(self, prompt: str) -> str:
             return await fn(prompt)
+
     return _CallableAgent()

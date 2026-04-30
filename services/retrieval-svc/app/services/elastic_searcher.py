@@ -13,6 +13,7 @@ code forgets to filter. Defense in depth, mirrors VectorSearcher.
 
 Locked by mcp/tests/drill_elastic_searcher_skeleton.py.
 """
+
 from __future__ import annotations
 
 import logging
@@ -104,7 +105,9 @@ class ElasticSearcher:
         except Exception as exc:  # noqa: BLE001 — degrade gracefully
             log.warning(
                 "elastic_search_failed index=%s tenant=%s err=%s",
-                self._index, tenant_id, exc,
+                self._index,
+                tenant_id,
+                exc,
             )
             return []
 

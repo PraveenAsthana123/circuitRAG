@@ -10,6 +10,7 @@ Every service returns:
 Consistency makes client code trivial: front-end has ONE error-parser and
 ONE pagination-handler.
 """
+
 from __future__ import annotations
 
 from typing import Any, Generic, TypeVar

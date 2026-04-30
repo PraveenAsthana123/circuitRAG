@@ -157,7 +157,7 @@ def _heal_resource(resource: str) -> str:
         "mcp_itsm": "/tmp/mcp_itsm.log",
     }
     log_path = log_paths.get(resource, f"/tmp/run_drills_heal_{resource}.log")
-    log_fh = open(log_path, "ab")
+    log_fh = open(log_path, "ab")  # noqa: SIM115 — handed to Popen below; closed when subprocess exits
     # start_new_session=True puts the child in its own session so a
     # future drill's `fuser -k <port>/tcp` only kills the listener,
     # not the whole shell. The new session detaches from the runner's
@@ -185,7 +185,11 @@ DEFAULT_RESOURCES: frozenset[tuple[str, str]] = frozenset({
     ("pg", "write"),
 })
 
-GREEN = "\033[32m"; RED = "\033[31m"; YELLOW = "\033[33m"; BOLD = "\033[1m"; NC = "\033[0m"
+GREEN = "\033[32m"
+RED = "\033[31m"
+YELLOW = "\033[33m"
+BOLD = "\033[1m"
+NC = "\033[0m"
 
 
 @dataclass
@@ -442,7 +446,6 @@ def _junit_xml(drills: list[Drill], elapsed: float) -> str:
              .replace("\n", "&#10;")
         )
 
-    passed = sum(1 for d in drills if d.status == "passed")
     failed = sum(1 for d in drills if d.status == "failed")
     skipped = sum(1 for d in drills if d.status in ("pending", "skipped"))
     total = len(drills)

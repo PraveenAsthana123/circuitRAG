@@ -28,6 +28,7 @@ Composes with:
   * Sidecar Advisor council (services/sidecar-advisor/council.py)
     - bulk PR review across N files.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -49,7 +50,7 @@ class TaskResult(Generic[T, R]):
     raised; ``result`` is then the type's zero-equivalent (None for
     most types). Submission order preserved via ``index``."""
 
-    index: int           # submission index, NOT completion order
+    index: int  # submission index, NOT completion order
     task: T
     result: R | None
     error: str | None = None
@@ -126,7 +127,10 @@ class DispatchPool(Generic[T, R]):
         t_start = time.monotonic()
         if not tasks:
             return [], PoolStats(
-                submitted=0, completed=0, failed=0, duration_s=0.0,
+                submitted=0,
+                completed=0,
+                failed=0,
+                duration_s=0.0,
             )
 
         # Reset peak tracking per dispatch
@@ -134,10 +138,7 @@ class DispatchPool(Generic[T, R]):
         self._peak_in_flight = 0
 
         sem = asyncio.Semaphore(self._max_parallel)
-        coros = [
-            self._run_one(idx, task, sem)
-            for idx, task in enumerate(tasks)
-        ]
+        coros = [self._run_one(idx, task, sem) for idx, task in enumerate(tasks)]
         # gather preserves input order; we capture errors per-task
         # inside _run_one so gather itself never sees an exception.
         results: list[TaskResult[T, R]] = await asyncio.gather(*coros)
@@ -184,22 +185,25 @@ class DispatchPool(Generic[T, R]):
                     duration_s=time.monotonic() - t0,
                 )
             except TimeoutError:
-                msg = (
-                    f"TimeoutError: task exceeded "
-                    f"{self._per_task_timeout_s:.1f}s"
-                )
+                msg = f"TimeoutError: task exceeded " f"{self._per_task_timeout_s:.1f}s"
                 log.warning("dispatch_pool_timeout idx=%d", index)
                 return TaskResult(
-                    index=index, task=task, result=None,
-                    error=msg, duration_s=time.monotonic() - t0,
+                    index=index,
+                    task=task,
+                    result=None,
+                    error=msg,
+                    duration_s=time.monotonic() - t0,
                 )
             except Exception as exc:  # noqa: BLE001 - error contained
                 log.warning(
                     "dispatch_pool_task_failed idx=%d err=%s",
-                    index, exc,
+                    index,
+                    exc,
                 )
                 return TaskResult(
-                    index=index, task=task, result=None,
+                    index=index,
+                    task=task,
+                    result=None,
                     error=f"{type(exc).__name__}: {exc}",
                     duration_s=time.monotonic() - t0,
                 )

@@ -42,6 +42,7 @@ Env config (read by the lifespan, not by this module):
   DOCUMIND_REPLAY_WORKER_INTERVAL_S (default 20)
   DOCUMIND_REPLAY_WORKER_BACKOFF_S  (default 60)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -119,8 +120,7 @@ try:
 
     _draft_replay_total = _PromCounter(
         "documind_draft_replay_total",
-        "Draft replay attempts by the autonomous worker, labelled by "
-        "MCP namespace and outcome.",
+        "Draft replay attempts by the autonomous worker, labelled by " "MCP namespace and outcome.",
         labelnames=["namespace", "outcome"],
     )
     # Backlog-age gauge — surfaces the slow-leak case the auto-reject
@@ -143,8 +143,7 @@ try:
     # the per-namespace dimension is enough to trigger an alert.
     _draft_pending_age_seconds = _PromGauge(
         "documind_draft_pending_age_seconds",
-        "Age of the oldest pending draft per MCP namespace, in seconds. "
-        "Updated each sweep cycle.",
+        "Age of the oldest pending draft per MCP namespace, in seconds. " "Updated each sweep cycle.",
         labelnames=["namespace"],
     )
 except ImportError:  # pragma: no cover — prometheus_client is optional
@@ -248,9 +247,9 @@ class DraftReplayWorker:
             "cycles": 0,
             "replayed": 0,
             "skipped_backoff": 0,
-            "cb_wait_skips": 0,       # per-draft, not per-cycle anymore
-            "degraded_bailouts": 0,   # per-namespace, not per-cycle
-            "no_server_skips": 0,     # draft has no client for its namespace
+            "cb_wait_skips": 0,  # per-draft, not per-cycle anymore
+            "degraded_bailouts": 0,  # per-namespace, not per-cycle
+            "no_server_skips": 0,  # draft has no client for its namespace
             "errors": 0,
         }
 
@@ -263,7 +262,9 @@ class DraftReplayWorker:
             return
         log.info(
             "draft_replay_worker_start tenants=%d interval=%ds backoff=%ds",
-            len(self._tenants), self._interval, self._backoff,
+            len(self._tenants),
+            self._interval,
+            self._backoff,
         )
         self._stop.clear()
         self._task = asyncio.create_task(self._loop(), name="draft_replay_worker")
@@ -350,7 +351,9 @@ class DraftReplayWorker:
             if not drafts:
                 continue
             log.info(
-                "draft_replay_sweep tenant=%s pending=%d", tenant, len(drafts),
+                "draft_replay_sweep tenant=%s pending=%d",
+                tenant,
+                len(drafts),
             )
             # Pre-scan: compute oldest age per namespace BEFORE the
             # per-draft loop. The loop short-circuits on ``bailed``,
@@ -358,16 +361,12 @@ class DraftReplayWorker:
             # namespaces — exactly the namespaces an operator most
             # wants to watch ageing.
             for draft in drafts:
-                ns = (
-                    draft.tool.split(".", 1)[0] if "." in draft.tool else draft.tool
-                )
+                ns = draft.tool.split(".", 1)[0] if "." in draft.tool else draft.tool
                 age = max(0.0, wall_now - float(draft.created_at))
                 if age > oldest_age_per_namespace.get(ns, 0.0):
                     oldest_age_per_namespace[ns] = age
             for draft in drafts:
-                namespace = (
-                    draft.tool.split(".", 1)[0] if "." in draft.tool else draft.tool
-                )
+                namespace = draft.tool.split(".", 1)[0] if "." in draft.tool else draft.tool
                 if namespace in bailed:
                     # Already decided to skip this namespace this cycle
                     continue
@@ -378,7 +377,8 @@ class DraftReplayWorker:
                     _bump(namespace, "no_server")
                     log.info(
                         "draft_replay_no_server draft_id=%s namespace=%s — leaving pending",
-                        draft.draft_id, namespace,
+                        draft.draft_id,
+                        namespace,
                     )
                     continue
 
@@ -390,7 +390,8 @@ class DraftReplayWorker:
                     _bump(namespace, "cb_wait")
                     log.info(
                         "draft_replay_cb_wait draft_id=%s namespace=%s cb=open",
-                        draft.draft_id, namespace,
+                        draft.draft_id,
+                        namespace,
                     )
                     continue
 
@@ -402,7 +403,8 @@ class DraftReplayWorker:
                 self._last_attempt[draft.draft_id] = now
                 try:
                     result = await client.resolve_draft(
-                        draft.draft_id, tenant_id=tenant,
+                        draft.draft_id,
+                        tenant_id=tenant,
                         actor_type="worker",  # governance-visible; not "service"
                         actor_id=self._service_actor_id,
                         auth_token=self._service_auth_token,
@@ -412,18 +414,21 @@ class DraftReplayWorker:
                     _bump(namespace, "error")
                     log.error(
                         "draft_replay_call_failed draft_id=%s namespace=%s err=%s",
-                        draft.draft_id, namespace, exc,
+                        draft.draft_id,
+                        namespace,
+                        exc,
                     )
                     continue
                 if result.ok:
                     self.stats["replayed"] += 1
                     _bump(namespace, "replayed")
-                    ticket = (result.data or {}).get("ticket_id") or (
-                        result.data or {}
-                    ).get("incident_id")
+                    ticket = (result.data or {}).get("ticket_id") or (result.data or {}).get("incident_id")
                     log.info(
                         "draft_replayed_by_worker draft_id=%s tenant=%s namespace=%s ticket=%s",
-                        draft.draft_id, tenant, namespace, ticket,
+                        draft.draft_id,
+                        tenant,
+                        namespace,
+                        ticket,
                     )
                 elif result.degraded:
                     # Namespace-scoped bailout: skip remaining drafts
@@ -435,7 +440,8 @@ class DraftReplayWorker:
                     log.info(
                         "draft_replay_namespace_down draft_id=%s namespace=%s "
                         "— skipping rest of this namespace's drafts this cycle",
-                        draft.draft_id, namespace,
+                        draft.draft_id,
+                        namespace,
                     )
                 else:
                     # 4xx-shaped failure or business rejection that
@@ -447,7 +453,9 @@ class DraftReplayWorker:
                     _bump(namespace, "failed")
                     log.warning(
                         "draft_replay_failed draft_id=%s namespace=%s err=%s",
-                        draft.draft_id, namespace, result.error,
+                        draft.draft_id,
+                        namespace,
+                        result.error,
                     )
                     if self._auto_reject_threshold > 0:
                         prev = self._consecutive_failures.get(draft.draft_id, 0)
@@ -455,7 +463,11 @@ class DraftReplayWorker:
                         self._consecutive_failures[draft.draft_id] = new_count
                         if new_count >= self._auto_reject_threshold:
                             await self._auto_reject(
-                                client, draft, tenant, namespace, result.error,
+                                client,
+                                draft,
+                                tenant,
+                                namespace,
+                                result.error,
                             )
 
         # Set the backlog-age gauge for EVERY known namespace — not
@@ -511,7 +523,9 @@ class DraftReplayWorker:
         except Exception as exc:  # noqa: BLE001 — auto-reject must never wedge sweep
             log.error(
                 "draft_auto_reject_call_failed draft_id=%s namespace=%s err=%s",
-                draft.draft_id, namespace, exc,
+                draft.draft_id,
+                namespace,
+                exc,
             )
             return
 
@@ -519,7 +533,10 @@ class DraftReplayWorker:
             _bump(namespace, "auto_rejected")
             log.warning(
                 "draft_auto_rejected draft_id=%s namespace=%s threshold=%d reason=%r",
-                draft.draft_id, namespace, self._auto_reject_threshold, reason,
+                draft.draft_id,
+                namespace,
+                self._auto_reject_threshold,
+                reason,
             )
             # Cleanup the per-draft counter so an operator manually
             # reopening this draft id (rare, requires DB intervention)
@@ -534,5 +551,7 @@ class DraftReplayWorker:
             # cycle whether the draft is gone.
             log.info(
                 "draft_auto_reject_lost_race draft_id=%s namespace=%s err=%s",
-                draft.draft_id, namespace, result.error,
+                draft.draft_id,
+                namespace,
+                result.error,
             )

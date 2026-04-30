@@ -1,4 +1,5 @@
 """Parser registry — picks the right parser by file extension."""
+
 from __future__ import annotations
 
 import os

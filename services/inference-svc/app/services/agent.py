@@ -17,6 +17,7 @@ Security note: in production, the scope check happens here against the
 JWT-derived role; we defer that to an explicit follow-up (tracked as a
 gap in docs/DEMO-DAY-3-MCP.md).
 """
+
 from __future__ import annotations
 
 import logging
@@ -154,7 +155,8 @@ class AgentService:
         except Exception as exc:  # noqa: BLE001 — MCP down is a valid state
             log.warning(
                 "agent_tool_catalog_unreachable tool=%s err=%s — falling back to convention",
-                tool_name, exc,
+                tool_name,
+                exc,
             )
             return [required_role_for_tool(tool_name)]
         tool = next((t for t in tools if t.get("name") == tool_name), None)
@@ -198,11 +200,14 @@ class AgentService:
         if not request.allow_actions:
             log.info(
                 "agent_action_declined tool=%s reason=allow_actions_false corr=%s",
-                intent.tool, correlation_id,
+                intent.tool,
+                correlation_id,
             )
             record_agent_denial(reason="allow_actions_false", tool=intent.tool)
             return AgentAskResponse(
-                **base.model_dump(), action=None, intent="action_declined",
+                **base.model_dump(),
+                action=None,
+                intent="action_declined",
             )
 
         # 2b. Scope pre-check — if auth is enforced and the caller
@@ -224,7 +229,10 @@ class AgentService:
             if required_scopes and set(required_scopes).isdisjoint(have):
                 log.info(
                     "agent_action_denied_scope tool=%s required=%s have=%s corr=%s",
-                    intent.tool, sorted(required_scopes), sorted(have), correlation_id,
+                    intent.tool,
+                    sorted(required_scopes),
+                    sorted(have),
+                    correlation_id,
                 )
                 record_agent_denial(reason="scope", tool=intent.tool)
                 # Audit the rejection — invisible denials are the kind
@@ -265,7 +273,8 @@ class AgentService:
         if client is None:
             log.warning(
                 "agent_no_client_for_namespace tool=%s corr=%s",
-                intent.tool, correlation_id,
+                intent.tool,
+                correlation_id,
             )
             unavailable = AgentAction(
                 tool=intent.tool,
@@ -285,7 +294,9 @@ class AgentService:
 
         log.info(
             "agent_invoking_tool tool=%s tenant=%s corr=%s",
-            intent.tool, tenant_id, correlation_id,
+            intent.tool,
+            tenant_id,
+            correlation_id,
         )
         # Forward the caller-supplied idempotency key (if any) so MCP's
         # cache dedupes retries end-to-end. Without this, the MCPClient

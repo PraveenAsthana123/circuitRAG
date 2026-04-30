@@ -1,4 +1,5 @@
 """Inference request/response schemas (Design Area 33 — Output Contract)."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -35,6 +36,7 @@ class AskResponse(BaseModel):
 
 class AgentAction(BaseModel):
     """Result of an agent flow that touched an MCP tool."""
+
     tool: str = Field(description="Tool name, e.g. hr.leave_request")
     ok: bool = Field(description="True if the tool succeeded")
     result: dict[str, Any] | None = Field(default=None, description="Tool result payload")
@@ -67,10 +69,7 @@ class AgentAskResponse(AskResponse):
     )
     intent: str = Field(
         default="answer",
-        description=(
-            "answer | action | action_declined | action_denied_scope | "
-            "action_unavailable"
-        ),
+        description=("answer | action | action_declined | action_denied_scope | " "action_unavailable"),
     )
 
 
@@ -116,10 +115,7 @@ class DraftRejectRequest(BaseModel):
     reason: str = Field(
         min_length=1,
         max_length=500,
-        description=(
-            "Free-form reason. Required — an unexplained rejection is an "
-            "audit gap, not a feature."
-        ),
+        description=("Free-form reason. Required — an unexplained rejection is an " "audit gap, not a feature."),
     )
 
 
@@ -129,10 +125,12 @@ class DraftRejectResponse(BaseModel):
     draft_id: str
     ok: bool
     status: str | None = Field(
-        default=None, description="'rejected' on success",
+        default=None,
+        description="'rejected' on success",
     )
     reason: str | None = Field(
-        default=None, description="Echoed back for client correlation",
+        default=None,
+        description="Echoed back for client correlation",
     )
     error: dict[str, Any] | None = None
 
@@ -207,18 +205,12 @@ class ToolStats(BaseModel):
     tool: str = Field(description="Tool name, e.g. 'hr.leave_request'")
     calls: dict[str, int] = Field(
         default_factory=dict,
-        description=(
-            "outcome → count. outcome ∈ {ok, error, replay, "
-            "in_progress, conflict, http_<status>, ...}"
-        ),
+        description=("outcome → count. outcome ∈ {ok, error, replay, " "in_progress, conflict, http_<status>, ...}"),
     )
     latency: ToolLatencyStats = Field(default_factory=ToolLatencyStats)
     denials: dict[str, int] = Field(
         default_factory=dict,
-        description=(
-            "reason → count. reason ∈ {NOT_AUTHENTICATED, INVALID_TOKEN, "
-            "INSUFFICIENT_SCOPE, UNKNOWN}."
-        ),
+        description=("reason → count. reason ∈ {NOT_AUTHENTICATED, INVALID_TOKEN, " "INSUFFICIENT_SCOPE, UNKNOWN}."),
     )
 
 
@@ -407,10 +399,7 @@ class UpstreamHealthRow(BaseModel):
     on without reading code."""
 
     name: str = Field(
-        description=(
-            "Stable identifier — 'retrieval-svc', 'ollama', "
-            "'mcp_hr', 'mcp_itsm', 'governance-db', etc."
-        ),
+        description=("Stable identifier — 'retrieval-svc', 'ollama', " "'mcp_hr', 'mcp_itsm', 'governance-db', etc."),
     )
     kind: str = Field(
         description=(
@@ -419,9 +408,7 @@ class UpstreamHealthRow(BaseModel):
         ),
     )
     url: str = Field(
-        description=(
-            "URL or endpoint hint. For 'db' kind the host:port string."
-        ),
+        description=("URL or endpoint hint. For 'db' kind the host:port string."),
     )
     reachable: bool
     latency_ms: float | None = Field(

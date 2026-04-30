@@ -34,7 +34,7 @@ import html
 import json
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -186,7 +186,7 @@ def render_html(
     council_logs = _read_log_tail(council_log_path)
     patterns = _read_patterns(db_path)
 
-    rendered_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    rendered_at = datetime.now(UTC).isoformat(timespec="seconds")
 
     parts: list[str] = [
         "<!DOCTYPE html>",

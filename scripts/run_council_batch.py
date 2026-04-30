@@ -65,7 +65,7 @@ def main() -> int:
         "total_elapsed_s": sum(r["elapsed_s"] for r in runs),
     }
     SUMMARY.write_text(json.dumps(summary, indent=2))
-    print(f"\n\n=== BATCH SUMMARY ===")
+    print("\n\n=== BATCH SUMMARY ===")
     print(f"Total: {summary['unique_ids_run']} unique medium issues")
     print(f"Elapsed: {summary['total_elapsed_s']:.0f}s ({summary['total_elapsed_s']/60:.1f} min)")
     print(f"Summary written to {SUMMARY.relative_to(REPO)}")

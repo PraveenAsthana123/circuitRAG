@@ -20,6 +20,7 @@ The saga is called from the upload route, but can also be re-invoked from
 a cron recovery task that inspects ``ingestion.sagas`` for rows stuck in
 ``state = 'running'`` longer than the SLA.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -170,8 +171,7 @@ class DocumentIngestionSaga:
             async with self._db.tenant_connection(self._tenant_id) as conn:
                 # Guard: state must still be INDEXED (no concurrent flip).
                 row = await conn.fetchrow(
-                    "SELECT state, version FROM ingestion.documents "
-                    "WHERE id = $1",
+                    "SELECT state, version FROM ingestion.documents " "WHERE id = $1",
                     self._document_id,
                 )
                 if row is None or row["state"] != STATE_INDEXED:
@@ -185,7 +185,9 @@ class DocumentIngestionSaga:
                     SET state = $1, version = version + 1, updated_at = NOW()
                     WHERE id = $2 AND version = $3
                     """,
-                    STATE_ACTIVE, self._document_id, row["version"],
+                    STATE_ACTIVE,
+                    self._document_id,
+                    row["version"],
                 )
                 await self._publish_outbox(
                     conn,
@@ -196,9 +198,7 @@ class DocumentIngestionSaga:
                         "embedding_model": self._embedder.model_name,
                     },
                 )
-            await self._saga_repo.mark_complete(
-                tenant_id=self._tenant_id, saga_id=self._saga_id
-            )
+            await self._saga_repo.mark_complete(tenant_id=self._tenant_id, saga_id=self._saga_id)
             log.info("saga_complete doc=%s", self._document_id)
             return {"saga_id": str(self._saga_id), "document_id": str(self._document_id)}
 
@@ -247,7 +247,8 @@ class DocumentIngestionSaga:
             except Exception as comp_exc:  # noqa: BLE001
                 log.exception(
                     "saga_compensation_failed step=%s doc=%s",
-                    step.name, self._document_id,
+                    step.name,
+                    self._document_id,
                 )
                 # Mark saga as "stuck" — alerts should fire on state=failed + unclean compensation
                 await self._saga_repo.mark_failed(
@@ -259,9 +260,7 @@ class DocumentIngestionSaga:
                 # Don't raise — continue trying to compensate remaining steps.
                 continue
         if self._saga_id is not None:
-            await self._saga_repo.mark_compensated(
-                tenant_id=self._tenant_id, saga_id=self._saga_id
-            )
+            await self._saga_repo.mark_compensated(tenant_id=self._tenant_id, saga_id=self._saga_id)
 
     # ------------------------------------------------------------------
     # Steps
@@ -274,9 +273,7 @@ class DocumentIngestionSaga:
         )
         parser: DocumentParser = self._parsers.get(self._filename)
         # Parsing is CPU-bound; run in a thread so we don't block the loop.
-        self._parsed_doc = await asyncio.to_thread(
-            parser.parse, self._raw_bytes, filename=self._filename
-        )
+        self._parsed_doc = await asyncio.to_thread(parser.parse, self._raw_bytes, filename=self._filename)
         await self._document_repo.transition_state(
             tenant_id=self._tenant_id,
             document_id=self._document_id,
@@ -318,7 +315,10 @@ class DocumentIngestionSaga:
         if rejected > 0:
             log.warning(
                 "chunks_poisoned rejected=%d redacted=%d total=%d doc=%s",
-                rejected, redacted, len(raw_chunks), self._document_id,
+                rejected,
+                redacted,
+                len(raw_chunks),
+                self._document_id,
             )
 
         self._chunks = sanitized
@@ -341,9 +341,7 @@ class DocumentIngestionSaga:
         return {"chunks": len(self._chunks)}
 
     async def _compensate_chunk(self) -> None:
-        await self._chunk_repo.delete_by_document(
-            tenant_id=self._tenant_id, document_id=self._document_id
-        )
+        await self._chunk_repo.delete_by_document(tenant_id=self._tenant_id, document_id=self._document_id)
 
     async def _step_embed(self) -> dict[str, Any]:
         if not self._chunks:
@@ -357,7 +355,7 @@ class DocumentIngestionSaga:
         batch_size = 16
         self._vectors = []
         for start in range(0, len(self._chunks), batch_size):
-            batch = self._chunks[start:start + batch_size]
+            batch = self._chunks[start : start + batch_size]
             vecs = await self._embedder.embed_many([c.text for c in batch])
             self._vectors.extend(vecs)
 
@@ -409,9 +407,7 @@ class DocumentIngestionSaga:
         return {"chunks_linked": len(graph_chunks)}
 
     async def _compensate_graph(self) -> None:
-        await self._neo4j_repo.delete_document(
-            tenant_id=self._tenant_id, document_id=self._document_id
-        )
+        await self._neo4j_repo.delete_document(tenant_id=self._tenant_id, document_id=self._document_id)
 
     async def _step_index(self) -> dict[str, Any]:
         await self._document_repo.transition_state(
@@ -448,6 +444,4 @@ class DocumentIngestionSaga:
         return {"indexed_vectors": n}
 
     async def _compensate_index(self) -> None:
-        await self._qdrant_repo.delete_document(
-            tenant_id=self._tenant_id, document_id=self._document_id
-        )
+        await self._qdrant_repo.delete_document(tenant_id=self._tenant_id, document_id=self._document_id)

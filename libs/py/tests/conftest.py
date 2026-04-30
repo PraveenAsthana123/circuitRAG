@@ -4,6 +4,7 @@ These tests exercise ONLY the shared library — no service code. Service-
 specific tests live under ``services/<svc>/tests/`` with their own
 conftest that sets up that service's path.
 """
+
 from __future__ import annotations
 
 import asyncio

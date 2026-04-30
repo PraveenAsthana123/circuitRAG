@@ -1,4 +1,5 @@
 """Retrieval request/response schemas (Design Area 34 — Retrieval Schema)."""
+
 from __future__ import annotations
 
 from typing import Any

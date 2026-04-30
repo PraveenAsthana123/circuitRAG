@@ -20,6 +20,7 @@ Usage::
         store=IdempotencyStore(redis_client, ttl_seconds=86400),
     )
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,9 +44,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.store = store
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         if request.method not in _MUTATING:
             return await call_next(request)
 
@@ -86,6 +85,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             body: Any
             try:
                 import json
+
                 body = json.loads(body_bytes.decode("utf-8") or "null")
             except Exception:
                 body = body_bytes.decode("utf-8", errors="replace")

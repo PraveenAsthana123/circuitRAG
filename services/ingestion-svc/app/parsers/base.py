@@ -4,6 +4,7 @@ Parser interface (Design Area 65 — Design-for-Change).
 Every parser implements this protocol. Add a new format = add a class +
 register it. Zero changes elsewhere.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

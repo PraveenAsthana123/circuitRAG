@@ -22,6 +22,7 @@ Each error carries:
 * ``http_status`` — default HTTP status for the FastAPI handler.
 * ``details`` — optional structured context (safe to log and return).
 """
+
 from __future__ import annotations
 
 from typing import Any

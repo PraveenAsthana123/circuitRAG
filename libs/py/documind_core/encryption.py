@@ -12,6 +12,7 @@ in the process's env var, not in the DB).
 Do NOT use this for authentication (password storage) — use a proper
 KDF like argon2 via :mod:`passlib` for that.
 """
+
 from __future__ import annotations
 
 import logging
@@ -59,7 +60,7 @@ class Cipher:
             # Legacy plaintext or already-decoded — let callers decide.
             return ciphertext
 
-        token = ciphertext[len(_SENTINEL):]
+        token = ciphertext[len(_SENTINEL) :]
         try:
             return self._fernet.decrypt(token.encode()).decode()
         except InvalidToken:

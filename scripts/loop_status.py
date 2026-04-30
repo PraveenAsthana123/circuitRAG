@@ -42,7 +42,7 @@ import json
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -148,7 +148,7 @@ def _ollama_model_count() -> int:
 def collect_status() -> dict:
     """Gather all status into a single dict."""
     status: dict = {
-        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     warnings: list[str] = []
     errors: list[str] = []
@@ -189,7 +189,7 @@ def collect_status() -> dict:
     else:
         try:
             ts = datetime.fromisoformat(drill["timestamp"])
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             age = int((now - ts).total_seconds())
         except (KeyError, ValueError):
             age = -1
@@ -217,11 +217,14 @@ def collect_status() -> dict:
         # that were later cleared by a subsequent APPROVE.
         trailing_rejects = _trailing_reject_entries(verdicts, limit=10)
         status["watcher_recent_rejects"] = len(trailing_rejects)
-        if status["watcher_recent_rejects"] > 0 and not drill_failed_now:
-            # Suppress only the specific "rule 1 fired, then drills were
-            # repaired locally" case. Other live REJECTs (scope/policy/etc.)
-            # must still surface even if the latest drill snapshot is green.
-            if all(v.get("rule_fired") == 1 for v in trailing_rejects):
+        # Suppress only the specific "rule 1 fired, then drills were repaired
+        # locally" case. Other live REJECTs (scope/policy/etc.) must still
+        # surface even if the latest drill snapshot is green.
+        if (
+            status["watcher_recent_rejects"] > 0
+            and not drill_failed_now
+            and all(v.get("rule_fired") == 1 for v in trailing_rejects)
+        ):
                 status["watcher_recent_rejects"] = 0
         if status["watcher_recent_rejects"] > 0:
             warnings.append(
@@ -273,7 +276,6 @@ def render_text(status: dict) -> str:
              "ERROR": "\033[31m"}.get(state, "")
     reset = "\033[0m" if color else ""
     lines = [f"{color}loop_state: {state}{reset}"]
-    skip_keys = {"loop_state", "warnings", "errors", "drill_failed_names"}
     for k in [
         "last_commit_verdict", "last_commit_rule_fired",
         "drill_status_age_s", "drill_outcome",

@@ -4,6 +4,7 @@ Ollama LLM client — wrapped in a circuit breaker.
 Supports streaming (SSE) and non-streaming generation. Counts tokens in
 the response for FinOps reporting.
 """
+
 from __future__ import annotations
 
 import json

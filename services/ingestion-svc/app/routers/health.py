@@ -1,4 +1,5 @@
 """Health check endpoint — liveness + readiness (Design Area 49)."""
+
 from __future__ import annotations
 
 from documind_core.schemas import HealthResponse

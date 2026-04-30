@@ -13,6 +13,7 @@ counts (Qdrant has a per-collection overhead). For very large tenants,
 we'd shard them into dedicated collections — that decision lives in
 governance, not code.
 """
+
 from __future__ import annotations
 
 import logging
@@ -72,9 +73,7 @@ class QdrantRepo:
             vectors_config=VectorParams(size=self._dimension, distance=Distance.COSINE),
             hnsw_config=HnswConfigDiff(m=16, ef_construct=128),
             quantization_config=ScalarQuantization(
-                scalar=ScalarQuantizationConfig(
-                    type=ScalarType.INT8, quantile=0.99, always_ram=True
-                )
+                scalar=ScalarQuantizationConfig(type=ScalarType.INT8, quantile=0.99, always_ram=True)
             ),
         )
         # Payload indexes — critical for tenant filter performance

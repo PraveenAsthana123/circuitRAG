@@ -20,6 +20,7 @@ For higher-stakes retrieval, we'd chain RRF → cross-encoder. That's a
 simple pipeline (rerank the RRF top-N with a heavier model) and drops
 in here.
 """
+
 from __future__ import annotations
 
 import logging
@@ -63,6 +64,8 @@ class ReciprocalRankFusion:
 
         log.info(
             "rrf_fused inputs=%d candidates=%d returned=%d",
-            len(ranked_lists), len(fused), min(top_k, len(fused)),
+            len(ranked_lists),
+            len(fused),
+            min(top_k, len(fused)),
         )
         return fused[:top_k]

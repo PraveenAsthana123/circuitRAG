@@ -1,4 +1,5 @@
 """Retrieval service FastAPI application."""
+
 from __future__ import annotations
 
 import logging
@@ -54,9 +55,7 @@ def create_app() -> FastAPI:
 
     redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
 
-    embedder = OllamaEmbedderClient(
-        base_url=settings.ollama_url, model=settings.ollama_embed_model
-    )
+    embedder = OllamaEmbedderClient(base_url=settings.ollama_url, model=settings.ollama_embed_model)
     vector = VectorSearcher(
         url=settings.qdrant_url,
         collection=settings.qdrant_collection,
@@ -111,7 +110,9 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
-        allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
     app.add_middleware(CorrelationIdMiddleware)
     register_exception_handlers(app)

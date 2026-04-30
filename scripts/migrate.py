@@ -11,8 +11,8 @@ Tracks applied migrations in ``public._migrations`` (created by
 """
 from __future__ import annotations
 
-import asyncio
 import argparse
+import asyncio
 import hashlib
 import os
 import sys

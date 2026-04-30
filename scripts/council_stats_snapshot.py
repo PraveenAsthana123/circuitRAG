@@ -51,7 +51,7 @@ import json
 import logging
 import re
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 # Strict date format: exactly YYYY-MM-DD with dashes and zero-padded.
@@ -155,7 +155,7 @@ def take_snapshot(
         "fired_by_risk": fired_by_risk,
         "filtered_by_reason": filtered_by_reason,
         "skipped_by_reason": skipped_by_reason,
-        "snapshot_taken_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "snapshot_taken_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 
 
@@ -257,7 +257,7 @@ def cli() -> int:
             print(render_snapshots(rows))
         return 0
 
-    target = args.date or (datetime.now(timezone.utc).date() - timedelta(days=1))
+    target = args.date or (datetime.now(UTC).date() - timedelta(days=1))
     log_path = Path(args.log_path)
     row = take_snapshot(log_path, target)
     append_snapshot(snapshot_path, row)

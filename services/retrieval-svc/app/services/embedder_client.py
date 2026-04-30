@@ -1,4 +1,5 @@
 """Thin embedder for queries — reuses the same Ollama API as ingestion."""
+
 from __future__ import annotations
 
 import httpx
@@ -19,9 +20,7 @@ class OllamaEmbedderClient:
 
     async def embed_query(self, query: str) -> list[float]:
         async def _call() -> list[float]:
-            resp = await self._client.post(
-                "/api/embed", json={"model": self._model, "input": [query]}
-            )
+            resp = await self._client.post("/api/embed", json={"model": self._model, "input": [query]})
             if resp.status_code != 200:
                 raise ExternalServiceError(f"Ollama /api/embed → {resp.status_code}")
             return resp.json()["embeddings"][0]

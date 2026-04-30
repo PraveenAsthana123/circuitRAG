@@ -16,6 +16,7 @@ Learning notes
   structure (pages, headings, tables) so downstream chunking can respect
   boundaries and citations can point to exact pages.
 """
+
 from __future__ import annotations
 
 from .base import DocumentParser, ParsedDocument, ParsedPage

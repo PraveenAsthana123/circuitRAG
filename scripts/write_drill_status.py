@@ -43,7 +43,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -156,10 +156,7 @@ def is_readonly_drill(drill_path: Path) -> bool:
     try:
         with drill_path.open() as f:
             lines = [next(f) for _ in range(3)]
-        for ln in lines:
-            if ln.strip() == "# RESOURCES: readonly":
-                return True
-        return False
+        return any(ln.strip() == "# RESOURCES: readonly" for ln in lines)
     except (OSError, StopIteration):
         return False
 
@@ -172,7 +169,7 @@ def write_drill_status(
 ) -> dict:
     """Run every drill in `drill_paths`, write the status JSON.
     Returns the status dict."""
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    timestamp = datetime.now(UTC).isoformat(timespec="seconds")
     per_drill: dict[str, dict] = {}
     failed: list[str] = []
 

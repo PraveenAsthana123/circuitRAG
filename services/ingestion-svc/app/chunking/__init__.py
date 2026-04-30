@@ -14,6 +14,7 @@ document types benefit from different strategies:
 We package chunkers behind the :class:`Chunker` interface so downstream code
 is strategy-agnostic, and governance can swap strategies per tenant.
 """
+
 from .base import Chunk, Chunker
 from .recursive import RecursiveChunker
 from .token_counter import TokenCounter

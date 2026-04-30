@@ -57,10 +57,10 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Iterator
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -314,7 +314,7 @@ def build_webhook_payload(
     if fmt not in WEBHOOK_FORMATS:
         raise ValueError(f"webhook-format must be one of {WEBHOOK_FORMATS}; got {fmt!r}")
 
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    timestamp = datetime.now(UTC).isoformat(timespec="seconds")
     n = len(fired_normalized)
 
     if fmt == "generic":
@@ -740,7 +740,7 @@ def load_entries(
         return
     cutoff: datetime | None = None
     if days is not None:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
     with log_path.open() as f:
         for line in f:
             line = line.strip()
@@ -756,7 +756,7 @@ def load_entries(
                     try:
                         t = datetime.fromisoformat(ts)
                         if t.tzinfo is None:
-                            t = t.replace(tzinfo=timezone.utc)
+                            t = t.replace(tzinfo=UTC)
                         if t < cutoff:
                             continue
                     except ValueError:
@@ -860,7 +860,8 @@ def render(summary: dict) -> str:
     fired_total = sum(summary["fired_by_risk"].values())
     filtered_total = sum(summary["filtered_by_reason"].values())
     skipped_total = sum(summary["skipped_by_reason"].values())
-    pct = lambda n: f"{n / summary['total'] * 100:.1f}%"
+    def pct(n: int) -> str:
+        return f"{n / summary['total'] * 100:.1f}%"
     lines.append(f"  fired:    {fired_total:4d} ({pct(fired_total)})")
     for risk, n in sorted(summary["fired_by_risk"].items(),
                           key=lambda kv: -kv[1]):
@@ -891,7 +892,7 @@ def iso_week_key(timestamp_str: str) -> str | None:
     except ValueError:
         return None
     if t.tzinfo is None:
-        t = t.replace(tzinfo=timezone.utc)
+        t = t.replace(tzinfo=UTC)
     iso_year, iso_week, _ = t.isocalendar()
     return f"{iso_year}-W{iso_week:02d}"
 

@@ -5,6 +5,7 @@ Ollama exposes an OpenAI-compatible API. We call ``/api/embed`` with a batch
 of texts; Ollama returns one vector per text. Wrapped in a circuit breaker
 so a flaky Ollama doesn't cascade.
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,9 +39,7 @@ class OllamaEmbedder(EmbeddingProvider):
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._dimension = _MODEL_DIMENSIONS.get(model.split(":", 1)[0], 768)
-        self._client = httpx.AsyncClient(
-            base_url=self._base_url, timeout=timeout_seconds
-        )
+        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=timeout_seconds)
         self._breaker = breaker or CircuitBreaker(
             "ollama-embed",
             failure_threshold=5,

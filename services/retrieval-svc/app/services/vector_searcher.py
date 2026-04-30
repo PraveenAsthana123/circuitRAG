@@ -5,6 +5,7 @@ Tenant isolation: every query includes ``must_filter`` on ``tenant_id`` — the
 vector DB will NOT return cross-tenant hits even if a bug in calling code
 forgets to filter. This is defense-in-depth.
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,14 +46,16 @@ class VectorSearcher:
         hits: list[dict[str, Any]] = []
         for r in response.points:
             payload = r.payload or {}
-            hits.append({
-                "chunk_id": payload.get("chunk_id"),
-                "document_id": payload.get("document_id"),
-                "text": payload.get("text", ""),
-                "page_number": payload.get("page", 0),
-                "score": float(r.score),
-                "source": "vector",
-            })
+            hits.append(
+                {
+                    "chunk_id": payload.get("chunk_id"),
+                    "document_id": payload.get("document_id"),
+                    "text": payload.get("text", ""),
+                    "page_number": payload.get("page", 0),
+                    "score": float(r.score),
+                    "source": "vector",
+                }
+            )
         log.info("vector_search tenant=%s top_k=%d hits=%d", tenant_id, top_k, len(hits))
         return hits
 

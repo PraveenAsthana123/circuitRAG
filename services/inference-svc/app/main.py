@@ -1,4 +1,5 @@
 """Inference service FastAPI application."""
+
 from __future__ import annotations
 
 import logging
@@ -181,10 +182,7 @@ def create_app() -> FastAPI:
         # Opt-in via env; requires a tenant list because the runtime role
         # is NOBYPASSRLS (can't enumerate tenants itself).
         app.state.draft_replay_worker = None
-        if (
-            app.state.mcp_client is not None
-            and os.getenv("DOCUMIND_REPLAY_WORKER_ENABLED", "false").lower() == "true"
-        ):
+        if app.state.mcp_client is not None and os.getenv("DOCUMIND_REPLAY_WORKER_ENABLED", "false").lower() == "true":
             from app.workers.draft_replay import DraftReplayWorker
 
             tenants_csv = os.getenv("DOCUMIND_REPLAY_WORKER_TENANTS", "").strip()
@@ -226,8 +224,8 @@ def create_app() -> FastAPI:
                         # with actor_id=NULL (regression to the old
                         # behaviour). Log loud so an operator notices.
                         log.error(
-                            "draft_replay_worker_token_invalid err=%s — "
-                            "worker will run but actor_id will be NULL", exc,
+                            "draft_replay_worker_token_invalid err=%s — " "worker will run but actor_id will be NULL",
+                            exc,
                         )
 
                 worker = DraftReplayWorker(
@@ -307,11 +305,15 @@ def create_app() -> FastAPI:
             audience=settings.jwt_audience,
         )
         app.add_middleware(
-            JWTAuthMiddleware, verifier=verifier, auth_required=auth_required,
+            JWTAuthMiddleware,
+            verifier=verifier,
+            auth_required=auth_required,
         )
         log.info(
             "jwt_auth_ready required=%s key=%s issuer=%s",
-            auth_required, settings.jwt_public_key_path, settings.jwt_issuer,
+            auth_required,
+            settings.jwt_public_key_path,
+            settings.jwt_issuer,
         )
     except FileNotFoundError as exc:
         if auth_required:
@@ -329,7 +331,9 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
-        allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
     app.add_middleware(CorrelationIdMiddleware)
     register_exception_handlers(app)

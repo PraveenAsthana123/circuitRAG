@@ -1,4 +1,5 @@
 """Inference-service configuration."""
+
 from __future__ import annotations
 
 from documind_core.config import BaseServiceSettings

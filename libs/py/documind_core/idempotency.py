@@ -12,6 +12,7 @@ retry because the server won't double-create.
 Storage: Redis with 24-hour TTL. If you need longer windows (billing
 compliance, legal replay), swap for a PostgreSQL table.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,9 +44,7 @@ class IdempotencyStore:
         # key reuse.
         return f"tenant:{tenant_id}:idem:{route}:{key}"
 
-    async def get(
-        self, *, tenant_id: str, route: str, key: str
-    ) -> StoredResponse | None:
+    async def get(self, *, tenant_id: str, route: str, key: str) -> StoredResponse | None:
         raw = await self._redis.get(self._key(tenant_id, route, key))
         if raw is None:
             return None
@@ -56,14 +55,10 @@ class IdempotencyStore:
             log.warning("idempotency_bad_payload")
             return None
 
-    async def put(
-        self, *, tenant_id: str, route: str, key: str, status_code: int, body: Any
-    ) -> None:
+    async def put(self, *, tenant_id: str, route: str, key: str, status_code: int, body: Any) -> None:
         payload = json.dumps(
             {"status_code": status_code, "body": body},
             default=str,
             separators=(",", ":"),
         )
-        await self._redis.setex(
-            self._key(tenant_id, route, key), self._ttl, payload
-        )
+        await self._redis.setex(self._key(tenant_id, route, key), self._ttl, payload)

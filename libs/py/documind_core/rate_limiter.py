@@ -22,6 +22,7 @@ Every key is namespaced ``tenant:{tenant_id}:rl:{endpoint}`` so no
 cross-tenant interference. Global limits (anonymous, per-IP) use
 ``ip:{ip}:rl:...``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -169,9 +170,7 @@ class RateLimiter:
         cost: int = 1,
     ) -> LimitResult:
         """Convenience: raise :class:`RateLimitedError` if over limit."""
-        result = await self.check(
-            key=key, limit=limit, window_seconds=window_seconds, cost=cost
-        )
+        result = await self.check(key=key, limit=limit, window_seconds=window_seconds, cost=cost)
         if not result.allowed:
             raise RateLimitedError(
                 f"Rate limit exceeded ({result.limit} per {window_seconds}s)",

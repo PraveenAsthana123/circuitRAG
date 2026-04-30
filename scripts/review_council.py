@@ -32,7 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -95,7 +95,7 @@ def write_decision(issue_id: str, decision: str, note: str = "") -> None:
         "id": issue_id,
         "decision": decision,
         "note": note,
-        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "ts": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     with DECISIONS.open("a") as f:
         f.write(json.dumps(row) + "\n")
@@ -123,12 +123,12 @@ def print_council(issue_id: str, row: dict) -> None:
 def summary(rows: list[dict], decisions: dict[str, dict]) -> None:
     latest = latest_per_id(rows)
     print(f"\n{'='*70}")
-    print(f"COUNCIL REVIEW SUMMARY")
+    print("COUNCIL REVIEW SUMMARY")
     print(f"{'='*70}")
     print(f"Total council audit rows: {len(rows)}")
     print(f"Unique issues:            {len(latest)}")
     print(f"Decisions recorded:       {len(decisions)}")
-    print(f"\nPer-issue state:")
+    print("\nPer-issue state:")
     for rid in sorted(latest):
         decision = decisions.get(rid, {}).get("decision", "PENDING")
         ts = latest[rid].get("ts", "?")[-12:]
@@ -145,13 +145,13 @@ def interactive(rows: list[dict], decisions: dict[str, dict], rerun: bool) -> No
     for rid in sorted(pending_ids):
         print_council(rid, latest[rid])
         while True:
-            ans = input(f"\n[a]pply / [s]kip / [r]eject / [q]uit > ").strip().lower()
+            ans = input("\n[a]pply / [s]kip / [r]eject / [q]uit > ").strip().lower()
             if ans == "q":
                 print("Quit; remaining issues unchanged.")
                 return
             if ans in ("a", "s", "r"):
                 kind = {"a": "applied", "s": "skip", "r": "reject"}[ans]
-                note = input(f"Note (optional): ").strip()
+                note = input("Note (optional): ").strip()
                 write_decision(rid, kind, note)
                 print(f"  recorded: {kind}")
                 break

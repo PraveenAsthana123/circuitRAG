@@ -1,4 +1,5 @@
 """Unit tests for the AI-governance primitives."""
+
 from __future__ import annotations
 
 import pytest
@@ -17,6 +18,7 @@ from documind_core.exceptions import PolicyViolationError, ValidationError
 # ---------------------------------------------------------------------------
 # PromptInjectionDetector
 # ---------------------------------------------------------------------------
+
 
 def test_injection_blocks_ignore_previous():
     det = PromptInjectionDetector()
@@ -46,6 +48,7 @@ def test_injection_raises_on_block():
 # PIIScanner
 # ---------------------------------------------------------------------------
 
+
 def test_pii_detects_ssn_and_email():
     pii = PIIScanner()
     text = "Reach out to jane@example.com; her SSN is 123-45-6789."
@@ -72,6 +75,7 @@ def test_pii_clean_text_no_findings():
 # AdversarialInputFilter
 # ---------------------------------------------------------------------------
 
+
 def test_adversarial_too_long_rejected():
     f = AdversarialInputFilter(max_chars=100)
     with pytest.raises(ValidationError):
@@ -92,6 +96,7 @@ def test_adversarial_benign_passes():
 # ---------------------------------------------------------------------------
 # ResponsibleAIChecker
 # ---------------------------------------------------------------------------
+
 
 def test_responsible_flags_protected_class_generalization():
     r = ResponsibleAIChecker()
@@ -137,14 +142,21 @@ def test_responsible_clean_response_no_flags():
 # AIExplainer
 # ---------------------------------------------------------------------------
 
+
 def test_explainer_builds_narrative_with_chunks():
     explanation = AIExplainer.build(
         question="q",
         answer="a",
         retrieval_strategy="hybrid",
         retrieved_chunks=[
-            {"chunk_id": "c1", "document_id": "d1", "score": 0.8,
-             "source": "vector", "page_number": 3, "text": "body text"},
+            {
+                "chunk_id": "c1",
+                "document_id": "d1",
+                "score": 0.8,
+                "source": "vector",
+                "page_number": 3,
+                "text": "body text",
+            },
         ],
         prompt_version="rag_answer_v1",
         model="llama3.1:8b",
@@ -178,6 +190,7 @@ def test_explainer_empty_retrieval_warns_in_narrative():
 # ---------------------------------------------------------------------------
 # InterpretabilityTrace
 # ---------------------------------------------------------------------------
+
 
 def test_trace_records_step_with_timing():
     trace = InterpretabilityTrace()

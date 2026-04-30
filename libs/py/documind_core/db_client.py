@@ -18,6 +18,7 @@ learn and a second performance cliff to find. asyncpg is the fastest
 PostgreSQL driver in Python (by a wide margin), exposes COPY + CURSOR, and
 returns ``Record`` objects that are dict-compatible — plenty.
 """
+
 from __future__ import annotations
 
 import logging
@@ -84,9 +85,7 @@ class DbClient:
     # Tenant-scoped connection
     # ------------------------------------------------------------------
     @asynccontextmanager
-    async def tenant_connection(
-        self, tenant_id: str
-    ) -> AsyncIterator[asyncpg.Connection]:
+    async def tenant_connection(self, tenant_id: str) -> AsyncIterator[asyncpg.Connection]:
         """
         Acquire a connection with ``app.current_tenant`` set — RLS policies
         on every tenant-scoped table will filter rows automatically.
@@ -103,9 +102,7 @@ class DbClient:
             # asyncpg's acquire()). Using SET (not SET LOCAL) leaks across
             # connection reuse — don't.
             async with conn.transaction():
-                await conn.execute(
-                    "SELECT set_config('app.current_tenant', $1, true)", tenant_id
-                )
+                await conn.execute("SELECT set_config('app.current_tenant', $1, true)", tenant_id)
                 yield conn
 
     # ------------------------------------------------------------------

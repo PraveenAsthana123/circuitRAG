@@ -1,4 +1,5 @@
 """Pydantic schemas (Design Area 30 — API Contracts)."""
+
 from __future__ import annotations
 
 from datetime import datetime

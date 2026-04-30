@@ -24,6 +24,7 @@ reimplement for three reasons:
 3. Learning: this is exactly the kind of building block worth
    understanding, not importing.
 """
+
 from __future__ import annotations
 
 import logging
@@ -58,15 +59,15 @@ class RecursiveChunker(Chunker):
     """
 
     DEFAULT_SEPARATORS: tuple[str, ...] = (
-        "\n\n",   # paragraph
-        "\n",     # line
-        ". ",     # sentence (approx — good enough for RAG)
+        "\n\n",  # paragraph
+        "\n",  # line
+        ". ",  # sentence (approx — good enough for RAG)
         "? ",
         "! ",
         "; ",
         ", ",
-        " ",      # word
-        "",       # char
+        " ",  # word
+        "",  # char
     )
 
     def __init__(
@@ -98,7 +99,11 @@ class RecursiveChunker(Chunker):
 
         log.info(
             "chunked pages=%d raw=%d final=%d target=%d overlap=%d",
-            len(document.pages), len(raw_pieces), len(chunks), self._target, self._overlap,
+            len(document.pages),
+            len(raw_pieces),
+            len(chunks),
+            self._target,
+            self._overlap,
         )
         return chunks
 
@@ -110,10 +115,7 @@ class RecursiveChunker(Chunker):
             return []
         if self._counter.count(page.text) <= self._target:
             return [_Piece(text=page.text.strip(), page_number=page.page_number)]
-        return [
-            _Piece(text=t, page_number=page.page_number)
-            for t in self._recursive_split(page.text)
-        ]
+        return [_Piece(text=t, page_number=page.page_number) for t in self._recursive_split(page.text)]
 
     def _recursive_split(self, text: str) -> list[str]:
         """Core recursion: try separators in order, split at the best fit."""
@@ -165,7 +167,7 @@ class RecursiveChunker(Chunker):
             if i > 0 and self._overlap > 0:
                 prev = pieces[i - 1].text
                 prev_tokens = self._counter._encoding.encode(prev, disallowed_special=())
-                tail = self._counter._encoding.decode(prev_tokens[-self._overlap:])
+                tail = self._counter._encoding.decode(prev_tokens[-self._overlap :])
                 text = tail + " " + text
 
             token_count = self._counter.count(text)

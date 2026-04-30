@@ -1,4 +1,5 @@
 """DOCX parser built on :mod:`python-docx`."""
+
 from __future__ import annotations
 
 import io
@@ -35,9 +36,7 @@ class DocxParser(DocumentParser):
             pages[-1].append(text)
 
         result_pages = [
-            ParsedPage(page_number=i, text="\n".join(lines))
-            for i, lines in enumerate(pages, start=1)
-            if lines
+            ParsedPage(page_number=i, text="\n".join(lines)) for i, lines in enumerate(pages, start=1) if lines
         ]
         title = doc.core_properties.title or filename
         return ParsedDocument(

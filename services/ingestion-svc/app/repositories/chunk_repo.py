@@ -1,4 +1,5 @@
 """Chunk metadata repository (Postgres, ingestion schema)."""
+
 from __future__ import annotations
 
 import json
@@ -61,9 +62,7 @@ class ChunkRepo(Repository):
         log.info("chunks_inserted document=%s n=%d", document_id, len(rows))
         return [dict(r) for r in rows]
 
-    async def list_by_document(
-        self, *, tenant_id: str, document_id: UUID
-    ) -> list[dict[str, Any]]:
+    async def list_by_document(self, *, tenant_id: str, document_id: UUID) -> list[dict[str, Any]]:
         async with self._db.tenant_connection(tenant_id) as conn:
             rows = await conn.fetch(
                 "SELECT * FROM ingestion.chunks WHERE document_id = $1 ORDER BY index",
@@ -71,13 +70,9 @@ class ChunkRepo(Repository):
             )
         return [dict(r) for r in rows]
 
-    async def delete_by_document(
-        self, *, tenant_id: str, document_id: UUID
-    ) -> int:
+    async def delete_by_document(self, *, tenant_id: str, document_id: UUID) -> int:
         async with self._db.tenant_connection(tenant_id) as conn:
-            result = await conn.execute(
-                "DELETE FROM ingestion.chunks WHERE document_id = $1", document_id
-            )
+            result = await conn.execute("DELETE FROM ingestion.chunks WHERE document_id = $1", document_id)
         # asyncpg returns "DELETE N"
         count = int(result.rsplit(" ", 1)[-1]) if result else 0
         log.info("chunks_deleted document=%s n=%d", document_id, count)
@@ -109,6 +104,7 @@ class ChunkRepo(Repository):
                     updated_at = NOW()
                 WHERE id = ANY($2::uuid[])
                 """,
-                model, chunk_ids,
+                model,
+                chunk_ids,
             )
         log.info("chunks_embedding_stamped count=%d model=%s", len(chunk_ids), model)

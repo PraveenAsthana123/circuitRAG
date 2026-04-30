@@ -27,7 +27,7 @@ import logging
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -99,7 +99,7 @@ async def capture_and_record(
             risk_level=None, files_touched=[],
         )
         _append_log(council_log_path, {
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "fired": False,
             "filtered": True,
             "reason": result.reason,
@@ -130,7 +130,7 @@ async def capture_and_record(
             files_touched=list(capture.files_touched),
         )
         _append_log(council_log_path, {
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "fired": False,
             "filtered": True,
             "reason": result.reason,
@@ -168,7 +168,7 @@ async def capture_and_record(
             files_touched=list(capture.files_touched),
         )
         _append_log(council_log_path, {
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "fired": False, "filtered": False,
             "reason": result.reason,
             "event_id": event_id,
@@ -193,7 +193,7 @@ async def capture_and_record(
             files_touched=list(capture.files_touched),
         )
         _append_log(council_log_path, {
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "fired": True, "filtered": False,
             "reason": result.reason,
             "event_id": event_id,
@@ -240,7 +240,7 @@ async def capture_and_record(
         files_touched=list(capture.files_touched),
     )
     _append_log(council_log_path, {
-        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
         "fired": True, "filtered": False,
         "reason": result.reason,
         "event_id": event_id,

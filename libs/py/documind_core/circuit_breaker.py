@@ -44,6 +44,7 @@ Usage::
             lambda: http_client.post("/api/generate", json=...)
         )
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -55,6 +56,7 @@ from typing import TypeVar
 
 try:
     from prometheus_client import Counter, Gauge
+
     _METRICS_ENABLED = True
 except ImportError:  # pragma: no cover — optional
     _METRICS_ENABLED = False
@@ -144,7 +146,9 @@ def record_breaker_state(name: str, state: str) -> None:
     prev = _last_state.get(name)
     if prev is not None and prev != state:
         _cb_transitions.labels(
-            name=name, from_state=prev, to_state=state,
+            name=name,
+            from_state=prev,
+            to_state=state,
         ).inc()
     _last_state[name] = state
 
@@ -290,7 +294,9 @@ class CircuitBreaker:
                 self._bump_opens()
                 log.warning(
                     "circuit_open name=%s failures=%d cause=%s",
-                    self.name, self._failure_count, type(exc).__name__,
+                    self.name,
+                    self._failure_count,
+                    type(exc).__name__,
                 )
 
     # ------------------------------------------------------------------
@@ -321,7 +327,9 @@ class CircuitBreaker:
             self._bump_opens()
             log.warning(
                 "circuit_open name=%s failures=%d cause=%s",
-                self.name, self._failure_count, type(exc).__name__,
+                self.name,
+                self._failure_count,
+                type(exc).__name__,
             )
 
     # ------------------------------------------------------------------

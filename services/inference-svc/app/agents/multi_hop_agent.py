@@ -18,6 +18,7 @@ This file is intentionally skeletal; the actual planner / synthesizer /
 critic implementation is scheduled for a subsequent session. The shape is
 here so tests and code review can exercise the control flow.
 """
+
 from __future__ import annotations
 
 import logging
@@ -142,7 +143,8 @@ class MultiHopRagAgent:
         else:
             answer = (
                 "I had to stop before reaching a confident answer ("
-                + synth_stop.value + "). Please try a narrower question."
+                + synth_stop.value
+                + "). Please try a narrower question."
             )
 
         snapshot = loop_cb.snapshot()
@@ -169,9 +171,7 @@ class MultiHopRagAgent:
     async def _synthesize(self, question: str, context: list[str]) -> str:
         """Single LLM call to compose the final answer from gathered context."""
         joined = "\n\n".join(context)
-        system, user, _ = self._prompts.build(
-            template_name="rag_answer_v1", query=question, chunks=[]
-        )
+        system, user, _ = self._prompts.build(template_name="rag_answer_v1", query=question, chunks=[])
         # Inline the context into the user prompt manually since we have raw text.
         user = f"Context:\n{joined}\n\nQuestion: {question}\n\nAnswer:"
         result = await self._ollama.generate(system=system, user=user)

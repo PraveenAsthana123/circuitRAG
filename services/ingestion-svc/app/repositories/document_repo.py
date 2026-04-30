@@ -10,6 +10,7 @@ State transitions are validated against :attr:`ALLOWED_TRANSITIONS` — any
 attempt to go from FAILED → ACTIVE without re-processing is rejected at
 the repository layer.
 """
+
 from __future__ import annotations
 
 import logging
@@ -76,17 +77,22 @@ class DocumentRepo(Repository):
                 VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, 1)
                 RETURNING *
                 """,
-                doc_id, tenant_id, filename, mime_type, size_bytes,
-                checksum_sha256, blob_uri, STATE_UPLOADED, uploaded_by,
+                doc_id,
+                tenant_id,
+                filename,
+                mime_type,
+                size_bytes,
+                checksum_sha256,
+                blob_uri,
+                STATE_UPLOADED,
+                uploaded_by,
             )
         log.info("document_created id=%s tenant=%s filename=%s", doc_id, tenant_id, filename)
         return dict(record)
 
     async def get(self, *, tenant_id: str, document_id: UUID) -> dict[str, Any]:
         async with self._db.tenant_connection(tenant_id) as conn:
-            record = await conn.fetchrow(
-                "SELECT * FROM ingestion.documents WHERE id = $1", document_id
-            )
+            record = await conn.fetchrow("SELECT * FROM ingestion.documents WHERE id = $1", document_id)
         if record is None:
             raise NotFoundError(f"Document {document_id} not found")
         return dict(record)
@@ -119,7 +125,9 @@ class DocumentRepo(Repository):
                 ORDER BY created_at DESC
                 OFFSET ${len(params) + 1} LIMIT ${len(params) + 2}
                 """,  # noqa: S608
-                *params, offset, limit,
+                *params,
+                offset,
+                limit,
             )
         return [dict(r) for r in rows], int(total)
 
@@ -160,7 +168,9 @@ class DocumentRepo(Repository):
                 WHERE id = $2 AND version = $3
                 RETURNING *
                 """,
-                to_state, document_id, current["version"],
+                to_state,
+                document_id,
+                current["version"],
             )
             if row is None:
                 raise ValidationError(
@@ -169,7 +179,9 @@ class DocumentRepo(Repository):
                 )
         log.info(
             "document_state_change id=%s %s -> %s",
-            document_id, from_state, to_state,
+            document_id,
+            from_state,
+            to_state,
         )
         return dict(row)
 
@@ -187,15 +199,15 @@ class DocumentRepo(Repository):
                 SET state = $1, error_reason = $2, updated_at = NOW()
                 WHERE id = $3
                 """,
-                STATE_FAILED, reason, document_id,
+                STATE_FAILED,
+                reason,
+                document_id,
             )
         log.warning("document_marked_failed id=%s reason=%s", document_id, reason)
 
     async def delete(self, *, tenant_id: str, document_id: UUID) -> None:
         async with self._db.tenant_connection(tenant_id) as conn:
-            result = await conn.execute(
-                "DELETE FROM ingestion.documents WHERE id = $1", document_id
-            )
+            result = await conn.execute("DELETE FROM ingestion.documents WHERE id = $1", document_id)
         if result == "DELETE 0":
             raise NotFoundError(f"Document {document_id} not found")
         log.info("document_deleted id=%s", document_id)
@@ -203,9 +215,13 @@ class DocumentRepo(Repository):
     # Narrow allowlist of columns `touch()` is permitted to update.
     # Anything outside this set is refused — prevents SQL injection via
     # caller-supplied dict keys.
-    _TOUCHABLE_COLUMNS: frozenset[str] = frozenset({
-        "title", "page_count", "chunk_count",
-    })
+    _TOUCHABLE_COLUMNS: frozenset[str] = frozenset(
+        {
+            "title",
+            "page_count",
+            "chunk_count",
+        }
+    )
 
     async def touch(self, *, tenant_id: str, document_id: UUID, updates: dict[str, Any]) -> None:
         """Update non-state fields (page_count, chunk_count, etc.).

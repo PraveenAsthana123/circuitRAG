@@ -12,6 +12,7 @@ Run it:
 * From ingestion-svc startup lifespan as a low-priority task
 * From a cron / K8s Job for big backfills
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -47,8 +48,7 @@ class ReembedWorker:
     async def start(self) -> None:
         self._stopping = False
         self._task = asyncio.create_task(self._loop())
-        log.info("reembed_worker_started target_model=%s batch=%d",
-                 self._embedder.model_name, self._batch)
+        log.info("reembed_worker_started target_model=%s batch=%d", self._embedder.model_name, self._batch)
 
     async def stop(self) -> None:
         self._stopping = True
@@ -87,7 +87,8 @@ class ReembedWorker:
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
                 """,
-                current_model, self._batch,
+                current_model,
+                self._batch,
             )
             if not rows:
                 return 0
@@ -137,10 +138,13 @@ class ReembedWorker:
                     updated_at = NOW()
                 WHERE id = ANY($2::uuid[])
                 """,
-                current_model, [r["id"] for r in rows],
+                current_model,
+                [r["id"] for r in rows],
             )
             log.info(
                 "reembed_batch done count=%d target_model=%s docs=%d",
-                len(rows), current_model, len(by_doc),
+                len(rows),
+                current_model,
+                len(by_doc),
             )
             return len(rows)

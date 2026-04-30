@@ -15,6 +15,7 @@ Guarantees:
 * **Ordered per subject** — drain pulls oldest-first and respects the
   `subject` field; Kafka partitioning key preserves per-document order.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -65,8 +66,13 @@ class OutboxRepo:
                  correlation_id, payload)
             VALUES ($1::uuid, $2, $3, $4, $5, NULLIF($6, '')::uuid, $7::jsonb)
             """,
-            tenant_id, topic, event_id, event_type, subject,
-            correlation_id, json.dumps(payload, default=str),
+            tenant_id,
+            topic,
+            event_id,
+            event_type,
+            subject,
+            correlation_id,
+            json.dumps(payload, default=str),
         )
         return event_id
 
@@ -155,20 +161,20 @@ class OutboxDrainWorker:
                         key=row["subject"] or str(row["tenant_id"]),
                     )
                     await conn.execute(
-                        "UPDATE ingestion.outbox "
-                        "SET published_at = $1, attempts = attempts + 1 "
-                        "WHERE id = $2",
-                        datetime.now(UTC), row["id"],
+                        "UPDATE ingestion.outbox " "SET published_at = $1, attempts = attempts + 1 " "WHERE id = $2",
+                        datetime.now(UTC),
+                        row["id"],
                     )
                 except Exception as exc:  # noqa: BLE001
                     await conn.execute(
-                        "UPDATE ingestion.outbox "
-                        "SET attempts = attempts + 1, last_error = $1 "
-                        "WHERE id = $2",
-                        f"{type(exc).__name__}: {exc}"[:500], row["id"],
+                        "UPDATE ingestion.outbox " "SET attempts = attempts + 1, last_error = $1 " "WHERE id = $2",
+                        f"{type(exc).__name__}: {exc}"[:500],
+                        row["id"],
                     )
                     log.warning(
                         "outbox_publish_failed id=%s attempts=%d err=%s",
-                        row["id"], row["attempts"] + 1, exc,
+                        row["id"],
+                        row["attempts"] + 1,
+                        exc,
                     )
             return len(rows)

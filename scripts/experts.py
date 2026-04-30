@@ -51,7 +51,7 @@ import json
 import sys
 import time
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path.cwd()
@@ -143,7 +143,7 @@ def call_ollama(model: str, prompt: str, timeout_s: int = 180) -> tuple[str, int
 
 def write_log(row: dict) -> None:
     EXPERTS_LOG.parent.mkdir(parents=True, exist_ok=True)
-    row = {**row, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    row = {**row, "ts": datetime.now(UTC).isoformat(timespec="seconds")}
     with EXPERTS_LOG.open("a") as f:
         f.write(json.dumps(row) + "\n")
 

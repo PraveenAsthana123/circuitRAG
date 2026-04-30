@@ -1,4 +1,5 @@
 """Chunker interface + Chunk domain model."""
+
 from __future__ import annotations
 
 import hashlib

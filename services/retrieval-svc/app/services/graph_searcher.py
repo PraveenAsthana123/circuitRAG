@@ -7,6 +7,7 @@ chunks that mention those entities. Ranks by mention count.
 A real implementation would use a proper NER model (spaCy, LLM). For the
 demo we do coarse keyword matching — same API, easy to swap.
 """
+
 from __future__ import annotations
 
 import logging
@@ -52,7 +53,9 @@ class GraphSearcher:
                 ORDER BY mentions DESC
                 LIMIT $limit
                 """,
-                tid=tenant_id, entities=entities, limit=top_k,
+                tid=tenant_id,
+                entities=entities,
+                limit=top_k,
             )
             rows = [dict(r) async for r in result]
 
@@ -71,7 +74,9 @@ class GraphSearcher:
         ]
         log.info(
             "graph_search tenant=%s entities=%d hits=%d",
-            tenant_id, len(entities), len(hits),
+            tenant_id,
+            len(entities),
+            len(hits),
         )
         return hits
 

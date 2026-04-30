@@ -20,6 +20,7 @@ FastAPI's ``BaseHTTPMiddleware`` has a known performance issue under load
 (it consumes the body into memory). We use the raw ASGI ``__call__``
 interface for anything in the hot path.
 """
+
 from __future__ import annotations
 
 import logging
@@ -55,9 +56,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
     is how the frontend links its Sentry trace to our server logs.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         cid = request.headers.get(CORRELATION_HEADER) or str(uuid.uuid4())
         bind_request_context(correlation_id=cid)
         request.state.correlation_id = cid
@@ -69,7 +68,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
             elapsed_ms = (time.monotonic() - start) * 1000
             log.info(
                 "request_complete method=%s path=%s duration_ms=%.1f",
-                request.method, request.url.path, elapsed_ms,
+                request.method,
+                request.url.path,
+                elapsed_ms,
             )
             clear_request_context()
 
@@ -92,9 +93,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.csp = csp or "default-src 'self'"
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
@@ -132,9 +131,7 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
         self.header = header
         self.default = default
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         tenant_id = request.headers.get(self.header, self.default)
         user_id = request.headers.get("X-User-ID", "")
         bind_request_context(
@@ -189,6 +186,7 @@ class BaggageContextMiddleware(BaseHTTPMiddleware):
         try:
             from opentelemetry import baggage as _otel_baggage
             from opentelemetry import context as _otel_context
+
             self._baggage = _otel_baggage
             self._context = _otel_context
         except ImportError:  # pragma: no cover
@@ -243,6 +241,7 @@ class SpanAttributeMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         try:
             from opentelemetry import trace
+
             self._get_span = trace.get_current_span
         except ImportError:  # pragma: no cover
             self._get_span = None  # type: ignore[assignment]
@@ -309,9 +308,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return self.upload_limit, 60, "upload"
         return self.default_limit, 60, "api"
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         # Skip health + metrics endpoints — they must not be rate-limited
         if request.url.path in ("/health", "/healthz", "/metrics"):
             return await call_next(request)
@@ -324,8 +321,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # 60s sliding window. Spelled with a noisy name on purpose so
         # an accidental prod setting is grep-able.
         import os as _os
+
         if _os.getenv("DOCUMIND_RATE_LIMIT_DISABLED", "").lower() in (
-            "1", "true", "yes",
+            "1",
+            "true",
+            "yes",
         ):
             return await call_next(request)
 
@@ -339,9 +339,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
 
         try:
-            result = await self.limiter.check_or_raise(
-                key=key, limit=limit, window_seconds=window
-            )
+            result = await self.limiter.check_or_raise(key=key, limit=limit, window_seconds=window)
         except RateLimitedError as exc:
             return JSONResponse(
                 status_code=429,
@@ -385,6 +383,8 @@ def register_exception_handlers(app) -> None:  # noqa: ANN001 — FastAPI typing
         }
         log.warning(
             "app_error error_code=%s status=%d message=%s",
-            exc.error_code, exc.http_status, exc.message,
+            exc.error_code,
+            exc.http_status,
+            exc.message,
         )
         return JSONResponse(status_code=exc.http_status, content=body)

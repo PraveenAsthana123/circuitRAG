@@ -55,10 +55,14 @@ def _extract_local_set(path: Path, name: str) -> set[str]:
                 if isinstance(target, ast.Name) and target.id == name:
                     value = ast.literal_eval(node.value)
                     return set(value)
-        if isinstance(node, ast.AnnAssign):
-            if isinstance(node.target, ast.Name) and node.target.id == name:
-                value = ast.literal_eval(node.value)
-                return set(value)
+        is_annotated_target = (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == name
+        )
+        if is_annotated_target:
+            value = ast.literal_eval(node.value)  # noqa: S307 — ast.literal_eval is the SAFE alternative
+            return set(value)
     raise ValueError(f"{path}: could not find set {name}")
 
 

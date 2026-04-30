@@ -5,6 +5,7 @@ Uses tiktoken's ``cl100k_base`` encoding (GPT-4 + GPT-3.5), which is a good
 approximation for most modern models including Llama 3 and Mistral. If a
 service uses a specific model's tokenizer (rare), pass the encoding name.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -35,6 +36,6 @@ class TokenCounter:
         tokens = self._encoding.encode(text, disallowed_special=())
         pieces: list[str] = []
         for start in range(0, len(tokens), max_tokens):
-            piece = self._encoding.decode(tokens[start:start + max_tokens])
+            piece = self._encoding.decode(tokens[start : start + max_tokens])
             pieces.append(piece)
         return pieces

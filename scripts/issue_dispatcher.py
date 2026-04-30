@@ -32,10 +32,9 @@ import json
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-
 import urllib.request
+from datetime import UTC, datetime
+from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CHECKLIST = REPO / ".loop" / "issue_checklist.jsonl"
@@ -52,7 +51,7 @@ def load_checklist() -> list[dict]:
 
 def write_audit(row: dict) -> None:
     AUDIT.parent.mkdir(parents=True, exist_ok=True)
-    row = {**row, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    row = {**row, "ts": datetime.now(UTC).isoformat(timespec="seconds")}
     with AUDIT.open("a") as f:
         f.write(json.dumps(row) + "\n")
 
@@ -85,7 +84,7 @@ def run_eslint_autofix(issues: list[dict], apply: bool) -> tuple[int, int]:
     rule set).
     """
     if not apply:
-        print(f"  [DRY-RUN] would run from services/frontend/: npx next lint --fix")
+        print("  [DRY-RUN] would run from services/frontend/: npx next lint --fix")
         return len(issues), 0
     frontend = REPO / "services" / "frontend"
     cmd = ["npx", "--no-install", "next", "lint", "--fix"]
@@ -108,7 +107,6 @@ def call_ollama(model: str, prompt: str, timeout_s: int = 120) -> tuple[str, int
         "options": {"temperature": 0.1, "num_ctx": 4096},
     }).encode()
     req = urllib.request.Request(OLLAMA, data=body, headers={"Content-Type": "application/json"})
-    started = time.time()
     with urllib.request.urlopen(req, timeout=timeout_s) as resp:
         data = json.loads(resp.read())
     return data.get("response", ""), data.get("eval_count", 0)
@@ -214,9 +212,9 @@ def propose_council_for_issue(issue: dict) -> None:
         "chain": audit_chain,
         "outcome": "council_complete",
     })
-    print(f"\n  === CHAIR (operator) ===")
-    print(f"  Audit chain written. Three independent local-model takes above.")
-    print(f"  Operator selects: AUTHOR diff / ALTERNATIVE / SKIP / escalate.")
+    print("\n  === CHAIR (operator) ===")
+    print("  Audit chain written. Three independent local-model takes above.")
+    print("  Operator selects: AUTHOR diff / ALTERNATIVE / SKIP / escalate.")
 
 
 def propose_for_issue(issue: dict) -> None:
@@ -268,7 +266,7 @@ Diff:"""
     elapsed = time.time() - started
     print(f"  --- proposal ({tokens} tokens, {elapsed:.1f}s) ---")
     print(response[:1500])
-    print(f"  --- end proposal ---")
+    print("  --- end proposal ---")
     write_audit({
         "id": issue["id"],
         "lane": issue["assigned_to"],

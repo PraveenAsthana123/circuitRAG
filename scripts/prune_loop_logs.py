@@ -44,9 +44,8 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Iterator
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_LOGS = [
@@ -70,7 +69,7 @@ def _parse_timestamp(s: str) -> datetime | None:
     except ValueError:
         return None
     if t.tzinfo is None:
-        t = t.replace(tzinfo=timezone.utc)
+        t = t.replace(tzinfo=UTC)
     return t
 
 
@@ -136,7 +135,7 @@ def prune_log(
     apply: bool,
 ) -> dict:
     """Prune one log file. Returns a report dict."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
     keep, drop = split_entries(log_path, cutoff)
     report = {
         "path": str(log_path),

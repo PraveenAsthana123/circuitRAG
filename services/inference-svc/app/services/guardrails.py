@@ -26,6 +26,7 @@ OTel tool-level coverage scorecard
 (docs/architecture/otel-tool-level-coverage-scorecard-and-tracker.md):
 inference-svc — "tool-decision and answer-quality spans".
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,6 +41,7 @@ from typing import Any
 # accepts set_attribute() as a no-op.
 try:
     from opentelemetry import trace as _otel_trace
+
     _OTEL_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _OTEL_AVAILABLE = False
@@ -102,7 +104,8 @@ class GuardrailChecker:
                 sp.set_attribute("guardrail.passed", result.passed)
                 sp.set_attribute("guardrail.confidence", result.confidence)
                 sp.set_attribute(
-                    "guardrail.violations.count", len(result.violations),
+                    "guardrail.violations.count",
+                    len(result.violations),
                 )
                 if result.violations:
                     # Comma-joined string keeps cardinality bounded
@@ -127,8 +130,7 @@ class GuardrailChecker:
             # so operators pivot between Jaeger and log greps without
             # losing context. Drilled below.
             log.info(
-                "guardrail_check_completed passed=%s confidence=%.3f "
-                "violations=%s found_labels=%d top_score=%.3f",
+                "guardrail_check_completed passed=%s confidence=%.3f " "violations=%s found_labels=%d top_score=%.3f",
                 result.passed,
                 result.confidence,
                 ",".join(result.violations) if result.violations else "-",

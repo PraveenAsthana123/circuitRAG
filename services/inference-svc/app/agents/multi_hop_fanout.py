@@ -35,6 +35,7 @@ What changes from the sequential design:
   * Per-step timeout becomes per-hop asyncio.wait_for so a hung
     retrieval can't block the cohort beyond per_hop_timeout_s.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -69,7 +70,10 @@ class _LoopCBProto(Protocol):
     documind_core.breakers.AgentLoopCircuitBreaker."""
 
     def record_step(
-        self, *, action: str, result_hash: str,
+        self,
+        *,
+        action: str,
+        result_hash: str,
     ) -> Any:  # pragma: no cover - Protocol
         ...
 
@@ -151,15 +155,15 @@ async def fanout_retrieval(
             except TimeoutError:
                 log.warning(
                     "multi_hop_fanout_per_hop_timeout sub_q=%r timeout=%.1fs",
-                    sub_q[:120], per_hop_timeout_s,
+                    sub_q[:120],
+                    per_hop_timeout_s,
                 )
-                return sub_q, [], (
-                    f"TimeoutError: per-hop > {per_hop_timeout_s:.1f}s"
-                )
+                return sub_q, [], (f"TimeoutError: per-hop > {per_hop_timeout_s:.1f}s")
             except Exception as exc:  # noqa: BLE001 - error contained
                 log.warning(
                     "multi_hop_fanout_hop_error sub_q=%r err=%s",
-                    sub_q[:120], exc,
+                    sub_q[:120],
+                    exc,
                 )
                 return sub_q, [], f"{type(exc).__name__}: {exc}"
 
@@ -171,7 +175,8 @@ async def fanout_retrieval(
     except TimeoutError:
         log.error(
             "multi_hop_fanout_cohort_timeout total=%.1fs sub_qs=%d",
-            total_timeout_s, len(sub_questions),
+            total_timeout_s,
+            len(sub_questions),
         )
         # Cohort timeout - return empty trace + a non-NONE stop.
         # The caller's ``check_before_step`` after this returns will
@@ -185,44 +190,45 @@ async def fanout_retrieval(
 
     for sub_q, chunks, err in results:
         if err is not None:
-            trace.append({
-                "step": "retrieve",
-                "sub_q": sub_q,
-                "chunks": 0,
-                "result_hash": "",
-                "error": err,
-            })
+            trace.append(
+                {
+                    "step": "retrieve",
+                    "sub_q": sub_q,
+                    "chunks": 0,
+                    "result_hash": "",
+                    "error": err,
+                }
+            )
             continue
 
-        result_hash = hashlib.sha256(
-            "".join(c.get("chunk_id", "") for c in chunks).encode()
-        ).hexdigest()[:12]
+        result_hash = hashlib.sha256("".join(c.get("chunk_id", "") for c in chunks).encode()).hexdigest()[:12]
 
-        trace.append({
-            "step": "retrieve",
-            "sub_q": sub_q,
-            "chunks": len(chunks),
-            "result_hash": result_hash,
-        })
+        trace.append(
+            {
+                "step": "retrieve",
+                "sub_q": sub_q,
+                "chunks": len(chunks),
+                "result_hash": result_hash,
+            }
+        )
 
         # Tool-budget + repeated-result-hash loop detection still
         # enforced here, walked in INPUT order so the breaker's
         # internal hash window sees the same sequence the
         # sequential code would have.
         step_stop = loop_cb.record_step(
-            action="retrieve", result_hash=result_hash,
+            action="retrieve",
+            result_hash=result_hash,
         )
         if step_stop is not stop_sentinel:
             log.info(
                 "multi_hop_fanout_stop_during_walk reason=%s sub_q=%r",
-                step_stop, sub_q[:60],
+                step_stop,
+                sub_q[:60],
             )
             final_stop = step_stop
             break
 
-        gathered.append(
-            f"Q: {sub_q}\n"
-            + "\n".join(c.get("text", "") for c in chunks)
-        )
+        gathered.append(f"Q: {sub_q}\n" + "\n".join(c.get("text", "") for c in chunks))
 
     return trace, gathered, final_stop

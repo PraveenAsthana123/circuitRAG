@@ -42,6 +42,7 @@ Design decisions
   on every call. Acceptable while every token is 15-minute lifespan —
   add when the dev key rotation story lands.
 """
+
 from __future__ import annotations
 
 import logging
@@ -101,9 +102,7 @@ def _validate_claims(claims: dict[str, Any], expected_kind: str) -> None:
     if not isinstance(sub, str) or not sub:
         raise pyjwt.InvalidTokenError("malformed claim: sub must be a non-empty string")
     if len(sub) > _SUB_MAX_LEN:
-        raise pyjwt.InvalidTokenError(
-            f"malformed claim: sub exceeds {_SUB_MAX_LEN} chars"
-        )
+        raise pyjwt.InvalidTokenError(f"malformed claim: sub exceeds {_SUB_MAX_LEN} chars")
 
     # ---- tenant_id (optional but if present, must be UUID) ----
     tenant_id = claims.get("tenant_id")
@@ -113,30 +112,22 @@ def _validate_claims(claims: dict[str, Any], expected_kind: str) -> None:
         try:
             uuid.UUID(tenant_id)
         except (ValueError, AttributeError) as exc:
-            raise pyjwt.InvalidTokenError(
-                f"malformed claim: tenant_id is not a UUID ({exc})"
-            ) from exc
+            raise pyjwt.InvalidTokenError(f"malformed claim: tenant_id is not a UUID ({exc})") from exc
 
     # ---- roles ----
     roles = claims.get("roles")
     if roles is not None:
         if not isinstance(roles, list):
-            raise pyjwt.InvalidTokenError(
-                "malformed claim: roles must be a list of strings"
-            )
+            raise pyjwt.InvalidTokenError("malformed claim: roles must be a list of strings")
         if len(roles) > _ROLES_MAX_COUNT:
-            raise pyjwt.InvalidTokenError(
-                f"malformed claim: roles exceeds {_ROLES_MAX_COUNT} entries"
-            )
+            raise pyjwt.InvalidTokenError(f"malformed claim: roles exceeds {_ROLES_MAX_COUNT} entries")
         for r in roles:
             if not isinstance(r, str) or len(r) == 0 or len(r) > _ROLE_MAX_LEN:
                 raise pyjwt.InvalidTokenError(
                     f"malformed claim: role {r!r} must be a non-empty string ≤{_ROLE_MAX_LEN} chars"
                 )
             if not _ROLE_RE.match(r):
-                raise pyjwt.InvalidTokenError(
-                    f"malformed claim: role {r!r} does not match <namespace>:<scope> shape"
-                )
+                raise pyjwt.InvalidTokenError(f"malformed claim: role {r!r} does not match <namespace>:<scope> shape")
 
     # ---- kind ----
     # The verifier ctor's expected_kind already guards this when set.
@@ -146,13 +137,9 @@ def _validate_claims(claims: dict[str, Any], expected_kind: str) -> None:
     if kind is None:
         raise pyjwt.InvalidTokenError("malformed claim: kind is required")
     if not isinstance(kind, str) or kind not in _VALID_KINDS:
-        raise pyjwt.InvalidTokenError(
-            f"malformed claim: kind {kind!r} not in {sorted(_VALID_KINDS)}"
-        )
+        raise pyjwt.InvalidTokenError(f"malformed claim: kind {kind!r} not in {sorted(_VALID_KINDS)}")
     if expected_kind and kind != expected_kind:
-        raise pyjwt.InvalidTokenError(
-            f"wrong token kind: got {kind!r} want {expected_kind!r}"
-        )
+        raise pyjwt.InvalidTokenError(f"wrong token kind: got {kind!r} want {expected_kind!r}")
 
 
 class JWTVerifier:

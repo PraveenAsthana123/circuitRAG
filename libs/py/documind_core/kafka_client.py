@@ -12,6 +12,7 @@ Event envelope matches ``schemas/events/*.json``. Producers are responsible
 for validating against the schema BEFORE sending; this catches contract
 violations at the source instead of downstream.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -45,6 +46,7 @@ log = logging.getLogger(__name__)
 try:
     from opentelemetry import context as _otel_context  # noqa: F401 — used at call sites below
     from opentelemetry import propagate as _otel_propagate
+
     _OTEL_AVAILABLE = True
 except ImportError:  # pragma: no cover — degraded mode
     _otel_context = None  # type: ignore[assignment]
@@ -265,7 +267,8 @@ class IdempotentConsumer:
         await self._consumer.start()
         log.info(
             "kafka_consumer_started group=%s topics=%s",
-            self._group_id, ",".join(self._topics),
+            self._group_id,
+            ",".join(self._topics),
         )
 
     async def stop(self) -> None:

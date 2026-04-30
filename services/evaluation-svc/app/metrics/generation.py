@@ -1,4 +1,5 @@
 """Generation metrics — faithfulness and answer relevance."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

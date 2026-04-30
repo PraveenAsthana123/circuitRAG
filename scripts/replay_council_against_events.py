@@ -36,6 +36,7 @@ import importlib.util
 import json
 import logging
 import sys
+from datetime import UTC
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -132,9 +133,9 @@ def cli() -> int:
     # Append a summary log line
     log_path = Path(args.log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    from datetime import datetime, timezone
+    from datetime import datetime
     entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
         "submitted": stats.submitted,
         "succeeded": stats.succeeded,
         "failed": stats.failed,

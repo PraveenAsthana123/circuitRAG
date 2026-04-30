@@ -1,4 +1,5 @@
 """Retrieval HTTP routes."""
+
 from __future__ import annotations
 
 from documind_core.exceptions import ValidationError

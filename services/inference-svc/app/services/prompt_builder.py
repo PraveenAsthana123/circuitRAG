@@ -9,6 +9,7 @@ In production, templates live in the ``governance.prompts`` table and are
 fetched at startup + periodically refreshed. For the demo we inline them so
 the service runs standalone.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -36,12 +37,7 @@ PROMPT_TEMPLATES: dict[str, PromptTemplate] = {
             "Always cite sources inline using the format [Source: <filename>, Page N] "
             "matching one of the chunks. Do NOT invent citations."
         ),
-        user_template=(
-            "Context:\n"
-            "{context}\n\n"
-            "Question: {query}\n\n"
-            "Answer:"
-        ),
+        user_template=("Context:\n" "{context}\n\n" "Question: {query}\n\n" "Answer:"),
     ),
     "summarize_v1": PromptTemplate(
         name="summarize",

@@ -18,6 +18,7 @@ a saga that's genuinely still in-flight elsewhere. We pessimistic-lock the
 candidate row with a PostgreSQL advisory lock per saga_id — only one pod
 will run compensations; others skip.
 """
+
 from __future__ import annotations
 
 import logging
@@ -68,9 +69,7 @@ class SagaRecoveryWorker:
             )
             for row in rows:
                 # Advisory lock on the saga id — if another pod has it, skip.
-                locked = await conn.fetchval(
-                    "SELECT pg_try_advisory_lock(hashtext($1))", str(row["id"])
-                )
+                locked = await conn.fetchval("SELECT pg_try_advisory_lock(hashtext($1))", str(row["id"]))
                 if not locked:
                     log.debug("saga_recovery_skip_locked id=%s", row["id"])
                     continue
@@ -78,9 +77,7 @@ class SagaRecoveryWorker:
                     await self._compensate(conn, row)
                     recovered += 1
                 finally:
-                    await conn.execute(
-                        "SELECT pg_advisory_unlock(hashtext($1))", str(row["id"])
-                    )
+                    await conn.execute("SELECT pg_advisory_unlock(hashtext($1))", str(row["id"]))
         log.info("saga_recovery_complete recovered=%d age_threshold=%s", recovered, self._max_age)
         return recovered
 
@@ -104,13 +101,16 @@ class SagaRecoveryWorker:
 
         log.warning(
             "saga_recovery_compensating id=%s subject=%s completed=%d",
-            saga_id, document_id, completed,
+            saga_id,
+            document_id,
+            completed,
         )
 
         if completed >= 5 and self._qdrant_repo is not None:
             try:
                 await self._qdrant_repo.delete_document(
-                    tenant_id=tenant_id, document_id=document_id,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
                 )
             except Exception as e:  # noqa: BLE001
                 errors.append(f"qdrant:{type(e).__name__}")
@@ -118,7 +118,8 @@ class SagaRecoveryWorker:
         if completed >= 4 and self._neo4j_repo is not None:
             try:
                 await self._neo4j_repo.delete_document(
-                    tenant_id=tenant_id, document_id=document_id,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
                 )
             except Exception as e:  # noqa: BLE001
                 errors.append(f"neo4j:{type(e).__name__}")
@@ -126,7 +127,8 @@ class SagaRecoveryWorker:
         if completed >= 2 and self._chunk_repo is not None:
             try:
                 await self._chunk_repo.delete_by_document(
-                    tenant_id=tenant_id, document_id=document_id,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
                 )
             except Exception as e:  # noqa: BLE001
                 errors.append(f"chunks:{type(e).__name__}")
@@ -142,10 +144,9 @@ class SagaRecoveryWorker:
             except Exception as e:  # noqa: BLE001
                 errors.append(f"blob:{type(e).__name__}")
 
-        err_msg = (
-            "recovered_by_startup_worker"
-            + (f"; compensation_errors={'|'.join(errors)}" if errors else "")
-        )[:2000]
+        err_msg = ("recovered_by_startup_worker" + (f"; compensation_errors={'|'.join(errors)}" if errors else ""))[
+            :2000
+        ]
 
         await conn.execute(
             """
@@ -153,7 +154,8 @@ class SagaRecoveryWorker:
             SET state = 'failed', error = $1, updated_at = NOW()
             WHERE id = $2 AND state = 'running'
             """,
-            err_msg, saga_id,
+            err_msg,
+            saga_id,
         )
         await conn.execute(
             """

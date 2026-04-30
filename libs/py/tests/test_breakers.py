@@ -1,4 +1,5 @@
 """Unit tests for the 5 specialized circuit breakers."""
+
 from __future__ import annotations
 
 import pytest
@@ -23,10 +24,13 @@ from documind_core.exceptions import PolicyViolationError
 # 1. RetrievalCircuitBreaker — quality awareness
 # --------------------------------------------------------------------------
 
+
 def test_retrieval_breaker_opens_when_quality_degrades():
     cb = RetrievalCircuitBreaker(
-        "retrieval", failure_threshold=99,  # disable failure-count path
-        min_quality=0.5, quality_window=5,
+        "retrieval",
+        failure_threshold=99,  # disable failure-count path
+        min_quality=0.5,
+        quality_window=5,
     )
     # 5 samples, all below threshold
     for _ in range(5):
@@ -36,7 +40,10 @@ def test_retrieval_breaker_opens_when_quality_degrades():
 
 def test_retrieval_breaker_stays_closed_when_quality_good():
     cb = RetrievalCircuitBreaker(
-        "retrieval", failure_threshold=99, min_quality=0.3, quality_window=5,
+        "retrieval",
+        failure_threshold=99,
+        min_quality=0.3,
+        quality_window=5,
     )
     for _ in range(5):
         cb.record_quality(top_score=0.8, n_results=5, latency_ms=100)
@@ -45,7 +52,10 @@ def test_retrieval_breaker_stays_closed_when_quality_good():
 
 def test_retrieval_breaker_opens_on_mostly_empty_results():
     cb = RetrievalCircuitBreaker(
-        "retrieval", failure_threshold=99, min_quality=0.0, quality_window=4,
+        "retrieval",
+        failure_threshold=99,
+        min_quality=0.0,
+        quality_window=4,
     )
     # top_score fine, but half the results are empty -> open
     for _ in range(3):
@@ -58,12 +68,15 @@ def test_retrieval_breaker_opens_on_mostly_empty_results():
 # 2. TokenCircuitBreaker — budget pre-flight
 # --------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_token_breaker_allow_under_budget():
     tcb = TokenCircuitBreaker()
     r = await tcb.check(
-        tenant_id="t1", estimated_tokens=1000,
-        daily_budget=100_000, monthly_budget=1_000_000,
+        tenant_id="t1",
+        estimated_tokens=1000,
+        daily_budget=100_000,
+        monthly_budget=1_000_000,
     )
     assert r.decision is TokenBreakerDecision.ALLOW
 
@@ -73,8 +86,10 @@ async def test_token_breaker_rejects_over_daily():
     tcb = TokenCircuitBreaker()
     await tcb.record_usage(tenant_id="t1", prompt_tokens=50_000, completion_tokens=40_000)
     r = await tcb.check(
-        tenant_id="t1", estimated_tokens=20_000,
-        daily_budget=100_000, monthly_budget=10_000_000,
+        tenant_id="t1",
+        estimated_tokens=20_000,
+        daily_budget=100_000,
+        monthly_budget=10_000_000,
     )
     assert r.decision is TokenBreakerDecision.REJECT_DAILY
 
@@ -84,8 +99,10 @@ async def test_token_breaker_warns_at_80pct():
     tcb = TokenCircuitBreaker(warn_percent=0.8)
     await tcb.record_usage(tenant_id="t1", prompt_tokens=40_000, completion_tokens=40_000)
     r = await tcb.check(
-        tenant_id="t1", estimated_tokens=1_000,
-        daily_budget=100_000, monthly_budget=10_000_000,
+        tenant_id="t1",
+        estimated_tokens=1_000,
+        daily_budget=100_000,
+        monthly_budget=10_000_000,
     )
     assert r.decision is TokenBreakerDecision.WARN
 
@@ -94,8 +111,10 @@ async def test_token_breaker_warns_at_80pct():
 async def test_token_breaker_rejects_per_request_blow_up():
     tcb = TokenCircuitBreaker(max_tokens_per_request=10_000)
     r = await tcb.check(
-        tenant_id="t1", estimated_tokens=50_000,
-        daily_budget=1_000_000, monthly_budget=1_000_000_000,
+        tenant_id="t1",
+        estimated_tokens=50_000,
+        daily_budget=1_000_000,
+        monthly_budget=1_000_000_000,
     )
     assert r.decision is TokenBreakerDecision.REJECT_REQUEST
 
@@ -105,14 +124,17 @@ async def test_token_breaker_raises_on_reject():
     tcb = TokenCircuitBreaker(max_tokens_per_request=10_000)
     with pytest.raises(PolicyViolationError):
         await tcb.check_or_raise(
-            tenant_id="t1", estimated_tokens=50_000,
-            daily_budget=1_000_000, monthly_budget=10_000_000,
+            tenant_id="t1",
+            estimated_tokens=50_000,
+            daily_budget=1_000_000,
+            monthly_budget=10_000_000,
         )
 
 
 # --------------------------------------------------------------------------
 # 3. AgentLoopCircuitBreaker
 # --------------------------------------------------------------------------
+
 
 def test_agent_breaker_stops_on_max_steps():
     cb = AgentLoopCircuitBreaker(agent_name="t", max_steps=3)
@@ -136,7 +158,9 @@ def test_agent_breaker_detects_tool_loop():
 
 def test_agent_breaker_enforces_tool_budget():
     cb = AgentLoopCircuitBreaker(
-        agent_name="t", max_steps=20, max_tool_calls={"search": 2},
+        agent_name="t",
+        max_steps=20,
+        max_tool_calls={"search": 2},
     )
     cb.start()
     cb.record_step(action="search")
@@ -155,6 +179,7 @@ def test_agent_breaker_user_abort():
 # --------------------------------------------------------------------------
 # 4. ObservabilityCircuitBreaker — inverted polarity
 # --------------------------------------------------------------------------
+
 
 def test_obs_breaker_allows_when_closed():
     cb = ObservabilityCircuitBreaker("test", failure_threshold=3, recovery_timeout=1)
@@ -184,6 +209,7 @@ def test_obs_breaker_never_raises():
 # --------------------------------------------------------------------------
 # 5. CognitiveCircuitBreaker
 # --------------------------------------------------------------------------
+
 
 def test_ccb_blocks_on_repetition():
     ccb = CognitiveCircuitBreaker(
