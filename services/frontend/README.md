@@ -21,8 +21,65 @@ app/
 ├── upload/page.tsx     # upload a PDF/DOCX/TXT/MD/HTML
 ├── documents/page.tsx  # list tenant's documents
 ├── ask/page.tsx        # query the RAG pipeline
-└── admin/page.tsx      # admin panels (placeholder)
+├── admin/page.tsx      # operator dashboard (live health, prompts, tools, upstreams)
+├── admin/monitoring    # monitoring + runtime status + operations map
+├── admin/techstack     # installed vs pending tool catalog
+├── admin/sidecar       # sidecar advisor events + ratings + drill-down
+├── admin/sidecar/telemetry  # council telemetry surface
+├── admin/forensics     # trace → draft → audit → HITL reconstruction
+├── admin/agentic       # agentic task submission + policy simulation
+├── admin/agentic/control-plane # normalized project/task/approval/memory chain
+└── app-meta/           # frontend-owned local routes (not proxied to gateway)
 ```
+
+## Operator/admin surfaces
+
+These are the main operational routes exposed by the frontend today:
+
+- `/admin`
+  - primary operator dashboard
+  - health, breakers, prompts, tools, upstreams, build info, trace-link panel
+- `/admin/monitoring`
+  - monitoring + technical operations map
+  - live service/runtime status
+  - running/unhealthy services
+  - resource consumers from local Docker stats
+  - agent activity summary
+- `/admin/techstack`
+  - installed vs pending tool inventory
+- `/admin/sidecar`
+  - advisor events, live ratings, search/filter/pagination
+- `/admin/sidecar/[eventId]`
+  - event drill-down with reviewer metadata
+- `/admin/sidecar/telemetry`
+  - council histogram / telemetry surface
+- `/admin/forensics`
+  - trace → draft → audit → HITL reconstruction
+- `/admin/agentic`
+  - bounded task/project creation and policy simulation
+- `/admin/agentic/control-plane`
+  - normalized plan rows, task runs, approvals, memories
+
+## Frontend-owned local routes
+
+Not every route in this app should proxy to the backend gateway.
+
+Current local runtime routes:
+
+- `/app-meta/build-info`
+  - current frontend build identity
+- `/app-meta/runtime-status`
+  - local compose/runtime status
+  - Docker service states
+  - Docker stats resource usage
+  - Ollama systemd status
+
+Also kept local under App Router APIs:
+
+- `/api/v1/tts`
+- `/api/v1/sidecar/*`
+
+Everything else under `/api/*` is still rewritten to the gateway.
 
 ## Run
 
@@ -33,7 +90,14 @@ npm install          # pnpm i also works
 npm run dev          # http://localhost:3000
 ```
 
-The dev server proxies `/api/*` to the API gateway (default `http://localhost:8080`), so the browser stays same-origin.
+The dev server proxies most `/api/*` traffic to the API gateway (default `http://localhost:8080`), so the browser stays same-origin.
+
+Exception:
+
+- frontend-owned routes stay local:
+  - `/api/v1/tts`
+  - `/api/v1/sidecar/*`
+  - `/app-meta/*`
 
 ## Environment
 
@@ -53,6 +117,17 @@ Never put secrets under `NEXT_PUBLIC_*` — those ship to the browser.
 
 Don't fetch from components directly.
 
+It also now wraps local runtime/operator surfaces such as:
+
+- `frontendBuildInfo()`
+- `frontendRuntimeStatus()`
+- `healthDetailed()`
+- `healthTools()`
+- `healthPrompts()`
+- `healthUpstreams()`
+- `healthTechstack()`
+- agentic read/write endpoints
+
 ## Scripts
 
 ```bash
@@ -62,6 +137,20 @@ npm run start   # run production bundle
 npm run lint    # next lint (zero warnings)
 npm run test    # vitest
 ```
+
+## Current-state notes
+
+Be explicit about these:
+
+- this frontend is no longer just upload/documents/ask
+- it now acts as the main operator shell for monitoring, sidecar, forensics, and agentic control-plane work
+- several admin/deep-dive pages are educational/reference surfaces
+- several other admin pages are live operational surfaces
+
+Practical split:
+
+- **live operational UI:** `/admin*`, `/app-meta/*`, sidecar routes, monitoring, techstack, agentic control-plane
+- **reference/explainer UI:** many `admin/*/deep` routes and `tools/*` routes
 
 ## Why Next.js + vanilla CSS (and not Vite+React / Tailwind / CRA)
 

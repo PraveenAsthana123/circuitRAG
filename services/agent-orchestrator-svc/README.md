@@ -2,6 +2,34 @@
 
 Bounded agentic orchestration service for manager/worker/reviewer/advisor flows.
 
+## Current state vs target state
+
+This service is **real and usable now**, but it is not a free-form
+autonomous swarm or a full distributed workflow engine.
+
+Current state:
+
+- accepts bounded agentic tasks over HTTP
+- supports project creation with normalized plan rows
+- runs manager → worker → reviewer → advisor style task flow
+- evaluates approval policy and can pause for human approval
+- persists tasks, project plans, task runs, approvals, and memories
+- exposes read APIs that feed the frontend control-plane pages
+- falls back to in-memory storage if Postgres is unavailable
+
+Target state:
+
+- richer DAG planning with meaningful dependency scheduling
+- deeper autonomous delegation and merge coordination
+- stronger runtime visibility into worker occupancy / queue depth
+- more complete operator approval, replay, and rollback tooling
+- broader cross-service orchestration beyond the current bounded task shape
+
+So the correct framing is:
+
+- **current:** bounded orchestration service with real persistence and UI surfaces
+- **not yet:** full autonomous multi-agent operating system
+
 ## What it does
 
 - accepts agentic tasks over HTTP
@@ -9,6 +37,70 @@ Bounded agentic orchestration service for manager/worker/reviewer/advisor flows.
 - persists task state to Postgres when available
 - falls back to in-memory storage if Postgres is unavailable
 - pauses high-risk or explicitly gated tasks for human approval
+
+## What is real now
+
+Backed by migrations through:
+
+- `001_initial.sql`
+- `002_approval_automation.sql`
+- `003_global_policy.sql`
+- `004_policy_scenarios.sql`
+- `005_projects.sql`
+- `006_project_plan.sql`
+- `007_agentic_project_memory.sql`
+
+Persisted data now includes:
+
+- tasks
+- global policy
+- projects
+- normalized project plan items
+- task runs
+- approvals
+- memories
+
+Behavior already wired in the service layer:
+
+- `create_project()` persists normalized plan rows
+- task execution writes task-run records
+- `approve_task()` writes approval records
+- completed task/project outcomes write memory records
+
+## What exposes it
+
+Frontend/operator surfaces:
+
+- `/admin/agentic`
+- `/admin/agentic/control-plane`
+- `/admin`
+
+The control-plane page exposes:
+
+- active role routing
+- approval policy
+- project plan rows
+- task runs
+- approvals
+- memories
+
+Read APIs already exposed by this service:
+
+- `GET /api/v1/agentic/projects/{project_id}/plan-items`
+- `GET /api/v1/agentic/tasks/{task_id}/runs`
+- `GET /api/v1/agentic/tasks/{task_id}/approvals`
+- `GET /api/v1/agentic/memories?scope_type=...&scope_id=...`
+- plus the existing task/project/policy endpoints
+
+## Important limits
+
+Be explicit about these:
+
+- role count does **not** mean live concurrent worker count
+- task activity is visible; per-model occupancy is not yet exposed
+- project planning exists, but true dependency-aware execution is still shallow
+- local in-memory fallback is operationally useful, but Postgres is the serious path
+- this service composes with the sidecar advisor/council, but it is not itself the full council runtime
 
 ## Local run
 
@@ -37,6 +129,14 @@ export DOCUMIND_MCP_ITSM_URL=http://localhost:8092
 export DOCUMIND_MCP_DRILLS_URL=http://localhost:8093
 ```
 
+Optional but useful:
+
+```bash
+export DOCUMIND_AGENT_ADVISOR_MODEL=qwen2.5:latest
+```
+
+That keeps the advisor path local if you do not want a cloud/default chair path elsewhere in the stack.
+
 ## Fully local mode
 
 For a no-cloud setup, keep MCP on localhost and force the advisor/chair
@@ -59,6 +159,30 @@ Notes:
   advisor path onto local Qwen through service settings.
 - local coder/reviewer defaults remain unchanged unless you override
   them separately.
+
+## Runtime truth checks
+
+Use these when you want current-state truth instead of assumptions:
+
+```bash
+# service health + runtime view from the frontend
+open http://localhost:3000/admin/agentic/control-plane
+
+# monitoring page with service/runtime/resource status
+open http://localhost:3000/admin/monitoring
+
+# local loop/ops status
+python3 scripts/loop_status.py
+```
+
+If you want API-level truth:
+
+```bash
+curl http://localhost:8087/api/v1/agentic/agents
+curl http://localhost:8087/api/v1/agentic/policy
+curl http://localhost:8087/api/v1/agentic/projects?limit=10
+curl http://localhost:8087/api/v1/agentic/tasks?limit=10
+```
 
 ## Docker build and run
 
@@ -94,3 +218,17 @@ What it does:
 2. applies `services/agent-orchestrator-svc/migrations/001_initial.sql`
 
 If your cluster is already initialized, rerunning the bootstrap is safe.
+
+## Summary
+
+This service is already a real bounded orchestration layer with:
+
+- task/project creation
+- policy gating
+- persistence
+- human approval
+- normalized control-plane visibility
+
+The main things it still lacks are the deeper workflow-engine and
+autonomous-runtime behaviors that the broader architecture documents
+describe as target state.

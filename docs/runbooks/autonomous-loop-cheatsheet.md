@@ -299,8 +299,27 @@ Operator-facing surfaces for the normalized project/task execution chain:
 | Surface | Purpose |
 |---|---|
 | `/admin` | compact operator summary: project count, pending approvals, latest approvals, latest memories |
+| `/admin/monitoring` | runtime/service/resource truth; running/unhealthy services, resource consumers, agent activity summary |
 | `/admin/agentic` | create tasks/projects, set policy, approve tasks |
 | `/admin/agentic/control-plane` | full view: role routing, normalized plan rows, task runs, approvals, task/project memories |
+| `/app-meta/runtime-status` | local JSON route for Docker/Ollama runtime truth used by the monitoring page |
+
+Truth split:
+
+- **platform/runtime truth**
+  - `/admin/monitoring`
+  - `/app-meta/runtime-status`
+- **agentic control-plane truth**
+  - `/admin/agentic`
+  - `/admin/agentic/control-plane`
+- **sidecar/council truth**
+  - `/admin/sidecar`
+  - `/admin/sidecar/telemetry`
+
+Important limit:
+
+- “active agents” currently means active agentic workflows/tasks plus configured role bindings
+- it does **not** yet mean worker-thread occupancy or per-model live concurrency
 
 Read APIs behind the control-plane UI:
 

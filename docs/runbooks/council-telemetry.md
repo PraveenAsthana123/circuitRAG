@@ -22,6 +22,25 @@ operator-facing paths:
 The `run_filter_pipeline.sh` orchestrator (Phase 5X) composes
 snapshot + prom export + alerts/webhook in one cron line.
 
+Important scope note:
+
+- `/admin/sidecar/telemetry` is the **council telemetry truth**
+- `/admin/monitoring` is the broader **runtime/service/resource truth**
+- `/app-meta/runtime-status` is the local runtime JSON feed behind that monitoring page
+
+Use sidecar telemetry when the question is about:
+
+- council outcomes
+- filter reasons
+- telemetry trend
+- verdict-log-adjacent behavior
+
+Use monitoring/runtime surfaces when the question is about:
+
+- whether the local stack is up
+- which services are running or unhealthy
+- resource usage and runtime status
+
 ## Files this references
 
 ```
@@ -43,6 +62,18 @@ scripts/
 ```
 
 ## Daily operations
+
+Before assuming a telemetry issue is a telemetry-only issue, check:
+
+- `/admin/monitoring`
+- `/app-meta/runtime-status`
+- `python3 scripts/loop_status.py`
+
+That separates:
+
+- platform/runtime outage
+- service reachability problem
+- healthy platform with a genuine council telemetry issue
 
 ### Recommended cron line
 
@@ -172,6 +203,12 @@ After committing Phase 5S (a UI iteration touching
  "drill_failures": ["drill_sidecar_deep_page", "drill_sidecar_nextjs_page"]}
 ```
 
+If the real question is “did council telemetry break, or is the platform sick?”,
+compare with:
+
+- `/admin/monitoring`
+- `/app-meta/runtime-status`
+
 ### Step 1: re-run the named drills
 
 ```bash
@@ -285,3 +322,5 @@ scripts/migrate_ollama_to_deepa.sh --apply      # Tier-2 (sudo + systemd)
 - **Phase 5Y** — pre-commit HBR detection + loud warning
 - **`docs/NEXT_POLICY.md`** §7 — scope-extension log (must record any new UI surface)
 - **`/admin/sidecar/deep`** — visual SCENARIO_1–6 sequence diagrams of the same flows
+- **`/admin/monitoring`** + **`/app-meta/runtime-status`** — runtime/service/resource truth when telemetry symptoms may actually be platform symptoms
+- **`docs/runbooks/agentic-control-plane.md`** — distinct agentic truth surface; complements but does not replace council telemetry

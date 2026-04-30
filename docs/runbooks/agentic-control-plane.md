@@ -22,13 +22,46 @@ planner/executor flow in `services/agent-orchestrator-svc/`.
 | Surface | Purpose |
 |---|---|
 | `/admin` | compact operator summary panel |
+| `/admin/monitoring` | runtime/service/resource truth surface that now complements the agentic pages |
 | `/admin/agentic` | create tasks/projects, manage policy, approve tasks |
 | `/admin/agentic/control-plane` | full read view of normalized records |
+| `/app-meta/runtime-status` | local frontend-owned runtime status route for Docker/Ollama truth |
 
 Left-menu path:
 
 - `Admin` → `Agentic tasks`
 - `Admin` → `Agentic control plane`
+- `Admin` → `Monitoring + health`
+
+## Runtime truth
+
+For current truth, distinguish between:
+
+- **agentic control-plane truth**
+  - projects
+  - plan rows
+  - task runs
+  - approvals
+  - memories
+- **runtime/platform truth**
+  - running vs unhealthy compose services
+  - Docker stats resource usage
+  - Ollama systemd state
+
+Use:
+
+- `/admin/agentic/control-plane`
+  - normalized agentic records
+- `/admin/monitoring`
+  - runtime/service/resource view
+- `/app-meta/runtime-status`
+  - local JSON runtime feed used by the monitoring page
+
+Important limit:
+
+- “active agents” in the UI currently means **active agentic workflows/tasks**
+  plus configured role bindings
+- it does **not** yet mean live worker occupancy or per-model concurrent execution threads
 
 The operator dashboard also shows an `Agentic control plane summary`
 panel with:
@@ -73,6 +106,12 @@ The control-plane UI reads these endpoints:
 | `GET /api/v1/agentic/tasks/{task_id}/approvals` | persisted human decisions |
 | `GET /api/v1/agentic/memories?scope_type=project&scope_id=...` | project memory rows |
 | `GET /api/v1/agentic/memories?scope_type=task&scope_id=...` | task memory rows |
+
+Related runtime/operator feed outside the orchestrator API namespace:
+
+| Endpoint | Returns |
+|---|---|
+| `GET /app-meta/runtime-status` | local compose service states, Docker stats resource rows, Ollama runtime state |
 
 Existing write surfaces remain:
 
@@ -127,6 +166,7 @@ Control-plane drills:
 Check:
 
 - `/admin`
+- `/admin/monitoring`
 - `/admin/agentic`
 - `/admin/agentic/control-plane`
 
@@ -151,6 +191,18 @@ This tells you whether the issue is:
 - no records being written
 - read APIs broken
 - cross-surface identity drift
+
+If the question is instead “is the platform up but the agentic data empty?”,
+check:
+
+- `/admin/monitoring`
+- `/app-meta/runtime-status`
+
+That separates:
+
+- platform/runtime outage
+- service reachability issue
+- empty-but-healthy agentic state
 
 ### 3. Persistence seems broken
 
@@ -185,8 +237,10 @@ Backend:
 Frontend:
 
 - `services/frontend/app/admin/page.tsx`
+- `services/frontend/app/admin/monitoring/page.tsx`
 - `services/frontend/app/admin/agentic/page.tsx`
 - `services/frontend/app/admin/agentic/control-plane/page.tsx`
+- `services/frontend/app/app-meta/runtime-status/route.ts`
 - `services/frontend/components/Sidebar.tsx`
 - `services/frontend/lib/api.ts`
 
