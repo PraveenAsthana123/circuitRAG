@@ -172,7 +172,6 @@ export default function DownloadBar({ title, contentSelector = 'main' }: Props) 
       // pptxgenjs imports node:fs/https which webpack can't bundle for
       // the client. Loaded from a script tag in /public — bypasses
       // webpack entirely.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const PptxGenJS: any = await ensurePptxgen();
       const pptx = new PptxGenJS();
       pptx.title = title;

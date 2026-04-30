@@ -44,7 +44,6 @@ const BUILD_POLL_INTERVAL_MS = 15 * 1000;
 // register two listeners. The globals dance with `as any` is
 // deliberate — we attach a marker to window without fighting types.
 declare global {
-  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Window {
     __documindClientErrorReporterInstalled?: boolean;
   }
