@@ -114,14 +114,28 @@ def main() -> int:
     # If a future change exposes :8080 as the public ingress (replacing
     # nginx), the trust-boundary contract breaks. Drill flags any
     # 'profiles: [public]' or similar exposure pattern.
-    if "profiles:" in block and "public" in block:
-        raise AssertionError(
-            "api-gateway carries public profile — it must sit BEHIND nginx, "
-            "not be the public ingress"
-        )
+    if "profiles:" in block:
+        # Inspect profile values; reject any 'public' / 'edge' label
+        prof_match = re.search(r"profiles:\s*\[([^\]]*)\]", block)
+        if prof_match:
+            profiles = [p.strip().strip('"').strip("'") for p in prof_match.group(1).split(",")]
+            for forbidden in ("public", "edge", "ingress"):
+                if forbidden in profiles:
+                    raise AssertionError(
+                        f"api-gateway carries {forbidden!r} profile — it must "
+                        f"sit BEHIND nginx, not be the public ingress"
+                    )
     print("  ok: api-gateway does not bypass NGINX as public ingress")
 
-    print("\nALL 10 STEPS PASSED")
+    print("-- 11. POSITIVE: api-gateway is opt-in via profiles --")
+    # File-header philosophy: "Application services are run natively".
+    # api-gateway in compose must be opt-in (profiles: [app]) so default
+    # `docker compose up` excludes it; explicit `--profile app` to enable.
+    require(block, "profiles:", "profiles directive (opt-in)")
+    require(block, '"app"', "app profile token")
+    print("  ok: api-gateway is opt-in via profiles: [\"app\"]")
+
+    print("\nALL 11 STEPS PASSED")
     return 0
 
 

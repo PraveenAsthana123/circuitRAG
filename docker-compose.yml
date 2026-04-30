@@ -411,6 +411,13 @@ services:
   # Locked by drill_api_gateway_compose.py.
   # ──────────────────────────────────────────────────────────────────────
   api-gateway:
+    # Opt-in via profile to preserve file-header philosophy
+    # ("Application services are run natively"). Default `docker compose
+    # up` excludes this; bring it up explicitly with:
+    #   docker compose --profile app up -d api-gateway
+    # NGINX upstream falls back to host.docker.internal:8080 when not
+    # running, so native-run gateway continues to work as default.
+    profiles: ["app"]
     build:
       context: .
       dockerfile: services/api-gateway/Dockerfile
