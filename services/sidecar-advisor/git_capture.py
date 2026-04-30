@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,11 +83,22 @@ def _count_payload_lines(diff: str) -> int:
     return n
 
 
+# Resolve git absolute path at module load to satisfy bandit S607
+# (partial executable path) cleanly. PATH-hijack concern documented;
+# fallback to "git" only when shutil.which fails (rare).
+_GIT_BIN: str = shutil.which("git") or "git"
+
+
 def _run_git(args: list[str], cwd: Path) -> tuple[bool, str, str]:
-    """Returns (success, stdout, stderr_or_error)."""
+    """Returns (success, stdout, stderr_or_error).
+
+    Args is a list[str] of git CLI arguments from internal callers
+    (never user input). subprocess uses shell=False (default) — no
+    shell-injection surface even if args contained metacharacters.
+    """
     try:
-        result = subprocess.run(
-            ["git", *args],
+        result = subprocess.run(  # noqa: S603 — list-form, shell=False, internal args only
+            [_GIT_BIN, *args],
             capture_output=True,
             text=True,
             cwd=str(cwd),

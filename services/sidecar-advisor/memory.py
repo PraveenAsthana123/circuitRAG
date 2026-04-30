@@ -420,8 +420,13 @@ class AdvisorMemory:
             return False
         params.append(event_id)
         with self._connect() as conn:
+            # S608 false-positive: `sets` contains LITERAL column-
+            # assignment strings built above from hardcoded column
+            # names ("advisor_output = ?", "model_used = ?",
+            # "duration_s = ?"). All values are bound via `params`.
+            # No user input reaches the f-string.
             cur = conn.execute(
-                f"UPDATE advisor_events SET {', '.join(sets)} "
+                f"UPDATE advisor_events SET {', '.join(sets)} "  # noqa: S608
                 f"WHERE id = ?",
                 params,
             )
@@ -544,6 +549,9 @@ class AdvisorMemory:
         if not pattern_ids:
             return 0
         now = _utcnow_iso()
+        # `placeholders` is a string of literal `?` separators (e.g.
+        # "?,?,?"). All actual pattern_id values are parameter-bound
+        # via the tuple. Canonical safe IN-list pattern.
         placeholders = ",".join("?" * len(pattern_ids))
         with self._connect() as conn:
             cur = conn.execute(
@@ -551,7 +559,7 @@ class AdvisorMemory:
                 UPDATE advisor_memory
                 SET use_count = use_count + 1, last_used_at = ?
                 WHERE id IN ({placeholders})
-                """,
+                """,  # noqa: S608 — placeholders is literal "?" string; values parameterized
                 (now, *pattern_ids),
             )
             return cur.rowcount

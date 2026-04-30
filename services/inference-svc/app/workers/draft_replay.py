@@ -92,7 +92,7 @@ def _sweep_span(correlation_id: str, tenant_count: int) -> Any:
                 self._sp.set_attribute("documind.correlation_id", correlation_id)
                 self._sp.set_attribute("worker.tenant_count", int(tenant_count))
                 self._sp.set_attribute("worker.kind", "draft_replay")
-            except Exception:  # noqa: BLE001 — never let span attributes break the sweep
+            except Exception:  # noqa: BLE001, S110 — never let span attributes break the sweep
                 pass
             return self._sp
 
