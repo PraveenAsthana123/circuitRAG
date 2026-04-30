@@ -18,7 +18,9 @@ const nextConfig = {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
     return [
       {
-        source: '/api/:path*',
+        // Keep frontend-owned App Router APIs local. Everything else
+        // still proxies to the gateway.
+        source: '/api/:path((?!v1/tts(?:/|$)|v1/sidecar(?:/|$)).*)',
         destination: `${apiBase}/api/:path*`,
       },
     ];
