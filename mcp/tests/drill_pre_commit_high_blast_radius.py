@@ -73,8 +73,10 @@ def main() -> int:
         return 1
     print(f"✓ step 1: hook exists, {line_count} lines, cites Phase 5Y")
 
-    # ── Step 2: NEGATIVE — HBR regex covers all three surfaces ──
-    # The detection should match ALL of these paths.
+    # ── Step 2: NEGATIVE — HBR regex covers all required surfaces ──
+    # Phase 7MM extended the pattern to include drill catalog edits;
+    # all of these paths must match the regex (any miss = regression
+    # class uncaught).
     hbr_match_targets = [
         "services/frontend/app/admin/sidecar/page.tsx",
         "services/frontend/app/admin/sidecar/deep/page.tsx",
@@ -83,6 +85,10 @@ def main() -> int:
         "mcp/server.py",
         "services/sidecar-advisor/advisor.py",
         "services/sidecar-advisor/git_capture.py",
+        # Phase 7MM: drill catalog edits trigger refresh (closes the
+        # 3-REJECT stale-snapshot pattern from Phase 7JJ/7KK/7LL).
+        "mcp/tests/drill_example.py",
+        "mcp/tests/drill_adr020_audit_cadence.py",
     ]
     # Extract the regex string from the hook body.
     regex_match = re.search(
@@ -104,12 +110,17 @@ def main() -> int:
           "high-blast-radius surfaces")
 
     # ── Step 3: NEGATIVE — regex doesn't match unrelated paths ──
+    # Phase 7MM removed `mcp/tests/drill_x.py` from this safe list
+    # (drill catalog edits SHOULD now trigger HBR — see step 2).
+    # Other test files outside drill_*.py (e.g. audit_*.py, .test.ts)
+    # remain safe-by-design.
     safe_targets = [
         "docs/NEXT_POLICY.md",
         "README.md",
         "scripts/utils/something.py",
-        "mcp/tests/drill_x.py",          # tests are NOT servers
-        "services/frontend/app/page.tsx", # outside sidecar/
+        "mcp/tests/audit_x.py",          # audit_*.py is non-gating per ADR-018
+        "mcp/tests/conftest.py",         # pytest config, not a drill
+        "services/frontend/app/page.tsx",  # outside sidecar/
         "services/frontend/styles/globals.css",
     ]
     for target in safe_targets:
