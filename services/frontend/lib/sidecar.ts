@@ -30,9 +30,23 @@ export type SidecarEvent = {
 
 export type SidecarEventFilters = {
   limit?: number;
+  offset?: number;
   eventType?: string;
   ratingState?: 'all' | 'rated' | 'unrated';
   search?: string;
+};
+
+export type SidecarReviewerStat = {
+  rated_by: string;
+  ratings: number;
+};
+
+export type SidecarEventPage = {
+  events: SidecarEvent[];
+  total: number;
+  rated: number;
+  unrated: number;
+  reviewers: SidecarReviewerStat[];
 };
 
 const PYTHON_BRIDGE = `
@@ -61,12 +75,16 @@ if operation == "list":
     event_type = sys.argv[6] if len(sys.argv) > 6 and sys.argv[6] else ""
     rating_state = sys.argv[7] if len(sys.argv) > 7 and sys.argv[7] else "all"
     search = sys.argv[8] if len(sys.argv) > 8 and sys.argv[8] else ""
+    offset = int(sys.argv[9]) if len(sys.argv) > 9 else 0
     if not db_path.exists():
-        print(json.dumps({"events": []}))
+        print(json.dumps({"events": [], "total": 0, "rated": 0, "unrated": 0, "reviewers": []}))
         raise SystemExit(0)
     with sqlite3.connect(str(db_path)) as conn:
         conn.row_factory = sqlite3.Row
-        sql = """
+        base_sql = """
+            FROM advisor_events
+        """
+        select_sql = """
             SELECT
               id,
               created_at,
@@ -83,7 +101,6 @@ if operation == "list":
               rated_at,
               rated_by,
               rating_notes
-            FROM advisor_events
         """
         params = []
         clauses = []
@@ -104,14 +121,42 @@ if operation == "list":
             like = f"%{search}%"
             params.extend([like, like, like, like])
         if clauses:
-            sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY created_at DESC LIMIT ?"
-        params.append(limit)
+            base_sql += " WHERE " + " AND ".join(clauses)
+        sql = select_sql + base_sql + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        query_params = list(params) + [limit, max(0, offset)]
         rows = conn.execute(
             sql,
+            tuple(query_params),
+        ).fetchall()
+        total = conn.execute(
+            "SELECT COUNT(*) " + base_sql,
+            tuple(params),
+        ).fetchone()[0]
+        rated = conn.execute(
+            "SELECT COUNT(*) " + base_sql +
+            (" AND user_rating IS NOT NULL" if clauses else " WHERE user_rating IS NOT NULL"),
+            tuple(params),
+        ).fetchone()[0]
+        unrated = conn.execute(
+            "SELECT COUNT(*) " + base_sql +
+            (" AND user_rating IS NULL" if clauses else " WHERE user_rating IS NULL"),
+            tuple(params),
+        ).fetchone()[0]
+        reviewers = conn.execute(
+            """
+            SELECT rated_by, COUNT(*) AS ratings
+            """ + base_sql +
+            (" AND rated_by IS NOT NULL AND rated_by != ''" if clauses else " WHERE rated_by IS NOT NULL AND rated_by != ''") +
+            " GROUP BY rated_by ORDER BY ratings DESC, rated_by ASC LIMIT 5",
             tuple(params),
         ).fetchall()
-    print(json.dumps({"events": [dict(row) for row in rows]}))
+    print(json.dumps({
+        "events": [dict(row) for row in rows],
+        "total": total,
+        "rated": rated,
+        "unrated": unrated,
+        "reviewers": [dict(row) for row in reviewers],
+    }))
     raise SystemExit(0)
 
 if operation == "rate":
@@ -144,6 +189,11 @@ async function runBridge(args: string[]) {
 }
 
 export async function listRecentSidecarEvents(filters: SidecarEventFilters = {}): Promise<SidecarEvent[]> {
+  const page = await listSidecarEventPage(filters);
+  return page.events;
+}
+
+export async function listSidecarEventPage(filters: SidecarEventFilters = {}): Promise<SidecarEventPage> {
   const data = await runBridge([
     'list',
     String(filters.limit ?? 12),
@@ -151,8 +201,15 @@ export async function listRecentSidecarEvents(filters: SidecarEventFilters = {})
     filters.eventType || '',
     filters.ratingState || 'all',
     filters.search || '',
+    String(filters.offset ?? 0),
   ]);
-  return Array.isArray(data.events) ? (data.events as SidecarEvent[]) : [];
+  return {
+    events: Array.isArray(data.events) ? (data.events as SidecarEvent[]) : [],
+    total: Number(data.total || 0),
+    rated: Number(data.rated || 0),
+    unrated: Number(data.unrated || 0),
+    reviewers: Array.isArray(data.reviewers) ? (data.reviewers as SidecarReviewerStat[]) : [],
+  };
 }
 
 export async function rateSidecarEvent(
@@ -171,7 +228,7 @@ export async function rateSidecarEvent(
 }
 
 export async function getSidecarEventById(eventId: number): Promise<SidecarEvent | null> {
-  const data = await runBridge(['list', '1', String(eventId), '', 'all', '']);
+  const data = await runBridge(['list', '1', String(eventId), '', 'all', '', '0']);
   const events = Array.isArray(data.events) ? (data.events as SidecarEvent[]) : [];
   return events[0] ?? null;
 }

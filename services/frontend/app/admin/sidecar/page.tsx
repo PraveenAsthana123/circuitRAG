@@ -25,7 +25,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import Link from 'next/link';
 
-import { listRecentSidecarEvents } from '@/lib/sidecar';
+import { listSidecarEventPage } from '@/lib/sidecar';
 
 const DASHBOARD_PATH = path.resolve(
   process.cwd(),
@@ -69,6 +69,7 @@ type SidecarDashboardPageProps = {
     event_type?: string | string[];
     rating_state?: string | string[];
     q?: string | string[];
+    page?: string | string[];
   };
 };
 
@@ -86,13 +87,29 @@ export default async function SidecarDashboardPage({ searchParams }: SidecarDash
   const ratingState =
     ratingStateRaw === 'rated' || ratingStateRaw === 'unrated' ? ratingStateRaw : 'all';
   const search = firstQueryValue(searchParams?.q);
-  const events = await listRecentSidecarEvents({
-    limit: 24,
+  const pageSize = 12;
+  const pageRaw = Number(firstQueryValue(searchParams?.page) || '1');
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+  const offset = (page - 1) * pageSize;
+  const eventPage = await listSidecarEventPage({
+    limit: pageSize,
+    offset,
     eventType,
     ratingState,
     search,
   });
+  const events = eventPage.events;
   const flash = ratingMessage(searchParams?.rating);
+  const hasPrevious = page > 1;
+  const hasNext = offset + events.length < eventPage.total;
+  const queryForPage = (targetPage: number) => {
+    const params = new URLSearchParams();
+    if (search) params.set('q', search);
+    if (eventType) params.set('event_type', eventType);
+    if (ratingState !== 'all') params.set('rating_state', ratingState);
+    if (targetPage > 1) params.set('page', String(targetPage));
+    return `/admin/sidecar?${params.toString()}#live-ratings`;
+  };
   // Server-rendered, static; no XSS surface here because
   // render_dashboard.py html.escape()s every user-content cell.
   // The drill (drill_render_dashboard.py step 6) verifies this.
@@ -183,6 +200,47 @@ export default async function SidecarDashboardPage({ searchParams }: SidecarDash
             </Link>
           </div>
         </form>
+        <div
+          style={{
+            marginTop: 16,
+            display: 'grid',
+            gap: 12,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          }}
+        >
+          <div style={{ padding: '12px 14px', border: '1px solid #e3e8ee', borderRadius: 12 }}>
+            <div style={{ fontSize: 12, color: '#6a7682', textTransform: 'uppercase' }}>Matched events</div>
+            <strong style={{ fontSize: 24 }}>{eventPage.total}</strong>
+          </div>
+          <div style={{ padding: '12px 14px', border: '1px solid #e3e8ee', borderRadius: 12 }}>
+            <div style={{ fontSize: 12, color: '#6a7682', textTransform: 'uppercase' }}>Rated</div>
+            <strong style={{ fontSize: 24 }}>{eventPage.rated}</strong>
+          </div>
+          <div style={{ padding: '12px 14px', border: '1px solid #e3e8ee', borderRadius: 12 }}>
+            <div style={{ fontSize: 12, color: '#6a7682', textTransform: 'uppercase' }}>Unrated</div>
+            <strong style={{ fontSize: 24 }}>{eventPage.unrated}</strong>
+          </div>
+          <div style={{ padding: '12px 14px', border: '1px solid #e3e8ee', borderRadius: 12 }}>
+            <div style={{ fontSize: 12, color: '#6a7682', textTransform: 'uppercase' }}>Page</div>
+            <strong style={{ fontSize: 24 }}>{page}</strong>
+          </div>
+        </div>
+        {eventPage.reviewers.length > 0 ? (
+          <div style={{ marginTop: 16 }}>
+            <h3 style={{ marginBottom: 8 }}>Top reviewers</h3>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {eventPage.reviewers.map((reviewer) => (
+                <div
+                  key={reviewer.rated_by}
+                  style={{ padding: '10px 12px', border: '1px solid #e3e8ee', borderRadius: 999, background: '#fff' }}
+                >
+                  <strong>{reviewer.rated_by}</strong>
+                  <span style={{ marginLeft: 8, color: '#6a7682' }}>{reviewer.ratings} ratings</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {events.length === 0 ? (
           <p style={{ marginTop: 16, color: '#54606c' }}>
             No advisor events matched the current filters. Run the sidecar capture flow first or broaden the filters.
@@ -237,6 +295,30 @@ export default async function SidecarDashboardPage({ searchParams }: SidecarDash
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+        {(hasPrevious || hasNext) && (
+          <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+            <div style={{ color: '#6a7682' }}>
+              Showing {eventPage.total === 0 ? 0 : offset + 1}-
+              {Math.min(offset + events.length, eventPage.total)} of {eventPage.total}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {hasPrevious ? (
+                <Link href={queryForPage(page - 1)} style={{ color: '#0b63ce', fontWeight: 600 }}>
+                  Previous page
+                </Link>
+              ) : (
+                <span style={{ color: '#9aa5b1' }}>Previous page</span>
+              )}
+              {hasNext ? (
+                <Link href={queryForPage(page + 1)} style={{ color: '#0b63ce', fontWeight: 600 }}>
+                  Next page
+                </Link>
+              ) : (
+                <span style={{ color: '#9aa5b1' }}>Next page</span>
+              )}
+            </div>
           </div>
         )}
       </section>

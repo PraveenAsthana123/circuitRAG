@@ -68,6 +68,10 @@ def main() -> None:
         'name="q"',
         "Apply filters",
         "Reset",
+        "Matched events",
+        "Top reviewers",
+        "Previous page",
+        "Next page",
     ):
         if needle not in page_text:
             fail(f"sidecar page missing {needle!r}")
@@ -90,9 +94,13 @@ def main() -> None:
 
     for needle in (
         "listRecentSidecarEvents",
+        "listSidecarEventPage",
         "ratingState",
         "eventType",
         "search",
+        "offset",
+        "reviewers",
+        "total",
         "rateSidecarEvent",
         "getSidecarEventById",
         "advisor.record_rating",
