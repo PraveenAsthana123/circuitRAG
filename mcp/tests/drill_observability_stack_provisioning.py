@@ -8,6 +8,7 @@ partially wired:
 - Grafana dashboard auto-provisioning
 - Prometheus alert-rules loading
 - Alertmanager local routing and Prometheus alerting hookup
+- Host/container exporters for deeper infra metrics
 
 Negative assertions cover: each provisioning artifact (Grafana
 dashboards yaml, Prometheus alert-rules, Alertmanager config)
@@ -39,6 +40,7 @@ def main() -> int:
     compose = COMPOSE.read_text(encoding="utf-8")
     prom = PROM.read_text(encoding="utf-8")
     provider = GRAFANA_PROVIDER.read_text(encoding="utf-8")
+    overview = GRAFANA_OVERVIEW.read_text(encoding="utf-8")
 
     print("-- 1. POSITIVE: alert rules file exists --")
     assert RULES.exists(), f"missing rules file: {RULES}"
@@ -77,23 +79,44 @@ def main() -> int:
     require(compose, "./infra/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro", "alertmanager config volume")
     print("  ok: docker-compose provisions alertmanager")
 
-    print("-- 9. POSITIVE: Grafana compose service mounts dashboard provider and dashboard dir --")
+    print("-- 9. POSITIVE: compose defines node-exporter and cadvisor services --")
+    require(compose, "node-exporter:", "node-exporter service")
+    require(compose, "prom/node-exporter:v1.8.2", "node-exporter image")
+    require(compose, "cadvisor:", "cadvisor service")
+    require(compose, "gcr.io/cadvisor/cadvisor:v0.49.1", "cadvisor image")
+    print("  ok: docker-compose provisions host/container exporters")
+
+    print("-- 10. POSITIVE: Prometheus scrapes node-exporter and cadvisor --")
+    require(prom, "job_name: node-exporter", "node-exporter scrape job")
+    require(prom, 'targets: ["node-exporter:9100"]', "node-exporter scrape target")
+    require(prom, "job_name: cadvisor", "cadvisor scrape job")
+    require(prom, 'targets: ["cadvisor:8080"]', "cadvisor scrape target")
+    print("  ok: prometheus.yml scrapes infra exporters")
+
+    print("-- 11. POSITIVE: Grafana dashboard includes host/container exporter panels --")
+    require(overview, "node_cpu_seconds_total", "host cpu panel query")
+    require(overview, "node_memory_MemAvailable_bytes", "host memory panel query")
+    require(overview, "container_cpu_usage_seconds_total", "container cpu panel query")
+    require(overview, "container_memory_working_set_bytes", "container memory panel query")
+    print("  ok: overview dashboard references exporter metrics")
+
+    print("-- 12. POSITIVE: Grafana compose service mounts dashboard provider and dashboard dir --")
     require(compose, "./infra/observability/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro", "grafana provider volume")
     require(compose, "./infra/observability/grafana-dashboards:/var/lib/grafana/dashboards:ro", "grafana dashboards dir volume")
     print("  ok: docker-compose mounts grafana dashboard provisioning")
 
-    print("-- 10. POSITIVE: Grafana provider targets the mounted dashboards path --")
+    print("-- 13. POSITIVE: Grafana provider targets the mounted dashboards path --")
     require(provider, "providers:", "grafana providers stanza")
     require(provider, "/var/lib/grafana/dashboards", "grafana dashboard path")
     print("  ok: provider points at mounted dashboards path")
 
-    print("-- 11. NEGATIVE: no manual-import-only README claim should remain true after provisioning --")
+    print("-- 14. NEGATIVE: no manual-import-only README claim should remain true after provisioning --")
     readme = (GRAFANA_DIR / "README.md").read_text(encoding="utf-8")
     if "import this" in readme.lower() and "auto" not in readme.lower():
         raise AssertionError("dashboard README still appears to describe import-only flow without auto-provision context")
     print("  ok: README is not import-only drift")
 
-    print("\nALL 11 STEPS PASSED")
+    print("\nALL 14 STEPS PASSED")
     return 0
 
 

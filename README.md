@@ -75,7 +75,7 @@ Use this table as the honest current-state view.
 | Service mesh | Manifested, not default local runtime | `infra/istio/`, `docs/scenarios/phase-01-edge-traffic-security.md` | Istio/Kiali are part of target deployment shape; mesh-up is a deployment decision, not the default local dev path |
 | Kafka | Running locally | `docker-compose.yml`, `docker-compose.override.yml`, `libs/py/documind_core/kafka_client.py` | Configured and active in local infra; event architecture is documented and the broker is part of the compose stack |
 | gRPC | Contract strategy more than dominant runtime | `proto/`, `README` repo layout, `docs/architecture/repo-grpc-and-microservice-architecture.md` | Strongly intended for internal service contracts, but the most visible runnable paths in this repo are still REST/frontend/admin oriented |
-| Observability stack | Running locally | Prometheus/Grafana/Jaeger/OTel in `docker-compose.yml`, files under `infra/observability/` | Real local stack exists; datasources are provisioned, dashboards are only partially automated |
+| Observability stack | Running locally | Prometheus/Alertmanager/Grafana/Jaeger/OTel plus node-exporter/cAdvisor in `docker-compose.yml`, files under `infra/observability/` | Real local stack exists; datasources and dashboards are provisioned, local alert routing exists, and host/container metrics are wired |
 | Agent council / sidecar advisor | Running in repo-local workflows | `services/sidecar-advisor/`, `.loop/`, `/admin/sidecar*` | Real and active; commit-time council, telemetry, ratings, drill-down, and monitoring surfaces exist |
 | Agentic orchestrator | Running as a repo service | `services/agent-orchestrator-svc/`, `/admin/agentic*` | Real local service with projects/tasks/approvals/memory/control-plane surfaces |
 
@@ -83,7 +83,7 @@ Use this table as the honest current-state view.
 
 From the repo as currently wired:
 
-- **Local infra via Compose:** Postgres, Redis, Kafka, MinIO, Qdrant, Neo4j, Ollama, OTel collector, Prometheus, Grafana, Jaeger, ELK, Kiali
+- **Local infra via Compose:** Postgres, Redis, Kafka, MinIO, Qdrant, Neo4j, Ollama, OTel collector, Prometheus, Alertmanager, Grafana, Jaeger, node-exporter, cAdvisor, ELK, Kiali
 - **Local operator UIs:** `/admin`, `/admin/monitoring`, `/admin/sidecar`, `/admin/sidecar/telemetry`, `/admin/forensics`, `/admin/agentic/control-plane`, `/admin/techstack`
 - **Runtime status surface:** `/app-meta/runtime-status`
 - **Build identity surface:** `/app-meta/build-info`

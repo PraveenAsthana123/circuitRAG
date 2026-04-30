@@ -224,6 +224,33 @@ services:
       - jaeger
       - prometheus
 
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: documind-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - "/:/host:ro,rslave"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: documind-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8089:8080"
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - "/:/rootfs:ro"
+      - "/var/run:/var/run:rw"
+      - "/sys:/sys:ro"
+      - "/var/lib/docker:/var/lib/docker:ro"
+
   # ──────────────────────────────────────────────────────────────────────
   # Prometheus + Grafana + Jaeger (observability stack)
   # ──────────────────────────────────────────────────────────────────────
@@ -250,11 +277,22 @@ services:
     restart: unless-stopped
     ports:
       - "9093:9093"
+    environment:
+      ALERTMANAGER_DEFAULT_RECEIVER: ${ALERTMANAGER_DEFAULT_RECEIVER:-local-log}
+      ALERTMANAGER_WEBHOOK_URL: ${ALERTMANAGER_WEBHOOK_URL:-http://host.docker.internal:8099/alertmanager-placeholder}
     volumes:
       - ./infra/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
-      - "--storage.path=/alertmanager"
+      - /bin/sh
+      - -ec
+      - |
+          sed \
+            -e "s|__DEFAULT_RECEIVER__|$${ALERTMANAGER_DEFAULT_RECEIVER}|g" \
+            -e "s|__WEBHOOK_URL__|$${ALERTMANAGER_WEBHOOK_URL}|g" \
+            /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
+          exec /bin/alertmanager \
+            --config.file=/tmp/alertmanager.yml \
+            --storage.path=/alertmanager
 
   grafana:
     image: grafana/grafana:11.2.0

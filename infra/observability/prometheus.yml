@@ -20,6 +20,14 @@ alerting:
         - targets: ["alertmanager:9093"]
 
 scrape_configs:
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
   # OTel collector (re-exports OTLP metrics received from services)
   - job_name: otel-collector
     static_configs:

@@ -10,7 +10,21 @@ This dashboard is now auto-provisioned by local Grafana via:
 So if the local observability stack is up, the dashboard should appear
 under the `DocuMind` folder without a manual import step.
 
-Panels reference **only** the Prometheus metrics that `libs/py/documind_core/` actually emits (circuit breaker state + failures, retrieval quality, CCB interrupts/warnings, token breaker rejects, agent stops, ingest chunk decisions, obs breaker skips). If a panel is empty when you import this, the corresponding code path hasn't executed yet — not a dashboard bug.
+Panels now cover two sources:
+
+- app/runtime metrics that `libs/py/documind_core/` and services emit
+  - circuit breaker state + failures
+  - retrieval quality
+  - CCB interrupts/warnings
+  - token breaker rejects
+  - agent stops
+  - ingest chunk decisions
+  - observability breaker skips
+- infra metrics from the local exporters
+  - `node-exporter` host CPU / memory / filesystem
+  - `cadvisor` container CPU / memory
+
+If an app panel is empty, the corresponding code path probably has not executed yet. If an infra panel is empty, the likely issue is that `node-exporter` / `cadvisor` are not running or Prometheus is not scraping them.
 
 ## Previously shipped `slo-burn.json` — REMOVED
 

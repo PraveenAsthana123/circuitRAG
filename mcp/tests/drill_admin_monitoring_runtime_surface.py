@@ -63,11 +63,23 @@ def main() -> int:
     must_contain(page, "Resource consumers", "resource section heading")
     print("  ok: runtime visibility sections present")
 
-    print("-- 6. POSITIVE: monitoring page references runtime-status route --")
+    print("-- 6. POSITIVE: monitoring page keeps circuit breaker implementation inventory --")
+    must_contain(page, "Circuit breaker implementations", "breaker inventory heading")
+    must_contain(page, "ObservabilityCircuitBreaker", "observability breaker inventory row")
+    must_contain(page, "CognitiveCircuitBreaker", "cognitive breaker inventory row")
+    print("  ok: breaker implementation inventory present")
+
+    print("-- 7. POSITIVE: monitoring page keeps observability stack links and exporter inventory --")
+    must_contain(page, "Alertmanager", "alertmanager link or inventory row")
+    must_contain(page, "Node exporter", "node exporter inventory row")
+    must_contain(page, "cAdvisor", "cadvisor inventory row")
+    print("  ok: alerting/exporter surfaces present")
+
+    print("-- 8. POSITIVE: monitoring page references runtime-status route --")
     must_contain(page, "api.frontendRuntimeStatus()", "frontend runtime status API call")
     print("  ok: page references runtime-status")
 
-    print("-- 7. POSITIVE: runtime-status route uses local runtime truth commands --")
+    print("-- 9. POSITIVE: runtime-status route uses local runtime truth commands --")
     must_contain(route, "docker", "docker command usage")
     must_contain(route, "compose", "docker compose usage")
     must_contain(route, "stats", "docker stats usage")
@@ -75,12 +87,12 @@ def main() -> int:
     must_contain(route, "ollama", "ollama service check")
     print("  ok: route checks docker/runtime state")
 
-    print("-- 8. NEGATIVE: runtime-status route must remain frontend-owned local route --")
+    print("-- 10. NEGATIVE: runtime-status route must remain frontend-owned local route --")
     if "/api/" in str(RUNTIME_ROUTE.relative_to(REPO)):
         raise AssertionError("runtime-status route drifted under /api/* and may be rewritten to the gateway")
     print("  ok: route remains outside /api/*")
 
-    print("\nALL 8 STEPS PASSED")
+    print("\nALL 10 STEPS PASSED")
     return 0
 
 

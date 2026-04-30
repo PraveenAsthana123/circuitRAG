@@ -44,6 +44,8 @@ These are the main operational routes exposed by the frontend today:
   - live service/runtime status
   - running/unhealthy services
   - resource consumers from local Docker stats
+  - observability links for Grafana / Prometheus / Alertmanager / Jaeger
+  - local stack inventory including node-exporter and cAdvisor
   - agent activity summary
 - `/admin/techstack`
   - installed vs pending tool inventory

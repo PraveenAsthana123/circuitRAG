@@ -47,6 +47,8 @@ const LOCAL_STACK = [
   { name: 'Neo4j', port: '7474 / 7687', role: 'knowledge graph browser + bolt' },
   { name: 'Ollama', port: '51134', role: 'local LLM and embeddings runtime on this dev host' },
   { name: 'OTel collector', port: '4317 / 4318 / 9464', role: 'OTLP ingest and Prometheus re-export' },
+  { name: 'Node exporter', port: '9100', role: 'host CPU, memory, filesystem, and kernel metrics' },
+  { name: 'cAdvisor', port: '8089', role: 'container CPU, memory, filesystem, and saturation metrics' },
   { name: 'Prometheus', port: '9090', role: 'metrics scraping and rules engine' },
   { name: 'Alertmanager', port: '9093', role: 'alert grouping and receiver routing' },
   { name: 'Grafana', port: '3001', role: 'dashboards and visualization' },
@@ -117,6 +119,48 @@ const DATA_PATHS = [
   'data/nginx-* — TLS, cache, and access/error logs',
   'data/minio, data/postgres, data/qdrant, data/neo4j, data/kafka, data/redis — local persistence',
 ];
+const CIRCUIT_BREAKER_IMPLEMENTATIONS = [
+  {
+    name: 'Base circuit breaker',
+    codePath: 'libs/py/documind_core/circuit_breaker.py',
+    protects: 'generic dependency calls with CLOSED / HALF_OPEN / OPEN state transitions',
+  },
+  {
+    name: 'RetrievalCircuitBreaker',
+    codePath: 'libs/py/documind_core/breakers.py',
+    protects: 'retrieval quality drift and mostly-empty result sets before they silently degrade answers',
+  },
+  {
+    name: 'TokenBudgetCircuitBreaker',
+    codePath: 'libs/py/documind_core/breakers.py',
+    protects: 'per-request and daily token budget overruns before expensive generation starts',
+  },
+  {
+    name: 'AgentLoopCircuitBreaker',
+    codePath: 'libs/py/documind_core/breakers.py',
+    protects: 'runaway agent/tool loops, max-step overruns, and tool-budget blowups',
+  },
+  {
+    name: 'ObservabilityCircuitBreaker',
+    codePath: 'libs/py/documind_core/breakers.py',
+    protects: 'OTel / exporter outages so telemetry failure does not cascade into app failure',
+  },
+  {
+    name: 'CognitiveCircuitBreaker',
+    codePath: 'libs/py/documind_core/breakers.py',
+    protects: 'unsafe or self-contradictory generation trajectories based on warning/interrupt signals',
+  },
+  {
+    name: 'Embedder client breaker',
+    codePath: 'services/retrieval-svc/app/services/embedder_client.py',
+    protects: 'embedding dependency failures inside retrieval service',
+  },
+  {
+    name: 'Hybrid retriever vector/graph breakers',
+    codePath: 'services/retrieval-svc/app/services/hybrid_retriever.py',
+    protects: 'vector and graph retrieval dependency paths plus quality-aware retrieval fallback',
+  },
+];
 const IDENTITY_SURFACES = [
   {
     name: 'API gateway + tenant headers',
@@ -145,18 +189,19 @@ const OPERATIONS_STATUS = {
     'Live service health, circuit breakers, upstream reachability, and tool traffic are visible in-app.',
     'Sidecar telemetry, forensics, and agentic control-plane surfaces are already linked and reachable.',
     'Prometheus, Alertmanager, Grafana, Jaeger, OTel collector, ELK, and Kiali are defined in local compose.',
+    'Node exporter and cAdvisor are defined in local compose for host and container metrics.',
     'Loop automation paths exist: loop_status, drill refresh, council snapshots, and filter pipeline.',
     'Grafana dashboard provisioning is automatic and Prometheus loads local alert rules.',
+    'Alertmanager receiver routing is now configurable from compose env without hand-editing the config file.',
   ],
   inProgress: [
     'Monitoring page is now acting as the central operations map, but it still depends on downstream health endpoints for live data.',
-    'Alertmanager is local-first: routing exists, but shared-environment receivers are still placeholder-only.',
+    'Alertmanager is local-first: the shared receiver contract exists, but real delivery depends on a supplied webhook URL and receiver selection.',
     'Tracking is current-state-heavy; trends and incident timelines are not yet persisted in this UI.',
   ],
   pending: [
-    'Shared-environment alert delivery integration beyond the local placeholder receiver.',
+    'A real shared-environment webhook/notification secret wired into Alertmanager at deployment time.',
     'Historical tracking for alerts, scraper failures, and upstream flapping.',
-    'Infra-level exporters for CPU, memory, disk, restart counts, and container saturation.',
     'Operator acknowledgements, issue ownership, and resolved-state workflow.',
   ],
 };
@@ -174,7 +219,7 @@ const PIPELINE_FLOW = [
     name: 'Process',
     items: [
       'Health APIs aggregate readiness, breakers, prompt registry, tools, and upstream probes.',
-      'Prometheus scrapes OTel and application /metrics targets, then forwards firing rules into Alertmanager.',
+      'Prometheus scrapes node-exporter, cAdvisor, OTel, and application /metrics targets, then forwards firing rules into Alertmanager.',
       'Sidecar advisor records events, ratings, council runs, and memory.',
       'Loop automation refreshes drill state, council telemetry, and watcher verdicts.',
     ],
@@ -737,6 +782,25 @@ export default function MonitoringPage() {
                 <code>{item.port}</code>
               </div>
               <div className="field-help" style={{ marginTop: 8 }}>{item.role}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 24 }}>
+        <h2 style={{ marginBottom: 12 }}>Circuit breaker implementations</h2>
+        <div className="field-help" style={{ marginBottom: 12 }}>
+          This is the implementation inventory, not just the live state. Use it when the question is
+          “what breakers do we actually have in code?” rather than “which one is open right now?”
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {CIRCUIT_BREAKER_IMPLEMENTATIONS.map((item) => (
+            <div key={item.name} className="surface-muted">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <strong>{item.name}</strong>
+                <code>{item.codePath}</code>
+              </div>
+              <div className="field-help" style={{ marginTop: 8 }}>{item.protects}</div>
             </div>
           ))}
         </div>

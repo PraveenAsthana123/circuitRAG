@@ -2,7 +2,7 @@ global:
   resolve_timeout: 5m
 
 route:
-  receiver: local-log
+  receiver: __DEFAULT_RECEIVER__
   group_by: ['alertname', 'severity', 'team']
   group_wait: 30s
   group_interval: 5m
@@ -11,8 +11,12 @@ route:
 receivers:
   - name: local-log
 
-  # Placeholder receiver for later shared-environment integration.
-  - name: placeholder-webhook
+  # Env-rendered shared receiver. In local-only mode keep
+  # ALERTMANAGER_DEFAULT_RECEIVER=local-log. To deliver externally,
+  # set:
+  #   ALERTMANAGER_DEFAULT_RECEIVER=shared-webhook
+  #   ALERTMANAGER_WEBHOOK_URL=https://...
+  - name: shared-webhook
     webhook_configs:
-      - url: http://host.docker.internal:8099/alertmanager-placeholder
+      - url: __WEBHOOK_URL__
         send_resolved: true

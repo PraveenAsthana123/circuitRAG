@@ -2,7 +2,7 @@
   "title": "DocuMind — Service Overview",
   "uid": "documind-overview",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "tags": ["documind"],
@@ -88,6 +88,46 @@
       "gridPos": { "x": 12, "y": 28, "w": 12, "h": 7 },
       "targets": [
         { "expr": "sum by (name) (rate(documind_obs_breaker_skips_total[5m]))", "refId": "A", "legendFormat": "{{name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Host CPU busy (%)",
+      "gridPos": { "x": 0, "y": 35, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))", "refId": "A", "legendFormat": "{{instance}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Host memory used (%)",
+      "gridPos": { "x": 12, "y": 35, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))", "refId": "A", "legendFormat": "{{instance}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Root filesystem used (%)",
+      "gridPos": { "x": 0, "y": 42, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "100 * (1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}))", "refId": "A", "legendFormat": "{{instance}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Top container CPU usage (5m rate)",
+      "gridPos": { "x": 12, "y": 42, "w": 12, "h": 7 },
+      "targets": [
+        { "expr": "topk(8, sum by (name) (rate(container_cpu_usage_seconds_total{name!=\"\"}[5m])))", "refId": "A", "legendFormat": "{{name}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Top container memory working set",
+      "gridPos": { "x": 0, "y": 49, "w": 24, "h": 7 },
+      "targets": [
+        { "expr": "topk(8, sum by (name) (container_memory_working_set_bytes{name!=\"\"}))", "refId": "A", "legendFormat": "{{name}}" }
       ]
     }
   ]
