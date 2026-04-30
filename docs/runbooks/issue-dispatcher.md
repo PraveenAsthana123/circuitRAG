@@ -75,6 +75,43 @@ python3 scripts/issue_dispatcher.py --council --id ruff-E402-__init__.py-L579
 # Three local models run sequentially. Operator (you) is the chair.
 ```
 
+### Review accumulated council results + record decisions
+
+Council batch and `--council` invocations leave audit rows in
+`.loop/issue_audit.jsonl`. Over time these accumulate (multiple
+sessions, multiple iterations). Review tool dedupes by issue ID and
+shows the latest take per unique issue.
+
+```bash
+# Summary: which issues are PENDING / applied / skipped / rejected
+python3 scripts/review_council.py
+
+# Step through PENDING issues with prompts
+python3 scripts/review_council.py --interactive
+
+# Record a single decision (without re-displaying the council output)
+python3 scripts/review_council.py --apply  ruff-E402-__init__.py-L579 --note "AUTHOR diff applied + tested"
+python3 scripts/review_council.py --skip   ruff-N814-main.py-L208     --note "duplicate"
+python3 scripts/review_council.py --reject ruff-N999-__init__.py-L1   --note "model misunderstood the rule"
+
+# Time-bound review (only consider audit rows newer than ISO timestamp)
+python3 scripts/review_council.py --since 2026-04-30T17:00:00+00:00 --interactive
+```
+
+Decisions persist to `.loop/issue_decisions.jsonl`. Subsequent
+`--interactive` runs skip already-decided issues unless `--rerun`.
+
+Decision values:
+- `applied` — operator applied the AUTHOR diff manually + tested
+- `skip`    — issue is duplicate, resolved elsewhere, or low-priority
+- `reject`  — council misunderstood the rule; needs human re-design
+
+The review tool does NOT auto-apply diffs (per §50.5 safety gate).
+Operator applies the AUTHOR diff manually after recording `applied`.
+That separation is deliberate — the review log is the audit trail of
+"operator saw + decided"; the actual git diff is the trail of
+"what landed."
+
 Council roles + models (configurable in `COUNCIL_ROLES`):
 
 | Role | Default model | Sees | Output |

@@ -26,6 +26,7 @@ REPO = Path(__file__).resolve().parents[2]
 SCANNER = REPO / "scripts" / "issue_scanner.py"
 DISPATCHER = REPO / "scripts" / "issue_dispatcher.py"
 BATCH = REPO / "scripts" / "run_council_batch.py"
+REVIEW = REPO / "scripts" / "review_council.py"
 RUNBOOK = REPO / "docs" / "runbooks" / "issue-dispatcher.md"
 
 
@@ -35,15 +36,16 @@ def require(text: str, needle: str, label: str) -> None:
 
 
 def main() -> int:
-    print("-- 1. POSITIVE: all 4 mechanism files exist --")
-    for p in (SCANNER, DISPATCHER, BATCH, RUNBOOK):
+    print("-- 1. POSITIVE: all 5 mechanism files exist --")
+    for p in (SCANNER, DISPATCHER, BATCH, REVIEW, RUNBOOK):
         if not p.exists():
             raise AssertionError(f"missing {p.relative_to(REPO)}")
     scanner = SCANNER.read_text(encoding="utf-8")
     dispatcher = DISPATCHER.read_text(encoding="utf-8")
     batch = BATCH.read_text(encoding="utf-8")
+    review = REVIEW.read_text(encoding="utf-8")
     runbook = RUNBOOK.read_text(encoding="utf-8")
-    print("  ok: scanner + dispatcher + batch + runbook all present")
+    print("  ok: scanner + dispatcher + batch + review + runbook all present")
 
     print("-- 2. POSITIVE: RULE_ROUTING covers the canonical rule families --")
     # Each rule family must have a routing decision; missing = silent
@@ -162,6 +164,27 @@ def main() -> int:
     require(batch, '--council', "delegates to dispatcher --council mode")
     print("  ok: batch wires checklist → council → summary")
 
+    print("-- 8b. POSITIVE: review tool dedupes audit + persists decisions --")
+    require(review, "issue_audit.jsonl", "audit input")
+    require(review, "issue_decisions.jsonl", "decisions output")
+    require(review, "latest_per_id", "dedup-by-id helper")
+    for flag in ("--interactive", "--apply", "--skip", "--reject", "--rerun"):
+        require(review, flag, f"review CLI flag {flag}")
+    print("  ok: review_council.py reads audit + writes decisions + 5 CLI flags")
+
+    print("-- 8c. NEGATIVE: review tool MUST NOT auto-apply diffs --")
+    # Per §50.5 safety gate: review records DECISIONS; operator applies
+    # the AUTHOR diff manually. If review.py ever calls subprocess.run
+    # with 'patch', 'apply', or git operations on the issue file, the
+    # safety gate is broken.
+    for forbidden in ("subprocess.run", '"patch"', '"git", "apply"'):
+        if forbidden in review:
+            raise AssertionError(
+                f"review_council.py contains {forbidden!r} — review tool MUST "
+                f"NOT auto-apply diffs per §50.5 (operator applies manually)"
+            )
+    print("  ok: review tool does not call patch / git apply / subprocess")
+
     print("-- 9. NEGATIVE: runbook MUST document safety gates --")
     # Per §50.5 — the runbook is the canonical source of truth for the
     # safety discipline. Stripping these means operators can't tell when
@@ -184,7 +207,7 @@ def main() -> int:
     require(runbook, "RIGHT", "council success citation")
     print("  ok: empirical demo cited")
 
-    print("\nALL 14 STEPS PASSED")
+    print("\nALL 16 STEPS PASSED")
     return 0
 
 
