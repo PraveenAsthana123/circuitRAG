@@ -192,8 +192,8 @@ class BaggageContextMiddleware(BaseHTTPMiddleware):
             self._baggage = _otel_baggage
             self._context = _otel_context
         except ImportError:  # pragma: no cover
-            self._baggage = None
-            self._context = None
+            self._baggage = None  # type: ignore[assignment]
+            self._context = None  # type: ignore[assignment]
 
     async def dispatch(
         self,
@@ -245,7 +245,7 @@ class SpanAttributeMiddleware(BaseHTTPMiddleware):
             from opentelemetry import trace
             self._get_span = trace.get_current_span
         except ImportError:  # pragma: no cover
-            self._get_span = None
+            self._get_span = None  # type: ignore[assignment]
 
     async def dispatch(
         self,

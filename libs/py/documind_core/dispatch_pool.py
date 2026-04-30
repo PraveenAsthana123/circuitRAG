@@ -183,7 +183,7 @@ class DispatchPool(Generic[T, R]):
                     error=None,
                     duration_s=time.monotonic() - t0,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 msg = (
                     f"TimeoutError: task exceeded "
                     f"{self._per_task_timeout_s:.1f}s"

@@ -101,7 +101,8 @@ log = logging.getLogger(__name__)
 #   rate(documind_agent_board_runs_total{outcome="advisor_failed"}[5m])
 #     → advisor failure rate
 try:
-    from prometheus_client import Counter as _PromCounter, Histogram as _PromHistogram
+    from prometheus_client import Counter as _PromCounter
+    from prometheus_client import Histogram as _PromHistogram
 
     _board_runs_total = _PromCounter(
         "documind_agent_board_runs_total",
@@ -127,10 +128,10 @@ try:
         labelnames=["outcome"],  # ok | error | skipped_upstream
     )
 except ImportError:  # pragma: no cover — prometheus_client is optional in tests
-    _board_runs_total = None
-    _board_duration_seconds = None
-    _board_authors_total = None
-    _board_reviews_total = None
+    _board_runs_total = None  # type: ignore[assignment]
+    _board_duration_seconds = None  # type: ignore[assignment]
+    _board_authors_total = None  # type: ignore[assignment]
+    _board_reviews_total = None  # type: ignore[assignment]
 
 
 def _bump_run(outcome: str, advisor_id: str) -> None:

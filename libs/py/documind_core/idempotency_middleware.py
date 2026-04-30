@@ -71,8 +71,16 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         if 200 <= response.status_code < 500:
             body_bytes = b""
-            async for chunk in response.body_iterator:
-                body_bytes += chunk
+            # response.body_iterator exists on Starlette's StreamingResponse;
+            # generic Response only at runtime (not in stub). getattr keeps
+            # the call site type-safe + falls through to body for plain
+            # Response (which doesn't iterate but exposes .body bytes).
+            iterator = getattr(response, "body_iterator", None)
+            if iterator is not None:
+                async for chunk in iterator:
+                    body_bytes += chunk
+            else:
+                body_bytes = getattr(response, "body", b"") or b""
 
             # Try to deserialize JSON; if that fails, cache raw text.
             body: Any

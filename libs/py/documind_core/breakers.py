@@ -146,7 +146,11 @@ class RetrievalCircuitBreaker(CircuitBreaker):
             RetrievalSample(top_score=top_score, n_results=n_results, latency_ms=latency_ms)
         )
 
-        if len(self._samples) < self._samples.maxlen:
+        # _samples is constructed with maxlen=quality_window (line 134) so
+        # maxlen is always int. Local assert narrows int | None → int.
+        maxlen = self._samples.maxlen
+        assert maxlen is not None, "_samples must be initialized with maxlen"
+        if len(self._samples) < maxlen:
             # Not enough data yet — no decision.
             return
 

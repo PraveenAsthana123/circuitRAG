@@ -67,7 +67,10 @@ class Cache:
     async def delete(self, *keys: str) -> int:
         if not keys:
             return 0
-        return await self._redis.delete(*keys)
+        # redis-py's async client types delete() as Awaitable[Any]; the
+        # actual return is int (count of keys deleted). Explicit cast
+        # avoids no-any-return.
+        return int(await self._redis.delete(*keys))
 
     async def invalidate_prefix(self, prefix: str) -> int:
         """

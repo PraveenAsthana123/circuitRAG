@@ -53,7 +53,7 @@ try:
         labelnames=["kind"],
     )
 except ImportError:  # pragma: no cover — prometheus_client is optional
-    _pii_redactions_total = None
+    _pii_redactions_total = None  # type: ignore[assignment]
 
 
 def _bump_pii_redaction(kind: str) -> None:

@@ -62,7 +62,7 @@ try:
         labelnames=["action", "error_type"],
     )
 except ImportError:  # pragma: no cover — prometheus_client is optional
-    _audit_write_failures = None
+    _audit_write_failures = None  # type: ignore[assignment]
 
 
 def _classify_error(exc: BaseException) -> str:
