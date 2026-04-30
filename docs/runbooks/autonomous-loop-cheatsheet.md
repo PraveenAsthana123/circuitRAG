@@ -267,9 +267,11 @@ Key signals:
 For a complete health check before declaring "loop is healthy":
 
 ```bash
-for d in drift_rate_dashboard adr020_audit_cadence drift_volume_meta drill_status_freshness; do
-    /mnt/deepa/rag/.venv/bin/python mcp/tests/drill_${d}.py 2>&1 | grep -E "^Result|DRIFT|FRESHNESS|ratchet:|SLO:|trend"
-done
+PY=/mnt/deepa/rag/.venv/bin/python
+$PY mcp/tests/drill_drift_rate_dashboard.py     | grep -E "DRIFT-RATE|trend"
+$PY mcp/tests/drill_adr020_audit_cadence.py     | grep -E "ratchet:|SLO:|Wall-clock"
+$PY mcp/tests/drill_drift_volume_meta.py        | grep -E "DRIFT VOLUME|CATEGORIZATION"
+$PY mcp/tests/drill_drill_status_freshness.py   | grep -E "FRESHNESS"
 ```
 
 Each dashboard is independently green-able. None of them masks

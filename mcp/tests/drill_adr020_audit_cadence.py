@@ -109,6 +109,12 @@ PARALLEL_TOOL_COMMITS = {
     # + Vitest tests. Audit = drill_sidecar_rating_surface
     # (preexisting from Phase 7AA, predates this commit by hours).
     "0e7f864": ("G-5.2-followon: rating route + Vitest extensions", "drill_sidecar_rating_surface.py"),
+    # e0a0182: parallel-tool's next.config.mjs tweak — pin sidecar
+    # + TTS API routes to the local server. 4-line change. Audit
+    # via drill_tts_proxy_route + drill_sidecar_rating_surface
+    # which exercise the routes; pick rating_surface as
+    # representative since it's the more recent landing.
+    "e0a0182": ("next.config: keep sidecar + tts routes local", "drill_sidecar_rating_surface.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
