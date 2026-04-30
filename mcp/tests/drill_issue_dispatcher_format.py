@@ -79,6 +79,38 @@ def main() -> int:
             )
     print("  ok: real-bug mypy codes (attr/name/call) route to human-review")
 
+    print("-- 2d. POSITIVE: BANDIT_ROUTING covers core security families --")
+    require(scanner, "BANDIT_ROUTING", "BANDIT_ROUTING dict")
+    for code in ("B101", "B105", "B301", "B307", "B602", "B608", "B324"):
+        require(scanner, f'"{code}":', f"BANDIT_ROUTING entry for {code}")
+    require(scanner, "scan_bandit", "scan_bandit function")
+    require(scanner, "--include-bandit", "--include-bandit CLI flag")
+    print("  ok: 7 bandit codes routed + scan_bandit + --include-bandit flag")
+
+    print("-- 2e. NEGATIVE: ALL bandit findings MUST route to human-review (§50.5) --")
+    # Critical security gate: NO bandit code may route to a model.
+    # A model "fix" can mask the actual vulnerability (e.g. wrap SQL
+    # injection in str() instead of using parameters). Hardcoded
+    # human-review for every B-prefix entry; drill enforces.
+    bandit_block_match = re.search(
+        r"BANDIT_ROUTING:.*?\}\n",
+        scanner,
+        re.DOTALL,
+    )
+    if not bandit_block_match:
+        raise AssertionError("could not find BANDIT_ROUTING dict block")
+    bandit_block = bandit_block_match.group(0)
+    # Every line inside the dict that has a Bnnn key must route to human-review
+    for entry in re.finditer(r'"(B\d+)":\s*\(([^)]+)\)', bandit_block):
+        code = entry.group(1)
+        routing = entry.group(2)
+        if "human-review" not in routing:
+            raise AssertionError(
+                f"bandit code {code} routes to {routing!r} — MUST be "
+                f"'human-review' per §50.5 safety gate"
+            )
+    print(f"  ok: all bandit codes in BANDIT_ROUTING route to human-review (security gate)")
+
     print("-- 3. NEGATIVE: security rules (S*) MUST route to human-review --")
     # Per §50.5 safety gate: never let a model auto-fix S* without
     # operator sign-off. Drill rejects any S-rule routed to a model.
@@ -152,7 +184,7 @@ def main() -> int:
     require(runbook, "RIGHT", "council success citation")
     print("  ok: empirical demo cited")
 
-    print("\nALL 12 STEPS PASSED")
+    print("\nALL 14 STEPS PASSED")
     return 0
 
 

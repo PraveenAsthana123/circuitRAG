@@ -4,6 +4,8 @@
 Sources scanned (deterministic — not LLM-based):
   1. ruff   (Python lint)              — always
   2. mypy   (Python type errors)       — opt-in via --include-mypy
+  3. bandit (Python security)          — opt-in via --include-bandit
+                                          ALL findings → human-review per §50.5
 
 Each issue gets:
   - id (stable)
@@ -100,6 +102,54 @@ MYPY_ROUTING: dict[str, tuple[str, str, str]] = {
     "no-untyped-call": ("LOW", "medium", "codegemma:7b-instruct"),
 }
 
+# Bandit test ID -> (severity, difficulty, assignee).
+# CRITICAL safety gate (per global §50.5): ALL bandit findings route to
+# human-review. Bandit detects security issues (SQL injection, subprocess
+# misuse, weak hashes, etc.). A model "fix" can mask the actual
+# vulnerability - e.g. wrap an SQL injection in str() instead of using
+# parameters. Hardcoded human-review for every B-prefix code; the dict
+# is explicit-listed so the drill can verify nothing leaked to a model.
+BANDIT_ROUTING: dict[str, tuple[str, str, str]] = {
+    "B101": ("LOW", "hard", "human-review"),   # assert_used
+    "B102": ("MED", "hard", "human-review"),   # exec_used
+    "B103": ("HIGH", "hard", "human-review"),  # set_bad_file_permissions
+    "B104": ("MED", "hard", "human-review"),   # hardcoded_bind_all_interfaces
+    "B105": ("HIGH", "hard", "human-review"),  # hardcoded_password_string
+    "B106": ("HIGH", "hard", "human-review"),  # hardcoded_password_funcarg
+    "B107": ("HIGH", "hard", "human-review"),  # hardcoded_password_default
+    "B108": ("MED", "hard", "human-review"),   # hardcoded_tmp_directory
+    "B110": ("MED", "hard", "human-review"),   # try_except_pass
+    "B112": ("MED", "hard", "human-review"),   # try_except_continue
+    "B201": ("MED", "hard", "human-review"),   # flask_debug_true
+    "B301": ("HIGH", "hard", "human-review"),  # serialized deserialization
+    "B306": ("HIGH", "hard", "human-review"),  # mktemp
+    "B307": ("HIGH", "hard", "human-review"),  # eval
+    "B308": ("MED", "hard", "human-review"),   # mark_safe
+    "B311": ("MED", "hard", "human-review"),   # random
+    "B312": ("HIGH", "hard", "human-review"),  # telnetlib
+    "B321": ("HIGH", "hard", "human-review"),  # ftplib
+    "B324": ("HIGH", "hard", "human-review"),  # hashlib_insecure_functions
+    "B403": ("MED", "hard", "human-review"),   # import_serialization
+    "B404": ("MED", "hard", "human-review"),   # import_subprocess
+    "B405": ("MED", "hard", "human-review"),   # import_xml_etree
+    "B406": ("MED", "hard", "human-review"),   # import_xml_sax
+    "B501": ("HIGH", "hard", "human-review"),  # request_with_no_cert_validation
+    "B502": ("HIGH", "hard", "human-review"),  # ssl_with_bad_version
+    "B602": ("HIGH", "hard", "human-review"),  # subprocess_popen_with_shell_equals_true
+    "B603": ("MED", "hard", "human-review"),   # subprocess_without_shell_equals_true
+    "B604": ("HIGH", "hard", "human-review"),  # any_other_function_with_shell_equals_true
+    "B605": ("HIGH", "hard", "human-review"),  # start_process_with_a_shell
+    "B606": ("MED", "hard", "human-review"),   # start_process_with_no_shell
+    "B607": ("MED", "hard", "human-review"),   # start_process_with_partial_path
+    "B608": ("HIGH", "hard", "human-review"),  # hardcoded_sql_expressions
+    "B609": ("HIGH", "hard", "human-review"),  # linux_commands_wildcard_injection
+    "B610": ("HIGH", "hard", "human-review"),  # django_extra_used
+    "B611": ("HIGH", "hard", "human-review"),  # django_rawsql_used
+    "B701": ("MED", "hard", "human-review"),   # jinja2_autoescape_false
+    "B702": ("HIGH", "hard", "human-review"),  # use_of_mako_templates
+    "B703": ("MED", "hard", "human-review"),   # django_mark_safe
+}
+
 
 def make_id(filename: str, code: str, line: int, source: str = "ruff") -> str:
     short = filename.rsplit("/", 1)[-1]
@@ -123,6 +173,61 @@ def _resolve_mypy() -> str:
     if found:
         return found
     raise RuntimeError("mypy not found in .venv/bin or PATH; install: pip install mypy")
+
+
+def _resolve_bandit() -> str:
+    venv = REPO / ".venv" / "bin" / "bandit"
+    if venv.exists():
+        return str(venv)
+    import shutil
+    found = shutil.which("bandit")
+    if found:
+        return found
+    raise RuntimeError("bandit not found in .venv/bin or PATH; install: pip install bandit")
+
+
+def scan_bandit(targets: list[str]) -> list[dict]:
+    """Run bandit -f json + parse results. ALL findings route to
+    human-review per global §50.5; the routing dict is explicit so
+    the drill can verify nothing leaks to a model.
+    """
+    bandit = _resolve_bandit()
+    cmd = [bandit, "-r", *targets, "-f", "json", "-q"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO)
+    # bandit exits 1 when issues exist (severity threshold met); 0 = clean.
+    if proc.returncode not in (0, 1):
+        print(f"[scan_bandit] WARNING bandit returned {proc.returncode}: {proc.stderr[:300]}")
+    if not proc.stdout.strip():
+        return []
+    try:
+        report = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        print(f"[scan_bandit] could not parse JSON: {e}")
+        return []
+    out = []
+    for r in report.get("results", []):
+        code = r.get("test_id", "B?")
+        severity, difficulty, assignee = BANDIT_ROUTING.get(
+            code, ("HIGH", "hard", "human-review")
+        )
+        filename = (r.get("filename") or "").replace(str(REPO) + "/", "")
+        line_no = r.get("line_number", 0)
+        out.append(
+            {
+                "id": make_id(filename, code, line_no, source="bandit"),
+                "source": "bandit",
+                "severity": severity,
+                "difficulty": difficulty,
+                "assigned_to": assignee,
+                "file": filename,
+                "line": line_no,
+                "col": r.get("col_offset", 0),
+                "code": code,
+                "message": (r.get("issue_text", "") or "")[:200],
+                "fix_available": False,
+            }
+        )
+    return out
 
 
 def scan_mypy(targets: list[str]) -> list[dict]:
@@ -213,6 +318,8 @@ def main() -> int:
     parser.add_argument("--include-security", action="store_true")
     parser.add_argument("--include-mypy", action="store_true",
                         help="add mypy type errors to the checklist (slow)")
+    parser.add_argument("--include-bandit", action="store_true",
+                        help="add bandit security findings (all human-review per §50.5)")
     parser.add_argument("--targets", nargs="*", default=["services"])
     parser.add_argument("--mypy-targets", nargs="*",
                         default=["libs/py/documind_core"],
@@ -226,6 +333,12 @@ def main() -> int:
             issues.extend(mypy_issues)
         except RuntimeError as e:
             print(f"[scan_mypy] SKIP: {e}")
+    if args.include_bandit:
+        try:
+            bandit_issues = scan_bandit(args.targets)
+            issues.extend(bandit_issues)
+        except RuntimeError as e:
+            print(f"[scan_bandit] SKIP: {e}")
 
     CHECKLIST.parent.mkdir(parents=True, exist_ok=True)
     with CHECKLIST.open("w") as f:
