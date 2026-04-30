@@ -68,6 +68,32 @@ python3 scripts/issue_dispatcher.py --propose --id ruff-E402-__init__.py-L579
 # Proposal printed to stdout; audit row written; nothing applied.
 ```
 
+### Invoke 3-model council on ONE issue (author + reviewer + advisor)
+
+```bash
+python3 scripts/issue_dispatcher.py --council --id ruff-E402-__init__.py-L579
+# Three local models run sequentially. Operator (you) is the chair.
+```
+
+Council roles + models (configurable in `COUNCIL_ROLES`):
+
+| Role | Default model | Sees | Output |
+| --- | --- | --- | --- |
+| AUTHOR | `deepseek-coder:6.7b-instruct` | Issue + file context | Proposed unified diff |
+| REVIEWER | `codegemma:7b-instruct` | Issue + AUTHOR proposal | Critique (bugs / risks / mis-interpretations) |
+| ADVISOR | `codellama:7b-instruct` | Issue + AUTHOR + REVIEWER | Synthesis (3-line "which approach is better and why") |
+| CHAIR | operator | All three above | Picks: AUTHOR diff / ALTERNATIVE / SKIP / escalate |
+
+Empirically on `ruff-E402-__init__.py-L579` (`2026-04-30`):
+- Single-model `--propose` got it WRONG (suggested removal; correct fix was relocation)
+- 3-model `--council` got it RIGHT — all three converged on "move import to top"
+- Total council latency: ~225 seconds (47s + 117s + 60s)
+- Token cost: 306 + 57 + 140 = 503 tokens
+
+Lesson: single-model proposals are unreliable for non-trivial rules.
+Council pattern's diversity catches single-model mis-interpretations.
+At ~4 min/issue, the 6 medium-difficulty backlog clears in ~24 min.
+
 ## Safety gates
 
 1. **Default is dry-run.** `--apply` is explicit per invocation.

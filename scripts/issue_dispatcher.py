@@ -93,6 +93,111 @@ def call_ollama(model: str, prompt: str, timeout_s: int = 120) -> tuple[str, int
     return data.get("response", ""), data.get("eval_count", 0)
 
 
+COUNCIL_ROLES = {
+    "author": {
+        "model": "deepseek-coder:6.7b-instruct",
+        "task": "Propose ONE minimal unified-diff hunk that fixes this single issue. Do NOT modify other lines.",
+    },
+    "reviewer": {
+        "model": "codegemma:7b-instruct",
+        "task": "Review the AUTHOR's proposal below. Identify any bugs, risks, or rule mis-interpretations. Be specific. If the proposal is wrong, say WHY in one paragraph.",
+    },
+    "advisor": {
+        "model": "codellama:7b-instruct",
+        "task": "Read the AUTHOR's proposal AND the REVIEWER's critique. Propose an ALTERNATIVE fix or confirm the AUTHOR's diff. Output: a 3-line summary of which approach is better and why.",
+    },
+}
+
+
+def _build_role_prompt(role: str, issue: dict, context: str, prior: dict[str, str]) -> str:
+    cfg = COUNCIL_ROLES[role]
+    task = cfg["task"]
+    base = f"""Rule: {issue['code']}
+Message: {issue['message']}
+File: {issue['file']}
+Line: {issue['line']}
+
+Context (with line numbers):
+```python
+{context}
+```
+"""
+    if role == "author":
+        return base + f"\n{task}\n\nDiff:"
+    if role == "reviewer":
+        return base + f"""
+AUTHOR proposal:
+{prior['author']}
+
+{task}
+
+Critique:"""
+    if role == "advisor":
+        return base + f"""
+AUTHOR proposal:
+{prior['author']}
+
+REVIEWER critique:
+{prior['reviewer']}
+
+{task}
+
+Final recommendation:"""
+    raise ValueError(f"unknown role: {role}")
+
+
+def propose_council_for_issue(issue: dict) -> None:
+    """Author + Reviewer + Advisor council pattern.
+
+    Three local Ollama models run sequentially; each sees prior outputs.
+    Operator (or future drill-gated apply) is the chair that synthesizes.
+    """
+    file_path = REPO / issue["file"]
+    if not file_path.exists():
+        print(f"  SKIP (file missing): {issue['file']}")
+        return
+    snippet = file_path.read_text(encoding="utf-8").splitlines()
+    line_no = issue["line"]
+    start = max(0, line_no - 5)
+    end = min(len(snippet), line_no + 5)
+    context = "\n".join(f"{i+1:4}: {snippet[i]}" for i in range(start, end))
+
+    prior: dict[str, str] = {}
+    audit_chain: dict[str, dict] = {}
+    for role in ("author", "reviewer", "advisor"):
+        cfg = COUNCIL_ROLES[role]
+        model = cfg["model"]
+        prompt = _build_role_prompt(role, issue, context, prior)
+        print(f"\n  === {role.upper()} ({model}) ===")
+        started = time.time()
+        try:
+            response, tokens = call_ollama(model, prompt)
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            audit_chain[role] = {"model": model, "outcome": "error", "error": str(e)}
+            return
+        elapsed = time.time() - started
+        prior[role] = response
+        audit_chain[role] = {
+            "model": model,
+            "tokens": tokens,
+            "latency_s": round(elapsed, 1),
+            "output": response[:1500],
+        }
+        print(f"  [{tokens} tokens, {elapsed:.1f}s]")
+        print(response[:1200])
+
+    write_audit({
+        "id": issue["id"],
+        "lane": "council",
+        "chain": audit_chain,
+        "outcome": "council_complete",
+    })
+    print(f"\n  === CHAIR (operator) ===")
+    print(f"  Audit chain written. Three independent local-model takes above.")
+    print(f"  Operator selects: AUTHOR diff / ALTERNATIVE / SKIP / escalate.")
+
+
 def propose_for_issue(issue: dict) -> None:
     """Send one issue to its assigned local model; print the proposal."""
     file_path = REPO / issue["file"]
@@ -157,7 +262,8 @@ Diff:"""
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="actually mutate files (default: dry-run)")
-    parser.add_argument("--propose", action="store_true", help="invoke local model and print proposal")
+    parser.add_argument("--propose", action="store_true", help="invoke single local model")
+    parser.add_argument("--council", action="store_true", help="run author+reviewer+advisor council (3 local models)")
     parser.add_argument("--only", help="filter by assignee")
     parser.add_argument("--id", help="run only this issue id")
     args = parser.parse_args()
@@ -170,7 +276,9 @@ def main() -> int:
             print(f"no issue with id={args.id}")
             return 2
         issue = match[0]
-        if args.propose and issue["assigned_to"].startswith(("deepseek", "codegemma", "starcoder", "codellama", "qwen")):
+        if args.council:
+            propose_council_for_issue(issue)
+        elif args.propose and issue["assigned_to"].startswith(("deepseek", "codegemma", "starcoder", "codellama", "qwen")):
             propose_for_issue(issue)
         else:
             print(json.dumps(issue, indent=2))
