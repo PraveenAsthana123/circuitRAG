@@ -74,9 +74,10 @@ def _count_payload_lines(diff: str) -> int:
     for line in diff.split("\n"):
         if not line:
             continue
-        if line.startswith("+") and not line.startswith("+++"):
-            n += 1
-        elif line.startswith("-") and not line.startswith("---"):
+        if (
+            (line.startswith("+") and not line.startswith("+++"))
+            or (line.startswith("-") and not line.startswith("---"))
+        ):
             n += 1
     return n
 

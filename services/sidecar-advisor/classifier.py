@@ -15,10 +15,10 @@ Why rule-based first:
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     PROMPT = "prompt"
     CODE = "code"
     ARCHITECTURE = "architecture"

@@ -27,7 +27,6 @@ from app.schemas import (
     HealthUpstreamsResponse,
     PromptInfo,
     TechstackEntry,
-    ToolLatencyStats,
     ToolStats,
     TraceLinkAuditRow,
     TraceLinkDraftRow,

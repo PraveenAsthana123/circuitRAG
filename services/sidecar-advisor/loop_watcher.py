@@ -223,7 +223,10 @@ class LoopWatcher:
 
         # Rule 3: any 'gated' file without a scope-extension entry
         # -> HOLD
-        if gated_files:
+        # Nested-if structure preserved (instead of `and`-combined) so
+        # the inner block's rationale comment remains scoped to the
+        # extension-coverage logic only.
+        if gated_files:  # noqa: SIM102 — keep nested for comment scope
             # If the scope-extension log already covers any of them,
             # treat as approved-by-extension. Conservative: a single
             # extension covers all 'gated' files in this commit.
