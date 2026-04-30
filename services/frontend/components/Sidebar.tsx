@@ -63,6 +63,7 @@ const GROUPS: Group[] = [
       { href: '/admin/scaling-patterns/deep', label: 'Scaling patterns (LB + page-index + vectorless RAG)' },
       { href: '/admin/agent-registry/deep', label: 'Agent registry (roles + sidecar council)' },
       { href: '/admin/stack-architecture/deep', label: 'Stack architecture (frontend + backend)' },
+      { href: '/admin/knowledge-graph/deep', label: 'Knowledge graph (ontology + graph)' },
       { href: '/admin/breakers/deep', label: 'Breakers deep dive (interview)' },
       { href: '/admin/forensics', label: 'Forensics (trace → draft → audit → HITL)' },
       { href: '/admin/rag/deep', label: 'RAG deep dive (interview)' },
