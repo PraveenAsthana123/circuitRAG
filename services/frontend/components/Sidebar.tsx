@@ -58,6 +58,7 @@ const GROUPS: Group[] = [
       { href: '/admin/memory/deep', label: 'Memory deep dive (sidecar + orchestrator)' },
       { href: '/admin/aiops/deep', label: 'AIOps deep dive (ratchet + LLM incident)' },
       { href: '/admin/output-eval/deep', label: 'Output evaluation (citation + golden set)' },
+      { href: '/admin/service-mesh/deep', label: 'Service mesh + Istio (sidecar + authz)' },
       { href: '/admin/breakers/deep', label: 'Breakers deep dive (interview)' },
       { href: '/admin/forensics', label: 'Forensics (trace → draft → audit → HITL)' },
       { href: '/admin/rag/deep', label: 'RAG deep dive (interview)' },
