@@ -196,7 +196,7 @@ class _NoopSpan:
     Acts as a context manager that yields itself; set_attribute is
     a no-op. Avoids ``if sp is not None`` chains everywhere."""
 
-    def __enter__(self) -> "_NoopSpan":
+    def __enter__(self) -> _NoopSpan:
         return self
 
     def __exit__(self, *exc) -> bool:

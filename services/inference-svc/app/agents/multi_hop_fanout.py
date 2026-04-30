@@ -148,7 +148,7 @@ async def fanout_retrieval(
                     timeout=per_hop_timeout_s,
                 )
                 return sub_q, chunks, None
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.warning(
                     "multi_hop_fanout_per_hop_timeout sub_q=%r timeout=%.1fs",
                     sub_q[:120], per_hop_timeout_s,
@@ -168,7 +168,7 @@ async def fanout_retrieval(
             asyncio.gather(*[_one_hop(q) for q in sub_questions]),
             timeout=total_timeout_s,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.error(
             "multi_hop_fanout_cohort_timeout total=%.1fs sub_qs=%d",
             total_timeout_s, len(sub_questions),

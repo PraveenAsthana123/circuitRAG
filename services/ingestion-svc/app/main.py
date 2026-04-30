@@ -16,6 +16,7 @@ from documind_core.config import get_settings
 from documind_core.db_client import DbClient
 from documind_core.idempotency import IdempotencyStore
 from documind_core.idempotency_middleware import IdempotencyMiddleware
+from documind_core.kafka_client import EventProducer
 from documind_core.logging_config import setup_logging
 from documind_core.middleware import (
     BaggageContextMiddleware,
@@ -45,7 +46,6 @@ from app.repositories import ChunkRepo, DocumentRepo, Neo4jRepo, QdrantRepo, Sag
 from app.routers import documents_router, health_router
 from app.saga import SagaRecoveryWorker
 from app.saga.outbox import OutboxDrainWorker
-from documind_core.kafka_client import EventProducer
 from app.services import BlobService, IngestionService
 
 log = logging.getLogger(__name__)

@@ -4,7 +4,6 @@ from typing import Any
 
 from .models import AgenticPolicyView
 
-
 DESTRUCTIVE_VERBS = ("delete", "remove", "drop", "grant", "revoke", "terminate", "disable", "reset", "update", "create")
 
 

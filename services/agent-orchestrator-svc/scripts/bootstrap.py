@@ -10,7 +10,6 @@ import asyncpg
 
 from scripts.migrate import apply as apply_migrations
 
-
 ROOT = Path(__file__).resolve().parents[3]
 POSTGRES_INIT = ROOT / "scripts" / "postgres-init.sql"
 MIGRATIONS_DIR = ROOT / "services" / "agent-orchestrator-svc" / "migrations"

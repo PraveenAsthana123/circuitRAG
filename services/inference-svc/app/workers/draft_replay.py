@@ -114,7 +114,8 @@ def _sweep_span(correlation_id: str, tenant_count: int) -> Any:
 #   * Is the worker running into systematic errors?
 #     rate(...{outcome="error"}[5m])
 try:
-    from prometheus_client import Counter as _PromCounter, Gauge as _PromGauge
+    from prometheus_client import Counter as _PromCounter
+    from prometheus_client import Gauge as _PromGauge
 
     _draft_replay_total = _PromCounter(
         "documind_draft_replay_total",
@@ -273,7 +274,7 @@ class DraftReplayWorker:
         self._stop.set()
         try:
             await asyncio.wait_for(self._task, timeout=self._interval + 5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._task.cancel()
         self._task = None
         log.info("draft_replay_worker_stopped stats=%s", self.stats)
@@ -297,7 +298,7 @@ class DraftReplayWorker:
                 log.error("draft_replay_worker_cycle_failed err=%s", exc)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._interval)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass  # interval elapsed → next cycle
 
     async def _sweep(self) -> None:

@@ -56,7 +56,7 @@ class AdvisorOutput:
         }
 
     @classmethod
-    def parse(cls, raw_text: str, *, model_used: str) -> "AdvisorOutput | None":
+    def parse(cls, raw_text: str, *, model_used: str) -> AdvisorOutput | None:
         """Try to parse the LLM's response as the contract JSON. Returns
         None if the response isn't recoverable (caller should retry once
         and then surface the malformed text)."""

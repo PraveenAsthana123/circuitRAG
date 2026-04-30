@@ -84,7 +84,7 @@ class BreakerMetricsExporter:
         self._stop.set()
         try:
             await asyncio.wait_for(self._task, timeout=self._interval + 2)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._task.cancel()
         self._task = None
         log.info("breaker_metrics_exporter_stopped stats=%s", self.stats)
@@ -97,7 +97,7 @@ class BreakerMetricsExporter:
         while not self._stop.is_set():
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._interval)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             if self._stop.is_set():
                 return

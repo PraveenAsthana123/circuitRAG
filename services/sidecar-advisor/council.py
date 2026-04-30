@@ -31,7 +31,6 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
-import re
 import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -82,8 +81,14 @@ GenerateFn = Callable[[str, str, float], Awaitable[str]]
 try:
     from .agents import (
         ALL_AGENTS as _REGISTRY,
+    )
+    from .agents import (
         CHAIR as _CHAIR,
+    )
+    from .agents import (
         CONSISTENCY_CHECK as _REVIEWER_AGENT,
+    )
+    from .agents import (
         by_role as _by_role,
     )
 except ImportError:

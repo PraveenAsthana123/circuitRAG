@@ -7,9 +7,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
+from documind_core.auth import JWTAuthMiddleware, JWTVerifier
 from documind_core.config import get_settings
 from documind_core.logging_config import setup_logging
-from documind_core.auth import JWTAuthMiddleware, JWTVerifier
 from documind_core.middleware import (
     BaggageContextMiddleware,
     CorrelationIdMiddleware,
@@ -91,9 +91,10 @@ def create_app() -> FastAPI:
         )
         # Agent service (RAG + MCP). Configured to skip MCP wiring if the
         # URL is not set — services can run in "answer-only" mode without MCP.
-        from app.services.agent import AgentService
         from documind_core.audit import AuditWriter
         from documind_core.db_client import DbClient
+
+        from app.services.agent import AgentService
         from mcp import MCPClient, PostgresDraftStore
 
         # Postgres pool for durable draft persistence (governance.action_drafts)

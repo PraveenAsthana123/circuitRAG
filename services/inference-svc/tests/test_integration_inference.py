@@ -25,7 +25,6 @@ sys.path.insert(0, str(REPO / "services" / "inference-svc"))
 async def test_rag_inference_happy_path():
     from app.schemas import AskRequest
     from app.services.guardrails import GuardrailChecker
-    from app.services.ollama_client import GenerationResult
     from app.services.prompt_builder import PromptBuilder
     from app.services.rag_inference import RagInferenceService
 

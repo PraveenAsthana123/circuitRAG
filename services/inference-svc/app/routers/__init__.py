@@ -141,6 +141,7 @@ async def health_tools(request: Request) -> HealthToolsResponse:
     598ca9a; this endpoint surfaces them.
     """
     from datetime import UTC, datetime
+
     import httpx
     from prometheus_client.parser import text_string_to_metric_families
 
@@ -498,7 +499,7 @@ async def health_upstreams(request: Request) -> HealthUpstreamsResponse:
                 latency_ms=latency_ms,
                 status="tcp_open",
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return UpstreamHealthRow(
                 name="kafka", kind="kafka", url=url,
                 reachable=False,
@@ -612,8 +613,8 @@ async def admin_client_error_report(
     auto-fire kicks in. Nullable when not present (e.g. an error
     fires before the tenant is known).
     """
-    from datetime import UTC, datetime
     import uuid as _uuid
+    from datetime import UTC, datetime
 
     stack = body.stack
     if stack is not None and len(stack) > _CLIENT_ERROR_STACK_CAP:
@@ -694,10 +695,10 @@ async def health_techstack(request: Request) -> HealthTechstackResponse:
     has been installed or pending' from the integration / RAG /
     agent catalog stream.
     """
-    from datetime import UTC, datetime
-    from importlib import metadata as _meta
     import json as _json
     import os as _os
+    from datetime import UTC, datetime
+    from importlib import metadata as _meta
     from pathlib import Path as _Path
 
     # ---- Curated catalog --------------------------------------------------
@@ -885,9 +886,9 @@ async def admin_trace_link(
     yet" state, not a 404. The UI distinguishes empty-result from
     db_reachable=false.
     """
-    from datetime import UTC, datetime
     import os
     import uuid as _uuid
+    from datetime import UTC, datetime
 
     # Validate both path/query UUIDs upfront — reject 400 with a
     # specific code so the UI surfaces "(invalid X)" rather than

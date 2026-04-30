@@ -26,8 +26,6 @@ from typing import Any
 
 from documind_core.auth import required_role_for_tool
 from documind_core.breakers import record_agent_denial
-from mcp import MCPClient
-from mcp.client import ToolResult
 
 from app.schemas import (
     AgentAction,
@@ -36,6 +34,8 @@ from app.schemas import (
     AskRequest,
 )
 from app.services.rag_inference import RagInferenceService
+from mcp import MCPClient
+from mcp.client import ToolResult
 
 log = logging.getLogger(__name__)
 

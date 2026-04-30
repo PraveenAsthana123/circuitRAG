@@ -12,14 +12,14 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 
 def _utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _content_hash(content: str) -> str:
@@ -503,7 +503,7 @@ class AdvisorMemory:
             raise ValueError(
                 f"older_than_days must be >= 0, got {older_than_days}"
             )
-        threshold_dt = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        threshold_dt = datetime.now(UTC) - timedelta(days=older_than_days)
         threshold_iso = threshold_dt.isoformat(timespec="seconds")
 
         with self._connect() as conn:
