@@ -78,6 +78,12 @@ PARALLEL_TOOL_COMMITS = {
     # because the new audit drill shipped in the same commit as
     # the source code (true inverted cadence under MAX_AUDIT_LATENCY=1).
     "dde309b": ("G-5: sidecar event rating surface", "drill_sidecar_advisor_record_rating.py"),
+    # G-5.2: parallel-tool follow-on adding rating UI affordances +
+    # extending drill_sidecar_rating_surface in same commit.
+    # drill_sidecar_rating_surface predates this by ~1.25h (it
+    # landed in Phase 7AA), so latency=0 (preexisting). Yet
+    # another inverted-cadence instance per ADR-021.
+    "2a1a7b0": ("G-5.2: rating UI + review metadata + drill-down", "drill_sidecar_rating_surface.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
