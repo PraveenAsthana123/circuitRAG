@@ -65,11 +65,16 @@ def main() -> None:
     )
 
     step("1. Advisor.record_rating returns True for an existing event")
-    if not advisor.record_rating(event_id=event_id, rating="useful"):
+    if not advisor.record_rating(
+        event_id=event_id,
+        rating="useful",
+        rated_by="operator",
+        rating_notes="good recommendation",
+    ):
         fail("record_rating should return True for an existing event")
     ok("record_rating updates an existing event")
 
-    step("2. NEGATIVE: recent_events reflects stored user_rating")
+    step("2. NEGATIVE: recent_events reflects stored user_rating + metadata")
     events = mem.recent_events(limit=5)
     row = next((event for event in events if event["id"] == event_id), None)
     if row is None:
@@ -78,7 +83,11 @@ def main() -> None:
         fail(f"user_rating drifted, expected 'useful', got {row['user_rating']!r}")
     if not row["rated_at"]:
         fail("rated_at not set by record_rating")
-    ok("user_rating + rated_at persisted through advisor wrapper")
+    if row["rated_by"] != "operator":
+        fail(f"rated_by drifted, got {row['rated_by']!r}")
+    if row["rating_notes"] != "good recommendation":
+        fail(f"rating_notes drifted, got {row['rating_notes']!r}")
+    ok("user_rating + metadata persisted through advisor wrapper")
 
     step("3. NEGATIVE: invalid rating still raises ValueError")
     try:

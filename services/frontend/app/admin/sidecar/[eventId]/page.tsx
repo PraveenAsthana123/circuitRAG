@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import os from 'node:os';
 
 import { getSidecarEventById } from '@/lib/sidecar';
 
@@ -33,6 +34,7 @@ export default async function SidecarEventDetailPage({ params }: Props) {
   }
 
   const advisorOutput = parseAdvisorOutput(event.advisor_output);
+  const defaultActor = process.env.SIDECAR_DEFAULT_RATER || os.userInfo().username || 'operator';
 
   return (
     <div style={{ padding: 24, display: 'grid', gap: 20 }}>
@@ -59,6 +61,8 @@ export default async function SidecarEventDetailPage({ params }: Props) {
           <dd style={{ margin: 0 }}>{event.user_rating || 'unrated'}</dd>
           <dt>Rated at</dt>
           <dd style={{ margin: 0 }}>{event.rated_at || 'not rated yet'}</dd>
+          <dt>Rated by</dt>
+          <dd style={{ margin: 0 }}>{event.rated_by || 'not recorded'}</dd>
         </dl>
       </section>
 
@@ -78,6 +82,42 @@ export default async function SidecarEventDetailPage({ params }: Props) {
             {event.advisor_output_raw || event.advisor_output || 'No advisor output recorded.'}
           </pre>
         )}
+      </section>
+
+      <section style={{ padding: 20, border: '1px solid #d7dde5', borderRadius: 16, background: '#fbfcfd' }}>
+        <h2 style={{ marginTop: 0 }}>Operator review</h2>
+        <form
+          action={`/api/v1/sidecar/events/${event.id}/rating`}
+          method="post"
+          style={{ display: 'grid', gap: 14, maxWidth: 720 }}
+        >
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span>Reviewer</span>
+            <input
+              type="text"
+              name="rated_by"
+              defaultValue={event.rated_by || defaultActor}
+              style={{ padding: '10px 12px' }}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span>Notes</span>
+            <textarea
+              name="rating_notes"
+              defaultValue={event.rating_notes || ''}
+              rows={5}
+              style={{ padding: '10px 12px', fontFamily: 'inherit' }}
+            />
+          </label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="submit" name="rating" value="useful">
+              Mark useful
+            </button>
+            <button type="submit" name="rating" value="not_useful">
+              Mark not useful
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   );

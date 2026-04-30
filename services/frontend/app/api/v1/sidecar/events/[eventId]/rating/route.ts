@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { rateSidecarEvent } from '@/lib/sidecar';
+import { rateSidecarEvent } from '../../../../../../../lib/sidecar';
 
 type RouteParams = {
   params: {
@@ -26,9 +26,11 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   if (rating !== 'useful' && rating !== 'not_useful') {
     return redirectWithStatus(req, 'invalid');
   }
+  const ratedBy = String(form.get('rated_by') || '').trim();
+  const ratingNotes = String(form.get('rating_notes') || '').trim();
 
   try {
-    const saved = await rateSidecarEvent(eventId, rating);
+    const saved = await rateSidecarEvent(eventId, rating, { ratedBy, ratingNotes });
     return redirectWithStatus(req, saved ? 'saved' : 'missing');
   } catch {
     return redirectWithStatus(req, 'failed');

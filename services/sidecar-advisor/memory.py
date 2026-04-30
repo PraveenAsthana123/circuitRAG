@@ -124,7 +124,14 @@ class AdvisorMemory:
             )
             return cur.lastrowid or 0
 
-    def rate_event(self, event_id: int, rating: str) -> bool:
+    def rate_event(
+        self,
+        event_id: int,
+        rating: str,
+        *,
+        rated_by: str | None = None,
+        rating_notes: str | None = None,
+    ) -> bool:
         """Set the user_rating on an event. Returns True if a row was
         updated. Rating must be 'useful' or 'not_useful' — the column
         is text-typed but the caller is required to enforce the enum."""
@@ -132,14 +139,20 @@ class AdvisorMemory:
             raise ValueError(
                 f"rating must be 'useful' or 'not_useful', got {rating!r}"
             )
+        actor = rated_by.strip()[:120] if rated_by and rated_by.strip() else None
+        notes = (
+            rating_notes.strip()[:2000]
+            if rating_notes and rating_notes.strip()
+            else None
+        )
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 UPDATE advisor_events
-                SET user_rating = ?, rated_at = ?
+                SET user_rating = ?, rated_at = ?, rated_by = ?, rating_notes = ?
                 WHERE id = ?
                 """,
-                (rating, _utcnow_iso(), event_id),
+                (rating, _utcnow_iso(), actor, notes, event_id),
             )
             return cur.rowcount > 0
 

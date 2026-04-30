@@ -24,6 +24,15 @@ export type SidecarEvent = {
   advisor_output_raw: string | null;
   user_rating: string | null;
   rated_at: string | null;
+  rated_by: string | null;
+  rating_notes: string | null;
+};
+
+export type SidecarEventFilters = {
+  limit?: number;
+  eventType?: string;
+  ratingState?: 'all' | 'rated' | 'unrated';
+  search?: string;
 };
 
 const PYTHON_BRIDGE = `
@@ -42,12 +51,16 @@ def _load(name: str, relative: str):
     if spec is None or spec.loader is None:
         raise RuntimeError(f"unable to load {relative}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
 if operation == "list":
     limit = int(sys.argv[4])
     event_id = int(sys.argv[5]) if len(sys.argv) > 5 else 0
+    event_type = sys.argv[6] if len(sys.argv) > 6 and sys.argv[6] else ""
+    rating_state = sys.argv[7] if len(sys.argv) > 7 and sys.argv[7] else "all"
+    search = sys.argv[8] if len(sys.argv) > 8 and sys.argv[8] else ""
     if not db_path.exists():
         print(json.dumps({"events": []}))
         raise SystemExit(0)
@@ -67,13 +80,31 @@ if operation == "list":
               advisor_output_raw,
               duration_s,
               user_rating,
-              rated_at
+              rated_at,
+              rated_by,
+              rating_notes
             FROM advisor_events
         """
         params = []
+        clauses = []
         if event_id > 0:
-            sql += " WHERE id = ?"
+            clauses.append("id = ?")
             params.append(event_id)
+        if event_type:
+            clauses.append("event_type = ?")
+            params.append(event_type)
+        if rating_state == "rated":
+            clauses.append("user_rating IS NOT NULL")
+        elif rating_state == "unrated":
+            clauses.append("user_rating IS NULL")
+        if search:
+            clauses.append(
+                "(content LIKE ? OR source LIKE ? OR advisor_output LIKE ? OR rating_notes LIKE ?)"
+            )
+            like = f"%{search}%"
+            params.extend([like, like, like, like])
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
         rows = conn.execute(
@@ -86,11 +117,18 @@ if operation == "list":
 if operation == "rate":
     event_id = int(sys.argv[4])
     rating = sys.argv[5]
+    rated_by = sys.argv[6] if len(sys.argv) > 6 and sys.argv[6] else None
+    rating_notes = sys.argv[7] if len(sys.argv) > 7 and sys.argv[7] else None
     memory_mod = _load("sidecar_memory", "services/sidecar-advisor/memory.py")
     advisor_mod = _load("sidecar_advisor", "services/sidecar-advisor/advisor.py")
     memory = memory_mod.AdvisorMemory(db_path)
     advisor = advisor_mod.Advisor({}, memory=memory)
-    ok = advisor.record_rating(event_id=event_id, rating=rating)
+    ok = advisor.record_rating(
+        event_id=event_id,
+        rating=rating,
+        rated_by=rated_by,
+        rating_notes=rating_notes,
+    )
     print(json.dumps({"ok": bool(ok)}))
     raise SystemExit(0)
 
@@ -105,18 +143,35 @@ async function runBridge(args: string[]) {
   return JSON.parse(stdout.trim() || '{}') as Record<string, unknown>;
 }
 
-export async function listRecentSidecarEvents(limit = 12): Promise<SidecarEvent[]> {
-  const data = await runBridge(['list', String(limit), '0']);
+export async function listRecentSidecarEvents(filters: SidecarEventFilters = {}): Promise<SidecarEvent[]> {
+  const data = await runBridge([
+    'list',
+    String(filters.limit ?? 12),
+    '0',
+    filters.eventType || '',
+    filters.ratingState || 'all',
+    filters.search || '',
+  ]);
   return Array.isArray(data.events) ? (data.events as SidecarEvent[]) : [];
 }
 
-export async function rateSidecarEvent(eventId: number, rating: 'useful' | 'not_useful'): Promise<boolean> {
-  const data = await runBridge(['rate', String(eventId), rating]);
+export async function rateSidecarEvent(
+  eventId: number,
+  rating: 'useful' | 'not_useful',
+  opts: { ratedBy?: string; ratingNotes?: string } = {},
+): Promise<boolean> {
+  const data = await runBridge([
+    'rate',
+    String(eventId),
+    rating,
+    opts.ratedBy || '',
+    opts.ratingNotes || '',
+  ]);
   return data.ok === true;
 }
 
 export async function getSidecarEventById(eventId: number): Promise<SidecarEvent | null> {
-  const data = await runBridge(['list', '1', String(eventId)]);
+  const data = await runBridge(['list', '1', String(eventId), '', 'all', '']);
   const events = Array.isArray(data.events) ? (data.events as SidecarEvent[]) : [];
   return events[0] ?? null;
 }

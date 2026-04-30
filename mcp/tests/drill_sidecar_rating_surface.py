@@ -63,14 +63,21 @@ def main() -> None:
         "/api/v1/sidecar/events/${event.id}/rating",
         'name="rating" value="useful"',
         'name="rating" value="not_useful"',
+        'name="event_type"',
+        'name="rating_state"',
+        'name="q"',
+        "Apply filters",
+        "Reset",
     ):
         if needle not in page_text:
             fail(f"sidecar page missing {needle!r}")
-    ok("sidecar page exposes live rating forms")
+    ok("sidecar page exposes live rating forms + filter controls")
 
     for needle in (
         "export async function POST",
         "rateSidecarEvent",
+        "rated_by",
+        "rating_notes",
         "rating",
         "saved",
         "missing",
@@ -83,10 +90,15 @@ def main() -> None:
 
     for needle in (
         "listRecentSidecarEvents",
+        "ratingState",
+        "eventType",
+        "search",
         "rateSidecarEvent",
         "getSidecarEventById",
         "advisor.record_rating",
         "advisor.db",
+        "rated_by",
+        "rating_notes",
     ):
         if needle not in lib_text:
             fail(f"sidecar helper missing {needle!r}")
@@ -98,6 +110,9 @@ def main() -> None:
         "Captured content",
         "Advisor output",
         "getSidecarEventById",
+        "Operator review",
+        "rated_by",
+        "rating_notes",
         'href="/admin/sidecar"',
     ):
         if needle not in detail_text:

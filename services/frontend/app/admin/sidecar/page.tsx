@@ -66,12 +66,32 @@ function ratingMessage(status: string | string[] | undefined): string | null {
 type SidecarDashboardPageProps = {
   searchParams?: {
     rating?: string | string[];
+    event_type?: string | string[];
+    rating_state?: string | string[];
+    q?: string | string[];
   };
 };
 
+function firstQueryValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value[0] || '';
+  }
+  return value || '';
+}
+
 export default async function SidecarDashboardPage({ searchParams }: SidecarDashboardPageProps) {
   const html = await readDashboardHtml();
-  const events = await listRecentSidecarEvents(12);
+  const eventType = firstQueryValue(searchParams?.event_type);
+  const ratingStateRaw = firstQueryValue(searchParams?.rating_state);
+  const ratingState =
+    ratingStateRaw === 'rated' || ratingStateRaw === 'unrated' ? ratingStateRaw : 'all';
+  const search = firstQueryValue(searchParams?.q);
+  const events = await listRecentSidecarEvents({
+    limit: 24,
+    eventType,
+    ratingState,
+    search,
+  });
   const flash = ratingMessage(searchParams?.rating);
   // Server-rendered, static; no XSS surface here because
   // render_dashboard.py html.escape()s every user-content cell.
@@ -116,9 +136,56 @@ export default async function SidecarDashboardPage({ searchParams }: SidecarDash
             {flash}
           </p>
         ) : null}
+        <form
+          action="/admin/sidecar"
+          method="get"
+          style={{
+            marginTop: 16,
+            display: 'grid',
+            gap: 12,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            alignItems: 'end',
+          }}
+        >
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span>Search</span>
+            <input
+              type="search"
+              name="q"
+              defaultValue={search}
+              placeholder="content, source, notes"
+              style={{ padding: '10px 12px' }}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span>Event type</span>
+            <select name="event_type" defaultValue={eventType} style={{ padding: '10px 12px' }}>
+              <option value="">All event types</option>
+              <option value="prompt">prompt</option>
+              <option value="code">code</option>
+              <option value="architecture">architecture</option>
+              <option value="pr_review">pr_review</option>
+              <option value="debug">debug</option>
+            </select>
+          </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span>Rating state</span>
+            <select name="rating_state" defaultValue={ratingState} style={{ padding: '10px 12px' }}>
+              <option value="all">All</option>
+              <option value="rated">Rated only</option>
+              <option value="unrated">Unrated only</option>
+            </select>
+          </label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="submit">Apply filters</button>
+            <Link href="/admin/sidecar" style={{ alignSelf: 'center', color: '#0b63ce', fontWeight: 600 }}>
+              Reset
+            </Link>
+          </div>
+        </form>
         {events.length === 0 ? (
           <p style={{ marginTop: 16, color: '#54606c' }}>
-            No advisor events found yet. Run the sidecar capture flow first.
+            No advisor events matched the current filters. Run the sidecar capture flow first or broaden the filters.
           </p>
         ) : (
           <div style={{ overflowX: 'auto', marginTop: 16 }}>
