@@ -11,6 +11,10 @@ Negative assertions cover:
 - degraded docker compose path must not crash the route
 - degraded systemctl / ollama path must still emit warnings
 - docker stats failure must not erase service visibility
+
+NEGATIVE: if the Vitest subprocess exits non-zero, this drill must fail
+loudly and surface the captured stdout/stderr instead of pretending the
+route contract is healthy.
 """
 from __future__ import annotations
 
@@ -24,6 +28,8 @@ TEST_FILE = "tests/runtime-status-route.test.ts"
 
 
 def main() -> None:
+    # NEGATIVE: Vitest run must exit 0; any non-zero subprocess result
+    # surfaces here as a hard drill failure.
     cmd = [
         "npm",
         "exec",

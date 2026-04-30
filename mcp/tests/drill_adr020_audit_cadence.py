@@ -124,6 +124,18 @@ PARALLEL_TOOL_COMMITS = {
     # loop's Phase 7RR work plus additional doc updates. Audit via
     # drill_admin_monitoring_runtime_surface (which 214c2c4 added).
     "214c2c4": ("docs(runtime): align monitoring + agentic surfaces", "drill_admin_monitoring_runtime_surface.py"),
+    # G-7 + Phase 7SS observability stack landing. Audit shipped in
+    # same commit (drill_observability_stack_provisioning); latency=0.
+    "c0d82d9": ("G-7: Prometheus/Grafana/Alertmanager provisioning", "drill_observability_stack_provisioning.py"),
+    # 05fce13: parallel-tool intermediate adding alertmanager +
+    # runtime-status route coverage. Audit drill landed earlier
+    # (Phase 7TT drift-fix commit). Inverted cadence.
+    "05fce13": ("alertmanager + runtime-status route coverage", "drill_alertmanager_receiver_config.py"),
+    # d0301e6: parallel-tool expansion of monitoring truth surfaces +
+    # exporter coverage (node-exporter + cadvisor in compose).
+    # Audit via drill_admin_monitoring_runtime_surface (which the
+    # parallel-tool extended to 9 steps for these new surfaces).
+    "d0301e6": ("expand monitoring + exporter coverage", "drill_admin_monitoring_runtime_surface.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
