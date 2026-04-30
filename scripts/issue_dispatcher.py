@@ -78,6 +78,27 @@ def run_ruff_autofix(issues: list[dict], apply: bool) -> tuple[int, int]:
     return len(issues), fixed
 
 
+def run_eslint_autofix(issues: list[dict], apply: bool) -> tuple[int, int]:
+    """Apply `next lint --fix` from services/frontend/. Returns
+    (attempted, exit_code). next lint --fix mutates files in place
+    for autofixable rules (no per-rule selector; runs the configured
+    rule set).
+    """
+    if not apply:
+        print(f"  [DRY-RUN] would run from services/frontend/: npx next lint --fix")
+        return len(issues), 0
+    frontend = REPO / "services" / "frontend"
+    cmd = ["npx", "--no-install", "next", "lint", "--fix"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=str(frontend))
+    write_audit({
+        "lane": "eslint:autofix",
+        "attempted": len(issues),
+        "exit_code": proc.returncode,
+        "stderr_tail": proc.stderr[-500:],
+    })
+    return len(issues), proc.returncode
+
+
 def call_ollama(model: str, prompt: str, timeout_s: int = 120) -> tuple[str, int]:
     """POST to local Ollama. Returns (response_text, eval_tokens)."""
     body = json.dumps({
@@ -295,6 +316,9 @@ def main() -> int:
         print(f"\n[{assignee}] {len(bucket)} issue(s)")
         if assignee == "ruff:autofix":
             attempted, fixed = run_ruff_autofix(bucket, apply=args.apply)
+            print(f"  attempted={attempted} fixed={fixed}{' (dry-run)' if not args.apply else ''}")
+        elif assignee == "eslint:autofix":
+            attempted, fixed = run_eslint_autofix(bucket, apply=args.apply)
             print(f"  attempted={attempted} fixed={fixed}{' (dry-run)' if not args.apply else ''}")
         elif assignee == "human-review":
             for i in bucket[:3]:

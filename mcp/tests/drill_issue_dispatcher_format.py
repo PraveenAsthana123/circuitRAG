@@ -89,6 +89,33 @@ def main() -> int:
     require(scanner, "--include-bandit", "--include-bandit CLI flag")
     print("  ok: 7 bandit codes routed + scan_bandit + --include-bandit flag")
 
+    print("-- 2da. POSITIVE: ESLINT_ROUTING covers core TS/React families --")
+    require(scanner, "ESLINT_ROUTING", "ESLINT_ROUTING dict")
+    for rule in (
+        "react/no-unescaped-entities",
+        "react-hooks/exhaustive-deps",
+        "@typescript-eslint/no-explicit-any",
+        "react/jsx-key",
+    ):
+        require(scanner, f'"{rule}":', f"ESLINT_ROUTING entry for {rule}")
+    require(scanner, "scan_eslint", "scan_eslint function")
+    require(scanner, "--include-eslint", "--include-eslint CLI flag")
+    print("  ok: 4 eslint rules routed + scan_eslint + --include-eslint flag")
+
+    print("-- 2db. NEGATIVE: real-bug eslint rules MUST route to human-review --")
+    # rules-of-hooks violation = render-loop bug; direct-mutation-state =
+    # React reconciliation bug. Auto-fixing these can mask real issues.
+    for rule in ("react/no-direct-mutation-state", "react-hooks/rules-of-hooks"):
+        m = re.search(rf'"{re.escape(rule)}":\s*\([^)]+\)', scanner)
+        if not m:
+            raise AssertionError(f"eslint rule {rule} not in ESLINT_ROUTING")
+        if "human-review" not in m.group(0):
+            raise AssertionError(
+                f"eslint rule {rule} routed to {m.group(0)!r}; "
+                f"MUST be human-review (real-bug risk)"
+            )
+    print("  ok: real-bug eslint rules route to human-review")
+
     print("-- 2e. NEGATIVE: ALL bandit findings MUST route to human-review (§50.5) --")
     # Critical security gate: NO bandit code may route to a model.
     # A model "fix" can mask the actual vulnerability (e.g. wrap SQL
@@ -207,7 +234,7 @@ def main() -> int:
     require(runbook, "RIGHT", "council success citation")
     print("  ok: empirical demo cited")
 
-    print("\nALL 16 STEPS PASSED")
+    print("\nALL 18 STEPS PASSED")
     return 0
 
 

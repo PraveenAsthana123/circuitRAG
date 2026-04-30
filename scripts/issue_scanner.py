@@ -2,10 +2,12 @@
 """Issue scanner — produces .loop/issue_checklist.jsonl from real signal sources.
 
 Sources scanned (deterministic — not LLM-based):
-  1. ruff   (Python lint)              — always
-  2. mypy   (Python type errors)       — opt-in via --include-mypy
-  3. bandit (Python security)          — opt-in via --include-bandit
-                                          ALL findings → human-review per §50.5
+  1. ruff    (Python lint)              — always
+  2. mypy    (Python type errors)       — opt-in via --include-mypy
+  3. bandit  (Python security)          — opt-in via --include-bandit
+                                            ALL findings → human-review per §50.5
+  4. eslint  (TypeScript/React lint)    — opt-in via --include-eslint
+                                            scans services/frontend by default
 
 Each issue gets:
   - id (stable)
@@ -150,6 +152,34 @@ BANDIT_ROUTING: dict[str, tuple[str, str, str]] = {
     "B703": ("MED", "hard", "human-review"),   # django_mark_safe
 }
 
+# ESLint rule ID -> (severity, difficulty, assignee).
+# Default for unknown rules: ("MED", "medium", "deepseek-coder:6.7b-instruct").
+# Distinction: ESLint "fix" rules apply via --fix (autofix lane); ESLint
+# "suggestion" rules require choosing among multiple replacements (route
+# to local model, not autofix).
+ESLINT_ROUTING: dict[str, tuple[str, str, str]] = {
+    # True auto-fix rules (ESLint --fix applies deterministically)
+    "@typescript-eslint/consistent-type-definitions": ("LOW", "easy", "eslint:autofix"),
+    "prettier/prettier": ("LOW", "easy", "eslint:autofix"),
+    "import/order": ("LOW", "easy", "eslint:autofix"),
+    "no-extra-semi": ("LOW", "easy", "eslint:autofix"),
+    "@typescript-eslint/no-unused-vars": ("LOW", "easy", "eslint:autofix"),
+    # Suggestion-only — model picks the right replacement
+    # (e.g. react/no-unescaped-entities offers &apos; / &lsquo; / &#39; /
+    # &rsquo; — ESLint won't auto-pick; semantic call goes to model)
+    "react/no-unescaped-entities": ("LOW", "medium", "deepseek-coder:6.7b-instruct"),
+    # Need judgment — local model (TS/React savvy)
+    "react-hooks/exhaustive-deps": ("MED", "medium", "deepseek-coder:6.7b-instruct"),
+    "@typescript-eslint/no-explicit-any": ("MED", "medium", "deepseek-coder:6.7b-instruct"),
+    "react/jsx-key": ("HIGH", "medium", "deepseek-coder:6.7b-instruct"),  # real bug class
+    # Image performance — judgement
+    "@next/next/no-img-element": ("LOW", "medium", "codegemma:7b-instruct"),
+    "@next/next/no-html-link-for-pages": ("LOW", "medium", "codegemma:7b-instruct"),
+    # Real-bug class — operator review
+    "react/no-direct-mutation-state": ("HIGH", "hard", "human-review"),
+    "react-hooks/rules-of-hooks": ("HIGH", "hard", "human-review"),
+}
+
 
 def make_id(filename: str, code: str, line: int, source: str = "ruff") -> str:
     short = filename.rsplit("/", 1)[-1]
@@ -184,6 +214,90 @@ def _resolve_bandit() -> str:
     if found:
         return found
     raise RuntimeError("bandit not found in .venv/bin or PATH; install: pip install bandit")
+
+
+def _resolve_next_lint(frontend_root: Path) -> list[str]:
+    """Find the next-lint command. Try local node_modules first."""
+    npx = "npx"
+    return [npx, "--no-install", "next", "lint", "-f", "json", "--max-warnings=10000"]
+
+
+def scan_eslint(frontend_root: Path) -> list[dict]:
+    """Run `next lint -f json` from the frontend directory + parse.
+
+    Returns issues following the same shape as scan_ruff. eslint --fix
+    handles many findings autofix-style; the dispatcher's eslint:autofix
+    lane invokes that.
+
+    Implementation note: Next 14.2.x writes the JSON report to STDERR
+    (not stdout). Output can be 300+ KB when many files have findings,
+    which exceeds Python's default pipe buffer; we redirect stderr to
+    a temp file to avoid truncation.
+    """
+    import tempfile
+    if not (frontend_root / "package.json").exists():
+        print(f"[scan_eslint] SKIP: {frontend_root} has no package.json")
+        return []
+    cmd = _resolve_next_lint(frontend_root)
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tmp:
+        tmp_path = tmp.name
+    try:
+        with open(tmp_path, "w") as fh_err:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=fh_err,
+                cwd=str(frontend_root),
+            )
+        if proc.returncode not in (0, 1):
+            print(f"[scan_eslint] WARNING next lint returned {proc.returncode}")
+        with open(tmp_path) as fh:
+            raw = fh.read()
+    finally:
+        try:
+            Path(tmp_path).unlink()
+        except OSError:
+            pass
+
+    if not raw.strip():
+        return []
+    # Some Next versions prepend / append progress text; carve out the
+    # JSON array between the first '[' and the last ']'.
+    start = raw.find("[")
+    end = raw.rfind("]")
+    if start < 0 or end < start:
+        print("[scan_eslint] no JSON array found in next lint output")
+        return []
+    try:
+        report = json.loads(raw[start:end + 1])
+    except json.JSONDecodeError as e:
+        print(f"[scan_eslint] could not parse JSON: {e}")
+        return []
+    out: list[dict] = []
+    for f_entry in report:
+        filename = (f_entry.get("filePath") or "").replace(str(REPO) + "/", "")
+        for m in f_entry.get("messages", []):
+            rule = m.get("ruleId") or "parse-error"
+            severity, difficulty, assignee = ESLINT_ROUTING.get(
+                rule, ("MED", "medium", "deepseek-coder:6.7b-instruct")
+            )
+            line_no = m.get("line", 0)
+            out.append(
+                {
+                    "id": make_id(filename, rule.replace("/", "_"), line_no, source="eslint"),
+                    "source": "eslint",
+                    "severity": severity,
+                    "difficulty": difficulty,
+                    "assigned_to": assignee,
+                    "file": filename,
+                    "line": line_no,
+                    "col": m.get("column", 0),
+                    "code": rule,
+                    "message": (m.get("message", "") or "")[:200],
+                    "fix_available": m.get("fix") is not None,
+                }
+            )
+    return out
 
 
 def scan_bandit(targets: list[str]) -> list[dict]:
@@ -320,10 +434,14 @@ def main() -> int:
                         help="add mypy type errors to the checklist (slow)")
     parser.add_argument("--include-bandit", action="store_true",
                         help="add bandit security findings (all human-review per §50.5)")
+    parser.add_argument("--include-eslint", action="store_true",
+                        help="add eslint findings from services/frontend")
     parser.add_argument("--targets", nargs="*", default=["services"])
     parser.add_argument("--mypy-targets", nargs="*",
                         default=["libs/py/documind_core"],
                         help="paths mypy scans (default: libs/py/documind_core)")
+    parser.add_argument("--frontend-root", default="services/frontend",
+                        help="frontend directory for eslint (default: services/frontend)")
     args = parser.parse_args()
 
     issues = scan_ruff(args.targets, include_security=args.include_security)
@@ -339,6 +457,12 @@ def main() -> int:
             issues.extend(bandit_issues)
         except RuntimeError as e:
             print(f"[scan_bandit] SKIP: {e}")
+    if args.include_eslint:
+        try:
+            eslint_issues = scan_eslint(REPO / args.frontend_root)
+            issues.extend(eslint_issues)
+        except Exception as e:
+            print(f"[scan_eslint] SKIP: {e}")
 
     CHECKLIST.parent.mkdir(parents=True, exist_ok=True)
     with CHECKLIST.open("w") as f:
