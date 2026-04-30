@@ -10,10 +10,10 @@ Locks the contract that:
     → 3 specialised authors run in parallel against 3 different
       models (DeepSeek, CodeLlama, CodeGemma)
     → 1 reviewer (StarCoder2) scores each draft
-    → 1 chair (DeepSeek again) synthesises top-3 advice as JSON
+    → 1 chair synthesises top-3 advice as JSON
     → AdvisorOutput is returned with model_used = chair's model
 
-Eight steps. Five negative assertions.
+Nine steps. Six negative assertions.
 
   1. PrReviewCouncil builds an AgentBoard with exactly the 3
      specialised authors + 1 reviewer + 1 advisor.
@@ -39,6 +39,9 @@ Eight steps. Five negative assertions.
      (not the single-agent path). NEGATIVE: a regression that
      fell through to the single-agent path would call ONE model
      once instead of the council's seven calls.
+  9. NEGATIVE: if the configured chair model 404s, the council
+     retries once against the documented local fallback model
+     instead of surfacing advisor_failed.
 
 Tag: readonly. Pure-Python — runs in tier 1.
 
@@ -51,6 +54,7 @@ import asyncio
 import importlib.util
 import pathlib
 import sys
+import httpx
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
@@ -112,6 +116,7 @@ ROLE_AUTHORS = council_mod.ROLE_AUTHORS
 # rewrite of the previous hardcoded "deepseek-coder:6.7b-instruct"
 # expectation, which broke when the chair was switched to kimi-k2.
 ADVISOR_MODEL = council_mod.ADVISOR_MODEL
+CHAIR_FALLBACK_MODEL = council_mod.CHAIR_FALLBACK_MODEL
 
 
 # ── Stub generator that records every (model, prompt) call ──────
@@ -376,8 +381,53 @@ async def main() -> None:
     )
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
-    print(f"{BOLD}{GREEN}  ALL 8 PR-REVIEW COUNCIL STEPS PASSED{NC}")
-    print(f"{BOLD}{GREEN}  (5 negative assertions: 3, 4, 6, 7, 8){NC}")
+    # ── Step 9: NEGATIVE — chair 404s, fallback model retries ───
+    step(
+        "9. NEGATIVE: chair 404 triggers one retry against local fallback "
+        "model instead of advisor_failed"
+    )
+
+    class ChairFallbackGenerator(RecordingGenerator):
+        async def __call__(self, model: str, prompt: str, timeout_s: float) -> str:
+            self.calls.append((model, prompt, timeout_s))
+            if prompt.rstrip().endswith("JSON:") and model == ADVISOR_MODEL:
+                req = httpx.Request("POST", "http://localhost:11434/api/generate")
+                resp = httpx.Response(404, request=req)
+                raise httpx.HTTPStatusError("missing model", request=req, response=resp)
+            if prompt.rstrip().endswith("JSON:") and model == CHAIR_FALLBACK_MODEL:
+                return self._chair_response
+            if "SCORE: <integer 0-10>" in prompt:
+                return self._reviewer_response
+            return self._author_response.replace("{model}", model)
+
+    fallback_gen = ChairFallbackGenerator()
+    fallback_council = PrReviewCouncil(generate_fn=fallback_gen)
+    parsed5, raw5 = await fallback_council.review("code")
+    if parsed5 is None:
+        fail("chair fallback path returned None")
+    chair_models = [
+        model for (model, prompt, _t) in fallback_gen.calls
+        if prompt.rstrip().endswith("JSON:")
+    ]
+    if chair_models[:2] != [ADVISOR_MODEL, CHAIR_FALLBACK_MODEL]:
+        fail(
+            f"chair fallback sequence wrong: got {chair_models[:2]}, "
+            f"want {[ADVISOR_MODEL, CHAIR_FALLBACK_MODEL]}"
+        )
+    if parsed5.model_used != CHAIR_FALLBACK_MODEL:
+        fail(
+            f"fallback model_used wrong: got {parsed5.model_used!r}, "
+            f"want {CHAIR_FALLBACK_MODEL!r}"
+        )
+    if raw5["outcome"] == "advisor_failed":
+        fail("chair fallback should avoid advisor_failed outcome")
+    ok(
+        f"chair 404 retried via fallback {CHAIR_FALLBACK_MODEL}; "
+        f"model_used={parsed5.model_used}"
+    )
+
+    print(f"{BOLD}{GREEN}  ALL 9 PR-REVIEW COUNCIL STEPS PASSED{NC}")
+    print(f"{BOLD}{GREEN}  (6 negative assertions: 3, 4, 6, 7, 8, 9){NC}")
     print(f"{BOLD}{GREEN}{'=' * 50}{NC}")
 
 

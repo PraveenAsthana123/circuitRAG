@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 import re
 import sys
 from collections.abc import Awaitable, Callable
@@ -119,6 +120,12 @@ REVIEWER_PROMPT_OVERRIDE = _REVIEWER_AGENT.prompt_template
 
 ADVISOR_MODEL = _CHAIR.model
 ADVISOR_PROMPT_OVERRIDE = _CHAIR.prompt_template
+CHAIR_FALLBACK_MODEL = os.getenv(
+    "SIDECAR_CHAIR_FALLBACK_MODEL",
+    getattr(_CHAIR, "fallback_model", None)
+    or getattr(sys.modules.get(getattr(_CHAIR, "__module__", ""), object()), "DEFAULT_CHAIR_FALLBACK_MODEL", None)
+    or "qwen2.5:latest",
+)
 
 
 # ── Council ─────────────────────────────────────────────────────
@@ -183,8 +190,43 @@ class PrReviewCouncil:
             return make_agent(_author_agent)
         else:
             async def _passthrough_agent(prompt: str) -> str:
-                return await self._generate(model, prompt, timeout_s)
+                try:
+                    return await self._generate(model, prompt, timeout_s)
+                except httpx.HTTPStatusError as err:
+                    fallback = self._fallback_model_for(role, model, err)
+                    if fallback is None:
+                        raise
+                    log.warning(
+                        "council_model_fallback role=%s from=%s to=%s status=%s",
+                        role,
+                        model,
+                        fallback,
+                        err.response.status_code,
+                    )
+                    self._models[role] = fallback
+                    return await self._generate(fallback, prompt, timeout_s)
             return make_agent(_passthrough_agent)
+
+    def _fallback_model_for(
+        self,
+        role: str,
+        failed_model: str,
+        err: httpx.HTTPStatusError,
+    ) -> str | None:
+        """Return a fallback model for a role-specific runtime failure.
+
+        Today this only handles the cloud-first chair path: if Ollama
+        returns 404 for the configured chair model, retry once against a
+        known local model rather than failing the whole advisory council.
+        """
+        if role != "chair":
+            return None
+        if err.response.status_code != 404:
+            return None
+        fallback = CHAIR_FALLBACK_MODEL.strip()
+        if not fallback or fallback == failed_model:
+            return None
+        return fallback
 
     def build_board(self) -> AgentBoard:
         authors = {
@@ -231,7 +273,8 @@ class PrReviewCouncil:
         # The chair's prompt asks for JSON; try to parse. Fall back
         # to a placeholder if the chair errored out (BoardResult
         # carries .error then) or the JSON was unrecoverable.
-        parsed = AdvisorOutput.parse(chair_text, model_used=ADVISOR_MODEL)
+        chair_model_used = self._models.get("chair", ADVISOR_MODEL)
+        parsed = AdvisorOutput.parse(chair_text, model_used=chair_model_used)
 
         if parsed is None:
             parsed = AdvisorOutput(
@@ -245,7 +288,7 @@ class PrReviewCouncil:
                 better_prompt_or_code=chair_text[:4000],
                 next_action="re-run review or inspect drafts in audit log",
                 confidence=0.0,
-                model_used=ADVISOR_MODEL,
+                model_used=chair_model_used,
             )
 
         # Decorate with council telemetry so the audit row shows what

@@ -14,6 +14,7 @@ import os
 from .base import CoderAgent
 
 DEFAULT_CHAIR_MODEL = "kimi-k2:1t-cloud"
+DEFAULT_CHAIR_FALLBACK_MODEL = os.getenv("SIDECAR_CHAIR_FALLBACK_MODEL", "qwen2.5:latest")
 
 AGENT = CoderAgent(
     name="chair",
