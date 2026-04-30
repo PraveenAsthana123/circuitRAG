@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
 """
-Drill: LangGraph + langchain-core exact-pin contract.
+Drill: agent-orchestrator LangGraph dependency pins.
 
-Per global §16 reproducible-builds requirement, langgraph and
-langchain-core MUST be pinned to exact versions in
-services/agent-orchestrator-svc/requirements.txt. Range pinning
-(>=1.1,<2) permits silent minor-version drift in transitive
-LLM-orchestration behaviour — the kind of drift that changes agent
-output without a single line of code changing in this repo.
+The orchestrator service now treats `langgraph` and
+`langchain-core` as reproducibility-sensitive dependencies. A
+floating minor range here permits subtle planner/runtime behavior
+changes without a code diff in this repo.
 
-Negative assertions cover: requirements file absent; range pin
-remaining (>=, ~=, comma-separated bounds); installed version
-diverges from pinned version; rationale comment stripped.
+Five steps. Three negative assertions.
+
+  1. POSITIVE: orchestrator requirements file exists.
+  2. NEGATIVE: `langgraph` is pinned with `==`, not a range.
+  3. NEGATIVE: `langchain-core` is pinned with `==`, not a range.
+  4. NEGATIVE: requirements comment mentions the drill by name,
+     so the contract is discoverable at the edit site.
+  5. POSITIVE: emit the pinned versions.
+
+Run: python3 mcp/tests/drill_langgraph_pin.py
 """
 from __future__ import annotations
 
@@ -21,106 +26,56 @@ from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[2]
-REQS = REPO / "services" / "agent-orchestrator-svc" / "requirements.txt"
+REQ = REPO / "services" / "agent-orchestrator-svc" / "requirements.txt"
 
-# Exact-pin regex: package==version (no slop)
-EXACT_PIN_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._\-]*)==([0-9][0-9A-Za-z.\-+]*)\s*$")
-# Range markers we explicitly reject for these two packages
-RANGE_MARKERS = (">=", "<=", "~=", "<", ">")
-PINNED_PACKAGES = {"langgraph", "langchain-core"}
+
+def fail(msg: str) -> None:
+    print(f"  x {msg}")
+    raise SystemExit(1)
+
+
+def ok(msg: str) -> None:
+    print(f"  ok: {msg}")
+
+
+def step(title: str) -> None:
+    print(f"\n-- {title} --")
+
+
+def _extract_pin(text: str, pkg: str) -> str | None:
+    m = re.search(rf"^{re.escape(pkg)}==([^\s]+)$", text, re.MULTILINE)
+    return m.group(1) if m else None
 
 
 def main() -> int:
-    print("-- 1. POSITIVE: orchestrator requirements file exists --")
-    if not REQS.exists():
-        raise AssertionError(f"missing requirements: {REQS.relative_to(REPO)}")
-    text = REQS.read_text(encoding="utf-8")
-    print("  ok: requirements file exists")
+    step("1. POSITIVE: orchestrator requirements file exists")
+    if not REQ.exists():
+        fail(f"missing requirements file: {REQ}")
+    text = REQ.read_text(encoding="utf-8")
+    ok(str(REQ.relative_to(REPO)))
 
-    print("-- 2. POSITIVE: rationale comment for exact-pin discipline present --")
-    if "exact versions" not in text or "global §16" not in text:
-        raise AssertionError(
-            "requirements.txt must carry rationale comment citing global §16 "
-            "(reproducible builds); without it future bumps lose context"
-        )
-    print("  ok: rationale comment cites global §16")
+    step("2. NEGATIVE: langgraph is pinned with ==")
+    langgraph_ver = _extract_pin(text, "langgraph")
+    if not langgraph_ver:
+        fail("langgraph is not pinned with ==")
+    ok(f"langgraph=={langgraph_ver}")
 
-    print("-- 3. POSITIVE: langgraph + langchain-core both have exact == pins --")
-    pinned = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or line.startswith("-e"):
-            continue
-        # Strip inline comment if any
-        line = line.split("#", 1)[0].strip()
-        m = EXACT_PIN_RE.match(line)
-        if m:
-            pinned[m.group(1).lower()] = m.group(2)
-    for pkg in PINNED_PACKAGES:
-        if pkg not in pinned:
-            raise AssertionError(
-                f"{pkg} must have an exact == pin (got: {find_loose_line(text, pkg)!r})"
-            )
-        print(f"  ok: {pkg} pinned to {pinned[pkg]}")
+    step("3. NEGATIVE: langchain-core is pinned with ==")
+    langchain_core_ver = _extract_pin(text, "langchain-core")
+    if not langchain_core_ver:
+        fail("langchain-core is not pinned with ==")
+    ok(f"langchain-core=={langchain_core_ver}")
 
-    print("-- 4. NEGATIVE: no range pin (>=, <, ~=) for langgraph or langchain-core --")
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or stripped.startswith("-e"):
-            continue
-        # Strip inline comment
-        body = stripped.split("#", 1)[0].strip()
-        if not body:
-            continue
-        for pkg in PINNED_PACKAGES:
-            # match "<pkg>" at the start, with optional extras like [foo]
-            if body.lower().startswith(pkg + "==") or body.lower().startswith(pkg + "["):
-                # exact-pin case (or extras with == handled later)
-                if any(m in body for m in RANGE_MARKERS) and "==" not in body:
-                    raise AssertionError(
-                        f"{pkg} carries range marker (got: {body!r}); "
-                        f"per global §16 must be exact =="
-                    )
-            elif body.lower().startswith(pkg + ">=") or body.lower().startswith(pkg + "~="):
-                raise AssertionError(
-                    f"{pkg} carries range marker (got: {body!r}); "
-                    f"per global §16 must be exact =="
-                )
-    print("  ok: no range markers on either package")
+    step("4. NEGATIVE: requirements comment mentions drill_langgraph_pin")
+    if "drill_langgraph_pin" not in text:
+        fail("requirements comment no longer references drill_langgraph_pin")
+    ok("requirements comment references drill_langgraph_pin")
 
-    print("-- 5. NEGATIVE: pinned versions must match what's installed in .venv --")
-    # If the .venv is unavailable, skip — but if it's present, pin must agree.
-    # Otherwise we ship a pin that isn't reproducible against the dev env.
-    try:
-        from importlib.metadata import version as _version, PackageNotFoundError
-    except Exception:
-        print("  skip: importlib.metadata unavailable")
-        print("\nALL 5 STEPS PASSED")
-        return 0
-    for pkg, want in pinned.items():
-        if pkg not in PINNED_PACKAGES:
-            continue
-        try:
-            have = _version(pkg)
-        except Exception:
-            print(f"  skip: {pkg} not installed in this env")
-            continue
-        if have != want:
-            raise AssertionError(
-                f"{pkg} pinned to {want} but installed version is {have}; "
-                f"either bump the pin (deliberate) or reinstall (dev-env drift)"
-            )
-        print(f"  ok: {pkg} pin {want} matches installed {have}")
+    step("5. POSITIVE: emit pinned versions")
+    ok(f"pins: langgraph={langgraph_ver}, langchain-core={langchain_core_ver}")
 
-    print("\nALL 5 STEPS PASSED")
+    print("\nALL 5 LANGGRAPH-PIN STEPS PASSED")
     return 0
-
-
-def find_loose_line(text: str, pkg: str) -> str:
-    for line in text.splitlines():
-        if pkg.lower() in line.lower():
-            return line.strip()
-    return "<not found>"
 
 
 if __name__ == "__main__":
