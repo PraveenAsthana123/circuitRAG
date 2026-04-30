@@ -71,9 +71,10 @@ omit = ["**/tests/**", "**/__init__.py"]
 # locks the new floor in here so we never regress.
 #  2026-04-30 — base 33.35%, after encryption.py tests → 34.78%; floor=34
 #  2026-04-30 — after rate_limiter.py tests → 37.16%; floor=36
+#  2026-04-30 — after schemas + logging_config tests → 41.56%; floor=40
 # Aspirational target is 80% (industry critical-paths-covered standard).
 # Never lower without ADR review.
-fail_under = 36
+fail_under = 40
 show_missing = true
 
 [tool.bandit]
