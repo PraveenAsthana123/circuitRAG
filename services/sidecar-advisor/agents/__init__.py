@@ -1,3 +1,4 @@
+# ruff: noqa: N999  (parent dir hyphenated; see services/sidecar-advisor/__init__.py)
 """Agent registry for the Sidecar Advisor council.
 
 This is the answer to "where is the advisor agent / review agent?":

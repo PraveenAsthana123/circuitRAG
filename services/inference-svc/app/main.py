@@ -205,8 +205,12 @@ def create_app() -> FastAPI:
                 service_actor_id: str | None = None
                 if service_token:
                     try:
-                        from documind_core.auth import JWTVerifier as _JV
-                        _wv = _JV(
+                        # JWTVerifier is already imported at module-top
+                        # (line 10). The local re-import was flagged by
+                        # ruff N814 (camelcase aliased as constant);
+                        # using the existing import directly removes
+                        # both the redundant import and the alias.
+                        _wv = JWTVerifier(
                             public_key_path=settings.jwt_public_key_path,
                             issuer=settings.jwt_issuer,
                             audience=settings.jwt_audience,

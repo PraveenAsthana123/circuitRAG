@@ -1,3 +1,4 @@
+# ruff: noqa: N999  (directory hyphenated by design — service, not importable module)
 """Sidecar Advisor — personal AI auditor for prompt + code activity.
 
 Phase 1 (current): manual paste → classify → advise (local Ollama) →

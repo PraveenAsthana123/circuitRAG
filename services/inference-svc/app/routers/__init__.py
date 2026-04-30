@@ -577,7 +577,7 @@ async def health_upstreams(request: Request) -> HealthUpstreamsResponse:
 # Datadog RUM; this is the local-dev variant that doesn't need a network
 # dependency.
 # ---------------------------------------------------------------------------
-from collections import deque as _deque
+from collections import deque as _deque  # noqa: E402
 
 _CLIENT_ERROR_BUFFER_CAPACITY = 100
 _CLIENT_ERROR_STACK_CAP = 4096  # bytes — cap stack so a runaway error doesn't blow memory
@@ -705,7 +705,7 @@ async def health_techstack(request: Request) -> HealthTechstackResponse:
     # source ∈ {pip, npm}. category drives the UI grouping. purpose is a
     # one-line description so operators don't context-switch to look up
     # what 'crewai' or 'ragas' is.
-    PIP_CATALOG: list[tuple[str, str, str]] = [
+    PIP_CATALOG: list[tuple[str, str, str]] = [  # noqa: N806 — function-scoped constant
         # (pkg_dist_name, category, purpose)
         # core stack
         ("fastapi", "core", "Web framework"),
@@ -755,7 +755,7 @@ async def health_techstack(request: Request) -> HealthTechstackResponse:
         ("apache-airflow", "data", "Workflow orchestration"),
     ]
 
-    NPM_CATALOG: list[tuple[str, str, str]] = [
+    NPM_CATALOG: list[tuple[str, str, str]] = [  # noqa: N806 — function-scoped constant
         # (pkg_name, category, purpose)
         ("next", "frontend", "Next.js framework"),
         ("react", "frontend", "React"),
