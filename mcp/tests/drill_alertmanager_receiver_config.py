@@ -22,6 +22,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE = REPO / "docker-compose.yml"
 ALERTMANAGER = REPO / "infra" / "observability" / "alertmanager.yml"
+RUNBOOK = REPO / "docs" / "runbooks" / "alertmanager-webhook.md"
 
 
 def require(text: str, needle: str, label: str) -> None:
@@ -58,7 +59,23 @@ def main() -> int:
         raise AssertionError("stale placeholder-webhook receiver still present")
     print("  ok: no stale placeholder receiver name remains")
 
-    print("\nALL 5 STEPS PASSED")
+    print("-- 6. NEGATIVE: operator runbook must exist or the env-secret pattern is undocumented --")
+    # Without this runbook, the operator has no guided path to flip
+    # ALERTMANAGER_DEFAULT_RECEIVER=shared-webhook safely. Compose
+    # accepts the env vars regardless, so a missing runbook means
+    # silent dropped alerts (placeholder URL POSTs go nowhere). The
+    # negative assertion is: runbook absent OR runbook stripped of
+    # the canonical env-var pair → drill fails.
+    if not RUNBOOK.exists():
+        raise AssertionError(f"missing operator runbook: {RUNBOOK.relative_to(REPO)}")
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+    require(runbook, "ALERTMANAGER_DEFAULT_RECEIVER", "default-receiver env in runbook")
+    require(runbook, "ALERTMANAGER_WEBHOOK_URL", "webhook-url env in runbook")
+    require(runbook, ".loop/alertmanager.env", ".loop/ env-secret pattern in runbook")
+    require(runbook, "chmod 600", "chmod-600 discipline in runbook")
+    print("  ok: runbook present and documents the .loop/ chmod-600 env-secret path")
+
+    print("\nALL 6 STEPS PASSED")
     return 0
 
 
