@@ -141,6 +141,49 @@ Network + serialize          █                                  5-10ms
 
 Items 1, 5, 7, 8 are < 1-iteration each (config / 1-line code). Items 2-3-4-6 are larger architectural changes.
 
+## Per-tool micro-benchmark (real ms, captured 2026-04-30)
+
+Run via `scripts/bench-tools.sh --iters 20`. Locked by
+`mcp/tests/drill_bench_tools.py`. Latest sample on this laptop
+(Linux x86_64, ~5 GiB free):
+
+| Tool | min ms | avg ms | p95 ms | max ms | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `postgres-ping` (libpq) | 39 | 45 | 65 | 68 | binary startup dominated |
+| `postgres-select1` | 37 | 45 | 66 | 73 | psql startup, not query |
+| `redis-ping` (docker exec) | 48 | 56 | 63 | 65 | docker-exec wrapper cost |
+| `redis-set-get` | 120 | 141 | 199 | 201 | 2× docker exec |
+| `qdrant-readyz` (HTTP) | 7 | 9 | 14 | 16 | true HTTP RTT |
+| `qdrant-list` (api-key) | 8 | 8 | 13 | 13 | true HTTP RTT |
+| `neo4j-cypher` (cypher-shell) | **1604** | **1768** | **1948** | **2020** | **JVM startup** — see warning |
+| `ollama-tags` | 7 | 8 | 10 | 11 | local HTTP, very fast |
+| `ollama-ps` | 6 | 9 | 22 | 25 | local HTTP |
+| `prometheus-health` | 6 | 6 | 8 | 9 | local HTTP |
+| `grafana-health` | 6 | 6 | 9 | 11 | local HTTP |
+| `alertmgr-health` | 6 | 7 | 9 | 11 | local HTTP |
+| `jaeger-root` | 6 | 7 | 10 | 11 | local HTTP |
+| `loop-jsonl-append` | 2 | 2 | 2 | 3 | audit-row write speed |
+| `drill-langgraph` (py drill) | 25 | 29 | 42 | 43 | drill runtime cost |
+| `drill-cdn-cache` | 26 | 30 | 46 | 47 | drill runtime cost |
+| `drill-load-test` | 26 | 31 | 40 | 56 | drill runtime cost |
+
+**The 1.7-second neo4j number is the headline finding.** It is NOT
+the Bolt protocol RTT (which is sub-ms). It is `docker exec` +
+**JVM startup** + cypher-shell init. Operators who shell out to
+`cypher-shell` in hot paths burn 1.7s per invocation. Use the Bolt
+client from a long-lived Python process instead — the
+`graph_searcher.py` does this correctly.
+
+**Second observation: docker-exec adds ~50-100ms** to any container
+probe (redis-ping, redis-set-get). The protocol underneath is sub-ms;
+the wrapper dominates. For real protocol-level measurements, use a
+persistent client.
+
+**Third observation: pure-HTTP probes against local services
+consistently hit 6-14ms p95** — that's the Linux loopback +
+HTTP-server-handling floor for this hardware. `loop-jsonl-append`
+at 2ms is the disk-write floor.
+
 ## What's NOT yet measured (honest gaps)
 
 - **Per-hop OTel breakdown** for a real request: requires Jaeger UI inspection of a sample correlation_id while full stack is up. Not done in this benchmark.
