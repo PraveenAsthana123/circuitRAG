@@ -56,6 +56,7 @@ const GROUPS: Group[] = [
       { href: '/admin/database/deep#kafka', label: 'Kafka (event store)' },
       { href: '/admin/mcp/deep', label: 'MCP deep dive (interview)' },
       { href: '/admin/memory/deep', label: 'Memory deep dive (sidecar + orchestrator)' },
+      { href: '/admin/aiops/deep', label: 'AIOps deep dive (ratchet + LLM incident)' },
       { href: '/admin/breakers/deep', label: 'Breakers deep dive (interview)' },
       { href: '/admin/forensics', label: 'Forensics (trace → draft → audit → HITL)' },
       { href: '/admin/rag/deep', label: 'RAG deep dive (interview)' },
