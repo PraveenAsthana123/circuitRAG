@@ -53,6 +53,32 @@ def main() -> int:
         require(scanner, f'"{code}":', f"RULE_ROUTING entry for {code}")
     print("  ok: 10 canonical rule codes routed")
 
+    print("-- 2b. POSITIVE: MYPY_ROUTING covers core type-error families --")
+    # Without these mypy codes routed, --include-mypy issues default to
+    # human-review and the lane is unusable.
+    require(scanner, "MYPY_ROUTING", "MYPY_ROUTING dict")
+    for code in ("assignment", "operator", "arg-type", "return-value",
+                 "attr-defined", "name-defined"):
+        require(scanner, f'"{code}":', f"MYPY_ROUTING entry for {code}")
+    require(scanner, "scan_mypy", "scan_mypy function")
+    require(scanner, "--include-mypy", "--include-mypy CLI flag")
+    print("  ok: 6 mypy codes routed + scan_mypy + --include-mypy flag")
+
+    print("-- 2c. NEGATIVE: real-bug mypy codes MUST route to human-review --")
+    # attr-defined and name-defined often surface real bugs, not
+    # type-annotation drift. Auto-applying a model fix here can mask
+    # an actual logic error. Always human-review.
+    for code in ("attr-defined", "name-defined", "call-arg"):
+        m = re.search(rf'"{code}":\s*\([^)]+\)', scanner)
+        if not m:
+            raise AssertionError(f"mypy code {code} not in MYPY_ROUTING")
+        if "human-review" not in m.group(0):
+            raise AssertionError(
+                f"mypy code {code} routed to {m.group(0)!r}; "
+                f"MUST be human-review (real-bug risk)"
+            )
+    print("  ok: real-bug mypy codes (attr/name/call) route to human-review")
+
     print("-- 3. NEGATIVE: security rules (S*) MUST route to human-review --")
     # Per §50.5 safety gate: never let a model auto-fix S* without
     # operator sign-off. Drill rejects any S-rule routed to a model.
@@ -126,7 +152,7 @@ def main() -> int:
     require(runbook, "RIGHT", "council success citation")
     print("  ok: empirical demo cited")
 
-    print("\nALL 10 STEPS PASSED")
+    print("\nALL 12 STEPS PASSED")
     return 0
 
 
