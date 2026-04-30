@@ -38,15 +38,25 @@ if [ -n "${SKIP_DRILL_STATUS:-}" ]; then
     exit 0
 fi
 
-# Phase 5Y: high-blast-radius staged files force a fresh drill run.
-# Frontend files under sidecar/* have multiple cross-cutting drill
-# assertions (drill_sidecar_deep_page step 5 counts scenarios;
-# drill_sidecar_nextjs_page step 8 enforces §7 scope-grant). A change
-# to one of these files can silently break a drill the operator wasn't
-# editing. Forcing a fresh sweep + loud warning catches it pre-commit.
+# Phase 5Y + 7MM: high-blast-radius staged files force a fresh
+# drill run. Two categories qualify:
+#
+# 1. Multi-cross-cutting source surfaces (Phase 5Y original):
+#    sidecar/* admin pages have drill_sidecar_deep_page step 5
+#    counting scenarios + drill_sidecar_nextjs_page step 8
+#    enforcing §7 scope-grant. mcp/server*.py + sidecar-advisor/
+#    are tested by multiple drills via different paths.
+#
+# 2. Drill catalog itself (Phase 7MM addition): when a drill file
+#    is edited, the snapshot's `failed_drills` list reflects the
+#    PRIOR drill content. Without forcing a refresh, the
+#    post-commit watcher reads stale content even with an
+#    age-fresh snapshot — the exact 3-REJECT-in-a-row pattern
+#    Phase 7JJ/7KK/7LL hit. Forcing refresh on drill edits
+#    closes that gap.
 HIGH_BLAST_RADIUS=0
 if git diff --cached --name-only 2>/dev/null \
-        | grep -qE '^(services/frontend/app/admin/sidecar/|mcp/server.*\.py$|services/sidecar-advisor/)'; then
+        | grep -qE '^(services/frontend/app/admin/sidecar/|mcp/server.*\.py$|services/sidecar-advisor/|mcp/tests/drill_.*\.py$)'; then
     HIGH_BLAST_RADIUS=1
 fi
 
