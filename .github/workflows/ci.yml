@@ -36,8 +36,8 @@ jobs:
         run: black --check libs/py services/ingestion-svc/app services/retrieval-svc/app services/inference-svc/app services/evaluation-svc/app
       - name: pycodestyle
         run: pycodestyle --max-line-length=120 libs/py services/ingestion-svc/app services/retrieval-svc/app services/inference-svc/app services/evaluation-svc/app
-      - name: Mypy (non-blocking)
-        run: mypy --ignore-missing-imports libs/py/documind_core || true
+      - name: Mypy (blocking — locked at 0 since d0c1a1f)
+        run: mypy --ignore-missing-imports libs/py/documind_core
       - name: Bandit (security)
         run: bandit -r libs/py services/ingestion-svc/app services/retrieval-svc/app services/inference-svc/app services/evaluation-svc/app -ll
       - name: pip-audit (deps CVEs, non-blocking)
