@@ -84,6 +84,20 @@ PARALLEL_TOOL_COMMITS = {
     # landed in Phase 7AA), so latency=0 (preexisting). Yet
     # another inverted-cadence instance per ADR-021.
     "2a1a7b0": ("G-5.2: rating UI + review metadata + drill-down", "drill_sidecar_rating_surface.py"),
+    # 91cd8a8: parallel-tool's ADR-021 doc commit. Audit = drill_
+    # cheatsheet_adr_coverage which validates the ADR is referenced
+    # in the cheatsheet's composes-with footer. The commit is doc-
+    # only; ADR-020's structural-audit checklist (drill existence,
+    # NEGATIVE marker, banner format, project-rule audit) doesn't
+    # apply to docs. Registering with the structural drill that
+    # DOES cover it (cheatsheet ADR coverage).
+    "91cd8a8": ("ADR-021 doc — pre-shipped drill audit cadence", "drill_cheatsheet_adr_coverage.py"),
+    # c41b19c: parallel-tool's test alignment commit (modifies
+    # this very drill). Self-referential audit — drill_adr020_
+    # audit_cadence is BOTH the modified file AND its own audit
+    # via the catalog discipline drill (NEGATIVE markers, banner,
+    # docstring count). Cohesion drill catches divergence.
+    "c41b19c": ("test alignment of cadence drill with ADR-021", "drill_adr020_audit_cadence.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
