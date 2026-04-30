@@ -1,0 +1,3 @@
+DocuMind verification test document.
+This file exists so ingestion + retrieval + RAG can be exercised end-to-end against known content.
+The phrase "blue elephant" appears here ONLY — useful as a unique retrieval signal.
