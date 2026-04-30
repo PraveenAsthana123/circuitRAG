@@ -441,6 +441,43 @@ services:
       retries: 3
       start_period: 5s
 
+  # ──────────────────────────────────────────────────────────────────────
+  # Langfuse — LLM observability (prompt + completion + cost + trace).
+  # Opt-in via profile (per file-header philosophy: app services run
+  # natively unless explicitly containerized). Backed by the existing
+  # Postgres via a separate logical database (langfuse_db).
+  # Locked by drill_langfuse_compose.py.
+  #
+  # Bring up:    docker compose --profile observability up -d langfuse
+  # UI at:       http://localhost:3002  (3001 is grafana)
+  # Initial setup: visit UI, create project, copy public+secret keys
+  # to .loop/langfuse.env (chmod 600); see docs/runbooks/langfuse.md
+  # ──────────────────────────────────────────────────────────────────────
+  langfuse:
+    profiles: ["observability"]
+    image: langfuse/langfuse:2
+    container_name: documind-langfuse
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      DATABASE_URL: ${LANGFUSE_DATABASE_URL:-postgres://documind:documind@postgres:5432/langfuse_db}
+      DIRECT_URL: ${LANGFUSE_DATABASE_URL:-postgres://documind:documind@postgres:5432/langfuse_db}
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3002}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-CHANGE_ME_dev_only_secret_min_32_chars_xx}
+      SALT: ${LANGFUSE_SALT:-CHANGE_ME_dev_only_salt_min_32_chars_xx}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_DEFAULT_PROJECT_ID: ${LANGFUSE_DEFAULT_PROJECT_ID:-documind-dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3000/api/public/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
 volumes: {}
 networks:
   default:
