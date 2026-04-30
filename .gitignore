@@ -128,3 +128,6 @@ advisor.db-shm
 /*.png
 # Next.js production build dir (separate from .next/ dev build)
 services/frontend/.next-prod/
+# Phase 7HH: Next.js dev-server artifact dir (parallel-tool's dev
+# workflow); leaked _events.json in commit 0e7f864 caught here.
+services/frontend/.next-dev/
