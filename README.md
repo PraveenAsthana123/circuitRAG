@@ -56,6 +56,54 @@ See [`docs/architecture/C4-container.md`](docs/architecture/C4-container.md) for
 
 ---
 
+## Current architecture status
+
+The diagram above is the **reference architecture**. The repo today is a
+mix of:
+
+- fully runnable local infrastructure
+- partially wired service/runtime surfaces
+- documented target-state components that are present as manifests/specs
+  but not yet the default local execution path
+
+Use this table as the honest current-state view.
+
+| Capability | Current state | Where it lives | Practical status |
+|---|---|---|---|
+| Load balancer / edge | Configured | `infra/nginx/nginx.conf`, `docker-compose.yml` | Present, but local dev commonly runs frontend/gateway directly and nginx is disabled in override until TLS material is set up |
+| API gateway | Intended + partially represented | `services/api-gateway/`, docs, route model in frontend/API assumptions | Architectural first-class component, but local operator/admin work today is more visible through direct service/frontend surfaces than a full gateway-centered runtime |
+| Service mesh | Manifested, not default local runtime | `infra/istio/`, `docs/scenarios/phase-01-edge-traffic-security.md` | Istio/Kiali are part of target deployment shape; mesh-up is a deployment decision, not the default local dev path |
+| Kafka | Running locally | `docker-compose.yml`, `docker-compose.override.yml`, `libs/py/documind_core/kafka_client.py` | Configured and active in local infra; event architecture is documented and the broker is part of the compose stack |
+| gRPC | Contract strategy more than dominant runtime | `proto/`, `README` repo layout, `docs/architecture/repo-grpc-and-microservice-architecture.md` | Strongly intended for internal service contracts, but the most visible runnable paths in this repo are still REST/frontend/admin oriented |
+| Observability stack | Running locally | Prometheus/Grafana/Jaeger/OTel in `docker-compose.yml`, files under `infra/observability/` | Real local stack exists; datasources are provisioned, dashboards are only partially automated |
+| Agent council / sidecar advisor | Running in repo-local workflows | `services/sidecar-advisor/`, `.loop/`, `/admin/sidecar*` | Real and active; commit-time council, telemetry, ratings, drill-down, and monitoring surfaces exist |
+| Agentic orchestrator | Running as a repo service | `services/agent-orchestrator-svc/`, `/admin/agentic*` | Real local service with projects/tasks/approvals/memory/control-plane surfaces |
+
+### What is actually live on a typical local machine
+
+From the repo as currently wired:
+
+- **Local infra via Compose:** Postgres, Redis, Kafka, MinIO, Qdrant, Neo4j, Ollama, OTel collector, Prometheus, Grafana, Jaeger, ELK, Kiali
+- **Local operator UIs:** `/admin`, `/admin/monitoring`, `/admin/sidecar`, `/admin/sidecar/telemetry`, `/admin/forensics`, `/admin/agentic/control-plane`, `/admin/techstack`
+- **Runtime status surface:** `/app-meta/runtime-status`
+- **Build identity surface:** `/app-meta/build-info`
+
+### Where to check the truth at runtime
+
+If you want current runtime truth instead of target-state architecture:
+
+- **Monitoring + service/runtime view:** `/admin/monitoring`
+- **Operator dashboard:** `/admin`
+- **Agent council telemetry:** `/admin/sidecar/telemetry`
+- **Agentic projects/tasks/approvals/memory:** `/admin/agentic/control-plane`
+- **Loop/health one-shot CLI:** `python3 scripts/loop_status.py`
+
+This distinction matters: several platform components are **correctly modeled
+and partially configured**, but not every one of them is equally mature as a
+day-to-day local runtime surface.
+
+---
+
 ## Quickstart (Docker Compose, ~5 min)
 
 **Prereqs:** Docker 20+, Docker Compose v2+, Python 3.11+, Go 1.21+, Node 20+ (for frontend).

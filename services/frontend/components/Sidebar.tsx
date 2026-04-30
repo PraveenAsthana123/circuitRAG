@@ -49,6 +49,7 @@ const GROUPS: Group[] = [
       { href: '/admin/llmops', label: 'LLMOps scorecard' },
       { href: '/admin/llmops/deep', label: 'LLMOps deep dive (interview)' },
       { href: '/admin/techlead/deep#ultimate-tech-lead-master-checklist', label: 'Tech Lead checklist' },
+      { href: '/admin/monitoring', label: 'Monitoring + health' },
       { href: '/admin/agentic', label: 'Agentic tasks' },
       { href: '/admin/agentic/control-plane', label: 'Agentic control plane' },
       { href: '/admin/database/deep', label: 'Database deep dive (interview)' },

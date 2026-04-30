@@ -85,6 +85,7 @@ data/zookeeper/
 data/ollama/
 data/minio/
 data/prometheus/
+data/grafana/
 logs/
 *.log
 

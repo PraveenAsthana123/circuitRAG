@@ -402,6 +402,38 @@ export interface FrontendBuildInfoResponse {
   generated_at: string;
 }
 
+export interface RuntimeServiceStatus {
+  name: string;
+  service: string;
+  state: string;
+  status: string;
+  health: string | null;
+  ports: string;
+  cpu_percent: string | null;
+  mem_usage: string | null;
+  mem_percent: string | null;
+  net_io: string | null;
+  pids: string | null;
+  source: 'docker_compose';
+}
+
+export interface RuntimeStatusResponse {
+  generated_at: string;
+  repo_root: string;
+  ollama: {
+    active: boolean;
+    state: string;
+  };
+  services: RuntimeServiceStatus[];
+  totals: {
+    running: number;
+    unhealthy: number;
+    not_running: number;
+  };
+  top_consumers: RuntimeServiceStatus[];
+  warnings: string[];
+}
+
 export interface TechstackEntry {
   name: string;
   category: string;
@@ -514,6 +546,12 @@ export const api = {
   frontendBuildInfo: (signal?: AbortSignal) =>
     request<FrontendBuildInfoResponse>('/app-meta/build-info', {
       timeout: 5_000,
+      signal,
+    }),
+
+  frontendRuntimeStatus: (signal?: AbortSignal) =>
+    request<RuntimeStatusResponse>('/app-meta/runtime-status', {
+      timeout: 15_000,
       signal,
     }),
 
