@@ -72,6 +72,12 @@ PARALLEL_TOOL_COMMITS = {
     # comprehensive (exercises the API surface end-to-end). All 8
     # drills are listed in the G-4 commit message body.
     "480dd3e": ("G-4: agentic control plane (8 pre-shipped audits)", "drill_agentic_control_plane_api.py"),
+    # G-5 has 3 audit drills (rating-surface, advisor-record-rating,
+    # sidecar-nextjs-page). Pick drill_sidecar_advisor_record_rating
+    # as representative — covers the backend write path. Latency=0
+    # because the new audit drill shipped in the same commit as
+    # the source code (true inverted cadence under MAX_AUDIT_LATENCY=1).
+    "dde309b": ("G-5: sidecar event rating surface", "drill_sidecar_advisor_record_rating.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
