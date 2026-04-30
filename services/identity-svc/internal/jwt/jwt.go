@@ -70,7 +70,7 @@ func NewIssuer(
 		return nil, fmt.Errorf("parse public key: %w", err)
 	}
 	if denylist == nil {
-		denylist = NoopDenylist{}
+		denylist = &NoopDenylist{}
 	}
 	return &Issuer{
 		priv:       priv,
