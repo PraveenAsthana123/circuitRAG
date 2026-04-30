@@ -119,6 +119,11 @@ PARALLEL_TOOL_COMMITS = {
     # + lib client). Audit drill ships in same commit (latency=0,
     # true simultaneous per ADR-021 inverted cadence).
     "7a1701f": ("G-6: operator monitoring dashboard", "drill_admin_monitoring_surface.py"),
+    # 214c2c4: parallel-tool's docs(runtime) commit that aligned the
+    # monitoring + agentic truth surfaces — bundled the autonomous-
+    # loop's Phase 7RR work plus additional doc updates. Audit via
+    # drill_admin_monitoring_runtime_surface (which 214c2c4 added).
+    "214c2c4": ("docs(runtime): align monitoring + agentic surfaces", "drill_admin_monitoring_runtime_surface.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not

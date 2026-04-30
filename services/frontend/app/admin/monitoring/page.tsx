@@ -32,6 +32,11 @@ const MONITORING_LINKS = [
     href: process.env.NEXT_PUBLIC_JAEGER_URL ?? 'http://localhost:16686',
     note: 'Trace search and span waterfall.',
   },
+  {
+    label: 'Alertmanager',
+    href: process.env.NEXT_PUBLIC_ALERTMANAGER_URL ?? 'http://localhost:9093',
+    note: 'Alert grouping, routing, and receiver inspection.',
+  },
 ];
 const LOCAL_STACK = [
   { name: 'Postgres', port: '55432', role: 'primary relational store with schema-per-service + RLS' },
@@ -43,6 +48,7 @@ const LOCAL_STACK = [
   { name: 'Ollama', port: '51134', role: 'local LLM and embeddings runtime on this dev host' },
   { name: 'OTel collector', port: '4317 / 4318 / 9464', role: 'OTLP ingest and Prometheus re-export' },
   { name: 'Prometheus', port: '9090', role: 'metrics scraping and rules engine' },
+  { name: 'Alertmanager', port: '9093', role: 'alert grouping and receiver routing' },
   { name: 'Grafana', port: '3001', role: 'dashboards and visualization' },
   { name: 'Jaeger', port: '16686', role: 'trace UI and OTLP trace sink' },
   { name: 'NGINX', port: '80 / 443', role: 'edge, TLS termination, cache, and rate limiting' },
@@ -138,17 +144,17 @@ const OPERATIONS_STATUS = {
     'Admin monitoring route and left-menu entry exist at /admin/monitoring.',
     'Live service health, circuit breakers, upstream reachability, and tool traffic are visible in-app.',
     'Sidecar telemetry, forensics, and agentic control-plane surfaces are already linked and reachable.',
-    'Prometheus, Grafana, Jaeger, OTel collector, ELK, and Kiali are defined in local compose.',
+    'Prometheus, Alertmanager, Grafana, Jaeger, OTel collector, ELK, and Kiali are defined in local compose.',
     'Loop automation paths exist: loop_status, drill refresh, council snapshots, and filter pipeline.',
+    'Grafana dashboard provisioning is automatic and Prometheus loads local alert rules.',
   ],
   inProgress: [
     'Monitoring page is now acting as the central operations map, but it still depends on downstream health endpoints for live data.',
-    'Observability is partially provisioned: Grafana datasources are automatic, dashboard loading is still manual.',
+    'Alertmanager is local-first: routing exists, but shared-environment receivers are still placeholder-only.',
     'Tracking is current-state-heavy; trends and incident timelines are not yet persisted in this UI.',
   ],
   pending: [
-    'Grafana dashboard auto-provisioning instead of manual import.',
-    'Prometheus rule-file loading and full alerting path verification.',
+    'Shared-environment alert delivery integration beyond the local placeholder receiver.',
     'Historical tracking for alerts, scraper failures, and upstream flapping.',
     'Infra-level exporters for CPU, memory, disk, restart counts, and container saturation.',
     'Operator acknowledgements, issue ownership, and resolved-state workflow.',
@@ -168,7 +174,7 @@ const PIPELINE_FLOW = [
     name: 'Process',
     items: [
       'Health APIs aggregate readiness, breakers, prompt registry, tools, and upstream probes.',
-      'Prometheus scrapes OTel and application /metrics targets.',
+      'Prometheus scrapes OTel and application /metrics targets, then forwards firing rules into Alertmanager.',
       'Sidecar advisor records events, ratings, council runs, and memory.',
       'Loop automation refreshes drill state, council telemetry, and watcher verdicts.',
     ],
@@ -177,7 +183,7 @@ const PIPELINE_FLOW = [
     name: 'Output',
     items: [
       'In-app operator pages: monitoring, forensics, sidecar telemetry, agentic control plane.',
-      'External observability UIs: Grafana, Prometheus, Jaeger, Kibana, Kiali.',
+      'External observability UIs: Grafana, Prometheus, Alertmanager, Jaeger, Kibana, Kiali.',
       'Persistent audit/state artifacts in .loop/, advisor.db, and data/* stores.',
       'Operational decisions: approvals, ratings, drill outcomes, and trace evidence.',
     ],

@@ -2,6 +2,14 @@
 
 ## `documind-overview.json`
 
+This dashboard is now auto-provisioned by local Grafana via:
+
+- `infra/observability/grafana-dashboards.yaml`
+- `docker-compose.yml` Grafana volume mounts
+
+So if the local observability stack is up, the dashboard should appear
+under the `DocuMind` folder without a manual import step.
+
 Panels reference **only** the Prometheus metrics that `libs/py/documind_core/` actually emits (circuit breaker state + failures, retrieval quality, CCB interrupts/warnings, token breaker rejects, agent stops, ingest chunk decisions, obs breaker skips). If a panel is empty when you import this, the corresponding code path hasn't executed yet — not a dashboard bug.
 
 ## Previously shipped `slo-burn.json` — REMOVED
