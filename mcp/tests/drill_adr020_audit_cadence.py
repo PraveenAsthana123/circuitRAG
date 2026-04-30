@@ -98,6 +98,17 @@ PARALLEL_TOOL_COMMITS = {
     # via the catalog discipline drill (NEGATIVE markers, banner,
     # docstring count). Cohesion drill catches divergence.
     "c41b19c": ("test alignment of cadence drill with ADR-021", "drill_adr020_audit_cadence.py"),
+    # G-5.1: autonomous-loop committed parallel-tool's metadata
+    # extension (rated_by/rating_notes columns + Vitest infra +
+    # migration 003). Co-Authored-By: Claude trailer present, but
+    # Path B regex catches the G-5.1 subject token. Audit drills:
+    # drill_sidecar_rating_metadata + drill_sidecar_rating_route
+    # shipped in same commit (latency=0).
+    "14c7616": ("G-5.1: rating metadata columns + Vitest infra", "drill_sidecar_rating_metadata.py"),
+    # G-5.2-followon: small follow-on extending the rating route
+    # + Vitest tests. Audit = drill_sidecar_rating_surface
+    # (preexisting from Phase 7AA, predates this commit by hours).
+    "0e7f864": ("G-5.2-followon: rating route + Vitest extensions", "drill_sidecar_rating_surface.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
@@ -264,9 +275,18 @@ def _discover_parallel_tool_commits() -> dict[str, str]:
         if "Claude" not in trailers:
             out[sha] = subject
             continue
-        # Path B: subject begins with G-<digit>:
-        if re.match(r"^[a-z]+\(.+?\):\s*G-\d+\s+-", subject) or \
-                re.match(r"^G-\d+\s*[:\-]", subject):
+        # Path B: subject contains G-<digit> token. Robust to the
+        # observed naming variations:
+        #   "feat(sidecar): G-5 - sidecar event rating surface"
+        #   "feat(sidecar): G-5.2-followon - rating route extension"
+        #   "G-5: ..."
+        #   "feat(agentic): G-4 - agentic control plane"
+        # Pattern: optional `<area>(<scope>): ` prefix, then the
+        # token `G-<digit>` followed by a separator (whitespace,
+        # dot, dash, or colon — covers "G-5 -" and "G-5.2-followon"
+        # and "G-5:").
+        if re.match(r"^[a-z]+\(.+?\):\s*G-\d+[\s\.\-:]", subject) or \
+                re.match(r"^G-\d+[\s\.\-:]", subject):
             out[sha] = subject
     return out
 
