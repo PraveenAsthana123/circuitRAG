@@ -187,6 +187,109 @@ grep -F '"verdict": "REJECT"' .loop/watcher.log | tail -5
 cat docs/runbooks/autonomous-loop-cheatsheet.md
 ```
 
+## Loop health dashboards (drill-based observability)
+
+Four orthogonal dashboards answer "is the loop healthy?" — each
+covers a different failure mode. Run any one in ≤2s; all four in
+≤10s.
+
+### 1. Drift-rate (verdict log analytics, Phase 7W)
+
+Parses `.loop/watcher.log`; reports APPROVE/REJECT distribution +
+recent trend + max consecutive REJECT streak.
+
+```bash
+python mcp/tests/drill_drift_rate_dashboard.py
+```
+
+Key signals:
+* `overall APPROVE-rate` — long-term effectiveness of ADR-014's
+  sweep-before-commit gate. Floor: 60%.
+* `recent APPROVE-rate (last 20)` — short-term trend. Floor: 50%.
+* `max consecutive REJECT streak` — sustained meltdown signal.
+  Floor: 5 (current grandfathered max from Phase 7Q-7R cascade).
+* `trend` line — "stable / improving / regressing" delta.
+
+### 2. ADR-020 audit cadence (Phases 7Q / 7U / 7T / 7BB / 7II)
+
+Reports per-G-bucket iteration-latency + wall-clock time-latency,
+SLO compliance, in-SLO/grandfathered/inverted breakdown.
+
+```bash
+python mcp/tests/drill_adr020_audit_cadence.py
+```
+
+Key signals:
+* Per-row marker: `[✓ lat=N]` (in-SLO), `[GF lat=N]` (grandfathered),
+  `[!! lat=N]` (out-of-SLO and ungrandfathered).
+* `avg-iter-latency` — should trend toward 0 across sessions.
+* `avg-time-latency` — should trend NEGATIVE (audits-pre-shipped
+  is the steady-state target per ADR-021).
+* `inverted (audit pre-shipped)=N` — count of entries
+  demonstrating ADR-021's pattern.
+
+### 3. Drift volume (KNOWN_*/DOMAIN_* visibility, Phases 7X / 7Y)
+
+Walks every drill_*.py via AST; reports per-drill KNOWN_*
+ratchet entries + DOMAIN_* categorization floors.
+
+```bash
+python mcp/tests/drill_drift_volume_meta.py
+```
+
+Key signals:
+* `DRIFT VOLUME (ratchets only): total=N` — paydown burden.
+  HEALTHY ≤5; ELEVATED >5.
+* `CATEGORIZATION FLOORS: M entries` — intent-to-track-reality
+  (e.g., DOMAIN_ADR_NUMBERS).
+* Per-drill table shows which ratchets are empty (paid down)
+  vs non-empty (paydown candidates).
+
+### 4. Drill-status freshness (Phases 7DD / 7FF)
+
+Verifies `.loop/last_drill_outcome.json` is fresh + per_drill
+catalog membership. Catches the stale-snapshot regression that
+caused Phase 7Z/7AA's REJECT verdicts.
+
+```bash
+python mcp/tests/drill_drill_status_freshness.py
+```
+
+Key signals:
+* `FRESHNESS: snapshot N.Nmin old` — should be < 15 minutes
+  during active iteration.
+* `N/M drills green; K failed` — last sweep's outcome.
+* Step 7 fires if `per_drill` keys reference deleted drills
+  (catalog drift between snapshot + disk).
+
+### Composing the four
+
+For a complete health check before declaring "loop is healthy":
+
+```bash
+for d in drift_rate_dashboard adr020_audit_cadence drift_volume_meta drill_status_freshness; do
+    /mnt/deepa/rag/.venv/bin/python mcp/tests/drill_${d}.py 2>&1 | grep -E "^Result|DRIFT|FRESHNESS|ratchet:|SLO:|trend"
+done
+```
+
+Each dashboard is independently green-able. None of them masks
+another's failure.
+
+## Override signals (operator vocabulary, Phase 7V)
+
+When the autonomous loop yields with the §44.4 red flag, the
+operator resumes with one of:
+
+| Signal | Effect |
+|---|---|
+| `next` | single-iteration override; drain one drift item |
+| `drain` | multi-iteration override; keep auditing until worktree clean |
+| `commit-as-is` | land worktree without audit pass; KNOWN_* ratchets grow temporarily; future iterations pay them down |
+| `pause` | full halt; operator coordinates with parallel-tool stream offline |
+
+See `docs/runbooks/parallel-tool-coordination.md` for the full
+runbook with cascade-handling protocol.
+
 ## Agentic control plane
 
 Operator-facing surfaces for the normalized project/task execution chain:
