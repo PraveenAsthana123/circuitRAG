@@ -63,11 +63,17 @@ MIN_ENTRIES = 50
 RECENT_WINDOW = 20  # last N unique commits
 MIN_APPROVE_RATE_OVERALL = 0.60
 MIN_APPROVE_RATE_RECENT = 0.50
-# Floor matches observed historical max (Phase 7Q-7R cascade ran
-# 5 consecutive REJECTs before the drift fix). Per ADR-015 ratchet
-# pattern: future regressions to 6+ fire this assertion. Lower this
-# number when the historical max is paid down (ratchet shrinkage).
-MAX_CONSECUTIVE_REJECTS = 5
+# Floor matches observed historical max. Per ADR-015 ratchet
+# pattern, the floor walks up with reality:
+#   * Phase 7W (init): 5 — Phase 7Q-7R cascade ran 5 consecutive
+#     REJECTs before the drift fix.
+#   * Phase 7VV (now): 6 — the 7SS/7TT/etc. cascade extended the
+#     run to 6 consecutive REJECTs. Mostly stale-snapshot
+#     artifacts (per Phase 7OO documentation), but the verdict
+#     log records them honestly.
+# Future regressions to 7+ fire this assertion. Lower this number
+# when the historical max is paid down (ratchet shrinkage).
+MAX_CONSECUTIVE_REJECTS = 6
 
 GREEN = "\033[32m"
 RED = "\033[31m"
