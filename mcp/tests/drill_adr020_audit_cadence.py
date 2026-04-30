@@ -141,6 +141,11 @@ PARALLEL_TOOL_COMMITS = {
     # Audit via drill_admin_monitoring_runtime_surface (which it
     # extends).
     "610fdf4": ("register observability audits + harden runtime-status drill", "drill_admin_monitoring_runtime_surface.py"),
+    # 6831dee: local-chair fallback for sidecar council when the
+    # cloud-first Kimi tag 404s in a local Ollama runtime. Audit
+    # via the council drill that now exercises the 404→fallback
+    # path explicitly.
+    "6831dee": ("fall back to local chair model on ollama 404", "drill_sidecar_pr_review_council.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
