@@ -136,6 +136,11 @@ PARALLEL_TOOL_COMMITS = {
     # Audit via drill_admin_monitoring_runtime_surface (which the
     # parallel-tool extended to 9 steps for these new surfaces).
     "d0301e6": ("expand monitoring + exporter coverage", "drill_admin_monitoring_runtime_surface.py"),
+    # 610fdf4: parallel-tool's test(drills) commit registering
+    # observability audits + hardening the runtime-status drill.
+    # Audit via drill_admin_monitoring_runtime_surface (which it
+    # extends).
+    "610fdf4": ("register observability audits + harden runtime-status drill", "drill_admin_monitoring_runtime_surface.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
