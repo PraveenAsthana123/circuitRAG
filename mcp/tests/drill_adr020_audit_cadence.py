@@ -115,6 +115,10 @@ PARALLEL_TOOL_COMMITS = {
     # which exercise the routes; pick rating_surface as
     # representative since it's the more recent landing.
     "e0a0182": ("next.config: keep sidecar + tts routes local", "drill_sidecar_rating_surface.py"),
+    # G-6: operator monitoring dashboard (page + 2 routes + Sidebar
+    # + lib client). Audit drill ships in same commit (latency=0,
+    # true simultaneous per ADR-021 inverted cadence).
+    "7a1701f": ("G-6: operator monitoring dashboard", "drill_admin_monitoring_surface.py"),
 }
 
 # Paydown bucket — parallel-tool commits known to exist but not
