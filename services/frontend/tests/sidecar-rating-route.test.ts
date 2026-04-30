@@ -146,4 +146,29 @@ describe('sidecar rating route', () => {
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/admin/sidecar?rating=missing#live-ratings');
   });
+
+  it('redirects GET requests to the sidecar event detail page', async () => {
+    const eventId = await seedAdvisorDb(dbPath, true);
+    const { GET } = await import('../app/api/v1/sidecar/events/[eventId]/rating/route');
+
+    const req = new NextRequest(`http://localhost/api/v1/sidecar/events/${eventId}/rating`, {
+      method: 'GET',
+    });
+
+    const res = await GET(req, { params: { eventId: String(eventId) } });
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toContain(`/admin/sidecar/${eventId}`);
+  });
+
+  it('redirects invalid GET event ids to the sidecar summary with invalid state', async () => {
+    const { GET } = await import('../app/api/v1/sidecar/events/[eventId]/rating/route');
+
+    const req = new NextRequest('http://localhost/api/v1/sidecar/events/bad/rating', {
+      method: 'GET',
+    });
+
+    const res = await GET(req, { params: { eventId: 'bad' } });
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toContain('/admin/sidecar?rating=invalid#live-ratings');
+  });
 });

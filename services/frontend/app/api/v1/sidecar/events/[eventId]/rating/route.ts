@@ -15,6 +15,15 @@ function redirectWithStatus(req: NextRequest, state: 'saved' | 'missing' | 'inva
   return NextResponse.redirect(url, { status: 303 });
 }
 
+export async function GET(req: NextRequest, { params }: RouteParams) {
+  const eventId = Number(params.eventId);
+  if (!Number.isInteger(eventId) || eventId <= 0) {
+    return redirectWithStatus(req, 'invalid');
+  }
+  const url = new URL(`/admin/sidecar/${eventId}`, req.url);
+  return NextResponse.redirect(url, { status: 303 });
+}
+
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const eventId = Number(params.eventId);
   if (!Number.isInteger(eventId) || eventId <= 0) {

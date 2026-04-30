@@ -78,6 +78,7 @@ def main() -> None:
     ok("sidecar page exposes live rating forms + filter controls")
 
     for needle in (
+        "export async function GET",
         "export async function POST",
         "rateSidecarEvent",
         "rated_by",
