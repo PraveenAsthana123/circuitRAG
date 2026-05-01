@@ -127,15 +127,24 @@ def main() -> int:
         assert body["error"]["code"] != "invalid_input", f"unexpected security fail: {body}"
         print(f"  ok: query syntactically valid; metric not yet ingested (error: {body['error']['code']})")
 
-    print("-- 7. POSITIVE: check_alerts_fired stays stubbed --")
+    print("-- 7. POSITIVE: check_alerts_fired (post-E4: real Alertmanager backing) --")
     r = client.post(
         "/tools/call",
-        json={"name": "observe.check_alerts_fired", "arguments": {"window_seconds": 300}},
+        json={"name": "observe.check_alerts_fired", "arguments": {}},
     )
     body = r.json()
-    assert body["ok"] is True
-    assert body["data"]["stub"] is True
-    print("  ok: check_alerts_fired stub:True (Alertmanager wire is follow-up)")
+    # E4 made this REAL. Either ok:true (AM reachable) or
+    # ok:false + alertmanager_unreachable (AM down). Both valid; what
+    # we check is that it's NOT the legacy stub:True envelope.
+    if body.get("ok"):
+        assert body["data"].get("stub") is False, (
+            "post-E4: check_alerts_fired must NOT return stub:True"
+        )
+        assert body["data"].get("real_backing") == "alertmanager"
+        print(f"  ok: real_backing=alertmanager, alerts_fired={body['data']['alerts_fired']}")
+    else:
+        assert body["error"]["code"] == "alertmanager_unreachable"
+        print(f"  ok: AM unreachable → graceful error (post-E4)")
 
     print("-- 8. NEGATIVE: Prometheus unreachable → graceful error --")
     # Reload module pointing at a dead port.

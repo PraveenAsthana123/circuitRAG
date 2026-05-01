@@ -114,17 +114,20 @@ def main() -> int:
     assert body["data"]["rollback_handle"], "rollback_handle MUST be present for B6 observer"
     print(f"  ok: applied with rollback_handle={body['data']['rollback_handle']}")
 
-    print("-- 7. POSITIVE: tests.run_pytest returns canned passed=true --")
+    print("-- 7. POSITIVE: tests.run_pytest (post-E5: real collect-only backing) --")
     client = TestClient(apps["tests"][0])
+    # E5 made pytest real (collect-only). target='x' is not under
+    # ALLOWED_TARGET_ROOTS so this now correctly returns target_not_allowed.
+    # The contract this step locks is: jest stays stubbed (no Node).
     r = client.post(
         "/tools/call",
-        json={"name": "tests.run_pytest", "arguments": {"target": "x"}},
+        json={"name": "tests.run_jest", "arguments": {"target": "x"}},
     )
     body = r.json()
     assert body["ok"] is True
     assert body["data"]["passed"] is True
-    assert body["data"]["stub"] is True
-    print("  ok: tests.run_pytest stub returns passed=true with stub marker")
+    assert body["data"]["stub"] is True, "jest must remain stubbed (no Node toolchain)"
+    print("  ok: tests.run_jest still stub:True (post-E5; jest deferred)")
 
     print("-- 8. POSITIVE: observe.compute_p95_delta returns metrics --")
     client = TestClient(apps["observe"][0])
@@ -138,12 +141,25 @@ def main() -> int:
     assert "p95_observed_ms" in body["data"]
     print("  ok: observe.compute_p95_delta returns baseline + observed (B6 input)")
 
-    print("-- 9. POSITIVE: every stub's /health returns stub:true marker --")
+    print("-- 9. POSITIVE: every server's /health declares its stub state --")
+    # Post-E2/E3/E4/E5: tests + observe servers have real backings now,
+    # so 'stub' is 'partial' (tests, jest still stubbed) or 'false'
+    # (observe, all real). research + deploy stay full-stub.
+    expected_stub = {
+        "research": "true",   # canned data
+        "tests": "partial",   # ruff/pytest/mypy real, jest stub
+        "deploy": "true",     # canned (stays canned for safety)
+        "observe": "false",   # all 3 tools real (E3+E4)
+    }
     for label, (app, _mod) in apps.items():
         client = TestClient(app)
         body = client.get("/health").json()
-        assert body.get("stub") == "true", f"{label}: /health missing stub marker"
-    print("  ok: stub self-identification across all 4 servers")
+        stub_val = body.get("stub")
+        assert stub_val == expected_stub[label], (
+            f"{label}: /health stub='{stub_val}', expected '{expected_stub[label]}' "
+            "(stub state must match server's actual backing reality)"
+        )
+    print(f"  ok: stub state declared accurately by each server: {expected_stub}")
 
     print()
     print("ALL 9 STEPS PASSED")

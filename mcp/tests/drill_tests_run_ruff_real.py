@@ -130,17 +130,31 @@ def main() -> int:
         fixture.unlink()
         tmp_dir.rmdir()
 
-    print("-- 8. POSITIVE: pytest/jest/mypy stubs still return canned passes --")
-    for tool in ("tests.run_pytest", "tests.run_jest", "tests.run_mypy"):
+    print("-- 8. POSITIVE: jest stays stubbed; pytest/mypy went real in E5 --")
+    # Post-E5: pytest + mypy invoke real subprocesses + path-validate
+    # the target. With target='x' (not under ALLOWED_TARGET_ROOTS) they
+    # now correctly return target_not_allowed. The lock here is that
+    # jest STAYS stubbed (no Node toolchain bundled).
+    r = client.post(
+        "/tools/call",
+        json={"name": "tests.run_jest", "arguments": {"target": "x"}},
+    )
+    body = r.json()
+    assert body["ok"] is True
+    assert body["data"]["passed"] is True
+    assert body["data"]["stub"] is True, "jest must remain stubbed (no Node toolchain)"
+    # Verify pytest + mypy now reject 'x' as target_not_allowed (real path validation).
+    for tool in ("tests.run_pytest", "tests.run_mypy"):
         r = client.post(
             "/tools/call",
             json={"name": tool, "arguments": {"target": "x"}},
         )
         body = r.json()
-        assert body["ok"] is True
-        assert body["data"]["passed"] is True
-        assert body["data"]["stub"] is True, f"{tool}: stub:True missing"
-    print("  ok: stubbed runners (pytest/jest/mypy) keep canned shape")
+        assert body["ok"] is False, f"{tool}: post-E5 must validate target"
+        assert body["error"]["code"] == "target_not_allowed", (
+            f"{tool}: expected target_not_allowed, got {body['error']}"
+        )
+    print("  ok: jest stub:True; pytest+mypy reject invalid target (real backing)")
 
     print()
     print("ALL 8 STEPS PASSED")
