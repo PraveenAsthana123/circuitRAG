@@ -57,7 +57,7 @@ from enum import StrEnum
 from typing import TypeVar
 
 try:
-    from prometheus_client import Counter, Gauge
+    from prometheus_client import Counter, Gauge, Histogram
 
     _METRICS_ENABLED = True
 except ImportError:  # pragma: no cover — optional
@@ -116,10 +116,14 @@ if _METRICS_ENABLED:
         "0=closed, 1=half_open, 2=open",
         labelnames=["name"],
     )
+    # CB-C #15: exception_class label so operators can answer
+    # "is it timeouts? 503s? connection-refused?" without grepping logs.
+    # Cardinality-bounded by the Python exception class names of the
+    # caller's downstream — small bounded set in practice.
     _cb_failures = Counter(
         "documind_circuit_breaker_failures_total",
         "Total failed calls observed by the breaker",
-        labelnames=["name"],
+        labelnames=["name", "exception_class"],
     )
     _cb_opens = Counter(
         "documind_circuit_breaker_opens_total",
@@ -135,6 +139,38 @@ if _METRICS_ENABLED:
         "documind_circuit_breaker_transitions_total",
         "Breaker state transitions (labelled from→to)",
         labelnames=["name", "from_state", "to_state"],
+    )
+    # CB-C #14: success_total — denominator for calculated failure rate.
+    # Without this, operators can't compute rate from Prometheus.
+    _cb_successes = Counter(
+        "documind_circuit_breaker_successes_total",
+        "Total successful calls observed by the breaker",
+        labelnames=["name"],
+    )
+    # CB-C #13: call latency histogram — leading indicator
+    # ("p99 climbs before breaker trips").
+    _cb_call_seconds = Histogram(
+        "documind_circuit_breaker_call_seconds",
+        "Call duration through the breaker (seconds). Includes both "
+        "successful and failed calls; failures may have shorter or "
+        "longer durations depending on whether they hit a timeout.",
+        labelnames=["name", "outcome"],  # outcome: success | failure | timeout
+        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+    )
+    # CB-C #16: probe outcome — "is downstream actually getting better?"
+    # is the single most important signal during incident response.
+    _cb_half_open_probes = Counter(
+        "documind_circuit_breaker_half_open_probes_total",
+        "HALF_OPEN probe outcomes (success | failure)",
+        labelnames=["name", "outcome"],
+    )
+    # CB-C #17: how long has this breaker been OPEN? Operators want
+    # the duration at a glance during incidents. Gauge updates on
+    # every state-change; cleared to 0 on CLOSED.
+    _cb_open_duration = Gauge(
+        "documind_circuit_breaker_open_duration_seconds",
+        "How long the breaker has been in its current OPEN state. 0 when CLOSED/HALF_OPEN.",
+        labelnames=["name"],
     )
 
 
@@ -390,11 +426,18 @@ class CircuitBreaker:
                     result = await fn()
             except asyncio.CancelledError:
                 raise
+            except asyncio.TimeoutError as exc:
+                # CB-C #13: latency histogram for timeouts.
+                self._record_call_duration(time.monotonic() - start, "timeout")
+                self._on_failure(exc)
+                raise
             except self.expected_exception as exc:
+                # CB-C #13: latency histogram for failures.
+                self._record_call_duration(time.monotonic() - start, "failure")
                 self._on_failure(exc)
                 raise
 
-            # Success path — but check for slow-call.
+            # Success path — slow-call detection happens inside _on_success.
             duration_s = time.monotonic() - start
             self._on_success(duration_s=duration_s)
             return result
@@ -435,7 +478,14 @@ class CircuitBreaker:
 
     def _on_success(self, *, duration_s: float | None = None) -> None:
         with self._lock:
+            # CB-C #14: success counter
+            self._bump_successes()
+            # CB-C #13: latency histogram
+            if duration_s is not None:
+                self._record_call_duration(duration_s, "success")
+            # CB-C #16: probe outcome counter
             if self._state is State.HALF_OPEN:
+                self._bump_probe("success")
                 self._half_open_successes += 1
                 self._half_open_slots = min(
                     self._half_open_slots + 1, self.half_open_max_concurrent
@@ -510,7 +560,11 @@ class CircuitBreaker:
     def _on_failure(self, exc: BaseException) -> None:
         with self._lock:
             self._failure_count += 1
-            self._bump_failures()
+            # CB-C #15: include exception_class label.
+            self._bump_failures(exc_class=type(exc).__name__)
+            # CB-C #16: probe outcome counter for HALF_OPEN failures.
+            if self._state is State.HALF_OPEN:
+                self._bump_probe("failure")
             # CB-B1 #2: track in rolling window when configured.
             if self.failure_window_size > 0:
                 self._window.append(False)
@@ -587,6 +641,8 @@ class CircuitBreaker:
             log.info("circuit_transition name=%s from=%s to=%s", self.name, self._state.value, new.value)
         self._state = new
         self._set_metric_state()
+        # CB-C #17: update stuck-in-OPEN duration gauge on every transition.
+        self._update_open_duration()
 
     def _set_metric_state(self) -> None:
         # Delegate to the shared helper so the transition counter
@@ -595,9 +651,11 @@ class CircuitBreaker:
         # of breaker is reporting.
         record_breaker_state(self.name, self._state.value)
 
-    def _bump_failures(self) -> None:
+    def _bump_failures(self, exc_class: str = "unknown") -> None:
+        # CB-C #15: include exception_class label. Bounded set in
+        # practice — only the caller's expected_exception types.
         if _METRICS_ENABLED:
-            _cb_failures.labels(name=self.name).inc()
+            _cb_failures.labels(name=self.name, exception_class=exc_class).inc()
 
     def _bump_opens(self) -> None:
         if _METRICS_ENABLED:
@@ -606,6 +664,34 @@ class CircuitBreaker:
     def _bump_rejections(self) -> None:
         if _METRICS_ENABLED:
             _cb_rejections.labels(name=self.name).inc()
+
+    def _bump_successes(self) -> None:
+        # CB-C #14: success counter — the denominator for any
+        # calculated failure-rate alert.
+        if _METRICS_ENABLED:
+            _cb_successes.labels(name=self.name).inc()
+
+    def _bump_probe(self, outcome: str) -> None:
+        # CB-C #16: probe outcome counter. outcome ∈ {success, failure}.
+        if _METRICS_ENABLED:
+            _cb_half_open_probes.labels(name=self.name, outcome=outcome).inc()
+
+    def _record_call_duration(self, duration_s: float, outcome: str) -> None:
+        # CB-C #13: call duration histogram. outcome ∈ {success, failure, timeout}.
+        if _METRICS_ENABLED:
+            _cb_call_seconds.labels(name=self.name, outcome=outcome).observe(duration_s)
+
+    def _update_open_duration(self) -> None:
+        # CB-C #17: stuck-in-OPEN gauge. Called on every transition.
+        # When OPEN, gauge holds (now - opened_at). When CLOSED/HALF_OPEN,
+        # gauge is 0.
+        if not _METRICS_ENABLED:
+            return
+        if self._state is State.OPEN:
+            duration = max(0.0, time.monotonic() - self._opened_at)
+            _cb_open_duration.labels(name=self.name).set(duration)
+        else:
+            _cb_open_duration.labels(name=self.name).set(0.0)
 
     def __repr__(self) -> str:  # pragma: no cover — cosmetic
         return (
