@@ -348,11 +348,13 @@ class PostgresTaskStore:
                 INSERT INTO orchestration.agent_task_runs
                     (run_id, tenant_id, task_id, project_id, phase, status,
                      model_map_json, inputs_json, outputs_json,
-                     confidence, risk_level, duration_ms, error_text)
+                     confidence, risk_level, duration_ms, error_text,
+                     tokens_in, tokens_out, cost_usd_cents, routing_decision)
                 VALUES
                     ($1, $2, $3, $4, $5, $6,
                      $7::jsonb, $8::jsonb, $9::jsonb,
-                     $10, $11, $12, $13)
+                     $10, $11, $12, $13,
+                     $14, $15, $16, $17::jsonb)
                 ON CONFLICT (run_id) DO UPDATE SET
                     tenant_id = EXCLUDED.tenant_id,
                     task_id = EXCLUDED.task_id,
@@ -365,7 +367,11 @@ class PostgresTaskStore:
                     confidence = EXCLUDED.confidence,
                     risk_level = EXCLUDED.risk_level,
                     duration_ms = EXCLUDED.duration_ms,
-                    error_text = EXCLUDED.error_text
+                    error_text = EXCLUDED.error_text,
+                    tokens_in = EXCLUDED.tokens_in,
+                    tokens_out = EXCLUDED.tokens_out,
+                    cost_usd_cents = EXCLUDED.cost_usd_cents,
+                    routing_decision = EXCLUDED.routing_decision
                 """,
                 run.run_id,
                 run.tenant_id,
@@ -380,6 +386,10 @@ class PostgresTaskStore:
                 run.risk_level,
                 run.duration_ms,
                 run.error_text,
+                run.tokens_in,
+                run.tokens_out,
+                run.cost_usd_cents,
+                json.dumps(run.routing_decision) if run.routing_decision is not None else None,
             )
 
     async def list_task_runs(self, task_id: str) -> list[TaskRunView]:
@@ -388,7 +398,8 @@ class PostgresTaskStore:
                 """
                 SELECT run_id, tenant_id, task_id, project_id, phase, status,
                        model_map_json, inputs_json, outputs_json,
-                       confidence, risk_level, duration_ms, error_text, created_at
+                       confidence, risk_level, duration_ms, error_text, created_at,
+                       tokens_in, tokens_out, cost_usd_cents, routing_decision
                   FROM orchestration.agent_task_runs
                  WHERE task_id = $1
                  ORDER BY created_at DESC
@@ -552,6 +563,16 @@ def _row_to_project_plan_item(row: Any) -> ProjectPlanItemView:
 
 
 def _row_to_task_run(row: Any) -> TaskRunView:
+    # Backward compat: A5 added 4 columns. Old rows return them as None;
+    # row.get(col) without default would KeyError on asyncpg.Record.
+    # asyncpg.Record supports __getitem__ but not .get with default — use try.
+    def _maybe(col: str):
+        try:
+            return row[col]
+        except (KeyError, IndexError):
+            return None
+
+    routing = _maybe("routing_decision")
     return TaskRunView(
         run_id=row["run_id"],
         tenant_id=row["tenant_id"],
@@ -567,6 +588,10 @@ def _row_to_task_run(row: Any) -> TaskRunView:
         duration_ms=row["duration_ms"],
         error_text=row["error_text"],
         created_at=row["created_at"].isoformat() if row["created_at"] else None,
+        tokens_in=_maybe("tokens_in"),
+        tokens_out=_maybe("tokens_out"),
+        cost_usd_cents=_maybe("cost_usd_cents"),
+        routing_decision=dict(routing) if routing else None,
     )
 
 

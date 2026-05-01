@@ -130,6 +130,12 @@ class TaskRunView(BaseModel):
     duration_ms: int | None = None
     error_text: str | None = None
     created_at: str | None = None
+    # A5: routing cost audit columns (nullable for backward compat).
+    # Filled when a phase invokes the routed LLM path; otherwise null/0.
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    cost_usd_cents: int | None = None
+    routing_decision: dict[str, Any] | None = None
 
 
 class ApprovalView(BaseModel):
