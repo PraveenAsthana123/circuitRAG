@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from documind_core.config import get_settings
 from documind_core.db_client import DbClient
@@ -14,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Query
 from mcp import MCPClient
 
 from .core.config import AgentOrchestratorSettings
+from .explainability import REQUIRED_AUDIT_FIELDS, assemble_explanation
 from .model_catalog import get_catalog, validate_catalog
 from .models import (
     AgenticPolicyUpdateRequest,
@@ -192,6 +194,37 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/agentic/tasks/{task_id}/approvals", response_model=list[ApprovalView])
     async def list_task_approvals(task_id: str) -> list[ApprovalView]:
         return await app.state.service.list_approvals(task_id)
+
+    @app.get("/api/v1/agentic/tasks/{task_id}/explain")
+    async def explain_task(task_id: str) -> dict[str, Any]:
+        """§48.4 decision audit row.
+
+        Returns the full §48 schema for the task — model + prompt
+        version, input fingerprint, decision + confidence, rules
+        applied, guardrails triggered, cost, routing trail.
+        Fields not yet computable (SHAP, counterfactual, fairness)
+        are explicit None so the schema is fully observable per
+        §48.10 (no field silently absent).
+        """
+        task = await app.state.service.get_task(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        runs = await app.state.service.list_task_runs(task_id)
+        approvals = await app.state.service.list_approvals(task_id)
+        row = assemble_explanation(
+            task=task.model_dump(),
+            task_runs=[r.model_dump() for r in runs],
+            approvals=[a.model_dump() for a in approvals],
+        )
+        # Negative-assertion contract: every field in REQUIRED_AUDIT_FIELDS
+        # must be present (even if None). Catch silent omissions early.
+        missing = [f for f in REQUIRED_AUDIT_FIELDS if f not in row]
+        if missing:
+            raise HTTPException(
+                status_code=500,
+                detail={"error_code": "EXPLAIN_SCHEMA_INCOMPLETE", "missing_fields": missing},
+            )
+        return row
 
     @app.post("/api/v1/agentic/tasks/{task_id}/approve", response_model=TaskView)
     async def approve_task(task_id: str, req: ApprovalRequest) -> TaskView:
