@@ -31,6 +31,7 @@ from documind_core.schemas import HealthResponse
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from app.explain import register_explain
 from app.metrics import MRR, NDCG, AnswerRelevance, Faithfulness, PrecisionAtK, Recall
 
 log = logging.getLogger(__name__)
@@ -131,6 +132,10 @@ def create_app() -> FastAPI:
     app.add_middleware(CorrelationIdMiddleware)
     register_exception_handlers(app)
     instrument_fastapi(app)
+    # §48 explainability — `/api/v1/explain?prediction_id=<id>` +
+    # `POST /api/v1/decisions`. Store is in-process for this stub;
+    # future commit migrates to Postgres governance.decision_audit.
+    register_explain(app)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health() -> HealthResponse:
