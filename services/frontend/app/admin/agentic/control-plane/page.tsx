@@ -15,6 +15,80 @@ import {
   type AgenticTaskRun,
 } from '../../../../lib/api';
 
+import PipelineDagPanel, {
+  PIPELINE_STAGES,
+  type PipelineStage,
+  type PipelineStageStatus,
+} from './PipelineDagPanel';
+
+/**
+ * D2: derive pipeline stage states from task_runs.
+ *
+ * Each task_run.phase maps onto a role_id in PIPELINE_STAGES. We pick
+ * the most recent run per role and translate its status into a
+ * PipelineStageStatus. Stages with no runs are 'pending'. Stages whose
+ * latest run carried routing_decision get tier + cost annotations.
+ *
+ * Why a derivation instead of a backend endpoint: today task_runs are
+ * already loaded by the page; doing the derivation client-side avoids
+ * a new API surface and keeps backend changes minimal per §28.
+ */
+function derivePipelineStages(
+  runs: AgenticTaskRun[],
+): PipelineStage[] {
+  const latestByPhase = new Map<string, AgenticTaskRun>();
+  for (const r of runs) {
+    const existing = latestByPhase.get(r.phase);
+    if (
+      !existing ||
+      (r.created_at ?? '') > (existing.created_at ?? '')
+    ) {
+      latestByPhase.set(r.phase, r);
+    }
+  }
+
+  return PIPELINE_STAGES.map(({ role_id, display_name }) => {
+    const run = latestByPhase.get(role_id);
+    if (!run) {
+      return {
+        role_id,
+        display_name,
+        tier: null,
+        cost_usd_cents: null,
+        status: 'pending' as PipelineStageStatus,
+      };
+    }
+    const status: PipelineStageStatus =
+      run.status === 'completed' || run.status === 'success'
+        ? 'success'
+        : run.status === 'failed' || run.status === 'fail'
+        ? 'fail'
+        : run.status === 'blocked' || run.status === 'waiting_for_approval'
+        ? 'blocked'
+        : run.status === 'started' || run.status === 'in_progress'
+        ? 'running'
+        : 'pending';
+
+    // routing_decision lives on TaskRunView (added in A5/A4).
+    // It's not yet on the AgenticTaskRun TS type — read defensively.
+    const routing = (run as unknown as Record<string, unknown>).routing_decision as
+      | { chosen?: { tier?: 'tier_a' | 'tier_b' } }
+      | null
+      | undefined;
+    const tier = routing?.chosen?.tier ?? null;
+    const cost =
+      ((run as unknown as Record<string, unknown>).cost_usd_cents as number | null | undefined) ?? null;
+
+    return {
+      role_id,
+      display_name,
+      tier,
+      cost_usd_cents: cost,
+      status,
+    };
+  });
+}
+
 function formatWhen(value?: string | null): string {
   if (!value) return 'n/a';
   const dt = new Date(value);
@@ -384,6 +458,19 @@ export default function AgenticControlPlanePage() {
               <div style={{ marginTop: 6 }}>
                 <strong>Next action:</strong> {selectedTask.next_action ?? 'n/a'}
               </div>
+            </div>
+
+            <h3 style={{ marginBottom: 10 }}>Pipeline DAG</h3>
+            <div style={{ marginBottom: 16 }}>
+              <PipelineDagPanel
+                stages={derivePipelineStages(taskRuns)}
+                totalCostCents={taskRuns.reduce(
+                  (sum, r) =>
+                    sum +
+                    (((r as unknown as Record<string, unknown>).cost_usd_cents as number | null | undefined) ?? 0),
+                  0,
+                )}
+              />
             </div>
 
             <h3 style={{ marginBottom: 10 }}>Task runs</h3>
