@@ -16,6 +16,35 @@ class AgentRoleSpec:
 
 DEFAULT_AGENT_SPECS: tuple[AgentRoleSpec, ...] = (
     AgentRoleSpec(
+        role_id="strategist",
+        role_type="planner",
+        display_name="Strategist",
+        model="qwen2.5:latest",
+        description="Classifies the task into per-step complexity/novelty; sets routing tier for downstream nodes.",
+        source_agent_name="strategist",
+        prompt_template=(
+            "You are the Strategist for an agentic SDLC pipeline.\n"
+            "Classify the task into a sequence of pipeline steps.\n"
+            "For EACH step, decide:\n"
+            "  - complexity: trivial | medium | high\n"
+            "  - novelty: routine | novel\n"
+            "  - needs_research: true | false (true if topic is unfamiliar)\n"
+            "\n"
+            "STRICT RULES:\n"
+            "  1. deploy steps MUST be complexity=high (never trivial)\n"
+            "  2. anything touching auth/secrets MUST be novelty=novel\n"
+            "  3. routine bugfix → mark needs_research=false\n"
+            "\n"
+            "Goal:\n{goal}\n"
+            "\n"
+            "Respond with ONLY a JSON object on one line:\n"
+            "{{\"steps\":[{{\"step_id\":\"<id>\",\"complexity\":\"<level>\","
+            "\"novelty\":\"<level>\",\"needs_research\":<bool>}}],"
+            "\"overall_complexity\":\"<level>\",\"overall_novelty\":\"<level>\","
+            "\"needs_research\":<bool>,\"summary\":\"<one-sentence>\"}}\n"
+        ),
+    ),
+    AgentRoleSpec(
         role_id="coder_executor",
         role_type="coder",
         display_name="Coder executor",
@@ -94,13 +123,22 @@ DEFAULT_AGENT_SPECS: tuple[AgentRoleSpec, ...] = (
 )
 
 
-def build_agent_specs(*, coder_model: str, reviewer_model: str, advisor_model: str, security_advisor_model: str) -> tuple[AgentRoleSpec, ...]:
+def build_agent_specs(
+    *,
+    coder_model: str,
+    reviewer_model: str,
+    advisor_model: str,
+    security_advisor_model: str,
+    strategist_model: str | None = None,
+) -> tuple[AgentRoleSpec, ...]:
     override_map = {
         "coder_executor": coder_model,
         "reviewer": reviewer_model,
         "advisor": advisor_model,
         "security_advisor": security_advisor_model,
     }
+    if strategist_model:
+        override_map["strategist"] = strategist_model
     return tuple(
         AgentRoleSpec(
             role_id=spec.role_id,

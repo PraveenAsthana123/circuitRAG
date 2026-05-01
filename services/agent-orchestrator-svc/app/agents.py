@@ -86,6 +86,143 @@ async def _routed_generate(
     )
 
 
+class StrategistAgent:
+    """B1: per-step classifier. Returns {steps, overall_complexity,
+    overall_novelty, needs_research, summary} parsed from LLM JSON output.
+
+    Falls back to a deterministic heuristic when no pool/route_fn is wired
+    OR when the LLM output isn't parseable. The heuristic is conservative:
+    'medium', 'routine', needs_research=False — so a parse failure never
+    accidentally bills Tier B for everything downstream.
+    """
+
+    def __init__(
+        self,
+        *,
+        ollama: OllamaGenerateClient | None = None,
+        spec: AgentRoleSpec | None = None,
+        pool: LlmClientPool | None = None,
+        route_fn: RouteFn | None = None,
+        role_id: str = "strategist",
+    ) -> None:
+        self._ollama = ollama
+        self._spec = spec
+        self._pool = pool
+        self._route_fn = route_fn
+        self._role_id = role_id
+
+    @staticmethod
+    def _heuristic_classification(goal: str) -> dict[str, Any]:
+        g = goal.lower()
+        novelty = "novel" if any(t in g for t in ("auth", "oauth", "secret", "new framework", "first time")) else "routine"
+        complexity = "high" if any(t in g for t in ("deploy", "migrate", "schema", "production")) else "medium"
+        if novelty == "routine" and complexity == "medium" and any(t in g for t in ("rename", "comment", "format", "lint")):
+            complexity = "trivial"
+        return {
+            "steps": [
+                {"step_id": "execute", "complexity": complexity, "novelty": novelty, "needs_research": novelty == "novel"},
+            ],
+            "overall_complexity": complexity,
+            "overall_novelty": novelty,
+            "needs_research": novelty == "novel",
+            "summary": f"heuristic classification: {complexity}/{novelty}",
+            "source": "heuristic_fallback",
+        }
+
+    @staticmethod
+    def _parse_json_classification(text: str) -> dict[str, Any] | None:
+        """Find the FIRST balanced {...} that parses AND has required keys.
+
+        Bracket-aware scan instead of regex — JSON nested objects break
+        non-greedy regex (matches inner {} first, never outer).
+        """
+        import json
+        import re
+        cleaned = re.sub(r"```(?:json)?\s*", "", text)
+        cleaned = cleaned.replace("```", "").strip()
+
+        # Walk every '{' position, scan forward counting braces, try parse.
+        for start in range(len(cleaned)):
+            if cleaned[start] != "{":
+                continue
+            depth = 0
+            in_str = False
+            escape = False
+            for i in range(start, len(cleaned)):
+                c = cleaned[i]
+                if escape:
+                    escape = False
+                    continue
+                if c == "\\":
+                    escape = True
+                    continue
+                if c == '"':
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = cleaned[start:i + 1]
+                        try:
+                            obj = json.loads(candidate)
+                            if (
+                                isinstance(obj, dict)
+                                and "overall_complexity" in obj
+                                and "overall_novelty" in obj
+                            ):
+                                return obj
+                        except json.JSONDecodeError:
+                            pass
+                        break  # this {...} done; advance start to next '{'
+        return None
+
+    async def classify(self, goal: str) -> dict[str, Any]:
+        if self._pool is not None and self._route_fn is not None and self._spec is not None:
+            prompt = self._spec.prompt_template.format(goal=goal)
+            try:
+                text, routing, t_in, t_out, cost = await _routed_generate(
+                    pool=self._pool,
+                    route_fn=self._route_fn,
+                    role_id=self._role_id,
+                    prompt=prompt,
+                    complexity="medium",
+                    novelty="routine",
+                )
+                parsed = self._parse_json_classification(text)
+                if parsed is not None:
+                    parsed["routing"] = routing
+                    parsed["tokens_in"] = t_in
+                    parsed["tokens_out"] = t_out
+                    parsed["cost_usd_cents"] = cost
+                    parsed["source"] = "llm_routed"
+                    return parsed
+                heuristic = self._heuristic_classification(goal)
+                heuristic["llm_text_unparseable"] = text[:300]
+                heuristic["routing"] = routing
+                return heuristic
+            except AllBackendsUnavailable as exc:
+                heuristic = self._heuristic_classification(goal)
+                heuristic["llm_unavailable"] = str(exc)
+                return heuristic
+
+        if self._ollama is not None and self._spec is not None:
+            try:
+                prompt = self._spec.prompt_template.format(goal=goal)
+                text = await self._ollama.generate(model=self._spec.model, prompt=prompt)
+                parsed = self._parse_json_classification(text)
+                if parsed is not None:
+                    parsed["source"] = "llm_ollama"
+                    return parsed
+            except Exception:  # noqa: BLE001
+                pass
+
+        return self._heuristic_classification(goal)
+
+
 class ManagerAgent:
     async def plan(self, goal: str) -> list[str]:
         return [
