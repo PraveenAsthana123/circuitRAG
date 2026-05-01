@@ -76,9 +76,11 @@ omit = ["**/tests/**", "**/__init__.py"]
 #  2026-04-30 — after config + db_client tests → 53.19%; floor=52
 #  2026-04-30 — after exceptions+body_limit+idempotency tests → 54.87%; floor=54
 #  2026-04-30 — after dispatch_pool tests → 58.49%; floor=58
+#  2026-04-30 — after RAG primitives (chunking+fusion+pii+tokens+mmr+
+#               query_rewriter) tests → 64.83%; floor=64
 # Aspirational target is 80% (industry critical-paths-covered standard).
 # Never lower without ADR review.
-fail_under = 58
+fail_under = 64
 show_missing = true
 
 [tool.bandit]

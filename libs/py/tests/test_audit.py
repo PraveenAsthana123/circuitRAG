@@ -78,27 +78,27 @@ class TestCanonicalJson:
 
 class TestComputeEntryHash:
     def test_deterministic(self) -> None:
-        kw = dict(
-            previous_hash="prev",
-            timestamp_iso="2026-01-01T00:00:00",
-            tenant_id="tnt",
-            actor_type="service",
-            action="x",
-            resource_type="r",
-            details={"k": "v"},
-        )
+        kw = {
+            "previous_hash": "prev",
+            "timestamp_iso": "2026-01-01T00:00:00",
+            "tenant_id": "tnt",
+            "actor_type": "service",
+            "action": "x",
+            "resource_type": "r",
+            "details": {"k": "v"},
+        }
         assert _compute_entry_hash(**kw) == _compute_entry_hash(**kw)
 
     def test_changes_with_each_field(self) -> None:
-        base = dict(
-            previous_hash="p",
-            timestamp_iso="t",
-            tenant_id="tnt",
-            actor_type="service",
-            action="x",
-            resource_type=None,
-            details={},
-        )
+        base = {
+            "previous_hash": "p",
+            "timestamp_iso": "t",
+            "tenant_id": "tnt",
+            "actor_type": "service",
+            "action": "x",
+            "resource_type": None,
+            "details": {},
+        }
         h0 = _compute_entry_hash(**base)
         # Mutating any single field must change the hash — chain
         # integrity invariant. Test all of them.

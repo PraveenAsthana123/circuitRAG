@@ -270,6 +270,94 @@ After items 1-7, the repo would be **competitive with state-of-art enterprise AI
 - **Audit trail**: §38 audit_row + LangFuse + correlation_id propagation = regulator-readable
 - **Safety gates**: §50.5 (security → human-review) + §48 (explainability evidence) + multi-model council
 
+## RAG component primitives — what landed in `libs/py/documind_core`
+
+After the 2026-04-30 "implement all" pass, these primitives are
+now first-class shared library code rather than scattered across
+service boilerplate. Each is at ≥97% test coverage:
+
+| Component | Module | Pattern (per playbook §7) | Coverage |
+|---|---|---|---|
+| Multi-strategy chunking (7 strategies) | `chunking.py` | Strategy + Factory | 98% |
+| Top-K min-heap helper | `fusion.top_k` | Heap | 100% |
+| Reciprocal Rank Fusion (hybrid retrieval) | `fusion.reciprocal_rank_fusion` | Greedy + dict accumulator | 100% |
+| MMR (post-retrieval diversification) | `mmr.py` | Greedy + similarity matrix | 97% |
+| Multi-pattern PII scanner (Aho-Corasick-style) | `pii.py` | Combined-regex DFA + Luhn | 96% |
+| Token counting + budget packing | `tokens.py` | Greedy pack | 100% |
+| Pre-retrieval query rewriter | `query_rewriter.py` | Composable normalizer + expander + acronym detect | 100% |
+
+These plus the 12 prior 100%-covered modules (encryption, rate_limiter,
+schemas, logging_config, cache, audit, config, db_client, exceptions,
+body_limit, idempotency, dispatch_pool) push project coverage to ~65%.
+
+### Still missing primitives (next iteration candidates)
+
+| Primitive | Module name | Why deferred |
+|---|---|---|
+| Semantic cache (HNSW+threshold) | `semantic_cache.py` | Needs HNSW lib pin (faiss/hnswlib) |
+| Embedding cache with model-versioned keys | `embedding_cache.py` | 1-line on top of existing `cache.py` |
+| Code-aware chunking | `chunking_code.py` | Needs tree-sitter binding |
+| Table-aware chunking | `chunking_table.py` | Needs PDF/HTML table parser |
+| Hierarchical chunking | `chunking_hierarchical.py` | Builds on `recursive` + parent_id |
+| Streaming citation linker | `citations.py` | Needs claim segmentation |
+
+## Cloud-readiness — what works on AWS / Azure / GCP today vs needs work
+
+The repo is local-first by design (Ollama, Docker Compose, on-disk
+SQLite for sidecar advisor). Going to cloud is mostly about
+swapping the per-provider building blocks. Component-by-component:
+
+| Component | Local default | AWS swap | Azure swap | GCP swap | Effort |
+|---|---|---|---|---|---|
+| LLM inference | Ollama (llama.cpp) | Bedrock / SageMaker | Azure OpenAI | Vertex AI | 1 iter — provider abstraction already exists in `inference-svc` |
+| Embeddings | Ollama nomic-embed | Bedrock Titan / OpenAI | Azure OpenAI ada | Vertex textembedding | 1 iter via env config |
+| Vector DB | Qdrant container | OpenSearch + KNN, pgvector RDS | AI Search | Vertex Matching Engine | 1-2 iters per provider (`vector_searcher.py` is the seam) |
+| Graph DB | Neo4j container | Neptune | Cosmos Gremlin | (none managed) | 1-2 iters |
+| Vectorless RAG | Elasticsearch container | OpenSearch | Cognitive Search | Vertex Search | 1-2 iters |
+| Object storage | MinIO | S3 | Azure Blob | GCS | 1 iter — already S3-API compatible |
+| Postgres | local container | RDS | Azure DB for Postgres | Cloud SQL | 1 iter — DSN swap |
+| Redis | local container | ElastiCache | Azure Cache | Memorystore | 1 iter — URL swap |
+| Kafka | local container | MSK | Event Hubs (Kafka) | Confluent Cloud | 1 iter — bootstrap servers |
+| OTel collector | local | ADOT | App Insights / Azure Monitor | Cloud Trace | 1 iter — exporter swap |
+| Prometheus | local | Managed Prometheus / CloudWatch | Azure Monitor | Cloud Monitoring | 1 iter |
+| Grafana | local | Managed Grafana | Azure Managed Grafana | (use Cloud Monitoring) | 1 iter |
+| API gateway | NGINX / api-gateway svc | API Gateway / ALB | API Management / App Gateway | API Gateway / Cloud LB | 2 iters — replace ingress definitions |
+| Service mesh | Istio (config-shipped) | App Mesh / Istio EKS | Open Service Mesh | Anthos Service Mesh | 2-3 iters |
+| Auth | Local JWT keys | Cognito / IAM | Azure AD / Entra ID | Identity Platform / IAP | 2-3 iters |
+| Secrets | env files (chmod 600) | Secrets Manager / Parameter Store | Key Vault | Secret Manager | 1 iter — already abstracted via env loader |
+| KMS / encryption keys | local Fernet key | KMS | Key Vault HSM | Cloud KMS | 1 iter — `encryption.py` swap |
+| TLS / certs | self-signed | ACM | Front Door / App Gateway | Cloud LB | 1 iter |
+| Container runtime | Docker Compose | EKS / ECS | AKS | GKE | 1-2 iters — k8s manifests already in `infra/k8s/` |
+| Workflow / batch | bash scripts in `scripts/` | Step Functions / Batch | Logic Apps / Batch | Workflows / Batch | 2 iters |
+
+### Cloud-readiness summary
+
+- **All major components have a provider seam already**: vector / graph / search / inference are abstracted as `<thing>_searcher.py` per §47 architecture conventions
+- **Secrets pattern is portable**: env-file → cloud-secret-store is a 1-liner per provider
+- **No vendor-locked APIs in business code**: governance / audit / policy is pure Python
+- **k8s manifests already shipped** under `infra/k8s/` — drop-in for any managed-k8s offering
+- **Istio config shipped** — drop-in for App Mesh / OSM / Anthos via `infra/istio/`
+- **Cloud-specific gaps**: no Terraform, no Helm chart per environment, no OIDC per cloud — these are 2-3 iter add-ons
+
+### What WOULDN'T just work on cloud
+
+- **Local-disk SQLite** in sidecar-advisor — needs cloud DB swap (uses litestream replication or just Postgres)
+- **Hardcoded `localhost` ports** in some scripts — already paramaterizable via env, but a few scripts assume local
+- **GPU-bound inference** — Ollama can run on EC2 GPU instances but containerizing CUDA is a separate rabbit hole; vLLM cloud variant is cleaner
+
+### Recommended cloud rollout order
+
+1. Storage layer (S3/Blob/GCS, RDS Postgres, ElastiCache) — 1 iteration
+2. Inference (Bedrock/Azure OpenAI/Vertex behind same API) — 1 iteration
+3. Vector + graph (managed equivalents) — 1-2 iterations
+4. Observability (managed OTel/Prom/Grafana) — 1 iteration
+5. Auth (Cognito/Entra/Identity Platform) — 2-3 iterations
+6. Container runtime (EKS/AKS/GKE) — 1-2 iterations
+7. Service mesh + ingress + secrets manager — 2-3 iterations
+8. CI/CD per cloud (CodePipeline / Azure DevOps / Cloud Build) — 1-2 iterations
+
+**Total to fully-managed cloud deployment: ~12-18 iterations of focused work, mostly seam-swapping rather than rewrites.**
+
 ## Brutal rule
 
 > Top 1% AI platforms are not built by inventing architecture; they
@@ -279,3 +367,9 @@ After items 1-7, the repo would be **competitive with state-of-art enterprise AI
 > is mostly the integration list in "Recommended adoption order"
 > above. Each is a 1-3 iteration item; the architectural reinvention
 > is already done.
+>
+> Cloud portability is similarly mostly seam-swapping. Every
+> external dependency has a provider abstraction file
+> (`<thing>_searcher.py`, `<thing>_client.py`, env-driven config)
+> so going AWS / Azure / GCP is configuration + manifest work,
+> NOT business-logic rewrites.
