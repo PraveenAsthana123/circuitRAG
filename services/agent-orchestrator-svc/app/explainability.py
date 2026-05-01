@@ -53,8 +53,18 @@ def _hash_input(goal: str, tool_namespace: str | None, tool_name: str | None,
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def assemble_explanation(*, task: dict[str, Any], task_runs: list[dict[str, Any]],
-                         approvals: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def assemble_explanation(
+    *,
+    task: dict[str, Any],
+    task_runs: list[dict[str, Any]],
+    approvals: list[dict[str, Any]] | None = None,
+    # CB-E #25: optional breaker states snapshot at task completion time.
+    # Service.py reads from the local LlmClientPool / MCPClient registry
+    # and passes them in. Surfaces in the §48.4 audit row so an operator
+    # investigating a degraded decision can see whether the underlying
+    # tool was breakered. Schema bumps from 22 → 23 fields.
+    breaker_states: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Build the §48.4 audit row dict.
 
     `task` and `task_runs` are dicts (TaskView.model_dump() and
@@ -150,6 +160,12 @@ def assemble_explanation(*, task: dict[str, Any], task_runs: list[dict[str, Any]
 
         # Feedback (future)
         "feedback": None,
+
+        # CB-E #25 (§48.4 extension): breaker states at task time.
+        # {"ollama": "closed", "mcp_research": "open", ...}
+        # Operators investigating "why was this decision degraded?"
+        # can see at a glance which tools were breakered.
+        "breaker_states": breaker_states or {},
     }
 
 
@@ -178,4 +194,5 @@ REQUIRED_AUDIT_FIELDS = (
     "rules_applied", "guardrails_triggered", "human_override", "fairness_flag",
     "latency_ms", "cost_tokens", "cost_usd_cents",
     "feedback",
+    "breaker_states",  # CB-E #25
 )

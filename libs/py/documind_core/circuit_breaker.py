@@ -270,6 +270,16 @@ if _METRICS_ENABLED:
         "How long the breaker has been in its current OPEN state. 0 when CLOSED/HALF_OPEN.",
         labelnames=["name"],
     )
+    # CB-E #23: cumulative cost-of-failures (§41.1). Each failed Tier-B
+    # call still cost cloud tokens — operators want to see "this
+    # breaker has wasted $X.YZ on failed calls so far." Cleared on
+    # CLOSED transition so dashboards show recent waste, not lifetime.
+    _cb_failure_cost = Counter(
+        "documind_circuit_breaker_failure_cost_usd_cents_total",
+        "Cumulative USD-cents wasted on failed calls (failed Tier-B "
+        "calls still pay for tokens). Use rate() for recent waste.",
+        labelnames=["name"],
+    )
 
 
 # Canonical state→numeric mapping used by the shared Gauge.
@@ -1001,6 +1011,23 @@ class CircuitBreaker:
         # practice — only the caller's expected_exception types.
         if _METRICS_ENABLED:
             _cb_failures.labels(name=self.name, exception_class=exc_class).inc()
+
+    def record_failure_cost(self, cost_usd_cents: int) -> None:
+        """CB-E #23 (§41.1): record that a failed call still cost money.
+
+        Caller passes the cost (e.g. token usage from a failed Claude
+        call). Increments documind_circuit_breaker_failure_cost_*
+        counter. Use rate() in dashboards for recent waste:
+
+            rate(documind_circuit_breaker_failure_cost_usd_cents_total[5m])
+
+        Tier-A breakers (Ollama) typically pass cost=0; this becomes
+        a no-op. Tier-B breakers pass real token cost — finops sees it.
+        """
+        if cost_usd_cents <= 0:
+            return
+        if _METRICS_ENABLED:
+            _cb_failure_cost.labels(name=self.name).inc(cost_usd_cents)
 
     def _bump_opens(self) -> None:
         if _METRICS_ENABLED:
