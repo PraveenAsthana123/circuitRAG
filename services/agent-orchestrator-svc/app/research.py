@@ -40,6 +40,12 @@ class ResearchAgent:
         route_fn: RouteFn | None = None,
         mcp_research_client=None,  # set by service.py when MCP server wired
         role_id: str = "researcher",
+        # P1 #21 — caching layer. Eliminates duplicate fetches on
+        # repeat queries for the same topic. cache_ttl_s default 1
+        # hour; cache_max default 100 entries (~1 MB at typical
+        # research-result size). Set cache_max=0 to disable.
+        cache_ttl_s: float = 3600.0,
+        cache_max: int = 100,
     ) -> None:
         self._ollama = ollama
         self._spec = spec
@@ -47,6 +53,14 @@ class ResearchAgent:
         self._route_fn = route_fn
         self._mcp = mcp_research_client
         self._role_id = role_id
+        self._cache_ttl_s = max(0.0, cache_ttl_s)
+        self._cache_max = max(0, cache_max)
+        # P1 #21: LRU cache. OrderedDict for eviction; entries are
+        # (timestamp, result_dict). Bounded by cache_max.
+        from collections import OrderedDict
+        import threading as _threading
+        self._cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
+        self._cache_lock = _threading.Lock()
 
     @staticmethod
     def _heuristic_research(topic: str) -> dict[str, Any]:
@@ -105,12 +119,15 @@ class ResearchAgent:
         novelty: str = "novel",
         research_timeout_s: float = 60.0,
     ) -> dict[str, Any]:
-        # P0 #1 (research): own deadline. Even when caller doesn't
-        # configure pool's call_timeout_s, the researcher enforces an
-        # outer 60s deadline. Heuristic fallback on timeout.
+        # P1 #21: cache check BEFORE timeout/LLM path.
+        cached = self._cache_get(topic)
+        if cached is not None:
+            cached["cache_hit"] = True
+            return cached
+        # P0 #1: own deadline.
         import asyncio as _asyncio
         try:
-            return await _asyncio.wait_for(
+            result = await _asyncio.wait_for(
                 self._research_unbounded(topic, complexity=complexity, novelty=novelty),
                 timeout=research_timeout_s,
             )
@@ -118,6 +135,49 @@ class ResearchAgent:
             heuristic = self._heuristic_research(topic)
             heuristic["llm_unavailable"] = f"researcher exceeded {research_timeout_s}s"
             return heuristic
+        # P1 #21: cache the successful result. Heuristic-fallback results
+        # get cached too (they're sticky for the cache_ttl_s window —
+        # operators who fix the upstream don't need to wait for the cache
+        # to expire because clear_cache() is exposed).
+        self._cache_put(topic, result)
+        result["cache_hit"] = False
+        return result
+
+    def _cache_get(self, key: str) -> dict[str, Any] | None:
+        if self._cache_max <= 0:
+            return None
+        import time as _time
+        with self._cache_lock:
+            entry = self._cache.get(key)
+            if entry is None:
+                return None
+            ts, value = entry
+            if _time.monotonic() - ts > self._cache_ttl_s:
+                del self._cache[key]
+                return None
+            # Move-to-end for LRU.
+            self._cache.move_to_end(key)
+            # Return a copy so callers can mutate without affecting cache.
+            return dict(value)
+
+    def _cache_put(self, key: str, value: dict[str, Any]) -> None:
+        if self._cache_max <= 0:
+            return
+        import time as _time
+        with self._cache_lock:
+            if key in self._cache:
+                del self._cache[key]
+            self._cache[key] = (_time.monotonic(), dict(value))
+            while len(self._cache) > self._cache_max:
+                self._cache.popitem(last=False)
+
+    def clear_cache(self) -> int:
+        """Operator hook — drop all cached research results. Returns
+        the number of entries evicted (for observability)."""
+        with self._cache_lock:
+            n = len(self._cache)
+            self._cache.clear()
+            return n
 
     async def _research_unbounded(
         self,
