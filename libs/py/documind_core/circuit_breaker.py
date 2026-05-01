@@ -51,6 +51,7 @@ import asyncio
 import logging
 import threading
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import TypeVar
@@ -206,14 +207,25 @@ class CircuitBreaker:
         *,
         failure_threshold: int = 5,
         recovery_timeout: float = 60.0,
-        # CB-A3: narrower default — see _DEFAULT_EXPECTED_EXCEPTION.
-        # Callers wanting the legacy broad behaviour pass `Exception`.
         expected_exception: type[BaseException] | tuple[type[BaseException], ...] | None = None,
-        # CB-A1: per-call timeout enforced by call_async via asyncio.wait_for.
-        # When set and fn() exceeds it, asyncio.TimeoutError is raised AND
-        # counted as a failure (so a hung downstream actually trips the breaker
-        # instead of pile-up). None = no timeout (legacy behaviour, opt-in).
         call_timeout_s: float | None = None,
+        # CB-B1 (#2): sliding-window failure rate. When window_size > 0
+        # AND threshold_rate is set, the breaker uses a deque of the
+        # last N call outcomes; trips when failures/N >= threshold_rate.
+        # When window_size = 0 (default), legacy consecutive-failure
+        # counter applies — full backward compat.
+        failure_window_size: int = 0,
+        failure_threshold_rate: float | None = None,
+        # CB-B1 (#7): HALF_OPEN concurrency cap. After OPEN→HALF_OPEN
+        # transition, only this many concurrent probes are admitted.
+        # Excess probes raise CircuitProbingError (subclass of
+        # CircuitOpenError, so existing exception-based callers still
+        # see CircuitOpenError). Default 1 = textbook HALF_OPEN.
+        half_open_max_concurrent: int = 1,
+        # CB-B1 (#8): consecutive successes required in HALF_OPEN before
+        # CLOSED. Default 1 = legacy behaviour. Setting to 3 prevents
+        # a flaky downstream from flipping CLOSED↔OPEN every cycle.
+        half_open_success_threshold: int = 1,
     ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
@@ -224,17 +236,24 @@ class CircuitBreaker:
             else _DEFAULT_EXPECTED_EXCEPTION
         )
         self.call_timeout_s = call_timeout_s
+        self.failure_window_size = failure_window_size
+        self.failure_threshold_rate = failure_threshold_rate
+        self.half_open_max_concurrent = max(1, half_open_max_concurrent)
+        self.half_open_success_threshold = max(1, half_open_success_threshold)
 
         self._state: State = State.CLOSED
         self._failure_count = 0
         self._opened_at: float = 0.0
-        # CB-A2: threading.RLock instead of asyncio.Lock so the SYNC
-        # `allow()` / `record_*` API and the ASYNC `call_async` API can
-        # share the same lock atomically. State mutations are
-        # microseconds — holding a sync lock briefly inside async code
-        # does NOT block the event loop in any meaningful way.
-        # Reentrant because a few helpers call into other locked
-        # methods (e.g. _transition → _set_metric_state).
+        # CB-B1 (#2): rolling window of last N outcomes (True=success).
+        # Bounded deque — memory safe regardless of call rate.
+        self._window: deque[bool] = (
+            deque(maxlen=failure_window_size) if failure_window_size > 0 else deque(maxlen=1)
+        )
+        # CB-B1 (#7): HALF_OPEN probe semaphore. Created fresh on each
+        # OPEN→HALF_OPEN transition so the count resets cleanly.
+        self._half_open_slots = self.half_open_max_concurrent
+        # CB-B1 (#8): track consecutive HALF_OPEN successes.
+        self._half_open_successes = 0
         self._lock = threading.RLock()
         self._set_metric_state()
 
@@ -260,23 +279,34 @@ class CircuitBreaker:
     # forcing every site to switch to exception-based control flow.
     def allow(self) -> bool:
         """
-        Pre-call gate. Returns True when a call may proceed (CLOSED, or
-        OPEN past the recovery timeout — in which case the breaker is
-        atomically transitioned to HALF_OPEN). Returns False when OPEN
-        and inside the recovery window.
-
-        CB-A2: the entire read-modify-write of self._state runs INSIDE
-        self._lock. Pre-fix, two concurrent callers could both observe
-        OPEN-past-recovery and both transition to HALF_OPEN, defeating
-        the "one probe at a time" HALF_OPEN guarantee.
+        Pre-call gate. Returns True when a call may proceed:
+          - CLOSED → True
+          - OPEN past recovery_timeout → atomic transition to HALF_OPEN,
+            return True (slot consumed)
+          - HALF_OPEN with slots available → True (slot consumed)
+          - HALF_OPEN with NO slots → False (CB-B1 #7 cap)
+          - OPEN inside recovery window → False
         """
         with self._lock:
             if self._state is State.OPEN:
                 if time.monotonic() - self._opened_at >= self.recovery_timeout:
                     self._transition(State.HALF_OPEN)
-                    return True
-                self._bump_rejections()
-                return False
+                    # Reset half-open slot count on transition.
+                    self._half_open_slots = self.half_open_max_concurrent
+                    self._half_open_successes = 0
+                # Fall through to HALF_OPEN check below (NOT return True
+                # immediately — the cap applies even on transition).
+                else:
+                    self._bump_rejections()
+                    return False
+            if self._state is State.HALF_OPEN:
+                # CB-B1 #7: enforce probe cap. Each allow() that returns
+                # True consumes a slot; record_success/failure releases.
+                if self._half_open_slots <= 0:
+                    self._bump_rejections()
+                    return False
+                self._half_open_slots -= 1
+                return True
             return True
 
     def record_success(self) -> None:
@@ -359,22 +389,57 @@ class CircuitBreaker:
     def _on_success(self) -> None:
         with self._lock:
             if self._state is State.HALF_OPEN:
-                self._transition(State.CLOSED)
+                self._half_open_successes += 1
+                # Release the slot consumed by allow().
+                self._half_open_slots = min(
+                    self._half_open_slots + 1, self.half_open_max_concurrent
+                )
+                # CB-B1 #8: require N consecutive successes before CLOSED.
+                if self._half_open_successes >= self.half_open_success_threshold:
+                    self._transition(State.CLOSED)
+                    self._half_open_successes = 0
+                    self._half_open_slots = self.half_open_max_concurrent
             self._failure_count = 0
+            # CB-B1 #2: track in rolling window when configured.
+            if self.failure_window_size > 0:
+                self._window.append(True)
 
     def _on_failure(self, exc: BaseException) -> None:
         with self._lock:
             self._failure_count += 1
             self._bump_failures()
-            if self._state is State.HALF_OPEN or self._failure_count >= self.failure_threshold:
-                # CB-A4: set _opened_at BEFORE _transition(OPEN).
-                # Pre-fix order created a race window where state=OPEN
-                # but _opened_at=0.0, so a concurrent reader saw
-                # `monotonic() - 0 >= recovery_timeout` and immediately
-                # transitioned to HALF_OPEN. Effectively the breaker
-                # never stayed OPEN under tight recovery_timeout.
+            # CB-B1 #2: track in rolling window when configured.
+            if self.failure_window_size > 0:
+                self._window.append(False)
+
+            # Decide whether to trip. Two paths, in priority order:
+            #
+            # A) HALF_OPEN failure → IMMEDIATE trip back to OPEN
+            #    (any HALF_OPEN failure is decisive — downstream is
+            #    still broken).
+            # B) Sliding-window mode → trip when failures/N ≥ rate
+            #    AND window is at least window_size//2 full
+            #    (avoid spurious trip on first 1-2 calls).
+            # C) Legacy mode → trip on consecutive failures ≥ threshold.
+            should_trip = False
+            if self._state is State.HALF_OPEN:
+                should_trip = True
+            elif self._is_window_mode_active():
+                if (
+                    len(self._window) >= max(1, self.failure_window_size // 2)
+                    and self._window_failure_rate() >= (self.failure_threshold_rate or 1.0)
+                ):
+                    should_trip = True
+            elif self._failure_count >= self.failure_threshold:
+                should_trip = True
+
+            if should_trip:
+                # CB-A4: set _opened_at BEFORE _transition(OPEN) to
+                # close the race window.
                 self._opened_at = time.monotonic()
                 self._transition(State.OPEN)
+                # Clear half-open state on (re-)trip.
+                self._half_open_successes = 0
                 self._bump_opens()
                 log.warning(
                     "circuit_open name=%s failures=%d cause=%s",
@@ -382,6 +447,17 @@ class CircuitBreaker:
                     self._failure_count,
                     type(exc).__name__,
                 )
+
+    def _is_window_mode_active(self) -> bool:
+        """CB-B1 #2: True iff sliding-window thresholds are configured."""
+        return self.failure_window_size > 0 and self.failure_threshold_rate is not None
+
+    def _window_failure_rate(self) -> float:
+        """CB-B1 #2: failures/total in the sliding window. 0.0 if empty."""
+        if not self._window:
+            return 0.0
+        failures = sum(1 for ok in self._window if not ok)
+        return failures / len(self._window)
 
     # ------------------------------------------------------------------
     # Backward-compat shims for callers still using the *_sync names.
