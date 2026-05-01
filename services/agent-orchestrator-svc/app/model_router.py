@@ -130,10 +130,13 @@ def route(
     complexity: Complexity = "medium",
     novelty: Novelty = "routine",
     has_tier_b: bool = True,
+    budget_remaining_cents: int | None = None,
 ) -> RouteDecision:
     """Pick the right model for (role, complexity, novelty).
 
     Decision rules (evaluated in order):
+      R0. budget_remaining_cents <= 0 → treat as has_tier_b=False with
+          'budget_exhausted' annotation in reason (C1 cost guard, §41.1).
       R1. role=strategist → tier_b if available (always — D2 default).
       R2. novelty=novel AND complexity in {medium, high} AND has_tier_b → tier_b.
       R3. role=researcher AND complexity=high AND has_tier_b → tier_b.
@@ -148,11 +151,22 @@ def route(
     if entry is None:
         raise UnknownRoleError(role_id)
 
+    # C1 R0: budget exhausted blocks Tier-B selection. None = no tracking
+    # (preserves pre-C1 behavior). 0 or negative = exhausted.
+    budget_blocks_tier_b = (
+        budget_remaining_cents is not None and budget_remaining_cents <= 0
+    )
+    effective_has_tier_b = has_tier_b and not budget_blocks_tier_b
+
     inputs = {
         "role_id": role_id,
         "complexity": complexity,
         "novelty": novelty,
         "has_tier_b": str(has_tier_b),
+        "budget_remaining_cents": (
+            str(budget_remaining_cents) if budget_remaining_cents is not None else "unset"
+        ),
+        "budget_blocks_tier_b": str(budget_blocks_tier_b),
     }
     tier_b = _handle_b(entry)
 
@@ -160,32 +174,33 @@ def route(
     reason: str
 
     # R1: strategist always Tier-B if available (D2 default).
-    if role_id == "strategist" and tier_b is not None and has_tier_b:
+    if role_id == "strategist" and tier_b is not None and effective_has_tier_b:
         chosen = tier_b
         reason = "R1_strategist_always_tier_b"
-    # R2: novel + medium/high + has_tier_b
+    # R2: novel + medium/high + effective tier_b
     elif (
         novelty == "novel"
         and complexity in ("medium", "high")
         and tier_b is not None
-        and has_tier_b
+        and effective_has_tier_b
     ):
         chosen = tier_b
         reason = "R2_novel_complex_to_tier_b"
-    # R3: researcher + high complexity + has_tier_b
+    # R3: researcher + high + effective tier_b
     elif (
         role_id == "researcher"
         and complexity == "high"
         and tier_b is not None
-        and has_tier_b
+        and effective_has_tier_b
     ):
         chosen = tier_b
         reason = "R3_researcher_high_to_tier_b"
-    # R4: high complexity → heavy local
+    # R4: high complexity → heavy local. Annotate WHY we didn't pick tier_b.
     elif complexity == "high":
         chosen = _handle_a_heavy(entry)
-        # Annotate when we WANTED Tier-B but couldn't get it.
-        if tier_b is not None and not has_tier_b:
+        if budget_blocks_tier_b and tier_b is not None:
+            reason = "R4_high_complexity_budget_exhausted_fallback"
+        elif tier_b is not None and not has_tier_b:
             reason = "R4_high_complexity_tier_b_unavailable_fallback"
         elif tier_b is None and novelty == "novel":
             reason = "R4_high_complexity_no_tier_b_for_role"
@@ -194,7 +209,10 @@ def route(
     # R5: routine + trivial/medium → primary local
     else:
         chosen = _handle_a_primary(entry)
-        reason = "R5_routine_local_primary"
+        if budget_blocks_tier_b:
+            reason = "R5_routine_local_primary_budget_exhausted"
+        else:
+            reason = "R5_routine_local_primary"
 
     # Build fallback chain: heavy → primary → backup, minus the chosen.
     raw_chain: list[ModelHandle] = []
