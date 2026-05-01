@@ -37,7 +37,21 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_research")
 
-app = FastAPI(title="DocuMind MCP — Research server (E6)")
+from contextlib import asynccontextmanager
+
+# P0 #34: graceful shutdown — close any retained httpx clients on
+# SIGTERM. Today each /tools/call uses a context-managed AsyncClient
+# (closed at end of scope), so there are no global clients to close.
+# We still wire the lifespan so future state (e.g. a connection pool)
+# has a clear hook.
+
+@asynccontextmanager
+async def _lifespan(app):
+    yield
+    # Future: close any module-level httpx.AsyncClient pools here.
+    pass
+
+app = FastAPI(title="DocuMind MCP — Research server (E6)", lifespan=_lifespan)
 
 
 MAX_URLS_PER_CALL = int(os.environ.get("MCP_RESEARCH_MAX_URLS", "5"))

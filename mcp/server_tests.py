@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import shutil
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +39,33 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_tests")
 
-app = FastAPI(title="DocuMind MCP — Tests server (E2)")
+
+# P0 #34: track in-flight subprocesses so SIGTERM can clean them up.
+# Without this, ruff/pytest/mypy children outlive uvicorn after a kill,
+# eventually exhausting OS file descriptors over many restart cycles.
+_ACTIVE_PROCS: set[asyncio.subprocess.Process] = set()
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    yield
+    # Shutdown: kill any in-flight subprocesses + wait for cleanup.
+    log.info("mcp_tests_shutdown active_procs=%d", len(_ACTIVE_PROCS))
+    for proc in list(_ACTIVE_PROCS):
+        if proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass  # already gone
+    # Give subprocess.kill() a moment to propagate; bounded wait.
+    await asyncio.gather(
+        *[p.wait() for p in _ACTIVE_PROCS if p.returncode is None],
+        return_exceptions=True,
+    )
+    _ACTIVE_PROCS.clear()
+
+
+app = FastAPI(title="DocuMind MCP — Tests server (E2)", lifespan=_lifespan)
 
 
 # Where the operator allows tools to scan. Env override:
@@ -181,6 +208,7 @@ async def _run_ruff(target: Path) -> dict[str, Any]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        _ACTIVE_PROCS.add(proc)
     except (FileNotFoundError, PermissionError) as fnf:
         return {
             "ok": False,
@@ -197,6 +225,8 @@ async def _run_ruff(target: Path) -> dict[str, Any]:
             "error": {"code": "ruff_timeout", "message": "ruff exceeded 60s"},
         }
 
+    _ACTIVE_PROCS.discard(proc)
+    _ACTIVE_PROCS.discard(proc)
     raw = (stdout_b or b"").decode("utf-8", errors="replace").strip()
     stderr_text = (stderr_b or b"").decode("utf-8", errors="replace")
 
@@ -255,6 +285,7 @@ async def _run_pytest_collect(target: Path) -> dict[str, Any]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        _ACTIVE_PROCS.add(proc)
     except (FileNotFoundError, PermissionError) as fnf:
         return {"ok": False, "error": {"code": "pytest_exec_failed", "message": str(fnf)}}
     try:
@@ -262,7 +293,9 @@ async def _run_pytest_collect(target: Path) -> dict[str, Any]:
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
+        _ACTIVE_PROCS.discard(proc)
         return {"ok": False, "error": {"code": "pytest_timeout", "message": "collect-only > 60s"}}
+    _ACTIVE_PROCS.discard(proc)
     raw = (stdout_b or b"").decode("utf-8", errors="replace")
     stderr_text = (stderr_b or b"").decode("utf-8", errors="replace")
     node_lines = [
@@ -308,6 +341,7 @@ async def _run_mypy(target: Path) -> dict[str, Any]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        _ACTIVE_PROCS.add(proc)
     except (FileNotFoundError, PermissionError) as fnf:
         return {"ok": False, "error": {"code": "mypy_exec_failed", "message": str(fnf)}}
     try:
@@ -315,7 +349,9 @@ async def _run_mypy(target: Path) -> dict[str, Any]:
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
+        _ACTIVE_PROCS.discard(proc)
         return {"ok": False, "error": {"code": "mypy_timeout", "message": "mypy > 120s"}}
+    _ACTIVE_PROCS.discard(proc)
     raw = (stdout_b or b"").decode("utf-8", errors="replace")
     error_lines = [ln for ln in raw.splitlines() if ": error:" in ln]
     failed = [

@@ -22,7 +22,18 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_deploy")
 
-app = FastAPI(title="DocuMind MCP — Deploy server (D3 stub)")
+from contextlib import asynccontextmanager
+
+# P0 #34: graceful shutdown hook. Today the deploy stub has no
+# upstream connections to close (canned responses); the lifespan
+# is wired so when real backings land (kubectl/docker subprocess),
+# they have a clear cleanup path mirroring server_tests.py.
+
+@asynccontextmanager
+async def _lifespan(app):
+    yield
+
+app = FastAPI(title="DocuMind MCP — Deploy server (D3 stub)", lifespan=_lifespan)
 
 
 TOOLS: list[dict[str, Any]] = [

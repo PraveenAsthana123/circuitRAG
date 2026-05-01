@@ -27,7 +27,18 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_observe")
 
-app = FastAPI(title="DocuMind MCP — Observe server (E3)")
+from contextlib import asynccontextmanager
+
+# P0 #34: graceful shutdown — close any retained httpx clients on
+# SIGTERM. Each /tools/call already uses a context-managed AsyncClient
+# (closed at end of scope), so there are no global clients to close
+# today. Lifespan wired for future module-level pools.
+
+@asynccontextmanager
+async def _lifespan(app):
+    yield
+
+app = FastAPI(title="DocuMind MCP — Observe server (E3)", lifespan=_lifespan)
 
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://localhost:9090").rstrip("/")
 PROM_TIMEOUT_SEC = float(os.environ.get("PROMETHEUS_TIMEOUT_SEC", "10"))
