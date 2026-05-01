@@ -321,7 +321,7 @@ Code: synchronous path = nearly all BFF → service flows. Async path = ingestio
 - `docs/STATUS.md` — what's actually shipped vs PLANNED
 - `docs/MISSING.md` — gap to top-1%
 - `docs/runbooks/component-trust.md` — verify each module via commands
-- `docs/architecture/C4-context.md` + `C4-container.md` + `C4-component.md` + `C4-agentic.md` — 4 C4 levels
+- `docs/architecture/C4-context.md` + `docs/architecture/C4-container.md` + `docs/architecture/C4-component.md` + `docs/architecture/C4-agentic.md` — 4 C4 levels
 - `infra/load-test/k6/baseline.js` — driving load through these flows
 
 ## Brutal rule

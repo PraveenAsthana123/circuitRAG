@@ -153,7 +153,7 @@ export default function MyDeepPage() {
         <h1 className="section-title">My deep dive</h1>
       </div>
       {TOPICS.map((t) => <UniversalDeepDive key={t.slug} t={t} />)}
-      <DeepDiveCrossRefs refs={[...]} />
+      <DeepDiveCrossRefs refs={REFS_PLACEHOLDER} />
     </>
   );
 }`,
