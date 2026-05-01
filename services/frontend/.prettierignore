@@ -1,0 +1,28 @@
+# Build outputs
+.next
+.next-dev
+.next-prod
+node_modules
+dist
+build
+out
+playwright-report
+
+# Lockfiles (machine-managed)
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Generated content
+public/
+*.min.js
+*.min.css
+
+# Coverage
+coverage
+.nyc_output
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode
