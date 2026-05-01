@@ -65,9 +65,9 @@ DEFAULT_CATALOG: tuple[CatalogEntry, ...] = (
         tier_a_primary="deepseek-coder:6.7b-instruct",
         tier_a_backup="codellama:7b-instruct",
         tier_a_heavy="deepseek-coder:6.7b-instruct",
-        tier_b="claude-sonnet-4-6",
+        tier_b="gpt-5.2-codex",
         tier_b_backend="codex_cli",
-        description="Primary implementation agent. Tier-B for novel APIs / new frameworks.",
+        description="Primary implementation agent. Tier-B uses Codex for novel code (D1 default).",
         strengths=("code generation", "patch synthesis"),
     ),
     CatalogEntry(
