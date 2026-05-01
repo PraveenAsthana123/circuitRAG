@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
@@ -62,6 +63,34 @@ except ImportError:  # pragma: no cover — optional
     _METRICS_ENABLED = False
 
 from .exceptions import CircuitOpenError
+
+
+# CB-A3: narrowed default for expected_exception. The pre-fix default
+# was `Exception`, which catches caller bugs (KeyError/TypeError) and
+# trips the breaker on those — operators see "downstream is degraded"
+# when actually the calling code has a typo. Production callers should
+# explicitly pass their downstream's exception types.
+#
+# We re-import lazily (httpx is optional in the core lib but present
+# in every service that uses HTTP). On import failure, fall back to
+# the OS-level subset which is universally meaningful.
+try:
+    import httpx as _httpx  # noqa: F401
+
+    _DEFAULT_EXPECTED_EXCEPTION: tuple[type[BaseException], ...] = (
+        _httpx.HTTPError,
+        ConnectionError,
+        TimeoutError,
+        asyncio.TimeoutError,
+        OSError,
+    )
+except ImportError:  # pragma: no cover — httpx is in every active service
+    _DEFAULT_EXPECTED_EXCEPTION = (
+        ConnectionError,
+        TimeoutError,
+        asyncio.TimeoutError,
+        OSError,
+    )
 
 T = TypeVar("T")
 log = logging.getLogger(__name__)
@@ -177,17 +206,36 @@ class CircuitBreaker:
         *,
         failure_threshold: int = 5,
         recovery_timeout: float = 60.0,
-        expected_exception: type[BaseException] | tuple[type[BaseException], ...] = Exception,
+        # CB-A3: narrower default — see _DEFAULT_EXPECTED_EXCEPTION.
+        # Callers wanting the legacy broad behaviour pass `Exception`.
+        expected_exception: type[BaseException] | tuple[type[BaseException], ...] | None = None,
+        # CB-A1: per-call timeout enforced by call_async via asyncio.wait_for.
+        # When set and fn() exceeds it, asyncio.TimeoutError is raised AND
+        # counted as a failure (so a hung downstream actually trips the breaker
+        # instead of pile-up). None = no timeout (legacy behaviour, opt-in).
+        call_timeout_s: float | None = None,
     ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
-        self.expected_exception = expected_exception
+        self.expected_exception = (
+            expected_exception
+            if expected_exception is not None
+            else _DEFAULT_EXPECTED_EXCEPTION
+        )
+        self.call_timeout_s = call_timeout_s
 
         self._state: State = State.CLOSED
         self._failure_count = 0
         self._opened_at: float = 0.0
-        self._lock = asyncio.Lock()
+        # CB-A2: threading.RLock instead of asyncio.Lock so the SYNC
+        # `allow()` / `record_*` API and the ASYNC `call_async` API can
+        # share the same lock atomically. State mutations are
+        # microseconds — holding a sync lock briefly inside async code
+        # does NOT block the event loop in any meaningful way.
+        # Reentrant because a few helpers call into other locked
+        # methods (e.g. _transition → _set_metric_state).
+        self._lock = threading.RLock()
         self._set_metric_state()
 
     # ------------------------------------------------------------------
@@ -215,16 +263,21 @@ class CircuitBreaker:
         Pre-call gate. Returns True when a call may proceed (CLOSED, or
         OPEN past the recovery timeout — in which case the breaker is
         atomically transitioned to HALF_OPEN). Returns False when OPEN
-        and inside the recovery window. Side-effects (rejection metric)
-        are recorded inside.
+        and inside the recovery window.
+
+        CB-A2: the entire read-modify-write of self._state runs INSIDE
+        self._lock. Pre-fix, two concurrent callers could both observe
+        OPEN-past-recovery and both transition to HALF_OPEN, defeating
+        the "one probe at a time" HALF_OPEN guarantee.
         """
-        if self._state is State.OPEN:
-            if time.monotonic() - self._opened_at >= self.recovery_timeout:
-                self._transition(State.HALF_OPEN)
-                return True
-            self._bump_rejections()
-            return False
-        return True
+        with self._lock:
+            if self._state is State.OPEN:
+                if time.monotonic() - self._opened_at >= self.recovery_timeout:
+                    self._transition(State.HALF_OPEN)
+                    return True
+                self._bump_rejections()
+                return False
+            return True
 
     def record_success(self) -> None:
         """Mark the most recent gated call as succeeded. Closes a HALF_OPEN."""
@@ -242,32 +295,57 @@ class CircuitBreaker:
         self._on_failure_sync(cause)
 
     async def call_async(self, fn: Callable[[], Awaitable[T]]) -> T:
-        """Invoke ``fn()`` through the breaker. Awaitable entry point."""
-        await self._before_call()
+        """Invoke ``fn()`` through the breaker. Awaitable entry point.
+
+        CB-A1: when self.call_timeout_s is set, fn() is wrapped in
+        asyncio.wait_for; a timeout is raised AND counted as a failure
+        so a hung downstream trips the breaker rather than piling up
+        in the asyncio task pool.
+
+        CB-A3: asyncio.CancelledError is re-raised BEFORE the breaker
+        gets a chance to count it. Upstream timeouts cancelling our
+        task look like nothing happened to the breaker, not like a
+        downstream failure.
+        """
+        self._before_call()
         try:
-            result = await fn()
-        except self.expected_exception as exc:
-            await self._on_failure(exc)
+            if self.call_timeout_s is not None:
+                result = await asyncio.wait_for(fn(), timeout=self.call_timeout_s)
+            else:
+                result = await fn()
+        except asyncio.CancelledError:
+            # CB-A3: cancellations are NOT downstream failures.
+            # Re-raise BEFORE the expected_exception except — without
+            # this, CancelledError satisfies expected_exception=Exception
+            # (legacy default) and spuriously increments failures.
             raise
-        await self._on_success()
+        except self.expected_exception as exc:
+            self._on_failure(exc)
+            raise
+        self._on_success()
         return result
 
     def call(self, fn: Callable[[], T]) -> T:
         """Synchronous counterpart. Useful for blocking code paths (rare)."""
-        self._before_call_sync()
+        self._before_call()
         try:
             result = fn()
         except self.expected_exception as exc:
-            self._on_failure_sync(exc)
+            self._on_failure(exc)
             raise
-        self._on_success_sync()
+        self._on_success()
         return result
 
     # ------------------------------------------------------------------
-    # State transitions (async)
+    # State transitions
     # ------------------------------------------------------------------
-    async def _before_call(self) -> None:
-        async with self._lock:
+    # CB-A2: post-fix, sync and async paths share one threading.RLock.
+    # The two parallel "_sync" mirror methods are gone. Async callers
+    # call these same methods (no `await` inside; the lock holds for
+    # microseconds while we mutate state).
+    # ------------------------------------------------------------------
+    def _before_call(self) -> None:
+        with self._lock:
             if self._state is State.OPEN:
                 if time.monotonic() - self._opened_at >= self.recovery_timeout:
                     self._transition(State.HALF_OPEN)
@@ -278,19 +356,25 @@ class CircuitBreaker:
                         details={"name": self.name, "recovery_timeout_s": self.recovery_timeout},
                     )
 
-    async def _on_success(self) -> None:
-        async with self._lock:
+    def _on_success(self) -> None:
+        with self._lock:
             if self._state is State.HALF_OPEN:
                 self._transition(State.CLOSED)
             self._failure_count = 0
 
-    async def _on_failure(self, exc: BaseException) -> None:
-        async with self._lock:
+    def _on_failure(self, exc: BaseException) -> None:
+        with self._lock:
             self._failure_count += 1
             self._bump_failures()
             if self._state is State.HALF_OPEN or self._failure_count >= self.failure_threshold:
-                self._transition(State.OPEN)
+                # CB-A4: set _opened_at BEFORE _transition(OPEN).
+                # Pre-fix order created a race window where state=OPEN
+                # but _opened_at=0.0, so a concurrent reader saw
+                # `monotonic() - 0 >= recovery_timeout` and immediately
+                # transitioned to HALF_OPEN. Effectively the breaker
+                # never stayed OPEN under tight recovery_timeout.
                 self._opened_at = time.monotonic()
+                self._transition(State.OPEN)
                 self._bump_opens()
                 log.warning(
                     "circuit_open name=%s failures=%d cause=%s",
@@ -300,37 +384,18 @@ class CircuitBreaker:
                 )
 
     # ------------------------------------------------------------------
-    # State transitions (sync — mirror)
+    # Backward-compat shims for callers still using the *_sync names.
+    # The methods are now identical to the unprefixed versions; the
+    # shims keep test_breakers.py + 5 subclasses working unchanged.
     # ------------------------------------------------------------------
     def _before_call_sync(self) -> None:
-        if self._state is State.OPEN:
-            if time.monotonic() - self._opened_at >= self.recovery_timeout:
-                self._transition(State.HALF_OPEN)
-            else:
-                self._bump_rejections()
-                raise CircuitOpenError(
-                    f"Circuit '{self.name}' is OPEN",
-                    details={"name": self.name},
-                )
+        self._before_call()
 
     def _on_success_sync(self) -> None:
-        if self._state is State.HALF_OPEN:
-            self._transition(State.CLOSED)
-        self._failure_count = 0
+        self._on_success()
 
     def _on_failure_sync(self, exc: BaseException) -> None:
-        self._failure_count += 1
-        self._bump_failures()
-        if self._state is State.HALF_OPEN or self._failure_count >= self.failure_threshold:
-            self._transition(State.OPEN)
-            self._opened_at = time.monotonic()
-            self._bump_opens()
-            log.warning(
-                "circuit_open name=%s failures=%d cause=%s",
-                self.name,
-                self._failure_count,
-                type(exc).__name__,
-            )
+        self._on_failure(exc)
 
     # ------------------------------------------------------------------
     # Helpers
