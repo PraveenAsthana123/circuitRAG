@@ -71,6 +71,16 @@ def create_app() -> FastAPI:
             mcp_clients["itsm"] = MCPClient(base_url=settings.mcp_itsm_url, breaker_name="mcp_itsm")
         if settings.mcp_drills_url:
             mcp_clients["drills"] = MCPClient(base_url=settings.mcp_drills_url, breaker_name="mcp_drills")
+        # E1: register the pipeline-v2 upstream MCP servers when their
+        # URLs are configured (default localhost:809[4-7] per D3 stubs).
+        if settings.mcp_research_url:
+            mcp_clients["research"] = MCPClient(base_url=settings.mcp_research_url, breaker_name="mcp_research")
+        if settings.mcp_tests_url:
+            mcp_clients["tests"] = MCPClient(base_url=settings.mcp_tests_url, breaker_name="mcp_tests")
+        if settings.mcp_deploy_url:
+            mcp_clients["deploy"] = MCPClient(base_url=settings.mcp_deploy_url, breaker_name="mcp_deploy")
+        if settings.mcp_observe_url:
+            mcp_clients["observe"] = MCPClient(base_url=settings.mcp_observe_url, breaker_name="mcp_observe")
 
         app.state.service = AgentOrchestratorService(
             store=store,
@@ -96,6 +106,9 @@ def create_app() -> FastAPI:
             reviewer_model=settings.agent_reviewer_model,
             advisor_model=settings.agent_advisor_model,
             security_advisor_model=settings.agent_security_advisor_model,
+            # E1: opt in to pipeline_v2 by default; operators flip via
+            # DOCUMIND_PIPELINE_V2_ENABLED=false to revert to legacy.
+            pipeline_v2_enabled=settings.pipeline_v2_enabled,
         )
         app.state.mcp_clients = mcp_clients
         yield
