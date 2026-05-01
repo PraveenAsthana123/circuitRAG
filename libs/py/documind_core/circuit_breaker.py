@@ -286,6 +286,24 @@ class CircuitBreaker:
         # is broken (paging integrations are not on the critical path).
         # Signature: (from_state, to_state, breaker_name) -> None.
         on_state_change: Callable[[State, State, str], None] | None = None,
+        # CB-F #22: optional health probe. Returns True when downstream
+        # is reachable per its own /health endpoint. When set and probe
+        # returns True during OPEN, breaker can short-circuit
+        # recovery_timeout and transition to HALF_OPEN. When probe is
+        # None (default), breaker uses time-based recovery only (legacy).
+        health_check: Callable[[], bool] | None = None,
+        # CB-F #26: per-tenant breaker scope. When set, the metric
+        # cardinality includes (name, tenant_id) so tenant A's trips
+        # don't trip tenant B's view. Each (name, tenant_id) is a
+        # logically separate breaker; instances are NOT shared.
+        # Default None = global scope (legacy).
+        tenant_id: str | None = None,
+        # CB-F #27: OTel baggage propagation. When True and
+        # opentelemetry-baggage is installed, every call_async writes
+        # cb.<name>.state into the active span's baggage so distributed
+        # traces show every span's view of every breaker it depended on.
+        # Default False (opt-in; adds latency on every call).
+        otel_baggage: bool = False,
     ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
@@ -307,11 +325,13 @@ class CircuitBreaker:
         self.slow_call_threshold_s = slow_call_threshold_s
         self.slow_call_rate = max(0.0, min(1.0, slow_call_rate))
         self.on_state_change = on_state_change
-        # CB-D #19: operator-forced state. When set, the normal state
-        # machine is bypassed — _state is read from these flags first.
+        self.health_check = health_check
+        self.tenant_id = tenant_id
+        self.otel_baggage = otel_baggage
+        # CB-D #19: operator-forced state.
         self._forced_state: State | None = None
         self._forced_reason: str | None = None
-        self._forced_until: float | None = None  # monotonic deadline; None = forever
+        self._forced_until: float | None = None
 
         self._state: State = State.CLOSED
         self._failure_count = 0
@@ -577,6 +597,9 @@ class CircuitBreaker:
     # microseconds while we mutate state).
     # ------------------------------------------------------------------
     def _before_call(self) -> None:
+        # CB-F #27: OTel baggage write — outside the lock since baggage
+        # API is fast and reads only.
+        self._write_otel_baggage()
         with self._lock:
             self._maybe_clear_expired_force()
             # CB-D #19: forced state bypasses the normal state machine.
@@ -591,9 +614,24 @@ class CircuitBreaker:
                     },
                 )
             if self._forced_state is State.CLOSED:
-                # Forced closed → always proceed; no recovery checks.
                 return
             if self._state is State.OPEN:
+                # CB-F #22: health probe can short-circuit recovery_timeout.
+                # When probe returns True, transition immediately to
+                # HALF_OPEN regardless of how much time elapsed.
+                if self.health_check is not None:
+                    try:
+                        if self.health_check():
+                            log.info(
+                                "circuit_health_probe_recovered name=%s",
+                                self.name,
+                            )
+                            self._transition(State.HALF_OPEN)
+                            self._half_open_slots = self.half_open_max_concurrent
+                            self._half_open_successes = 0
+                            return
+                    except Exception:  # noqa: BLE001 — broken probe → ignore
+                        pass
                 if time.monotonic() - self._opened_at >= self._effective_recovery_timeout():
                     self._transition(State.HALF_OPEN)
                 else:
@@ -602,6 +640,22 @@ class CircuitBreaker:
                         f"Circuit '{self.name}' is OPEN",
                         details={"name": self.name, "recovery_timeout_s": self.recovery_timeout},
                     )
+
+    def _write_otel_baggage(self) -> None:
+        """CB-F #27: write breaker state into the active OTel span's
+        baggage so distributed traces show every span's view of every
+        breaker it depended on. Opt-in (default off — adds latency on
+        every call). Silent no-op if opentelemetry-api isn't installed.
+        """
+        if not self.otel_baggage:
+            return
+        try:
+            from opentelemetry import baggage as _baggage  # type: ignore[import-not-found]
+            from opentelemetry import context as _ctx  # type: ignore[import-not-found]
+            ctx = _baggage.set_baggage(f"cb.{self.name}.state", self._state.value)
+            _ctx.attach(ctx)
+        except Exception:  # noqa: BLE001 — OTel optional / detach gracefully
+            pass
 
     def _on_success(self, *, duration_s: float | None = None) -> None:
         with self._lock:
