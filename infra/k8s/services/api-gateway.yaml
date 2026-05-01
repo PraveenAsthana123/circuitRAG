@@ -44,7 +44,7 @@ spec:
             - name: DOCUMIND_JWT_PUBLIC_KEY_PATH
               value: /etc/documind/jwt/jwt-public.pem
           volumeMounts:
-            - name: jwt, mountPath: /etc/documind/jwt, readOnly: true
+            - { name: jwt, mountPath: /etc/documind/jwt, readOnly: true }
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
             limits:   { cpu: "1",    memory: "512Mi" }

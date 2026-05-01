@@ -30,10 +30,12 @@ spec:
             limits:   { cpu: "2",    memory: "2Gi" }
           readinessProbe:
             httpGet: { path: /health, port: http }
-            initialDelaySeconds: 5, periodSeconds: 5
+            initialDelaySeconds: 5
+            periodSeconds: 5
           livenessProbe:
             httpGet: { path: /health, port: http }
-            initialDelaySeconds: 30, periodSeconds: 15
+            initialDelaySeconds: 30
+            periodSeconds: 15
       terminationGracePeriodSeconds: 60
 ---
 apiVersion: v1
