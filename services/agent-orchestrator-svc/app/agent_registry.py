@@ -16,6 +16,27 @@ class AgentRoleSpec:
 
 DEFAULT_AGENT_SPECS: tuple[AgentRoleSpec, ...] = (
     AgentRoleSpec(
+        role_id="researcher",
+        role_type="researcher",
+        display_name="Researcher",
+        model="qwen2.5:latest",
+        description="Synthesises sources and suggests approach for novel topics.",
+        source_agent_name="researcher",
+        prompt_template=(
+            "You are the Researcher for an agentic SDLC pipeline.\n"
+            "Investigate the topic. Cite ≥3 sources. Identify risks.\n"
+            "Suggest a concrete implementation approach.\n"
+            "\n"
+            "Topic / goal:\n{goal}\n"
+            "\n"
+            "Respond with ONLY a JSON object on one line:\n"
+            "{{\"summary\":\"<one paragraph>\",\"sources\":[{{\"title\":\"<t>\","
+            "\"url\":\"<u>\",\"relevance\":\"<why>\"}}],"
+            "\"suggested_approach\":\"<actionable steps>\","
+            "\"risks\":[\"<risk1>\",\"<risk2>\"]}}\n"
+        ),
+    ),
+    AgentRoleSpec(
         role_id="strategist",
         role_type="planner",
         display_name="Strategist",
