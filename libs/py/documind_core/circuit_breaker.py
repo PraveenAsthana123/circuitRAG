@@ -53,8 +53,9 @@ import threading
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import TypeVar
+from typing import Protocol, TypeVar, runtime_checkable
 
 try:
     from prometheus_client import Counter, Gauge, Histogram
@@ -99,6 +100,91 @@ log = logging.getLogger(__name__)
 
 class _BreakerCallFailed(Exception):
     """Sentinel for record_failure(exc=None). Never raised — only labeled."""
+
+
+# ---------------------------------------------------------------------------
+# CB-F #21: persistent state for multi-pod deployments.
+#
+# Without persistence, a service restart during a downstream outage
+# means N pods all come back CLOSED, all immediately retry the dead
+# downstream → cascade returns. With persistence, breaker state is
+# shared via a low-cardinality store (Redis or similar) so each pod
+# starts with the latest known state.
+#
+# The Protocol is intentionally tiny: one read + one write. Real
+# Redis implementation is a separate module (libs/py/documind_core/
+# circuit_breaker_redis.py) so this base file stays dependency-light.
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class BreakerSnapshot:
+    """Wire format for persistent breaker state. JSON-serializable."""
+    state: str  # "closed" | "open" | "half_open"
+    opened_at: float  # monotonic-relative; treated as "seconds since some
+                     # process start" — readers must scope by absolute time
+                     # via wall_clock_recorded_at.
+    consecutive_open_count: int
+    failure_count: int
+    wall_clock_recorded_at: float  # time.time() — absolute; used by readers
+                                   # to age-out stale snapshots from crashed
+                                   # writers.
+
+
+@runtime_checkable
+class PersistentBreakerStore(Protocol):
+    """Persistent backing for BreakerSnapshot per (name[, tenant_id]).
+
+    Implementations: InMemoryPersistentStore (this file, default for
+    single-process tests), RedisBreakerStore (separate module).
+
+    Contract:
+      - load_snapshot returns None when no snapshot exists OR when the
+        stored wall-clock timestamp is older than `max_age_s` (default
+        60s). Stale snapshots from crashed writers must NOT be trusted.
+      - save_snapshot is best-effort. Failures (Redis down) are logged
+        but MUST NOT raise — the breaker keeps working on local state.
+    """
+
+    def load_snapshot(
+        self, *, name: str, tenant_id: str | None = None
+    ) -> BreakerSnapshot | None: ...
+
+    def save_snapshot(
+        self,
+        *,
+        name: str,
+        tenant_id: str | None,
+        snapshot: BreakerSnapshot,
+    ) -> None: ...
+
+
+class InMemoryPersistentStore:
+    """Default in-memory implementation. Useful for single-process
+    tests + as a fallback when no Redis is configured. Not multi-pod
+    safe — for multi-pod, use RedisBreakerStore in
+    libs/py/documind_core/circuit_breaker_redis.py."""
+
+    def __init__(self, *, max_age_s: float = 60.0) -> None:
+        self._store: dict[tuple[str, str | None], BreakerSnapshot] = {}
+        self._max_age_s = max_age_s
+
+    def load_snapshot(
+        self, *, name: str, tenant_id: str | None = None
+    ) -> BreakerSnapshot | None:
+        snap = self._store.get((name, tenant_id))
+        if snap is None:
+            return None
+        if (time.time() - snap.wall_clock_recorded_at) > self._max_age_s:
+            return None  # stale; ignore
+        return snap
+
+    def save_snapshot(
+        self,
+        *,
+        name: str,
+        tenant_id: str | None,
+        snapshot: BreakerSnapshot,
+    ) -> None:
+        self._store[(name, tenant_id)] = snapshot
 
 
 class State(StrEnum):
@@ -304,6 +390,12 @@ class CircuitBreaker:
         # traces show every span's view of every breaker it depended on.
         # Default False (opt-in; adds latency on every call).
         otel_baggage: bool = False,
+        # CB-F #21: persistent state. When set, breaker hydrates from
+        # the store at __init__ and writes back on every state change.
+        # Multi-pod deployments avoid 'all pods come back CLOSED →
+        # cascade returns' by sharing state across instances.
+        # Default None = no persistence (legacy single-process).
+        persistent_store: PersistentBreakerStore | None = None,
     ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
@@ -357,6 +449,31 @@ class CircuitBreaker:
             deque(maxlen=failure_window_size) if failure_window_size > 0 else deque(maxlen=1)
         )
         self._lock = threading.RLock()
+        self.persistent_store = persistent_store
+        # CB-F #21: hydrate from persistent store at construction.
+        # Failures here are logged + ignored; breaker starts fresh.
+        if persistent_store is not None:
+            try:
+                snap = persistent_store.load_snapshot(name=name, tenant_id=tenant_id)
+                if snap is not None:
+                    self._state = State(snap.state)
+                    self._consecutive_open_count = snap.consecutive_open_count
+                    self._failure_count = snap.failure_count
+                    # opened_at is monotonic-relative; we store the
+                    # WALL CLOCK delta and re-apply against current
+                    # monotonic so OPEN→HALF_OPEN math still works.
+                    if self._state is State.OPEN:
+                        wall_age = time.time() - snap.wall_clock_recorded_at
+                        self._opened_at = time.monotonic() - max(0.0, wall_age)
+                    log.info(
+                        "circuit_hydrated name=%s state=%s opens=%d",
+                        name, snap.state, snap.consecutive_open_count,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "circuit_hydrate_failed name=%s err=%s — starting fresh",
+                    name, type(exc).__name__,
+                )
         self._set_metric_state()
 
     # ------------------------------------------------------------------
@@ -825,6 +942,26 @@ class CircuitBreaker:
         self._set_metric_state()
         # CB-C #17: update stuck-in-OPEN duration gauge on every transition.
         self._update_open_duration()
+        # CB-F #21: persist on every real transition. Best-effort; failures
+        # logged but don't break the breaker.
+        if prev is not new and self.persistent_store is not None:
+            try:
+                self.persistent_store.save_snapshot(
+                    name=self.name,
+                    tenant_id=self.tenant_id,
+                    snapshot=BreakerSnapshot(
+                        state=self._state.value,
+                        opened_at=self._opened_at,
+                        consecutive_open_count=self._consecutive_open_count,
+                        failure_count=self._failure_count,
+                        wall_clock_recorded_at=time.time(),
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "circuit_persist_failed name=%s err=%s",
+                    self.name, type(exc).__name__,
+                )
         # CB-D #20: fire on_state_change callback exactly once per real
         # transition. Caught + logged — broken callback must NOT crash
         # the breaker (paging hooks are out-of-band, not critical-path).
