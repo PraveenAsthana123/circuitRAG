@@ -8,6 +8,7 @@ from typing import Any
 from documind_core.config import get_settings
 from documind_core.db_client import DbClient
 from documind_core.logging_config import setup_logging
+from documind_core.body_limit import BodyLimitMiddleware
 from documind_core.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware, register_exception_handlers
 from documind_core.observability import instrument_fastapi, instrument_httpx, setup_observability
 from fastapi import FastAPI, HTTPException, Query
@@ -121,6 +122,10 @@ def create_app() -> FastAPI:
     app = FastAPI(title="agent-orchestrator-svc", version="0.1.0", lifespan=lifespan)
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
+    # P1 #32 (body limit) — prevent OOM from giant payloads.
+    # 1 MiB default for tasks API; upload routes (none today) would
+    # need larger cap via path_overrides.
+    app.add_middleware(BodyLimitMiddleware, max_bytes=1024 * 1024)
     register_exception_handlers(app)
 
     @app.get("/health/live")
