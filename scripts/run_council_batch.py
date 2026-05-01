@@ -11,6 +11,7 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -22,7 +23,33 @@ CHECKLIST = REPO / ".loop" / "issue_checklist.jsonl"
 SUMMARY = REPO / ".loop" / "council_batch_summary.json"
 
 
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="run_council_batch.py",
+        description=(
+            "Run the 3-model council (deepseek-coder author + codegemma "
+            "reviewer + codellama advisor) on every medium-difficulty "
+            "issue in .loop/issue_checklist.jsonl. Sequential — each "
+            "council takes ~225s; expect ~22 minutes for 6 issues. "
+            "Writes a summary to .loop/council_batch_summary.json."
+        ),
+        epilog=(
+            "Outputs:\n"
+            "  .loop/council_batch_summary.json — per-issue exit code, "
+            "elapsed time, stdout tail, total batch elapsed.\n\n"
+            "Prerequisites:\n"
+            "  scripts/issue_scanner.py must have run first (creates the "
+            "checklist file).\n\n"
+            "Per §50 (issue dispatcher policy): council proposals are "
+            "dry-run only. Operator reviews + applies; no auto-apply."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    return parser
+
+
 def main() -> int:
+    _build_parser().parse_args()
     if not CHECKLIST.exists():
         print(f"missing {CHECKLIST.relative_to(REPO)}; run issue_scanner.py first")
         return 2

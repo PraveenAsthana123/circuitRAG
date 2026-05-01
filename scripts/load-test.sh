@@ -18,6 +18,32 @@
 #
 # Locked by mcp/tests/drill_load_test_setup.py.
 
+case "${1:-}" in
+  -h|--help)
+    cat <<'HELP'
+load-test.sh — k6 baseline-profile load-test wrapper
+
+Profiles (per global §47.10 + /admin/load-testing/deep playbook):
+  smoke    1 VU,   10s        sanity, no errors expected
+  load     100 VU, 3m         SLA target sustain
+  stress   100→1000 VU, 5m    find breakpoint
+  soak     100 VU, 10m        memory growth detection
+  spike    0→2000 VU, 60s     recovery test
+  full     all 5 phases sequentially (~22 min total)
+
+Usage:
+  bash scripts/load-test.sh smoke
+  bash scripts/load-test.sh full
+  BASE_URL=https://prod.documind.com bash scripts/load-test.sh load
+
+Exit code: passthrough from k6 (0 = thresholds green; 99 = breach).
+
+Locked by mcp/tests/drill_load_test_setup.py.
+HELP
+    exit 0
+    ;;
+esac
+
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

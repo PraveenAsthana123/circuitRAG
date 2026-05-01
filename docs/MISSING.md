@@ -477,7 +477,7 @@ Legend:
 | OpenAI Evals | ❌ | Open-source eval harness |
 | lm-eval-harness | ❌ | EleutherAI suite |
 | TruLens | ❌ | Eval + tracing |
-| Custom eval-svc with golden set | ⚠ | Service shipped, golden set TBD |
+| Custom eval-svc with golden set | ⚠ | Service shipped; golden-set assembly tracked under §44 (continuous improvement) — currently L1 per `docs/architecture/maturity-stack.md` |
 
 ### 10. Safety / guardrails
 

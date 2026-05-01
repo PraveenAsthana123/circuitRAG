@@ -13,6 +13,34 @@
 #
 # Locked by mcp/tests/drill_minikube_istio_setup.py.
 
+case "${1:-}" in
+  -h|--help)
+    cat <<'HELP'
+istio-up.sh — bring up local minikube + install Istio + apply project manifests
+
+Idempotent: re-running re-applies infra/istio/ + infra/kiali/ YAMLs
+against the existing cluster. Does NOT install minikube / kubectl /
+istioctl — operator installs those separately (commands printed on
+missing-tool exit).
+
+Usage:
+  bash scripts/istio-up.sh         # bring everything up
+  bash scripts/istio-down.sh       # tear it down
+  make istio-status                # check cluster + mesh state
+
+Env knobs:
+  ISTIO_VERSION       (default 1.22.0)
+  MINIKUBE_PROFILE    (default documind)
+  MINIKUBE_MEMORY     (default 6144)
+  MINIKUBE_CPUS       (default 4)
+  ISTIO_NAMESPACE     (default documind)
+
+Locked by mcp/tests/drill_minikube_istio_setup.py.
+HELP
+    exit 0
+    ;;
+esac
+
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

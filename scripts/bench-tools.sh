@@ -27,6 +27,29 @@
 
 set -uo pipefail
 
+case "${1:-}" in
+  -h|--help)
+    cat <<'HELP'
+bench-tools.sh — per-tool micro-benchmark with real ms numbers
+
+For every running infrastructure tool, runs a representative
+operation N times and reports min/avg/p95/max latency. Writes
+results to .loop/bench/<timestamp>.md so trends are trackable.
+
+Usage:
+  bash scripts/bench-tools.sh                # all tools, default 20 iters
+  bash scripts/bench-tools.sh --iters 100    # bigger sample
+  bash scripts/bench-tools.sh --tool redis   # one tool
+
+Tools covered: postgres, redis, qdrant, neo4j, ollama, prom,
+grafana, alertmgr, jaeger, nginx, filesystem.
+
+Locked by mcp/tests/drill_bench_tools.py.
+HELP
+    exit 0
+    ;;
+esac
+
 ITERS="${ITERS:-20}"
 ONLY=""
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
