@@ -48,6 +48,9 @@ class TaskView(BaseModel):
     tool_arguments: dict[str, Any] = Field(default_factory=dict)
     approval_reasons: list[str] = Field(default_factory=list)
     audit_events: list[dict[str, Any]] = Field(default_factory=list)
+    # B3: review-loop counter. 0 → first execution. Bumped each retry.
+    # Cap at max_review_iterations (default 3) per langgraph_flow.
+    retry_count: int = 0
 
 
 class AgenticPolicyView(BaseModel):

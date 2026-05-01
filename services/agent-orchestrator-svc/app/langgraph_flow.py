@@ -34,6 +34,21 @@ class AgenticState(TypedDict, total=False):
     next_action: str
     audit_events: list[dict[str, Any]]
     policy: dict[str, Any]
+    # B3: review-loop retry counter. Incremented when review_output
+    # routes back to worker_execute. Capped at MAX_REVIEW_ITERATIONS.
+    retry_count: int
+
+
+# B3: Lobster-style review-loop. After reviewer returns confidence,
+# if score < REVIEW_THRESHOLD AND retry_count < MAX_REVIEW_ITERATIONS,
+# the graph routes back to worker_execute with a bumped counter.
+# Otherwise advances to advisory/policy.
+#
+# These thresholds are constants (not env-driven) because changing them
+# silently changes pipeline behaviour for every task — the kind of
+# decision §47 ADRs gate. Override via a future ADR-NNN if needed.
+MAX_REVIEW_ITERATIONS = 3
+REVIEW_THRESHOLD = 0.7
 
 
 def build_graph(
@@ -82,13 +97,42 @@ def build_graph(
     async def review_output(state: AgenticState) -> AgenticState:
         result = await reviewer.review(state["goal"], state["worker_output"])
         events = list(state.get("audit_events", []))
-        events.append({"role": "reviewer", "event": "reviewed", "confidence": result.confidence, "at": datetime.utcnow().isoformat()})
+        events.append({
+            "role": "reviewer",
+            "event": "reviewed",
+            "confidence": result.confidence,
+            "retry_count": state.get("retry_count", 0),
+            "at": datetime.utcnow().isoformat(),
+        })
         return {
             "reviewer_notes": [result.text],
             "reviewer_risks": result.risks or [],
             "confidence": min(state.get("confidence", 1.0), result.confidence),
             "status": "reviewed",
             "next_action": "policy_evaluate",
+            "audit_events": events,
+        }
+
+    async def review_retry_bump(state: AgenticState) -> AgenticState:
+        """B3: bump retry_count + audit before looping back to worker_execute.
+
+        Separated from review_output so the conditional edge logic stays
+        readable: review_output → router → review_retry_bump → worker_execute.
+        """
+        current = int(state.get("retry_count", 0))
+        events = list(state.get("audit_events", []))
+        events.append({
+            "role": "orchestrator",
+            "event": "review_retry",
+            "from_retry_count": current,
+            "to_retry_count": current + 1,
+            "reviewer_confidence": state.get("confidence"),
+            "at": datetime.utcnow().isoformat(),
+        })
+        return {
+            "retry_count": current + 1,
+            "status": "review_retry",
+            "next_action": "worker_execute",
             "audit_events": events,
         }
 
@@ -172,6 +216,14 @@ def build_graph(
         return "human_gate_plan" if _needs_plan_gate(state) else "worker_execute"
 
     def route_after_review(state: AgenticState) -> str:
+        # B3: Lobster-style review-loop. If reviewer is unconvinced
+        # AND we haven't blown the retry cap, loop back to worker_execute.
+        # Negative-assertion contract (drilled): retry_count >= 3 must
+        # exit the loop and never re-enter worker_execute.
+        confidence = float(state.get("confidence") or 1.0)
+        retry_count = int(state.get("retry_count", 0))
+        if confidence < REVIEW_THRESHOLD and retry_count < MAX_REVIEW_ITERATIONS:
+            return "review_retry_bump"
         if _needs_board(state):
             return "advisory_board"
         return "policy_evaluate"
@@ -187,6 +239,7 @@ def build_graph(
     graph.add_node("manager_plan", manager_plan)
     graph.add_node("worker_execute", worker_execute)
     graph.add_node("review_output", review_output)
+    graph.add_node("review_retry_bump", review_retry_bump)  # B3
     graph.add_node("advisory_board", advisory_board)
     graph.add_node("policy_evaluate", policy_evaluate)
     graph.add_node("human_gate_plan", human_gate_plan)
@@ -220,10 +273,12 @@ def build_graph(
         "review_output",
         route_after_review,
         {
+            "review_retry_bump": "review_retry_bump",  # B3 retry path
             "advisory_board": "advisory_board",
             "policy_evaluate": "policy_evaluate",
         },
     )
+    graph.add_edge("review_retry_bump", "worker_execute")  # B3 loop closure
     graph.add_conditional_edges(
         "advisory_board",
         route_after_board,
