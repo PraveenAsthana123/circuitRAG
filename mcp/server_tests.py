@@ -1,16 +1,35 @@
-"""MCP tests server (D3 stub).
+"""MCP tests server (E2: real ruff backing + stubbed pytest/jest/mypy).
 
-Hosts tests.run_pytest + tests.run_jest + tests.run_ruff + tests.run_mypy.
-Today returns canned passed=true; real subprocess execution lands in a
-follow-up commit. The HTTP shape stabilises from this commit onward.
+E2 wires tests.run_ruff to a real subprocess `ruff check --output-format=json`
+with security guards. pytest / jest / mypy remain stubbed for now —
+they need a sandboxed execution environment (pytest in particular
+imports user code; mypy walks the import graph). Ruff is read-only,
+deterministic, and produces structured JSON output, so it's the safest
+'real' tool to wire first.
+
+Security guards on tests.run_ruff:
+  - argv built as list, NEVER shell=True
+  - target path validated:
+      * must be a non-empty string
+      * must resolve under ALLOWED_TARGET_ROOTS (env-driven; default
+        the repo root)
+      * symlinks resolved before the prefix check
+  - 60s hard timeout
+  - ruff binary resolved via shutil.which OR explicit env path
 
 Run:
-    MCP_TESTS_PORT=8095 python mcp/server_tests.py
+    MCP_TESTS_PORT=8095 \
+    MCP_TESTS_TARGET_ROOT=/mnt/deepa/rag \
+    python mcp/server_tests.py
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
+import shutil
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
@@ -19,30 +38,76 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_tests")
 
-app = FastAPI(title="DocuMind MCP — Tests server (D3 stub)")
+app = FastAPI(title="DocuMind MCP — Tests server (E2)")
+
+
+# Where the operator allows tools to scan. Env override:
+#   MCP_TESTS_TARGET_ROOT=/abs/path1:/abs/path2
+_DEFAULT_ROOT = "/mnt/deepa/rag"
+ALLOWED_TARGET_ROOTS: list[Path] = [
+    Path(p).resolve()
+    for p in (os.environ.get("MCP_TESTS_TARGET_ROOT") or _DEFAULT_ROOT).split(":")
+    if p.strip()
+]
+
+
+def _resolve_ruff_path() -> str | None:
+    """Locate the ruff binary. Env override → PATH → known venv."""
+    explicit = os.environ.get("RUFF_PATH")
+    if explicit and os.path.exists(explicit):
+        return explicit
+    found = shutil.which("ruff")
+    if found:
+        return found
+    fallback = "/mnt/deepa/rag/.venv/bin/ruff"
+    if os.path.exists(fallback):
+        return fallback
+    return None
+
+
+def _validate_target(raw: str) -> Path | None:
+    """Resolve `raw` and confirm it's under one of ALLOWED_TARGET_ROOTS.
+
+    Returns the resolved Path on success, None if invalid (caller maps
+    to error envelope). Symlinks are resolved before the prefix check
+    so a symlink ↦ outside-the-root cannot escape.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    candidate = Path(raw).resolve()
+    if not candidate.exists():
+        return None
+    for root in ALLOWED_TARGET_ROOTS:
+        try:
+            candidate.relative_to(root)
+            return candidate
+        except ValueError:
+            continue
+    return None
 
 
 TOOLS: list[dict[str, Any]] = [
     {
-        "name": "tests.run_pytest", "description": "Run pytest on the worker output.",
+        "name": "tests.run_pytest", "description": "Run pytest. Currently STUBBED.",
         "input_schema": {"type": "object", "properties": {"target": {"type": "string"}},
                          "required": ["target"]},
         "required_scopes": ["tests:run"],
     },
     {
-        "name": "tests.run_jest", "description": "Run jest on the worker output.",
+        "name": "tests.run_jest", "description": "Run jest. Currently STUBBED.",
         "input_schema": {"type": "object", "properties": {"target": {"type": "string"}},
                          "required": ["target"]},
         "required_scopes": ["tests:run"],
     },
     {
-        "name": "tests.run_ruff", "description": "Run ruff lint on the diff.",
+        "name": "tests.run_ruff",
+        "description": "Run ruff lint with --output-format=json on validated target. REAL backing.",
         "input_schema": {"type": "object", "properties": {"target": {"type": "string"}},
                          "required": ["target"]},
         "required_scopes": ["tests:run"],
     },
     {
-        "name": "tests.run_mypy", "description": "Run mypy type-check.",
+        "name": "tests.run_mypy", "description": "Run mypy. Currently STUBBED.",
         "input_schema": {"type": "object", "properties": {"target": {"type": "string"}},
                          "required": ["target"]},
         "required_scopes": ["tests:run"],
@@ -59,12 +124,84 @@ class ToolCallRequest(BaseModel):
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "mcp-server-tests", "stub": "true"}
+    return {"status": "ok", "service": "mcp-server-tests", "stub": "partial",
+            "ruff_real": "true" if _resolve_ruff_path() else "false"}
 
 
 @app.get("/tools/list")
 async def list_tools() -> dict[str, Any]:
     return {"tools": TOOLS}
+
+
+async def _run_ruff(target: Path) -> dict[str, Any]:
+    """Run ruff check with structured JSON output. Returns the
+    {ok, data, error} envelope expected by ToolCallResponse."""
+    ruff = _resolve_ruff_path()
+    if ruff is None:
+        return {
+            "ok": False,
+            "error": {"code": "ruff_not_installed",
+                      "message": "ruff binary not found; set RUFF_PATH or install ruff"},
+        }
+
+    argv = [ruff, "check", "--output-format=json", "--exit-zero", str(target)]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except (FileNotFoundError, PermissionError) as fnf:
+        return {
+            "ok": False,
+            "error": {"code": "ruff_exec_failed", "message": str(fnf)},
+        }
+
+    try:
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return {
+            "ok": False,
+            "error": {"code": "ruff_timeout", "message": "ruff exceeded 60s"},
+        }
+
+    raw = (stdout_b or b"").decode("utf-8", errors="replace").strip()
+    stderr_text = (stderr_b or b"").decode("utf-8", errors="replace")
+
+    findings: list[dict[str, Any]] = []
+    if raw:
+        try:
+            findings = json.loads(raw)
+            if not isinstance(findings, list):
+                findings = []
+        except json.JSONDecodeError:
+            findings = []
+
+    failed_summary = [
+        {
+            "test": f.get("code") or f.get("rule") or "unknown",
+            "error": f.get("message") or "",
+            "file": f.get("filename"),
+            "line": (f.get("location") or {}).get("row"),
+        }
+        for f in findings
+    ]
+
+    return {
+        "ok": True,
+        "data": {
+            "runner": "ruff",
+            "passed": len(findings) == 0,
+            "failed": failed_summary,
+            "coverage_pct": None,
+            "log_tail": stderr_text[-500:],
+            "stub": False,
+            "real_backing": "ruff",
+            "findings_count": len(findings),
+        },
+    }
 
 
 @app.post("/tools/call")
@@ -81,13 +218,30 @@ async def call_tool(req: ToolCallRequest) -> dict[str, Any]:
             "ok": False,
             "error": {"code": "tool_not_found", "name": req.name},
         }
-    target = str(req.arguments.get("target", "")).strip()
-    if not target:
+    target_raw = str(req.arguments.get("target", "")).strip()
+    if not target_raw:
         return {
             "ok": False,
             "error": {"code": "invalid_input", "message": "target is required"},
         }
-    # Canned: passed=True. Real subprocess invocation in follow-up.
+
+    # E2: real backing for ruff. Other runners remain stubbed.
+    if runner == "ruff":
+        validated = _validate_target(target_raw)
+        if validated is None:
+            return {
+                "ok": False,
+                "error": {
+                    "code": "target_not_allowed",
+                    "message": (
+                        f"target {target_raw!r} does not exist or is outside "
+                        f"ALLOWED_TARGET_ROOTS={[str(r) for r in ALLOWED_TARGET_ROOTS]}"
+                    ),
+                },
+            }
+        return await _run_ruff(validated)
+
+    # Stubbed runners — canned passed=True with explicit stub marker.
     return {
         "ok": True,
         "data": {
