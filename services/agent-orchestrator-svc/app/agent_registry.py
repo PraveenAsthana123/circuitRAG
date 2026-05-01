@@ -124,6 +124,49 @@ DEFAULT_AGENT_SPECS: tuple[AgentRoleSpec, ...] = (
         ),
     ),
     AgentRoleSpec(
+        role_id="tester",
+        role_type="tester",
+        display_name="Tester",
+        model="deepseek-coder:6.7b-instruct",
+        description="Runs pytest/jest/ruff/mypy via mcp_tests; interprets failures.",
+        source_agent_name="tester",
+        prompt_template=(
+            "You are the Tester. Predict test outcomes for the diff below.\n"
+            "Be CONSERVATIVE: when uncertain, mark passed=false.\n\n"
+            "Diff/code:\n{worker_output}\n\n"
+            "Respond with: {{\"passed\":<bool>,\"failed\":[{{\"test\":\"<name>\",\"error\":\"<msg>\"}}],\"runner\":\"pytest\"}}\n"
+        ),
+    ),
+    AgentRoleSpec(
+        role_id="deployer",
+        role_type="deployer",
+        display_name="Deployer",
+        model="qwen2.5:latest",
+        description="Pre-flight check + diff summary. Actual deploy is human-gated per §42.",
+        source_agent_name="deployer",
+        prompt_template=(
+            "You are the Deployer pre-flight reviewer.\n"
+            "Summarise the diff and identify any deploy risks.\n"
+            "Actual deploy requires human approval per §42.\n\n"
+            "Diff:\n{worker_output}\n\n"
+            "Reply with: summary, risks list, deploy_safety: 'safe'|'review_required'|'block'.\n"
+        ),
+    ),
+    AgentRoleSpec(
+        role_id="observer",
+        role_type="observer",
+        display_name="Observer",
+        model="llama3.1:8b",
+        description="Queries Prom/Loki post-deploy; flags regressions.",
+        source_agent_name="observer",
+        prompt_template=(
+            "You are the Observer. Soak window has elapsed; metrics provided.\n"
+            "Decide: 'healthy' | 'degraded' | 'rollback_required'.\n\n"
+            "Metrics:\n{metrics}\n\n"
+            "Reply with: status, top_concerns, recommended_action.\n"
+        ),
+    ),
+    AgentRoleSpec(
         role_id="security_advisor",
         role_type="advisor",
         display_name="Security advisor",
