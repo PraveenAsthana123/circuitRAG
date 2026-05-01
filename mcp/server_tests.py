@@ -65,6 +65,32 @@ def _resolve_ruff_path() -> str | None:
     return None
 
 
+def _resolve_pytest_path() -> str | None:
+    explicit = os.environ.get("PYTEST_PATH")
+    if explicit and os.path.exists(explicit):
+        return explicit
+    found = shutil.which("pytest")
+    if found:
+        return found
+    fallback = "/mnt/deepa/rag/.venv/bin/pytest"
+    if os.path.exists(fallback):
+        return fallback
+    return None
+
+
+def _resolve_mypy_path() -> str | None:
+    explicit = os.environ.get("MYPY_PATH")
+    if explicit and os.path.exists(explicit):
+        return explicit
+    found = shutil.which("mypy")
+    if found:
+        return found
+    fallback = "/mnt/deepa/rag/.venv/bin/mypy"
+    if os.path.exists(fallback):
+        return fallback
+    return None
+
+
 def _validate_target(raw: str) -> Path | None:
     """Resolve `raw` and confirm it's under one of ALLOWED_TARGET_ROOTS.
 
@@ -88,7 +114,10 @@ def _validate_target(raw: str) -> Path | None:
 
 TOOLS: list[dict[str, Any]] = [
     {
-        "name": "tests.run_pytest", "description": "Run pytest. Currently STUBBED.",
+        "name": "tests.run_pytest",
+        "description": ("Run `pytest --collect-only` against validated target. REAL backing — "
+                        "collect-only is read-only (lists tests without running them); "
+                        "full execution is a follow-up commit with sandboxing."),
         "input_schema": {"type": "object", "properties": {"target": {"type": "string"}},
                          "required": ["target"]},
         "required_scopes": ["tests:run"],
@@ -107,7 +136,8 @@ TOOLS: list[dict[str, Any]] = [
         "required_scopes": ["tests:run"],
     },
     {
-        "name": "tests.run_mypy", "description": "Run mypy. Currently STUBBED.",
+        "name": "tests.run_mypy",
+        "description": "Run `mypy --no-error-summary` against validated target. REAL backing.",
         "input_schema": {"type": "object", "properties": {"target": {"type": "string"}},
                          "required": ["target"]},
         "required_scopes": ["tests:run"],
@@ -204,6 +234,114 @@ async def _run_ruff(target: Path) -> dict[str, Any]:
     }
 
 
+
+async def _run_pytest_collect(target: Path) -> dict[str, Any]:
+    """Run pytest in collect-only mode. Read-only listing of tests.
+
+    Side effect: pytest imports modules during collection. Operator-
+    controlled target is validated by _validate_target. 60s timeout.
+    """
+    pytest_bin = _resolve_pytest_path()
+    if pytest_bin is None:
+        return {
+            "ok": False,
+            "error": {"code": "pytest_not_installed",
+                      "message": "pytest binary not found; set PYTEST_PATH"},
+        }
+    argv = [pytest_bin, "--collect-only", "-q", "--no-header", str(target)]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except (FileNotFoundError, PermissionError) as fnf:
+        return {"ok": False, "error": {"code": "pytest_exec_failed", "message": str(fnf)}}
+    try:
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return {"ok": False, "error": {"code": "pytest_timeout", "message": "collect-only > 60s"}}
+    raw = (stdout_b or b"").decode("utf-8", errors="replace")
+    stderr_text = (stderr_b or b"").decode("utf-8", errors="replace")
+    node_lines = [
+        ln.strip()
+        for ln in raw.splitlines()
+        if ln.strip() and "::" in ln and "tests collected" not in ln.lower()
+    ]
+    summary_match = next(
+        (ln for ln in raw.splitlines() if "tests collected" in ln.lower()),
+        None,
+    )
+    return {
+        "ok": True,
+        "data": {
+            "runner": "pytest",
+            "mode": "collect-only",
+            "passed": True,
+            "failed": [],
+            "collected_count": len(node_lines),
+            "collected_tests": node_lines[:200],
+            "summary": summary_match.strip() if summary_match else None,
+            "log_tail": stderr_text[-500:],
+            "stub": False,
+            "real_backing": "pytest",
+        },
+    }
+
+
+async def _run_mypy(target: Path) -> dict[str, Any]:
+    """Run mypy --no-error-summary against validated target."""
+    mypy_bin = _resolve_mypy_path()
+    if mypy_bin is None:
+        return {
+            "ok": False,
+            "error": {"code": "mypy_not_installed",
+                      "message": "mypy binary not found; set MYPY_PATH"},
+        }
+    argv = [mypy_bin, "--no-error-summary", "--show-error-codes",
+            "--ignore-missing-imports", str(target)]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except (FileNotFoundError, PermissionError) as fnf:
+        return {"ok": False, "error": {"code": "mypy_exec_failed", "message": str(fnf)}}
+    try:
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return {"ok": False, "error": {"code": "mypy_timeout", "message": "mypy > 120s"}}
+    raw = (stdout_b or b"").decode("utf-8", errors="replace")
+    error_lines = [ln for ln in raw.splitlines() if ": error:" in ln]
+    failed = [
+        {
+            "test": ln.split("[")[-1].rstrip("]").strip() if "[" in ln else "type-error",
+            "error": ln.split("error:", 1)[-1].strip(),
+            "file": ln.split(":", 1)[0],
+            "line": (ln.split(":", 2)[1] if ln.count(":") >= 2 else None),
+        }
+        for ln in error_lines
+    ]
+    return {
+        "ok": True,
+        "data": {
+            "runner": "mypy",
+            "passed": len(error_lines) == 0,
+            "failed": failed,
+            "coverage_pct": None,
+            "log_tail": raw[-500:],
+            "stub": False,
+            "real_backing": "mypy",
+            "findings_count": len(error_lines),
+        },
+    }
+
+
 @app.post("/tools/call")
 async def call_tool(req: ToolCallRequest) -> dict[str, Any]:
     runner_map = {
@@ -225,8 +363,10 @@ async def call_tool(req: ToolCallRequest) -> dict[str, Any]:
             "error": {"code": "invalid_input", "message": "target is required"},
         }
 
-    # E2: real backing for ruff. Other runners remain stubbed.
-    if runner == "ruff":
+    # E2/E5: real backings for ruff, pytest (collect-only), mypy.
+    # jest stays stubbed — Node toolchain isn't bundled with the
+    # service container.
+    if runner in ("ruff", "pytest", "mypy"):
         validated = _validate_target(target_raw)
         if validated is None:
             return {
@@ -239,9 +379,14 @@ async def call_tool(req: ToolCallRequest) -> dict[str, Any]:
                     ),
                 },
             }
-        return await _run_ruff(validated)
+        if runner == "ruff":
+            return await _run_ruff(validated)
+        if runner == "pytest":
+            return await _run_pytest_collect(validated)
+        if runner == "mypy":
+            return await _run_mypy(validated)
 
-    # Stubbed runners — canned passed=True with explicit stub marker.
+    # jest only — stays stubbed.
     return {
         "ok": True,
         "data": {
