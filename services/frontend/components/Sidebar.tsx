@@ -343,7 +343,13 @@ export default function Sidebar() {
           {g.heading && <div className="sidebar-heading">{g.heading}</div>}
           <ul>
             {g.items.map((link) => (
-              <li key={link.href}>
+              // Composite key: label is part of the key because some
+              // groups intentionally surface the same href under
+              // multiple aliases (e.g. "CDN" and "Load balancer" both
+              // pointing at /tools/nginx-cdn). Keying only on href
+              // collides for those rows and triggers React's
+              // duplicate-key warning.
+              <li key={`${link.href}::${link.label}`}>
                 <Link href={link.href} className={isActive(link.href) ? 'active' : ''}>
                   {link.label}
                 </Link>
