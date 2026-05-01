@@ -5,6 +5,7 @@ import '../styles/globals.css';
 import Sidebar from '../components/Sidebar';
 import ClientErrorReporter from '../components/ClientErrorReporter';
 import ErrorBoundary from '../components/ErrorBoundary';
+import ErrorTrackerInit from '../components/ErrorTrackerInit';
 import PageDownloadBar from '../components/PageDownloadBar';
 
 export const metadata: Metadata = {
@@ -20,6 +21,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             unhandledrejection handlers that POST to
             /api/v1/admin/client-errors. */}
         <ClientErrorReporter />
+        {/* §26: dev-only F12-introspectable tracker. Exposes
+            window.__errors with getSummary / getReport / clear. No-op
+            in production. */}
+        <ErrorTrackerInit />
         <ErrorBoundary>
           <div className="app-shell">
             <aside className="sidebar" aria-label="Primary navigation">
