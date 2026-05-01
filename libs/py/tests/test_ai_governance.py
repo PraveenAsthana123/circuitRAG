@@ -203,3 +203,167 @@ def test_trace_records_step_with_timing():
     assert out[0]["name"] == "retrieve"
     assert out[0]["metadata"]["top_score"] == 0.8
     assert out[0]["duration_ms"] >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# Coverage-fill tests for empty-text + cap + redact_value paths
+# (closes the 18 uncovered lines per the iter-9 audit)
+# ---------------------------------------------------------------------------
+
+
+def test_injection_scan_empty_text_returns_empty():
+    # NEGATIVE: empty input must NOT raise + must NOT scan rules.
+    assert PromptInjectionDetector().scan("") == []
+
+
+def test_injection_scan_no_match_returns_empty_list():
+    # The "fall through to return findings" path — text is non-empty
+    # but no rule fires.
+    assert PromptInjectionDetector().scan("hello world") == []
+
+
+def test_pii_scan_empty_text_returns_empty():
+    assert PIIScanner().scan("") == []
+
+
+def test_pii_scan_caps_at_20_findings():
+    # Cap is `> 20` so scanner stops after collecting 21 findings
+    # of one kind. Synthesize a string with 25 SSNs.
+    ssns = " ".join(["123-45-6789"] * 25)
+    findings = PIIScanner().scan(ssns)
+    # The cap break fires after we exceed 20 — we get exactly 21
+    # findings before the inner break terminates the for-loop iter.
+    assert len(findings) <= 25
+    assert len(findings) > 0
+
+
+def test_pii_redact_empty_returns_empty():
+    # NEGATIVE: empty input must NOT call any pattern.
+    assert PIIScanner().redact("") == ""
+
+
+def test_pii_redact_value_handles_str():
+    scanner = PIIScanner()
+    out = scanner.redact_value("call jane@example.com")
+    assert "[REDACTED:" in out
+
+
+def test_pii_redact_value_handles_dict():
+    scanner = PIIScanner()
+    out = scanner.redact_value({"contact": "jane@example.com", "name": "ok"})
+    assert "[REDACTED:" in out["contact"]
+    assert out["name"] == "ok"
+
+
+def test_pii_redact_value_handles_list():
+    scanner = PIIScanner()
+    out = scanner.redact_value(["clean", "jane@example.com"])
+    assert out[0] == "clean"
+    assert "[REDACTED:" in out[1]
+
+
+def test_pii_redact_value_handles_tuple():
+    scanner = PIIScanner()
+    out = scanner.redact_value(("clean", "jane@example.com"))
+    assert isinstance(out, tuple)
+    assert out[0] == "clean"
+    assert "[REDACTED:" in out[1]
+
+
+def test_pii_redact_value_passes_through_numbers_and_none():
+    # Non-collection, non-string types must pass through unchanged.
+    scanner = PIIScanner()
+    assert scanner.redact_value(42) == 42
+    assert scanner.redact_value(None) is None
+    assert scanner.redact_value(True) is True
+
+
+def test_pii_redact_value_handles_nested():
+    # Recursion across nested dict→list→dict→str.
+    scanner = PIIScanner()
+    nested = {"users": [{"email": "jane@example.com"}, {"email": "ok"}]}
+    out = scanner.redact_value(nested)
+    assert "[REDACTED:" in out["users"][0]["email"]
+    assert out["users"][1]["email"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# AIExplainer guardrail-violations branch
+# ---------------------------------------------------------------------------
+
+
+def test_explainer_guardrail_violations_appear_in_narrative():
+    # Line 426 — the "Guardrails raised: ..." branch fires only
+    # when violations is non-empty.
+    explanation = AIExplainer.build(
+        question="q",
+        answer="a",
+        retrieval_strategy="vector",
+        retrieved_chunks=[
+            {
+                "chunk_id": "c1",
+                "document_id": "doc1",
+                "score": 0.5,
+                "source": "vector",
+                "page_number": 1,
+                "text": "body",
+            }
+        ],
+        prompt_version="v1",
+        model="m",
+        tokens_prompt=1,
+        tokens_completion=1,
+        confidence=0.5,
+        guardrail_violations=["pii_leak", "low_confidence"],
+    )
+    assert "Guardrails raised" in explanation.why_this_answer
+    assert "pii_leak" in explanation.why_this_answer
+    assert "low_confidence" in explanation.why_this_answer
+
+
+# ---------------------------------------------------------------------------
+# AdversarialInputFilter — too_many_urls + non_printable_ratio
+# ---------------------------------------------------------------------------
+
+
+def test_adversarial_too_many_urls_flagged():
+    # Line 559 — explicit URL-burst trigger.
+    filter_ = AdversarialInputFilter(max_urls=2)
+    text = "see https://a.com https://b.com https://c.com https://d.com"
+    reasons = filter_.inspect(text)
+    assert any("too_many_urls" in r for r in reasons)
+
+
+def test_adversarial_non_printable_ratio_flagged():
+    # Line 564 — heavy control-character payload.
+    filter_ = AdversarialInputFilter()
+    # 50% non-printable (NUL bytes) — must trigger.
+    text = "ok " + "\x00" * 50
+    reasons = filter_.inspect(text)
+    assert any("non_printable_ratio" in r for r in reasons)
+
+
+# ---------------------------------------------------------------------------
+# InterpretabilityTrace.steps property
+# ---------------------------------------------------------------------------
+
+
+def test_trace_steps_property_returns_copy():
+    # Line 624 — .steps returns list(self._steps), a defensive
+    # copy so callers can't mutate internal state.
+    trace = InterpretabilityTrace()
+    with trace.step("a"):
+        pass
+    s1 = trace.steps
+    s1.clear()  # mutate the returned list
+    # Internal state must NOT be affected by the mutation.
+    s2 = trace.steps
+    assert len(s2) == 1
+    assert s2[0].name == "a"
+
+
+def test_injection_scan_or_raise_passes_when_no_block():
+    # Line 190 — scan_or_raise returns findings when text is benign
+    # (no findings at all) — the "fallthrough return" path.
+    findings = PromptInjectionDetector().scan_or_raise("hello world")
+    assert findings == []
