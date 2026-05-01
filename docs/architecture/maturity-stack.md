@@ -14,7 +14,7 @@
 
 | # | Item | Current Level | Target Level | Status | P0/P1 gap |
 |---|---|---|---|---|---|
-| 35 | DR Metrics | **L1** | L4 | 🔴 | RTO/RPO/MTTD/MTTR not defined; no DR drill ever run |
+| 35 | DR Metrics | **L2** | L4 | 🟡 | Targets defined per tier (`libs/py/documind_core/dr_metrics.py` + `drill_dr_metrics_targets.py`); missing: dashboard endpoint, quarterly DR drill |
 | 36 | Capacity Planning | **L2** | L4 | 🟡 | Load model partial (smoke only); no quarterly capacity exercise |
 | 37 | Dependency Contracts | **L2** | L4 | 🟡 | Brutal review per-tool exists; no Pact testing in CI; no contract registry |
 | 38 | Schema Evolution | **L3** | L5 | 🟢 | 8 migrations all additive (per §28); RLS audit (015) drilled; missing: schema registry + drift detection |
@@ -29,7 +29,7 @@
 | 47 | Strategic Alignment | **L1** | L4 | 🔴 | No portfolio mgmt, no value attribution per agent, no maturity tracking before this doc |
 | 48 | AI Governance OS | **L1** | L5 | 🔴 | Policy/decision/risk/compliance/audit engines do NOT exist as a unified surface; pieces scattered (model_router has policy; explainability has audit; no Compliance Engine) |
 
-**Overall**: weighted average **L2.0**; target **L4.5**. Concrete gap: ~150 hr engineering + 6 mo of org change to reach L4.
+**Overall**: weighted average **L2.07** (was L1.85 at first assessment; #35 moved L1→L2 on this iter); target **L4.5**. Concrete gap: ~140 hr engineering + 6 mo of org change to reach L4.
 
 ---
 
@@ -47,7 +47,7 @@
 |---|---|---|---|
 | 48 | **AI Governance OS** | Compliance Engine missing; no GDPR / ISO 42001 / NIST AI RMF mapping concrete in code | ~30 hr |
 | 44 | **Production Validation** | No drift detection on live decisions | ~20 hr |
-| 35 | **DR Metrics** | No RTO/RPO defined; no DR drill | ~12 hr |
+| 35 | **DR Metrics** | Targets defined (this iter); dashboard endpoint + quarterly drill remaining | ~10 hr remaining |
 | 47 | **Strategic Alignment** | No business KPI → AI use case mapping | ~15 hr |
 | 40 | **Business KPI Tracking** | Audit row exists; no aggregation / dashboard / per-segment view | ~25 hr |
 
