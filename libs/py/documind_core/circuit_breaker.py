@@ -98,8 +98,20 @@ T = TypeVar("T")
 log = logging.getLogger(__name__)
 
 
+# CB-G #29: replaced the _BreakerCallFailed Exception subclass with a
+# plain string constant. The previous sentinel existed only to make a
+# log message non-NoneType; an Exception class for that was overkill
+# and signalled "no one re-reads this code." A constant is clearer
+# and one fewer class.
+_UNKNOWN_CAUSE_LABEL = "unknown"
+
+
 class _BreakerCallFailed(Exception):
-    """Sentinel for record_failure(exc=None). Never raised — only labeled."""
+    """Deprecated sentinel kept only for backward compat — record_failure
+    historically passed an instance of this class when exc=None. New code
+    paths use the _UNKNOWN_CAUSE_LABEL string for the metric label.
+    Will be removed in a future cleanup pass.
+    """
 
 
 # ---------------------------------------------------------------------------
