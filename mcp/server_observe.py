@@ -31,6 +31,8 @@ app = FastAPI(title="DocuMind MCP — Observe server (E3)")
 
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://localhost:9090").rstrip("/")
 PROM_TIMEOUT_SEC = float(os.environ.get("PROMETHEUS_TIMEOUT_SEC", "10"))
+ALERTMANAGER_URL = os.environ.get("ALERTMANAGER_URL", "http://localhost:9093").rstrip("/")
+ALERTMANAGER_TIMEOUT_SEC = float(os.environ.get("ALERTMANAGER_TIMEOUT_SEC", "10"))
 
 
 TOOLS: list[dict[str, Any]] = [
@@ -64,10 +66,16 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "observe.check_alerts_fired",
-        "description": "Count alertmanager alerts in window. STUBBED (real AM in follow-up).",
+        "description": "Count Alertmanager alerts firing right now. REAL backing.",
         "input_schema": {
             "type": "object",
-            "properties": {"window_seconds": {"type": "integer", "default": 300}},
+            "properties": {
+                "filter_state": {
+                    "type": "string",
+                    "enum": ["active", "all"],
+                    "default": "active",
+                },
+            },
         },
         "required_scopes": ["observe:read"],
     },
@@ -83,9 +91,9 @@ class ToolCallRequest(BaseModel):
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    """Liveness probe. Reports whether Prometheus is reachable so
-    operators can see at a glance whether real backing is degraded."""
+    """Liveness probe. Reports Prometheus + Alertmanager reachability."""
     prom_alive = "false"
+    am_alive = "false"
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             r = await client.get(f"{PROMETHEUS_URL}/-/healthy")
@@ -93,12 +101,21 @@ async def health() -> dict[str, str]:
                 prom_alive = "true"
     except (httpx.HTTPError, httpx.TimeoutException):
         pass
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.get(f"{ALERTMANAGER_URL}/-/healthy")
+            if r.status_code == 200:
+                am_alive = "true"
+    except (httpx.HTTPError, httpx.TimeoutException):
+        pass
     return {
         "status": "ok",
         "service": "mcp-server-observe",
-        "stub": "partial",
+        "stub": "false",
         "prometheus_url": PROMETHEUS_URL,
         "prometheus_reachable": prom_alive,
+        "alertmanager_url": ALERTMANAGER_URL,
+        "alertmanager_reachable": am_alive,
     }
 
 
@@ -259,16 +276,63 @@ async def call_tool(req: ToolCallRequest) -> dict[str, Any]:
         return await _compute_p95_delta(req.arguments)
 
     if req.name == "observe.check_alerts_fired":
-        # STUB — Alertmanager integration is the next E-track commit.
-        return {
-            "ok": True,
-            "data": {
-                "alerts_fired": 0,
-                "alerts": [],
-                "window_seconds": int(req.arguments.get("window_seconds") or 300),
-                "stub": True,
-            },
-        }
+        # E4: real Alertmanager v2 API. Returns currently-firing alerts.
+        filter_state = str(req.arguments.get("filter_state") or "active")
+        try:
+            async with httpx.AsyncClient(timeout=ALERTMANAGER_TIMEOUT_SEC) as client:
+                params: dict[str, str] = {}
+                if filter_state == "active":
+                    params["active"] = "true"
+                    params["silenced"] = "false"
+                    params["inhibited"] = "false"
+                r = await client.get(f"{ALERTMANAGER_URL}/api/v2/alerts", params=params)
+                if r.status_code != 200:
+                    return {
+                        "ok": False,
+                        "error": {
+                            "code": "alertmanager_http_error",
+                            "status": r.status_code,
+                            "body": r.text[:500],
+                        },
+                    }
+                alerts = r.json()
+                if not isinstance(alerts, list):
+                    return {
+                        "ok": False,
+                        "error": {
+                            "code": "alertmanager_unexpected_shape",
+                            "got": type(alerts).__name__,
+                        },
+                    }
+                summarized = [
+                    {
+                        "fingerprint": a.get("fingerprint"),
+                        "labels": a.get("labels") or {},
+                        "annotations": a.get("annotations") or {},
+                        "starts_at": a.get("startsAt"),
+                        "state": (a.get("status") or {}).get("state"),
+                    }
+                    for a in alerts
+                ]
+                return {
+                    "ok": True,
+                    "data": {
+                        "alerts_fired": len(summarized),
+                        "alerts": summarized,
+                        "filter_state": filter_state,
+                        "stub": False,
+                        "real_backing": "alertmanager",
+                    },
+                }
+        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+            return {
+                "ok": False,
+                "error": {
+                    "code": "alertmanager_unreachable",
+                    "url": ALERTMANAGER_URL,
+                    "message": str(exc),
+                },
+            }
 
     return {
         "ok": False,
