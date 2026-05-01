@@ -185,7 +185,7 @@ class TestBodyHandling:
         app, _ = app_factory()
         store.get.return_value = None
         with TestClient(app) as client:
-            r = client.post(
+            client.post(
                 "/api/charge",
                 headers={"X-Tenant-ID": "t1", "X-Idempotency-Key": "k1"},
             )
