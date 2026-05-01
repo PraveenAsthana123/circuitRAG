@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Query
 from mcp import MCPClient
 
 from .core.config import AgentOrchestratorSettings
+from .model_catalog import get_catalog, validate_catalog
 from .models import (
     AgenticPolicyUpdateRequest,
     AgenticPolicyView,
@@ -25,6 +26,7 @@ from .models import (
     CreateProjectRequest,
     CreateTaskRequest,
     MemoryRecordView,
+    ModelCatalogEntryView,
     ProjectPlanItemView,
     ProjectView,
     TaskRunView,
@@ -145,6 +147,32 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/agentic/agents", response_model=list[AgentRoleView])
     async def list_agents() -> list[AgentRoleView]:
         return await app.state.service.list_agents()
+
+    @app.get("/api/v1/agentic/models/catalog", response_model=list[ModelCatalogEntryView])
+    async def list_model_catalog() -> list[ModelCatalogEntryView]:
+        catalog = get_catalog()
+        errors = validate_catalog(catalog)
+        if errors:
+            # Negative-assertion contract from drill_model_catalog.py: a malformed
+            # catalog entry MUST raise 500, never silently default. Keeps routing
+            # decisions auditable per §47.3.
+            raise HTTPException(status_code=500, detail={"catalog_errors": errors})
+        return [
+            ModelCatalogEntryView(
+                role_id=e.role_id,
+                role_type=e.role_type,
+                display_name=e.display_name,
+                tier_a_primary=e.tier_a_primary,
+                tier_a_backup=e.tier_a_backup,
+                tier_a_heavy=e.tier_a_heavy,
+                tier_b=e.tier_b,
+                tier_b_backend=e.tier_b_backend,
+                description=e.description,
+                strengths=list(e.strengths),
+                min_ram_gb=e.min_ram_gb,
+            )
+            for e in catalog
+        ]
 
     @app.get("/api/v1/agentic/tasks", response_model=list[TaskView])
     async def list_tasks(limit: int = 20) -> list[TaskView]:

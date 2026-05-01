@@ -200,3 +200,17 @@ class AgentRoleView(BaseModel):
     model: str
     description: str
     source_agent_name: str | None = None
+
+
+class ModelCatalogEntryView(BaseModel):
+    role_id: str
+    role_type: str
+    display_name: str
+    tier_a_primary: str
+    tier_a_backup: str
+    tier_a_heavy: str | None = None
+    tier_b: str | None = None
+    tier_b_backend: str = "claude_cli"
+    description: str
+    strengths: list[str] = Field(default_factory=list)
+    min_ram_gb: int = 8
