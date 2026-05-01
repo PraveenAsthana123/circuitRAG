@@ -10,6 +10,8 @@ from documind_core.db_client import DbClient
 from documind_core.logging_config import setup_logging
 from documind_core.body_limit import BodyLimitMiddleware
 from documind_core.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware, register_exception_handlers
+
+from .rate_limit import RateLimitMiddleware
 from documind_core.observability import instrument_fastapi, instrument_httpx, setup_observability
 from fastapi import FastAPI, HTTPException, Query
 
@@ -126,6 +128,11 @@ def create_app() -> FastAPI:
     # 1 MiB default for tasks API; upload routes (none today) would
     # need larger cap via path_overrides.
     app.add_middleware(BodyLimitMiddleware, max_bytes=1024 * 1024)
+    # P1 #33 (rate limit) — per-tenant + per-IP sliding-window limiter
+    # on POST /api/v1/agentic/tasks. 60 requests/minute default.
+    # Single-pod in-memory; multi-pod prod swaps in redis-backed
+    # documind_core.RateLimitMiddleware via env config.
+    app.add_middleware(RateLimitMiddleware, limit_per_minute=60)
     register_exception_handlers(app)
 
     @app.get("/health/live")
