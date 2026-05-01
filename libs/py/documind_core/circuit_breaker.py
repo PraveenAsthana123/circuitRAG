@@ -280,6 +280,12 @@ class CircuitBreaker:
         # Default None = disabled (legacy).
         slow_call_threshold_s: float | None = None,
         slow_call_rate: float = 0.5,
+        # CB-D #20: state-change callback. Fires exactly once per real
+        # transition. Exceptions raised by the callback are caught and
+        # logged — the breaker continues working even if the callback
+        # is broken (paging integrations are not on the critical path).
+        # Signature: (from_state, to_state, breaker_name) -> None.
+        on_state_change: Callable[[State, State, str], None] | None = None,
     ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
@@ -300,6 +306,12 @@ class CircuitBreaker:
         self.max_concurrent = max_concurrent
         self.slow_call_threshold_s = slow_call_threshold_s
         self.slow_call_rate = max(0.0, min(1.0, slow_call_rate))
+        self.on_state_change = on_state_change
+        # CB-D #19: operator-forced state. When set, the normal state
+        # machine is bypassed — _state is read from these flags first.
+        self._forced_state: State | None = None
+        self._forced_reason: str | None = None
+        self._forced_until: float | None = None  # monotonic deadline; None = forever
 
         self._state: State = State.CLOSED
         self._failure_count = 0
@@ -394,6 +406,106 @@ class CircuitBreaker:
         cause = exc if exc is not None else _BreakerCallFailed()
         self._on_failure_sync(cause)
 
+    # ------------------------------------------------------------------
+    # CB-D #19: operator override API.
+    #
+    # Operators need a knob for: planned maintenance (force_open),
+    # known-good downstream after a fix (force_closed), and counter-
+    # reset after manually verifying recovery (reset). Each emits a
+    # distinct log line so audit can show "this state was forced."
+    # ------------------------------------------------------------------
+    def force_open(
+        self,
+        *,
+        reason: str = "operator_forced",
+        ttl_s: float | None = 3600,
+    ) -> None:
+        """Force the breaker OPEN. ``ttl_s`` is the auto-expiry — defaults
+        to 1 hour so a forgotten force eventually self-clears. Set None
+        to force-forever (operator must call reset() to undo).
+        """
+        with self._lock:
+            self._forced_state = State.OPEN
+            self._forced_reason = reason
+            self._forced_until = (time.monotonic() + ttl_s) if ttl_s is not None else None
+            self._opened_at = time.monotonic()
+            self._transition(State.OPEN)
+            log.warning(
+                "circuit_force_open name=%s reason=%s ttl=%s",
+                self.name, reason, ttl_s,
+            )
+
+    def force_closed(
+        self,
+        *,
+        reason: str = "operator_forced",
+        ttl_s: float | None = None,
+    ) -> None:
+        """Force the breaker CLOSED. ``ttl_s`` defaults to None (until
+        operator calls reset()) — a forced-closed should hold until the
+        operator explicitly relinquishes control."""
+        with self._lock:
+            self._forced_state = State.CLOSED
+            self._forced_reason = reason
+            self._forced_until = (time.monotonic() + ttl_s) if ttl_s is not None else None
+            self._failure_count = 0
+            self._consecutive_open_count = 0
+            self._half_open_successes = 0
+            self._half_open_slots = self.half_open_max_concurrent
+            self._window.clear()
+            self._slow_window.clear()
+            self._transition(State.CLOSED)
+            log.warning(
+                "circuit_force_closed name=%s reason=%s ttl=%s",
+                self.name, reason, ttl_s,
+            )
+
+    def reset(self, *, reason: str = "operator_reset") -> None:
+        """Reset to CLOSED with all counters zeroed. Releases any
+        force_open/force_closed override."""
+        with self._lock:
+            self._forced_state = None
+            self._forced_reason = None
+            self._forced_until = None
+            self._failure_count = 0
+            self._consecutive_open_count = 0
+            self._half_open_successes = 0
+            self._half_open_slots = self.half_open_max_concurrent
+            self._window.clear()
+            self._slow_window.clear()
+            self._transition(State.CLOSED)
+            log.warning("circuit_reset name=%s reason=%s", self.name, reason)
+
+    @property
+    def is_forced(self) -> bool:
+        """True if currently in an operator-forced state (open or closed).
+        Caller can check this to decide whether to display a 'forced'
+        badge on dashboards."""
+        with self._lock:
+            self._maybe_clear_expired_force()
+            return self._forced_state is not None
+
+    @property
+    def forced_reason(self) -> str | None:
+        with self._lock:
+            self._maybe_clear_expired_force()
+            return self._forced_reason
+
+    def _maybe_clear_expired_force(self) -> None:
+        """Auto-expire forced state when ttl elapses. Called inside locks."""
+        if (
+            self._forced_state is not None
+            and self._forced_until is not None
+            and time.monotonic() >= self._forced_until
+        ):
+            log.warning(
+                "circuit_force_expired name=%s prior_reason=%s",
+                self.name, self._forced_reason,
+            )
+            self._forced_state = None
+            self._forced_reason = None
+            self._forced_until = None
+
     async def call_async(self, fn: Callable[[], Awaitable[T]]) -> T:
         """Invoke ``fn()`` through the breaker. Awaitable entry point.
 
@@ -466,6 +578,21 @@ class CircuitBreaker:
     # ------------------------------------------------------------------
     def _before_call(self) -> None:
         with self._lock:
+            self._maybe_clear_expired_force()
+            # CB-D #19: forced state bypasses the normal state machine.
+            if self._forced_state is State.OPEN:
+                self._bump_rejections()
+                raise CircuitOpenError(
+                    f"Circuit '{self.name}' is OPEN (forced)",
+                    details={
+                        "name": self.name,
+                        "forced": True,
+                        "reason": self._forced_reason,
+                    },
+                )
+            if self._forced_state is State.CLOSED:
+                # Forced closed → always proceed; no recovery checks.
+                return
             if self._state is State.OPEN:
                 if time.monotonic() - self._opened_at >= self._effective_recovery_timeout():
                     self._transition(State.HALF_OPEN)
@@ -637,12 +764,24 @@ class CircuitBreaker:
     # Helpers
     # ------------------------------------------------------------------
     def _transition(self, new: State) -> None:
-        if self._state is not new:
-            log.info("circuit_transition name=%s from=%s to=%s", self.name, self._state.value, new.value)
+        prev = self._state
+        if prev is not new:
+            log.info("circuit_transition name=%s from=%s to=%s", self.name, prev.value, new.value)
         self._state = new
         self._set_metric_state()
         # CB-C #17: update stuck-in-OPEN duration gauge on every transition.
         self._update_open_duration()
+        # CB-D #20: fire on_state_change callback exactly once per real
+        # transition. Caught + logged — broken callback must NOT crash
+        # the breaker (paging hooks are out-of-band, not critical-path).
+        if prev is not new and self.on_state_change is not None:
+            try:
+                self.on_state_change(prev, new, self.name)
+            except Exception as cb_exc:  # noqa: BLE001
+                log.error(
+                    "circuit_breaker_callback_failed name=%s from=%s to=%s err=%s",
+                    self.name, prev.value, new.value, type(cb_exc).__name__,
+                )
 
     def _set_metric_state(self) -> None:
         # Delegate to the shared helper so the transition counter
