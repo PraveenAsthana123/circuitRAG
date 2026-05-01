@@ -17,6 +17,7 @@ into the task_runs.outputs payload (A5 adds the column).
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
@@ -180,7 +181,22 @@ class StrategistAgent:
                         break  # this {...} done; advance start to next '{'
         return None
 
-    async def classify(self, goal: str) -> dict[str, Any]:
+    async def classify(self, goal: str, *, classify_timeout_s: float = 30.0) -> dict[str, Any]:
+        # P0 #1 (strategist): own deadline. Even when caller doesn't
+        # configure pool's call_timeout_s, the strategist enforces an
+        # outer 30s deadline. Heuristic fallback on timeout — never
+        # blocks the graph indefinitely.
+        try:
+            return await asyncio.wait_for(
+                self._classify_unbounded(goal),
+                timeout=classify_timeout_s,
+            )
+        except asyncio.TimeoutError:
+            heuristic = self._heuristic_classification(goal)
+            heuristic["llm_unavailable"] = f"strategist exceeded {classify_timeout_s}s"
+            return heuristic
+
+    async def _classify_unbounded(self, goal: str) -> dict[str, Any]:
         if self._pool is not None and self._route_fn is not None and self._spec is not None:
             prompt = self._spec.prompt_template.format(goal=goal)
             try:
