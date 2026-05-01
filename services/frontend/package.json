@@ -14,7 +14,8 @@
     "format": "prettier --write \"{app,components,lib,utils,e2e}/**/*.{ts,tsx,js,json,md,css}\"",
     "format:check": "prettier --check \"{app,components,lib,utils,e2e}/**/*.{ts,tsx,js,json,md,css}\"",
     "validate": "npm run lint && npm run format:check && npm run test",
-    "pre-merge": "npm run validate && npm run build"
+    "pre-merge": "npm run validate && npm run build",
+    "check:prod": "node ../../scripts/production-checker.js"
   },
   "dependencies": {
     "mermaid": "^11.14.0",
