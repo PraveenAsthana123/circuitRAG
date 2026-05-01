@@ -19,6 +19,10 @@
 --   orchestration.agent_task_runs                 [007]
 --   orchestration.agent_approvals                 [007]
 --   orchestration.agent_memories                  [007]
+--   orchestration.research_artifacts              [009]
+--   orchestration.test_results                    [010]
+--   orchestration.deploy_records                  [011]
+--   orchestration.observe_windows                 [012]
 --   orchestration.tenant_budgets                  [013]
 --   orchestration.idempotency_keys                [014]
 --
@@ -39,7 +43,8 @@ BEGIN
       AND c.relname IN (
         'agent_tasks', 'agent_projects', 'agent_project_plan_items',
         'agent_task_runs', 'agent_approvals', 'agent_memories',
-        'tenant_budgets', 'idempotency_keys'
+        'research_artifacts', 'test_results', 'deploy_records',
+        'observe_windows', 'tenant_budgets', 'idempotency_keys'
       )
       AND c.relrowsecurity = false;
     IF FOUND THEN
