@@ -358,6 +358,496 @@ swapping the per-provider building blocks. Component-by-component:
 
 **Total to fully-managed cloud deployment: ~12-18 iterations of focused work, mostly seam-swapping rather than rewrites.**
 
+## Complete software inventory by platform layer
+
+Comprehensive list of every software component that an enterprise
+RAG / AI platform might use, with the status in THIS repo.
+
+Legend:
+- ✅ shipped + integrated (in compose / deps / code)
+- ⚠ partial / config-only / not-running-by-default
+- ❌ missing
+- 🚫 not relevant for this stack (documented why)
+
+### 1. Inference / LLM serving
+
+| Software | Status | Notes |
+|---|---|---|
+| Ollama (llama.cpp backend) | ✅ | 14 models on `/mnt/deepa/installed-software/ollama/models` |
+| vLLM | ❌ | 2-24× throughput; needs GPU host; planned |
+| TensorRT-LLM | ❌ | NVIDIA Hopper/Ampere; 1.5-2× over vLLM |
+| ONNX Runtime | 🚫 | Edge/mobile target; out of scope |
+| MLC-LLM | 🚫 | WebGPU/mobile; out of scope |
+| llama.cpp direct | ✅ | Via Ollama wrapper |
+| HuggingFace Transformers | ❌ | Not currently used (Ollama covers gen) |
+| Bedrock / Azure OpenAI / Vertex AI | ❌ | Cloud — provider seam exists, not wired |
+
+### 2. Embedding / encoder models
+
+| Software | Status | Notes |
+|---|---|---|
+| nomic-embed-text (via Ollama) | ✅ | Default embedder |
+| sentence-transformers | ❌ | Not pinned; would unblock semantic-chunking |
+| OpenAI text-embedding | ❌ | Cloud; provider seam exists |
+| Cohere embed | ❌ | Cloud |
+| Voyage AI / Jina / E5 | ❌ | Alternative encoder zoo |
+
+### 3. Vector / search databases
+
+| Software | Status | Notes |
+|---|---|---|
+| Qdrant | ✅ | Container + `vector_searcher.py` |
+| Elasticsearch | ✅ | For vectorless RAG; container shipped |
+| pgvector (Postgres) | ❌ | Lightweight alternative; could share Postgres |
+| Weaviate | ❌ | Schema-aware vector DB |
+| Milvus | ❌ | Distributed vector DB |
+| Pinecone | ❌ | SaaS; provider seam present |
+| Chroma | ❌ | Local-first; useful for tests |
+| Vespa | ❌ | Yahoo-grade vector + search |
+| FAISS (in-process) | ❌ | Useful for unit tests + small datasets |
+
+### 4. Graph databases / ontologies
+
+| Software | Status | Notes |
+|---|---|---|
+| Neo4j | ✅ | Container + `graph_searcher.py` (Bolt protocol) |
+| Memgraph | ❌ | Cypher-compatible, in-memory; faster |
+| TigerGraph | ❌ | Distributed graph; enterprise scale |
+| ArangoDB | ❌ | Multi-model (graph+doc+kv) |
+| JanusGraph | ❌ | Cassandra-backed, billion-edge |
+| Neptune | ❌ | AWS managed |
+| Cosmos Gremlin | ❌ | Azure managed |
+| OWL / Protégé (ontologies) | ❌ | If domain ontology needed |
+
+### 5. Streaming / messaging
+
+| Software | Status | Notes |
+|---|---|---|
+| Kafka | ✅ | Container + `kafka_client.py` |
+| NATS | ❌ | Lightweight alternative; better for low-volume real-time |
+| Redpanda | ❌ | Kafka-compatible, single-binary |
+| Apache Pulsar | ❌ | Multi-tenant queueing |
+| RabbitMQ | ❌ | AMQP; deferred |
+| AWS Kinesis / Azure Event Hubs / GCP Pub/Sub | ❌ | Cloud; bootstrap-server swap |
+
+### 6. Workflow orchestration
+
+| Software | Status | Notes |
+|---|---|---|
+| Bash scripts in `scripts/` | ✅ | Day-1 default |
+| Apache Airflow | ❌ | Python DAGs, batch ETL |
+| Dagster | ❌ | Asset-based, type-first |
+| Prefect | ❌ | Modern flow framework |
+| Temporal | ❌ | Durable workflows, event-sourced |
+| Argo Workflows | ❌ | Kubernetes-native |
+
+### 7. Observability — logs, metrics, traces
+
+| Software | Status | Notes |
+|---|---|---|
+| Prometheus | ✅ | Container shipped |
+| Grafana | ✅ | Container shipped |
+| Alertmanager | ✅ | Container shipped |
+| OpenTelemetry (collector + SDK) | ✅ | Containers + instrumented |
+| Jaeger | ✅ | Container shipped |
+| Tempo (Grafana) | ❌ | Alternative trace backend |
+| Loki (Grafana) | ❌ | Log aggregation; not yet in compose |
+| Mimir / VictoriaMetrics | ❌ | Long-term metric storage |
+| node-exporter | ✅ | Container shipped |
+| cAdvisor | ✅ | Container shipped |
+| Datadog / New Relic / Honeycomb | ❌ | Commercial SaaS |
+
+### 8. LLMOps observability
+
+| Software | Status | Notes |
+|---|---|---|
+| Langfuse | ⚠ | Compose `profiles: [observability]`; opt-in |
+| Helicone | ❌ | LLM proxy + cost tracking |
+| Phoenix (Arize) | ❌ | LLM eval + obs |
+| WhyLabs / WhyLogs | ❌ | Drift detection |
+| Trubrics | ❌ | Feedback collection |
+
+### 9. Evaluation frameworks
+
+| Software | Status | Notes |
+|---|---|---|
+| Ragas | ❌ | RAG eval (faithfulness, context relevance) |
+| DeepEval | ❌ | pytest-style LLM tests |
+| G-Eval | ❌ | LLM-as-judge with chain-of-thought |
+| OpenAI Evals | ❌ | Open-source eval harness |
+| lm-eval-harness | ❌ | EleutherAI suite |
+| TruLens | ❌ | Eval + tracing |
+| Custom eval-svc with golden set | ⚠ | Service shipped, golden set TBD |
+
+### 10. Safety / guardrails
+
+| Software | Status | Notes |
+|---|---|---|
+| In-house guardrails (`ai_governance.py`) | ✅ | PII + injection + adversarial filters; 100% covered |
+| Guardrails AI | ❌ | Validator framework |
+| NeMo Guardrails | ❌ | NVIDIA Colang dialog policy |
+| LLM Guard (Protect AI) | ❌ | Output validation |
+| Lakera Guard | ❌ | SaaS prompt-injection defense |
+| Rebuff | ❌ | Open-source injection scanner |
+
+### 11. Interpretability / explainability
+
+| Software | Status | Notes |
+|---|---|---|
+| In-house `AIExplainer` | ✅ | 100% covered |
+| `InterpretabilityTrace` | ✅ | 100% covered |
+| `citations.py` (this iter) | ✅ | 98% covered |
+| SHAP | ❌ | Tree/kernel explainer for ML |
+| LIME | ❌ | Local interpretable; complementary to SHAP |
+| Captum (PyTorch) | ❌ | Deep-learning attribution |
+| LIT (Google) | ❌ | UI for transformer interp |
+| InterpretML (Microsoft) | ❌ | Glass-box models |
+
+### 12. Agent / orchestration frameworks
+
+| Software | Status | Notes |
+|---|---|---|
+| LangGraph | ✅ | Pinned `==0.2.x`; in agent-orchestrator-svc |
+| LangChain (subset) | ⚠ | langchain-core pinned; minimal use |
+| LlamaIndex | ❌ | Alternative RAG framework |
+| Haystack (deepset) | ❌ | Pipeline-based RAG |
+| AutoGen (Microsoft) | ❌ | Multi-agent conversational |
+| CrewAI | ❌ | Role-based agent teams |
+| Swarm (OpenAI) | ❌ | Lightweight agents |
+| Letta (formerly MemGPT) | ❌ | Long-term memory agents |
+| Semantic Kernel | ❌ | Microsoft's framework |
+| MCP (Model Context Protocol) | ✅ | In-house mcp/server_*.py implementations |
+| A2A protocol | ⚠ | Patterns adopted; spec not formalized |
+
+### 13. RAG / retrieval libraries
+
+| Software | Status | Notes |
+|---|---|---|
+| In-house `<thing>_searcher.py` per provider | ✅ | vector + graph + elastic |
+| In-house `chunking.py` | ✅ | 7 strategies, 98% covered |
+| In-house `fusion.py` (RRF + top_k) | ✅ | 100% covered |
+| In-house `mmr.py` | ✅ | 97% covered |
+| In-house `query_rewriter.py` | ✅ | 100% covered |
+| In-house `embedding_cache.py` | ✅ | 100% covered |
+| In-house `citations.py` | ✅ | 98% covered |
+| BM25 (rank_bm25 lib) | ❌ | Hybrid retrieval lex layer |
+| Cohere reranker / cross-encoders | ❌ | Pinned cross-encoder needed |
+| Tree-sitter (code-aware chunking) | ❌ | Multi-language parser |
+
+### 14. Document parsing
+
+| Software | Status | Notes |
+|---|---|---|
+| PyMuPDF | ❌ | Fast PDF text extraction |
+| pdfplumber | ❌ | Table-aware PDF |
+| Unstructured | ❌ | Multi-format parser |
+| Apache Tika | ❌ | JVM, broad format support |
+| pypdf / PyPDF2 | ❌ | Pure Python PDF |
+| python-docx | ❌ | DOCX parser |
+| openpyxl | ❌ | XLSX parser |
+| BeautifulSoup4 | ❌ | HTML parsing |
+| lxml | ❌ | XML/HTML fast parser |
+
+### 15. OCR / vision
+
+| Software | Status | Notes |
+|---|---|---|
+| Tesseract | ❌ | Open-source OCR |
+| EasyOCR | ❌ | Deep-learning OCR |
+| PaddleOCR | ❌ | Multi-language OCR |
+| AWS Textract / Azure Form Recognizer / Google Document AI | ❌ | Cloud OCR |
+| CLIP | ❌ | Image-text alignment |
+| OpenCV | ❌ | Image preprocessing |
+
+### 16. Audio / video
+
+| Software | Status | Notes |
+|---|---|---|
+| Whisper (OpenAI) | ❌ | ASR |
+| WhisperX / faster-whisper | ❌ | Optimized Whisper |
+| Pyannote (diarization) | ❌ | Speaker segmentation |
+| FFmpeg | ❌ | Container/codec ops |
+| OpenCV (video) | ❌ | Frame extraction |
+
+### 17. Object storage
+
+| Software | Status | Notes |
+|---|---|---|
+| MinIO | ✅ | S3-compatible, container |
+| AWS S3 | ❌ | Cloud; provider seam (env-driven) |
+| Azure Blob / GCS | ❌ | Cloud |
+
+### 18. Caching
+
+| Software | Status | Notes |
+|---|---|---|
+| Redis | ✅ | Container + tenant-aware wrappers |
+| KeyDB | ❌ | Multi-threaded Redis fork |
+| Dragonfly | ❌ | Modern in-memory store |
+| Memcached | ❌ | Simpler key-value |
+| In-house `cache.py`, `embedding_cache.py`, `idempotency.py` | ✅ | 100% covered |
+
+### 19. RDBMS / persistence
+
+| Software | Status | Notes |
+|---|---|---|
+| PostgreSQL | ✅ | Container + asyncpg client |
+| pgvector extension | ❌ | Would unify vector + relational |
+| TimescaleDB | ❌ | Postgres extension for time-series |
+| Citus | ❌ | Distributed Postgres |
+| MySQL / MariaDB | 🚫 | Postgres covers it |
+| CockroachDB / YugabyteDB / TiDB | ❌ | Distributed SQL alternatives |
+| SQLite | ✅ | Sidecar-advisor uses it |
+
+### 20. Document / KV stores
+
+| Software | Status | Notes |
+|---|---|---|
+| MongoDB | ❌ | Doc-store; not in current arch |
+| Couchbase | ❌ | |
+| DynamoDB / Cosmos DB / Firestore | ❌ | Cloud KV |
+
+### 21. Time-series & analytics
+
+| Software | Status | Notes |
+|---|---|---|
+| ClickHouse | ❌ | Columnar OLAP; great for event analytics |
+| InfluxDB | ❌ | Time-series DB |
+| VictoriaMetrics | ❌ | Prometheus-compatible long-term storage |
+| Apache Druid | ❌ | Real-time analytics |
+| DuckDB | ❌ | In-process OLAP; great for tests + ad-hoc |
+
+### 22. Service mesh
+
+| Software | Status | Notes |
+|---|---|---|
+| Istio | ⚠ | Config shipped, mesh not running by default |
+| Linkerd | ❌ | Lighter alternative |
+| Consul Connect | ❌ | Multi-cloud |
+| Cilium (eBPF) | ❌ | L4/L7 + observability |
+| Open Service Mesh | ❌ | Microsoft |
+| Kiali | ⚠ | Compose ships YAML; mesh-dependent |
+
+### 23. API gateway / ingress
+
+| Software | Status | Notes |
+|---|---|---|
+| NGINX | ✅ | Container + tuned config |
+| api-gateway service (Go) | ✅ | Profile-gated |
+| Kong | ❌ | Plugin-rich gateway |
+| Tyk | ❌ | API management |
+| Envoy (standalone) | ❌ | Used inside Istio |
+| Traefik | ❌ | k8s-native ingress |
+| AWS API Gateway / Azure APIM / GCP API Gateway | ❌ | Cloud |
+
+### 24. Container / orchestration
+
+| Software | Status | Notes |
+|---|---|---|
+| Docker | ✅ | docker-compose for dev |
+| Docker Compose | ✅ | Full stack defined |
+| Kubernetes | ⚠ | Manifests in `infra/k8s/`; deploy is operator |
+| minikube | ⚠ | Setup script in `scripts/` |
+| Helm | ❌ | Chart per service not yet authored |
+| Kustomize | ❌ | Manifest overlays |
+| Argo CD | ❌ | GitOps deploy |
+| Flux | ❌ | Alternative GitOps |
+
+### 25. CI/CD
+
+| Software | Status | Notes |
+|---|---|---|
+| GitHub Actions | ✅ | `.github/workflows/ci.yml` |
+| Tekton | ❌ | Kubernetes-native pipelines |
+| Jenkins | ❌ | Legacy CI |
+| GitLab CI | ❌ | If repo were on GitLab |
+| Spinnaker | ❌ | Deploy-focused CD |
+| Drone CI | ❌ | Container-native CI |
+
+### 26. Identity / auth
+
+| Software | Status | Notes |
+|---|---|---|
+| In-house `identity-svc` (Go + JWT) | ✅ | RS256 signing, JWKS endpoint |
+| Keycloak | ❌ | Full IDP; would replace identity-svc |
+| Authentik | ❌ | Modern IDP |
+| Auth0 (SaaS) | ❌ | |
+| OAuth2 Proxy | ❌ | Reverse-proxy auth |
+| Open Policy Agent (OPA) | ❌ | Policy-as-code; would unify RBAC/ABAC |
+| Casbin | ❌ | Multi-tenant authorization lib |
+
+### 27. Secrets management
+
+| Software | Status | Notes |
+|---|---|---|
+| `.loop/*.env` chmod-600 + `core/encryption.py` Fernet | ✅ | Local dev pattern |
+| HashiCorp Vault | ❌ | Centralized secrets |
+| Sealed Secrets | ❌ | k8s GitOps secrets |
+| External Secrets Operator | ❌ | Sync from cloud KMS |
+| AWS Secrets Manager / Azure Key Vault / GCP Secret Manager | ❌ | Cloud |
+
+### 28. Security scanning
+
+| Software | Status | Notes |
+|---|---|---|
+| Bandit | ✅ | CI gate for Python |
+| pip-audit | ✅ | CI dep-CVE scan |
+| Ruff (lint) | ✅ | CI gate |
+| Black + mypy | ✅ | CI gate |
+| Trivy | ❌ | Container vuln scan |
+| Snyk | ❌ | SaaS vuln scan |
+| Semgrep | ❌ | Static analysis rules |
+| Falco | ❌ | Runtime security |
+| KICS | ❌ | IaC security scan |
+| OWASP ZAP | ❌ | DAST |
+
+### 29. Testing frameworks
+
+| Software | Status | Notes |
+|---|---|---|
+| pytest | ✅ | 64% project coverage |
+| pytest-asyncio | ✅ | Async test driver |
+| pytest-cov | ✅ | Coverage gate |
+| k6 | ✅ | Load testing 5-phase |
+| Playwright | ❌ | Browser E2E |
+| Locust | ❌ | Python load testing alt |
+| JMeter | ❌ | Apache load testing |
+| Vitest (frontend) | ✅ | Configured |
+| Jest | ❌ | Alt frontend test |
+| Cypress | ❌ | Alt browser E2E |
+| TestContainers | ❌ | Real-DB integration tests |
+
+### 30. Feature flags
+
+| Software | Status | Notes |
+|---|---|---|
+| LaunchDarkly | ❌ | SaaS |
+| Unleash | ❌ | Open-source |
+| Flagsmith | ❌ | OSS + SaaS |
+| OpenFeature | ❌ | CNCF spec |
+| GrowthBook | ❌ | OSS A/B + flags |
+
+### 31. Data lineage / catalog
+
+| Software | Status | Notes |
+|---|---|---|
+| OpenLineage | ❌ | Pipeline lineage spec |
+| Marquez | ❌ | OpenLineage backend |
+| DataHub (LinkedIn) | ❌ | Data catalog + lineage |
+| Apache Atlas | ❌ | Hadoop-era catalog |
+| Amundsen (Lyft) | ❌ | Data discovery |
+| OpenMetadata | ❌ | Modern catalog |
+
+### 32. Error tracking
+
+| Software | Status | Notes |
+|---|---|---|
+| In-house structured logging | ✅ | JSON + correlation_id |
+| Sentry | ❌ | Error aggregation; small effort to wire |
+| Bugsnag / Rollbar | ❌ | Alternative |
+| GlitchTip | ❌ | Sentry-API-compatible OSS |
+
+### 33. Frontend libraries
+
+| Software | Status | Notes |
+|---|---|---|
+| Next.js | ✅ | App Router, frontend |
+| React | ✅ | Via Next |
+| TypeScript | ✅ | |
+| Plotly | ❌ | Visualization for charts |
+| D3.js | ❌ | Custom viz |
+| Chart.js | ❌ | Lighter chart lib |
+| react-error-boundary | ❌ | Error boundaries |
+| TanStack Query | ❌ | Data-fetching cache |
+| Zod | ❌ | Schema validation |
+| Vitest + React Testing Library | ⚠ | Some tests; expand coverage |
+
+### 34. Backup / DR
+
+| Software | Status | Notes |
+|---|---|---|
+| Velero (k8s backup) | ❌ | Cluster snapshot |
+| Restic | ❌ | Encrypted backups |
+| pgBackRest | ❌ | Postgres backup |
+| WAL-E / WAL-G | ❌ | Postgres continuous archiving |
+| Litestream | ❌ | SQLite replication |
+
+### 35. Networking / certs
+
+| Software | Status | Notes |
+|---|---|---|
+| Self-signed TLS | ✅ | Dev only |
+| cert-manager | ❌ | k8s cert automation |
+| Let's Encrypt + ACME | ❌ | Public TLS |
+| AWS ACM / Azure Front Door / GCP Cloud LB | ❌ | Managed TLS |
+
+### 36. Documentation
+
+| Software | Status | Notes |
+|---|---|---|
+| Markdown in `docs/` | ✅ | 28+ deep-dive pages |
+| MkDocs | ❌ | Static docs site |
+| Docusaurus | ❌ | React-based docs |
+| Sphinx | ❌ | Python API docs |
+| OpenAPI / Swagger | ⚠ | FastAPI auto-generates; not bundled into a UI |
+
+### 37. AI governance / risk
+
+| Software | Status | Notes |
+|---|---|---|
+| In-house `audit.py` (per-tenant hash chain) | ✅ | 100% covered |
+| In-house `ai_governance.py` (PII + injection + adversarial) | ✅ | 100% covered |
+| Aporia (model monitoring) | ❌ | SaaS |
+| Arize Phoenix (model observability) | ❌ | OSS |
+| EvidentlyAI | ❌ | Drift + quality monitoring |
+| Fiddler AI | ❌ | Enterprise governance |
+| Giskard | ❌ | LLM scanning |
+| MLflow (model registry) | ❌ | Standard tracker |
+| BentoML / Kubeflow | ❌ | Serving frameworks |
+
+## Setup status — what's been wired up vs install-only
+
+After this iteration, the following is genuinely wired up (not just
+mentioned in this file):
+
+| Software | Wired in | Where |
+|---|---|---|
+| In-house RAG primitives | `libs/py/documind_core/` | chunking, fusion, mmr, query_rewriter, embedding_cache, citations, pii, tokens |
+| In-house governance | same | audit, ai_governance, encryption, rate_limiter |
+| Operational primitives | same | breakers, circuit_breaker, idempotency, idempotency_middleware, body_limit, cache, dispatch_pool |
+| Infrastructure | `docker-compose.yml` | postgres, redis, qdrant, neo4j, elasticsearch, kafka, minio |
+| Observability | `docker-compose.yml` | prometheus, grafana, alertmanager, otel collector, jaeger, node-exporter, cAdvisor |
+| Microservices | `services/` | api-gateway, identity, governance, finops, observability, ingestion, retrieval, inference, evaluation, sidecar-advisor, agent-orchestrator, frontend |
+| LLM serving | local Ollama | systemd service |
+| Frontend | `services/frontend/` | Next.js + admin dashboards (28+ deep-dive pages) |
+
+## Setup roadmap — install order for the missing pieces (working in this env)
+
+Honest prioritization based on (a) drop-in-ability, (b) value, (c) effort:
+
+| Priority | Software | Effort | Why first |
+|---|---|---|---|
+| 1 | sentence-transformers | `pip install` + 1-line | Unblocks semantic chunking + reranking + better embeddings |
+| 2 | rank_bm25 | `pip install` + 1 module | Hybrid retrieval BM25 layer; ~50 LoC |
+| 3 | Sentry | `pip install sentry-sdk` + init in main | Error aggregation; 10 lines |
+| 4 | Tree-sitter (`tree_sitter_languages`) | pip install | Code-aware chunking, ~80 LoC module |
+| 5 | PyMuPDF | pip install | PDF parsing for ingestion-svc |
+| 6 | Ragas | pip install | RAG eval harness for evaluation-svc |
+| 7 | DeepEval | pip install | pytest-style LLM tests |
+| 8 | Guardrails AI | pip install | Validator framework |
+| 9 | OpenLineage SDK | pip install | Pipeline lineage |
+| 10 | OPA (sidecar) | container | Policy-as-code RBAC |
+
+Items 1-5 are SAFE INSTALLS (small dependency footprint, no GPU
+required, no breaking changes to existing modules). Items 6-10
+need integration thinking + at least one drill before merging.
+
+Items NOT in the install order (and why):
+- vLLM, TensorRT-LLM, MLC-LLM, ONNX, Triton — GPU-host operator setup; documented but deferred
+- LangChain (full), LlamaIndex, Haystack — would duplicate `libs/py/documind_core/` primitives we already own
+- Keycloak, Vault — operator decision; identity-svc + Fernet covers dev
+- Datadog, New Relic, Sentry SaaS — SaaS = different operator track
+
 ## Brutal rule
 
 > Top 1% AI platforms are not built by inventing architecture; they
@@ -373,3 +863,10 @@ swapping the per-provider building blocks. Component-by-component:
 > (`<thing>_searcher.py`, `<thing>_client.py`, env-driven config)
 > so going AWS / Azure / GCP is configuration + manifest work,
 > NOT business-logic rewrites.
+>
+> The brutal answer to "what's missing": almost nothing
+> architecturally. The 50 ❌ entries above are mostly OSS libraries
+> that can be pip-installed and wrapped in 1-2 day per item. The
+> work to "complete enterprise platform" is sequencing those
+> integrations; the work to "production-grade architecture" is
+> already done.

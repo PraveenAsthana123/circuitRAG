@@ -81,9 +81,10 @@ omit = ["**/tests/**", "**/__init__.py"]
 #  2026-04-30 — after embedding_cache + citations → 66.90%; floor=66
 #  2026-04-30 — after ai_governance → 100% + idempotency_middleware → 93%
 #               (project 68.69%); floor=68
+#  2026-04-30 — after bm25 + error_tracking modules → 69.45%; floor=69
 # Aspirational target is 80% (industry critical-paths-covered standard).
 # Never lower without ADR review.
-fail_under = 68
+fail_under = 69
 show_missing = true
 
 [tool.bandit]
