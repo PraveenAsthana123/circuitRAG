@@ -103,6 +103,28 @@ class ResearchAgent:
         *,
         complexity: str = "high",
         novelty: str = "novel",
+        research_timeout_s: float = 60.0,
+    ) -> dict[str, Any]:
+        # P0 #1 (research): own deadline. Even when caller doesn't
+        # configure pool's call_timeout_s, the researcher enforces an
+        # outer 60s deadline. Heuristic fallback on timeout.
+        import asyncio as _asyncio
+        try:
+            return await _asyncio.wait_for(
+                self._research_unbounded(topic, complexity=complexity, novelty=novelty),
+                timeout=research_timeout_s,
+            )
+        except _asyncio.TimeoutError:
+            heuristic = self._heuristic_research(topic)
+            heuristic["llm_unavailable"] = f"researcher exceeded {research_timeout_s}s"
+            return heuristic
+
+    async def _research_unbounded(
+        self,
+        topic: str,
+        *,
+        complexity: str = "high",
+        novelty: str = "novel",
     ) -> dict[str, Any]:
         # MCP research server path (when wired) — the production path.
         if self._mcp is not None:

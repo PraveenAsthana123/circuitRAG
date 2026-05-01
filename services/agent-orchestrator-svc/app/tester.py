@@ -53,6 +53,29 @@ class TesterAgent:
         runner: str = "pytest",
         complexity: str = "medium",
         novelty: str = "routine",
+        tests_timeout_s: float = 180.0,
+    ) -> dict[str, Any]:
+        import asyncio as _asyncio
+        try:
+            return await _asyncio.wait_for(
+                self._run_tests_unbounded(
+                    worker_output=worker_output, runner=runner,
+                    complexity=complexity, novelty=novelty,
+                ),
+                timeout=tests_timeout_s,
+            )
+        except _asyncio.TimeoutError:
+            heuristic = self._heuristic(runner)
+            heuristic["llm_unavailable"] = f"tester exceeded {tests_timeout_s}s"
+            return heuristic
+
+    async def _run_tests_unbounded(
+        self,
+        *,
+        worker_output: str,
+        runner: str = "pytest",
+        complexity: str = "medium",
+        novelty: str = "routine",
     ) -> dict[str, Any]:
         if self._mcp is not None:
             try:

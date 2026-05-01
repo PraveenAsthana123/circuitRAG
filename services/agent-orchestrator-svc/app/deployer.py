@@ -32,6 +32,23 @@ class DeployerAgent:
     async def preflight(
         self, *, diff_summary: str, target: str = "docker-compose",
         complexity: str = "high", novelty: str = "routine",
+        preflight_timeout_s: float = 60.0,
+    ) -> dict[str, Any]:
+        import asyncio as _asyncio
+        try:
+            return await _asyncio.wait_for(
+                self._preflight_unbounded(
+                    diff_summary=diff_summary, target=target,
+                    complexity=complexity, novelty=novelty,
+                ),
+                timeout=preflight_timeout_s,
+            )
+        except _asyncio.TimeoutError:
+            return self._heuristic(diff_summary, target, error=f"deployer exceeded {preflight_timeout_s}s")
+
+    async def _preflight_unbounded(
+        self, *, diff_summary: str, target: str = "docker-compose",
+        complexity: str = "high", novelty: str = "routine",
     ) -> dict[str, Any]:
         """Pre-flight ONLY. Never applies. Caller (service.py) must
         check approval before invoking the actual apply RPC."""
