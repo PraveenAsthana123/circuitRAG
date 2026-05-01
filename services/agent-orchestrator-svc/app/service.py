@@ -7,8 +7,19 @@ from typing import Any
 from mcp import MCPClient
 
 from .agent_registry import build_agent_specs
-from .agents import ManagerAgent, ReviewerAgent, SecurityAdvisor, WorkerAgent
+from .agents import ManagerAgent, ReviewerAgent, SecurityAdvisor, StrategistAgent, WorkerAgent
+from .deployer import DeployerAgent
 from .langgraph_flow import build_graph
+from .llm_clients import (
+    ClaudeCliClient,
+    CodexCliClient,
+    LlmClientPool,
+    OllamaHttpClient,
+)
+from .model_router import route as model_router_route
+from .observer import ObserverAgent
+from .research import ResearchAgent
+from .tester import TesterAgent
 from .models import (
     AgenticPolicyUpdateRequest,
     AgenticPolicyView,
@@ -44,6 +55,12 @@ class AgentOrchestratorService:
         reviewer_model: str = "starcoder2:7b",
         advisor_model: str = "kimi-k2:1t-cloud",
         security_advisor_model: str = "codellama:7b-instruct",
+        # D1: pipeline-v2 hooks. When pipeline_v2_enabled=True, the
+        # service builds the LlmClientPool + all 5 new agent classes
+        # (strategist, researcher, tester, deployer, observer) and
+        # passes them into build_graph. Default False preserves all
+        # existing behaviour (§28 backward compat).
+        pipeline_v2_enabled: bool = False,
     ) -> None:
         self._store = store or InMemoryTaskStore()
         self._default_policy = default_policy or AgenticPolicyView()
@@ -55,16 +72,77 @@ class AgentOrchestratorService:
             security_advisor_model=security_advisor_model,
         )
         spec_map = {spec.role_id: spec for spec in self._agent_specs}
-        self._graph = build_graph(
-            manager=ManagerAgent(),
-            worker=WorkerAgent(mcp_clients=mcp_clients, ollama=self._ollama, spec=spec_map["coder_executor"]),
-            reviewer=ReviewerAgent(ollama=self._ollama, spec=spec_map["reviewer"]),
-            advisor=SecurityAdvisor(ollama=self._ollama, spec=spec_map["advisor"]),
-            default_policy=self._default_policy,
+        self._pipeline_v2_enabled = pipeline_v2_enabled
+
+        # Build LlmClientPool (Tier-A always; Tier-B when CLIs are
+        # available on this host). The pool is held even when v2 is
+        # disabled so future opt-in can flip the flag without rebuilding.
+        self._pool: LlmClientPool | None = None
+        if pipeline_v2_enabled:
+            backends: dict[str, object] = {
+                "ollama": OllamaHttpClient(base_url=ollama_url, timeout_seconds=ollama_timeout_seconds),
+            }
+            # Tier-B clients: probe at construction time; if CLI missing,
+            # backend stays absent and router treats has_tier_b=False.
+            try:
+                claude = ClaudeCliClient()
+                backends["claude_cli"] = claude
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                codex = CodexCliClient()
+                backends["codex_cli"] = codex
+            except Exception:  # noqa: BLE001
+                pass
+            self._pool = LlmClientPool(backends)  # type: ignore[arg-type]
+
+        # New agents (B1, B2, B4, B5, B6). Constructed even when v2
+        # is off so external callers can read self._strategist etc.
+        # for ad-hoc use; build_graph only receives them when v2=True.
+        self._strategist = StrategistAgent(
+            ollama=self._ollama, spec=spec_map.get("strategist"),
+            pool=self._pool if pipeline_v2_enabled else None,
+            route_fn=model_router_route if pipeline_v2_enabled else None,
         )
+        self._researcher = ResearchAgent(
+            ollama=self._ollama, spec=spec_map.get("researcher"),
+            pool=self._pool if pipeline_v2_enabled else None,
+            route_fn=model_router_route if pipeline_v2_enabled else None,
+        )
+        self._tester = TesterAgent(
+            ollama=self._ollama, spec=spec_map.get("tester"),
+            pool=self._pool if pipeline_v2_enabled else None,
+            route_fn=model_router_route if pipeline_v2_enabled else None,
+        )
+        self._deployer = DeployerAgent(
+            ollama=self._ollama, spec=spec_map.get("deployer"),
+            pool=self._pool if pipeline_v2_enabled else None,
+            route_fn=model_router_route if pipeline_v2_enabled else None,
+        )
+        self._observer = ObserverAgent(
+            ollama=self._ollama, spec=spec_map.get("observer"),
+            pool=self._pool if pipeline_v2_enabled else None,
+            route_fn=model_router_route if pipeline_v2_enabled else None,
+        )
+
+        graph_kwargs: dict[str, object] = {
+            "manager": ManagerAgent(),
+            "worker": WorkerAgent(mcp_clients=mcp_clients, ollama=self._ollama, spec=spec_map["coder_executor"]),
+            "reviewer": ReviewerAgent(ollama=self._ollama, spec=spec_map["reviewer"]),
+            "advisor": SecurityAdvisor(ollama=self._ollama, spec=spec_map["advisor"]),
+            "default_policy": self._default_policy,
+        }
+        if pipeline_v2_enabled:
+            graph_kwargs["strategist"] = self._strategist
+            graph_kwargs["researcher"] = self._researcher
+            graph_kwargs["tester"] = self._tester
+            graph_kwargs["deployer"] = self._deployer
+        self._graph = build_graph(**graph_kwargs)  # type: ignore[arg-type]
 
     async def aclose(self) -> None:
         await self._ollama.close()
+        if self._pool is not None:
+            await self._pool.close()
 
     async def list_agents(self) -> list[AgentRoleView]:
         return [

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import Any, Optional, TypedDict
 
 from .agents import ManagerAgent, ReviewerAgent, SecurityAdvisor, WorkerAgent
 from .models import AgenticPolicyView
 from .policy import evaluate_approval_reasons
+
+
+# Type-only import marker (avoid circular imports for the new agents).
+# build_graph accepts Any for these so the legacy 4-agent path doesn't
+# need them at all.
 
 
 class AgenticState(TypedDict, total=False):
@@ -58,11 +63,128 @@ def build_graph(
     reviewer: ReviewerAgent,
     advisor: SecurityAdvisor,
     default_policy: AgenticPolicyView,
+    # D1: pipeline-v2 optional agents. When provided, build_graph
+    # inserts the corresponding nodes + edges. When omitted, the
+    # graph is identical to pre-D1 (backward compat per §28).
+    strategist: Any = None,
+    researcher: Any = None,
+    tester: Any = None,
+    deployer: Any = None,
 ):
     from langgraph.graph import END, StateGraph
 
+    pipeline_v2 = (
+        strategist is not None
+        or researcher is not None
+        or tester is not None
+        or deployer is not None
+    )
+
     async def entry_router(state: AgenticState) -> AgenticState:
         return state
+
+    async def strategist_classify(state: AgenticState) -> AgenticState:
+        # D1: classify task complexity/novelty so downstream nodes can
+        # consult them when routing. Strategist always runs at Tier B
+        # when pipeline_v2 + cloud CLI available; otherwise heuristic.
+        result = await strategist.classify(state["goal"])
+        events = list(state.get("audit_events", []))
+        events.append({
+            "role": "strategist",
+            "event": "classified",
+            "complexity": result.get("overall_complexity"),
+            "novelty": result.get("overall_novelty"),
+            "needs_research": result.get("needs_research"),
+            "source": result.get("source"),
+            "at": datetime.utcnow().isoformat(),
+        })
+        return {
+            "complexity": result.get("overall_complexity"),
+            "novelty": result.get("overall_novelty"),
+            "needs_research": bool(result.get("needs_research")),
+            "strategist_summary": result.get("summary"),
+            "status": "classified",
+            "audit_events": events,
+        }
+
+    async def researcher_node(state: AgenticState) -> AgenticState:
+        # D1: researcher runs only when strategist set needs_research=True.
+        out = await researcher.research(
+            state["goal"],
+            complexity=state.get("complexity") or "high",
+            novelty=state.get("novelty") or "novel",
+        )
+        events = list(state.get("audit_events", []))
+        events.append({
+            "role": "researcher", "event": "researched",
+            "source": out.get("source_origin"),
+            "sources_count": len(out.get("sources") or []),
+            "at": datetime.utcnow().isoformat(),
+        })
+        return {
+            "research_summary": out.get("summary"),
+            "research_sources": out.get("sources") or [],
+            "research_risks": out.get("risks") or [],
+            "status": "researched",
+            "audit_events": events,
+        }
+
+    async def tester_node(state: AgenticState) -> AgenticState:
+        # D1: tester runs after review_output (when not retrying coder)
+        # and before policy_evaluate. Failing tests cause retry-back
+        # to worker_execute with bumped retry counter (max 3 — same
+        # cap as B3 review-loop).
+        out = await tester.run_tests(
+            worker_output=state.get("worker_output") or "",
+            complexity=state.get("complexity") or "medium",
+            novelty=state.get("novelty") or "routine",
+        )
+        events = list(state.get("audit_events", []))
+        events.append({
+            "role": "tester", "event": "ran",
+            "passed": out.get("passed"),
+            "runner": out.get("runner"),
+            "source": out.get("source_origin"),
+            "at": datetime.utcnow().isoformat(),
+        })
+        return {
+            "tests_passed": bool(out.get("passed")),
+            "tests_failed": out.get("failed") or [],
+            "tests_runner": out.get("runner"),
+            "status": "tested",
+            "audit_events": events,
+        }
+
+    async def deployer_preflight(state: AgenticState) -> AgenticState:
+        # D1: §42 HARD STOP — deployer.preflight() NEVER auto-applies.
+        # It produces a preflight report that the operator reviews
+        # before approving the actual deploy (POST .../approve).
+        out = await deployer.preflight(
+            diff_summary=state.get("worker_output") or "",
+            target="docker-compose",
+            complexity=state.get("complexity") or "high",
+            novelty=state.get("novelty") or "routine",
+        )
+        events = list(state.get("audit_events", []))
+        events.append({
+            "role": "deployer", "event": "preflight",
+            "deploy_safety": out.get("deploy_safety"),
+            "auto_applied": out.get("auto_applied"),  # always False (drilled)
+            "approval_required": out.get("approval_required"),  # always True
+            "at": datetime.utcnow().isoformat(),
+        })
+        # Preflight ALWAYS sets approval_required=True (§42). The graph
+        # routes to human_gate after this node — never auto-finalises
+        # a deploy without the operator's approve_task call.
+        approval_reasons = list(state.get("approval_reasons") or [])
+        approval_reasons.append("deploy step requires human approval (§42 hard stop)")
+        return {
+            "deployer_safety": out.get("deploy_safety"),
+            "deployer_summary": out.get("summary"),
+            "approval_reasons": approval_reasons,
+            "status": "deploy_preflight_complete",
+            "audit_events": events,
+        }
 
     async def manager_plan(state: AgenticState) -> AgenticState:
         plan = await manager.plan(state["goal"])
@@ -236,30 +358,57 @@ def build_graph(
 
     graph = StateGraph(AgenticState)
     graph.add_node("entry_router", entry_router)
+    if strategist is not None:
+        graph.add_node("strategist_classify", strategist_classify)
+    if researcher is not None:
+        graph.add_node("researcher_node", researcher_node)
     graph.add_node("manager_plan", manager_plan)
     graph.add_node("worker_execute", worker_execute)
     graph.add_node("review_output", review_output)
     graph.add_node("review_retry_bump", review_retry_bump)  # B3
+    if tester is not None:
+        graph.add_node("tester_node", tester_node)
     graph.add_node("advisory_board", advisory_board)
     graph.add_node("policy_evaluate", policy_evaluate)
+    if deployer is not None:
+        graph.add_node("deployer_preflight", deployer_preflight)
     graph.add_node("human_gate_plan", human_gate_plan)
     graph.add_node("human_gate", human_gate)
     graph.add_node("finalize", finalize)
 
     graph.set_entry_point("entry_router")
-    graph.add_conditional_edges(
-        "entry_router",
-        route_entry,
-        {
-            "manager_plan": "manager_plan",
-            "worker_execute": "worker_execute",
-            "review_output": "review_output",
-            "advisory_board": "advisory_board",
-            "human_gate": "human_gate",
-            "human_gate_plan": "human_gate_plan",
-            "finalize": "finalize",
-        },
-    )
+
+    # D1: when v2, strategist_classify becomes the FIRST node after
+    # entry_router. When researcher is present, strategist routes
+    # through a 'needs_research?' conditional. When neither, the
+    # legacy flow (entry → manager_plan) preserves.
+    entry_dispatch = {
+        "manager_plan": "manager_plan",
+        "worker_execute": "worker_execute",
+        "review_output": "review_output",
+        "advisory_board": "advisory_board",
+        "human_gate": "human_gate",
+        "human_gate_plan": "human_gate_plan",
+        "finalize": "finalize",
+    }
+    if strategist is not None:
+        entry_dispatch["strategist_classify"] = "strategist_classify"
+    graph.add_conditional_edges("entry_router", route_entry, entry_dispatch)
+
+    if strategist is not None:
+        # strategist → researcher (if needs_research) or → manager_plan
+        def _route_after_strategist(state: AgenticState) -> str:
+            if researcher is not None and state.get("needs_research"):
+                return "researcher_node"
+            return "manager_plan"
+
+        post_strat_dispatch: dict[str, str] = {"manager_plan": "manager_plan"}
+        if researcher is not None:
+            post_strat_dispatch["researcher_node"] = "researcher_node"
+        graph.add_conditional_edges("strategist_classify", _route_after_strategist, post_strat_dispatch)
+
+    if researcher is not None:
+        graph.add_edge("researcher_node", "manager_plan")
     graph.add_conditional_edges(
         "manager_plan",
         route_after_plan,
@@ -269,16 +418,54 @@ def build_graph(
         },
     )
     graph.add_edge("worker_execute", "review_output")
+    review_dispatch = {
+        "review_retry_bump": "review_retry_bump",  # B3 retry path
+        "advisory_board": "advisory_board",
+        "policy_evaluate": "policy_evaluate",
+    }
+    if tester is not None:
+        # When tester wired, review's success path goes through tester first.
+        review_dispatch["tester_node"] = "tester_node"
+
+    def _route_after_review_v2(state: AgenticState) -> str:
+        # D1 extension of route_after_review: when tester is wired and
+        # review passes, route to tester_node before advisory/policy.
+        confidence = float(state.get("confidence") or 1.0)
+        retry_count = int(state.get("retry_count", 0))
+        if confidence < REVIEW_THRESHOLD and retry_count < MAX_REVIEW_ITERATIONS:
+            return "review_retry_bump"
+        if tester is not None:
+            return "tester_node"
+        if _needs_board(state):
+            return "advisory_board"
+        return "policy_evaluate"
+
     graph.add_conditional_edges(
         "review_output",
-        route_after_review,
-        {
-            "review_retry_bump": "review_retry_bump",  # B3 retry path
-            "advisory_board": "advisory_board",
-            "policy_evaluate": "policy_evaluate",
-        },
+        _route_after_review_v2 if tester is not None else route_after_review,
+        review_dispatch,
     )
     graph.add_edge("review_retry_bump", "worker_execute")  # B3 loop closure
+
+    if tester is not None:
+        # tester → if pass and risk warrants, advisor; else policy.
+        def _route_after_tester(state: AgenticState) -> str:
+            # Failed tests + retry available → loop to coder.
+            if not state.get("tests_passed") and int(state.get("retry_count", 0)) < MAX_REVIEW_ITERATIONS:
+                return "review_retry_bump"
+            if _needs_board(state):
+                return "advisory_board"
+            return "policy_evaluate"
+
+        graph.add_conditional_edges(
+            "tester_node",
+            _route_after_tester,
+            {
+                "review_retry_bump": "review_retry_bump",
+                "advisory_board": "advisory_board",
+                "policy_evaluate": "policy_evaluate",
+            },
+        )
     graph.add_conditional_edges(
         "advisory_board",
         route_after_board,
@@ -286,14 +473,36 @@ def build_graph(
             "policy_evaluate": "policy_evaluate",
         },
     )
+    # D1: when deployer wired, the no-gate path from policy_evaluate
+    # goes through deployer_preflight first (which ALWAYS adds an
+    # approval_reason → routes to human_gate per §42).
+    policy_dispatch = {
+        "human_gate": "human_gate",
+        "finalize": "finalize",
+    }
+    if deployer is not None:
+        policy_dispatch["deployer_preflight"] = "deployer_preflight"
+
+    def _route_after_policy_v2(state: AgenticState) -> str:
+        # If approval already needed, gate (existing behavior).
+        if _needs_human(state, state.get("approval_reasons", [])):
+            return "human_gate"
+        # Otherwise: when deployer wired, run preflight (which will
+        # itself force human_gate via §42). When not, finalize.
+        if deployer is not None:
+            return "deployer_preflight"
+        return "finalize"
+
     graph.add_conditional_edges(
         "policy_evaluate",
-        route_after_policy,
-        {
-            "human_gate": "human_gate",
-            "finalize": "finalize",
-        },
+        _route_after_policy_v2 if deployer is not None else route_after_policy,
+        policy_dispatch,
     )
+
+    if deployer is not None:
+        # deployer_preflight ALWAYS goes to human_gate (§42 hard stop)
+        graph.add_edge("deployer_preflight", "human_gate")
+
     graph.add_edge("human_gate_plan", END)
     graph.add_edge("human_gate", END)
     graph.add_edge("finalize", END)
