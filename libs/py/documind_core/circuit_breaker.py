@@ -892,11 +892,14 @@ class CircuitBreaker:
                 # CB-A4: set _opened_at BEFORE _transition(OPEN) to
                 # close the race window.
                 self._opened_at = time.monotonic()
-                self._transition(State.OPEN)
-                # CB-B2 #9: track consecutive trips for backoff calc.
+                # CB-B2 #9 + CB-F #21: bump consecutive count BEFORE
+                # _transition so the persistent snapshot saved INSIDE
+                # _transition reflects the post-trip count, not the
+                # pre-trip stale value.
                 self._consecutive_open_count += 1
                 # Clear half-open state on (re-)trip.
                 self._half_open_successes = 0
+                self._transition(State.OPEN)
                 self._bump_opens()
                 log.warning(
                     "circuit_open name=%s failures=%d cause=%s consecutive_opens=%d",
