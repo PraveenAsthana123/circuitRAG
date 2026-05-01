@@ -226,6 +226,24 @@ class CircuitBreaker:
         # CLOSED. Default 1 = legacy behaviour. Setting to 3 prevents
         # a flaky downstream from flipping CLOSED↔OPEN every cycle.
         half_open_success_threshold: int = 1,
+        # CB-B2 (#9): exponential backoff on recovery_timeout. When
+        # backoff_factor > 1.0, each consecutive trip multiplies the
+        # recovery delay (capped at recovery_timeout_max). Reset on
+        # clean CLOSED. Default 1.0 = no backoff (legacy).
+        backoff_factor: float = 1.0,
+        recovery_timeout_max: float = 600.0,
+        backoff_jitter: float = 0.1,  # ±10% jitter to prevent thundering herd
+        # CB-B2 (#10): bulkhead — cap concurrent in-flight calls even
+        # when CLOSED. Prevents one slow downstream from monopolising
+        # the asyncio task pool. Default None = no cap (legacy).
+        max_concurrent: int | None = None,
+        # CB-B2 (#12): slow-call detection. A call that returns success
+        # in > slow_call_threshold_s counts as a "slow" outcome. When
+        # slow_call_rate (over the same sliding window) exceeds the
+        # threshold rate, the breaker trips even with 0% errors.
+        # Default None = disabled (legacy).
+        slow_call_threshold_s: float | None = None,
+        slow_call_rate: float = 0.5,
     ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
@@ -240,6 +258,12 @@ class CircuitBreaker:
         self.failure_threshold_rate = failure_threshold_rate
         self.half_open_max_concurrent = max(1, half_open_max_concurrent)
         self.half_open_success_threshold = max(1, half_open_success_threshold)
+        self.backoff_factor = max(1.0, backoff_factor)
+        self.recovery_timeout_max = max(recovery_timeout, recovery_timeout_max)
+        self.backoff_jitter = max(0.0, min(1.0, backoff_jitter))
+        self.max_concurrent = max_concurrent
+        self.slow_call_threshold_s = slow_call_threshold_s
+        self.slow_call_rate = max(0.0, min(1.0, slow_call_rate))
 
         self._state: State = State.CLOSED
         self._failure_count = 0
@@ -254,6 +278,16 @@ class CircuitBreaker:
         self._half_open_slots = self.half_open_max_concurrent
         # CB-B1 (#8): track consecutive HALF_OPEN successes.
         self._half_open_successes = 0
+        # CB-B2 (#9): exponential backoff state.
+        self._consecutive_open_count = 0
+        # CB-B2 (#10): bulkhead semaphore. Created lazily so the
+        # breaker can be constructed outside an asyncio context.
+        self._bulkhead: asyncio.Semaphore | None = None
+        # CB-B2 (#12): slow-call rolling window (parallel to failure window).
+        # Each entry is True iff the call exceeded slow_call_threshold_s.
+        self._slow_window: deque[bool] = (
+            deque(maxlen=failure_window_size) if failure_window_size > 0 else deque(maxlen=1)
+        )
         self._lock = threading.RLock()
         self._set_metric_state()
 
@@ -289,7 +323,7 @@ class CircuitBreaker:
         """
         with self._lock:
             if self._state is State.OPEN:
-                if time.monotonic() - self._opened_at >= self.recovery_timeout:
+                if time.monotonic() - self._opened_at >= self._effective_recovery_timeout():
                     self._transition(State.HALF_OPEN)
                     # Reset half-open slot count on transition.
                     self._half_open_slots = self.half_open_max_concurrent
@@ -327,33 +361,46 @@ class CircuitBreaker:
     async def call_async(self, fn: Callable[[], Awaitable[T]]) -> T:
         """Invoke ``fn()`` through the breaker. Awaitable entry point.
 
-        CB-A1: when self.call_timeout_s is set, fn() is wrapped in
-        asyncio.wait_for; a timeout is raised AND counted as a failure
-        so a hung downstream trips the breaker rather than piling up
-        in the asyncio task pool.
-
-        CB-A3: asyncio.CancelledError is re-raised BEFORE the breaker
-        gets a chance to count it. Upstream timeouts cancelling our
-        task look like nothing happened to the breaker, not like a
-        downstream failure.
+        CB-A1: per-call timeout via asyncio.wait_for.
+        CB-A3: CancelledError pass-through.
+        CB-B2 #10: bulkhead — `max_concurrent` cap held via Semaphore.
+        CB-B2 #12: slow-call detection — calls > slow_call_threshold_s
+                   count toward the slow-call rate even on success.
         """
         self._before_call()
+
+        # CB-B2 #10 (bulkhead): acquire a slot or fail fast.
+        if self.max_concurrent is not None:
+            sem = self._get_bulkhead()
+            # Non-blocking acquire — refuse rather than queue.
+            if sem.locked() and sem._value <= 0:  # type: ignore[attr-defined]
+                # Fail fast: don't await indefinitely.
+                self._bump_rejections()
+                raise CircuitOpenError(
+                    f"Circuit '{self.name}' bulkhead full ({self.max_concurrent})",
+                    details={"name": self.name, "reason": "bulkhead_overloaded"},
+                )
+            await sem.acquire()
         try:
-            if self.call_timeout_s is not None:
-                result = await asyncio.wait_for(fn(), timeout=self.call_timeout_s)
-            else:
-                result = await fn()
-        except asyncio.CancelledError:
-            # CB-A3: cancellations are NOT downstream failures.
-            # Re-raise BEFORE the expected_exception except — without
-            # this, CancelledError satisfies expected_exception=Exception
-            # (legacy default) and spuriously increments failures.
-            raise
-        except self.expected_exception as exc:
-            self._on_failure(exc)
-            raise
-        self._on_success()
-        return result
+            start = time.monotonic()
+            try:
+                if self.call_timeout_s is not None:
+                    result = await asyncio.wait_for(fn(), timeout=self.call_timeout_s)
+                else:
+                    result = await fn()
+            except asyncio.CancelledError:
+                raise
+            except self.expected_exception as exc:
+                self._on_failure(exc)
+                raise
+
+            # Success path — but check for slow-call.
+            duration_s = time.monotonic() - start
+            self._on_success(duration_s=duration_s)
+            return result
+        finally:
+            if self.max_concurrent is not None and self._bulkhead is not None:
+                self._bulkhead.release()
 
     def call(self, fn: Callable[[], T]) -> T:
         """Synchronous counterpart. Useful for blocking code paths (rare)."""
@@ -377,7 +424,7 @@ class CircuitBreaker:
     def _before_call(self) -> None:
         with self._lock:
             if self._state is State.OPEN:
-                if time.monotonic() - self._opened_at >= self.recovery_timeout:
+                if time.monotonic() - self._opened_at >= self._effective_recovery_timeout():
                     self._transition(State.HALF_OPEN)
                 else:
                     self._bump_rejections()
@@ -386,23 +433,79 @@ class CircuitBreaker:
                         details={"name": self.name, "recovery_timeout_s": self.recovery_timeout},
                     )
 
-    def _on_success(self) -> None:
+    def _on_success(self, *, duration_s: float | None = None) -> None:
         with self._lock:
             if self._state is State.HALF_OPEN:
                 self._half_open_successes += 1
-                # Release the slot consumed by allow().
                 self._half_open_slots = min(
                     self._half_open_slots + 1, self.half_open_max_concurrent
                 )
-                # CB-B1 #8: require N consecutive successes before CLOSED.
                 if self._half_open_successes >= self.half_open_success_threshold:
                     self._transition(State.CLOSED)
                     self._half_open_successes = 0
                     self._half_open_slots = self.half_open_max_concurrent
+                    # CB-B2 #9: clean CLOSED resets backoff multiplier.
+                    self._consecutive_open_count = 0
             self._failure_count = 0
-            # CB-B1 #2: track in rolling window when configured.
             if self.failure_window_size > 0:
                 self._window.append(True)
+                # CB-B2 #12: record slow-vs-fast for slow-call detection.
+                if duration_s is not None and self.slow_call_threshold_s is not None:
+                    is_slow = duration_s > self.slow_call_threshold_s
+                    self._slow_window.append(is_slow)
+                    # Trip on slow-call rate? Only when we have enough
+                    # samples (anti-spurious, mirrors failure-rate logic).
+                    if (
+                        self._state is State.CLOSED
+                        and len(self._slow_window) >= max(1, self.failure_window_size // 2)
+                        and self._slow_call_rate() >= self.slow_call_rate
+                    ):
+                        self._opened_at = time.monotonic()
+                        self._transition(State.OPEN)
+                        self._consecutive_open_count += 1
+                        self._bump_opens()
+                        log.warning(
+                            "circuit_open name=%s reason=slow_call slow_rate=%.2f",
+                            self.name, self._slow_call_rate(),
+                        )
+
+    def _slow_call_rate(self) -> float:
+        """CB-B2 #12: ratio of slow calls in the rolling window."""
+        if not self._slow_window:
+            return 0.0
+        slow = sum(1 for s in self._slow_window if s)
+        return slow / len(self._slow_window)
+
+    def _get_bulkhead(self) -> asyncio.Semaphore:
+        """CB-B2 #10: lazily create the bulkhead semaphore.
+
+        Lazy because asyncio.Semaphore() in __init__ would bind to
+        whatever event loop happens to be active at construction time
+        (often there is none yet). Created on first call_async use.
+        """
+        if self._bulkhead is None:
+            assert self.max_concurrent is not None
+            self._bulkhead = asyncio.Semaphore(self.max_concurrent)
+        return self._bulkhead
+
+    def _effective_recovery_timeout(self) -> float:
+        """CB-B2 #9: exponential backoff with jitter.
+
+        recovery = min(base * factor**(consecutive_open - 1), max) ± jitter.
+        First trip uses base directly (no exponent yet). Reset to 0 on
+        clean CLOSED via _on_success.
+        """
+        import random
+        if self._consecutive_open_count <= 1 or self.backoff_factor <= 1.0:
+            base = self.recovery_timeout
+        else:
+            base = min(
+                self.recovery_timeout * (self.backoff_factor ** (self._consecutive_open_count - 1)),
+                self.recovery_timeout_max,
+            )
+        if self.backoff_jitter > 0:
+            base = base * (1.0 + random.uniform(-self.backoff_jitter, self.backoff_jitter))
+        return max(0.001, base)
 
     def _on_failure(self, exc: BaseException) -> None:
         with self._lock:
@@ -438,14 +541,17 @@ class CircuitBreaker:
                 # close the race window.
                 self._opened_at = time.monotonic()
                 self._transition(State.OPEN)
+                # CB-B2 #9: track consecutive trips for backoff calc.
+                self._consecutive_open_count += 1
                 # Clear half-open state on (re-)trip.
                 self._half_open_successes = 0
                 self._bump_opens()
                 log.warning(
-                    "circuit_open name=%s failures=%d cause=%s",
+                    "circuit_open name=%s failures=%d cause=%s consecutive_opens=%d",
                     self.name,
                     self._failure_count,
                     type(exc).__name__,
+                    self._consecutive_open_count,
                 )
 
     def _is_window_mode_active(self) -> bool:
