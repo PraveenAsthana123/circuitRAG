@@ -219,7 +219,8 @@ const PIPELINE_FLOW = [
     name: 'Process',
     items: [
       'Health APIs aggregate readiness, breakers, prompt registry, tools, and upstream probes.',
-      'Prometheus scrapes node-exporter, cAdvisor, OTel, and application /metrics targets, then forwards firing rules into Alertmanager.',
+      'Prometheus scrapes node-exporter, cAdvisor, OTel, and host-native app targets, then forwards firing rules into Alertmanager.',
+      'Go-style services expose /metrics on the app port; FastAPI services using setup_observability usually expose Prometheus on a separate DOCUMIND_PROMETHEUS_PORT chosen by the local start-env script.',
       'Sidecar advisor records events, ratings, council runs, and memory.',
       'Loop automation refreshes drill state, council telemetry, and watcher verdicts.',
     ],

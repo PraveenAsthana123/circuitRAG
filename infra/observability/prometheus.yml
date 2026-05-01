@@ -1,8 +1,20 @@
 # ============================================================================
 # Prometheus — scrape targets for the DocuMind local dev stack
 # ============================================================================
-# Every service exposes /metrics on its HTTP port. The OTel collector also
-# exposes Prometheus-format metrics on :9464.
+# Container exporters below are fixed.
+#
+# Host-native application services are mixed:
+# - Go gateway-style services expose `/metrics` on the app port.
+# - FastAPI services using `setup_observability(... prometheus_port=...)`
+#   expose Prometheus on a separate host port chosen by the operator's
+#   local start-env scripts, not necessarily on the HTTP app port.
+#
+# So the host.docker.internal targets below are "local-runtime contract"
+# targets, not a blanket guarantee that every app speaks `/metrics` on
+# 808x. Adjust Python-service targets to the actual
+# `DOCUMIND_PROMETHEUS_PORT` values in your local env scripts.
+#
+# The OTel collector also exposes Prometheus-format metrics on :9464.
 # ============================================================================
 
 global:
@@ -33,17 +45,23 @@ scrape_configs:
     static_configs:
       - targets: ["otel-collector:9464"]
 
-  # Application services (if /metrics endpoints are enabled)
+  # Application services.
+  # api-gateway is a true app-port /metrics target.
   - job_name: api-gateway
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8080"]
 
+  # identity-svc/governance-svc/finops-svc/observability-svc are only valid
+  # here if the host-native process on that port actually exposes /metrics.
   - job_name: identity-svc
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8081"]
 
+  # FastAPI services typically expose Prometheus on a separate
+  # DOCUMIND_PROMETHEUS_PORT. These app-port targets are only valid if the
+  # operator has explicitly wired a /metrics route on the HTTP port.
   - job_name: ingestion-svc
     metrics_path: /metrics
     static_configs:

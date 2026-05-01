@@ -260,6 +260,8 @@ services:
     restart: unless-stopped
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./infra/observability/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
@@ -277,14 +279,17 @@ services:
     restart: unless-stopped
     ports:
       - "9093:9093"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       ALERTMANAGER_DEFAULT_RECEIVER: ${ALERTMANAGER_DEFAULT_RECEIVER:-local-log}
       ALERTMANAGER_WEBHOOK_URL: ${ALERTMANAGER_WEBHOOK_URL:-http://host.docker.internal:8099/alertmanager-placeholder}
+    entrypoint:
+      - /bin/sh
+      - -ec
     volumes:
       - ./infra/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
-      - /bin/sh
-      - -ec
       - |
           sed \
             -e "s|__DEFAULT_RECEIVER__|$${ALERTMANAGER_DEFAULT_RECEIVER}|g" \

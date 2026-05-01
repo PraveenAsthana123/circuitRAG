@@ -54,6 +54,7 @@ def main() -> int:
     must_contain(page, "Input, process, output", "pipeline section heading")
     must_contain(page, "Operator/admin requests through the frontend and API gateway.", "input bullet")
     must_contain(page, "Health APIs aggregate readiness, breakers, prompt registry, tools, and upstream probes.", "process bullet")
+    must_contain(page, "Go-style services expose /metrics on the app port; FastAPI services using setup_observability usually expose Prometheus on a separate DOCUMIND_PROMETHEUS_PORT chosen by the local start-env script.", "metrics contract bullet")
     must_contain(page, "In-app operator pages: monitoring, forensics, sidecar telemetry, agentic control plane.", "output bullet")
     print("  ok: input/process/output section present")
 

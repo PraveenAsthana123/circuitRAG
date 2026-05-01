@@ -9,15 +9,24 @@ partially wired:
 - Prometheus alert-rules loading
 - Alertmanager local routing and Prometheus alerting hookup
 - Host/container exporters for deeper infra metrics
+- Linux host-gateway wiring for containers that reach host-native services
+- Honest local scrape-contract docs for host-native Python services
 
 Negative assertions cover: each provisioning artifact (Grafana
 dashboards yaml, Prometheus alert-rules, Alertmanager config)
 exists and references the canonical local-stack endpoints; without
 these, operator dashboards render empty + alerts never fire +
-incidents go silent.
+incidents go silent. The host-gateway assertions prevent the
+local-Linux regression where Prometheus can resolve container
+targets but every host-native app metrics scrape stays permanently
+down behind host.docker.internal. The scrape-contract assertion
+prevents the opposite lie: claiming every app exposes `/metrics`
+on its HTTP port when FastAPI services actually use a separate
+`prometheus_port` contract.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -34,6 +43,14 @@ GRAFANA_OVERVIEW = GRAFANA_DIR / "documind-overview.json"
 def require(text: str, needle: str, label: str) -> None:
     if needle not in text:
         raise AssertionError(f"missing {label}: {needle}")
+
+
+def service_block(compose_text: str, service: str) -> str:
+    pattern = rf"(?ms)^  {re.escape(service)}:\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)"
+    match = re.search(pattern, compose_text)
+    if match is None:
+        raise AssertionError(f"missing service block: {service}")
+    return match.group(1)
 
 
 def main() -> int:
@@ -110,13 +127,27 @@ def main() -> int:
     require(provider, "/var/lib/grafana/dashboards", "grafana dashboard path")
     print("  ok: provider points at mounted dashboards path")
 
-    print("-- 14. NEGATIVE: no manual-import-only README claim should remain true after provisioning --")
+    print("-- 14. POSITIVE: Prometheus and Alertmanager can resolve host.docker.internal on Linux --")
+    prom_block = service_block(compose, "prometheus")
+    alert_block = service_block(compose, "alertmanager")
+    require(prom_block, 'extra_hosts:', "prometheus extra_hosts")
+    require(prom_block, '- "host.docker.internal:host-gateway"', "prometheus host-gateway mapping")
+    require(alert_block, 'extra_hosts:', "alertmanager extra_hosts")
+    require(alert_block, '- "host.docker.internal:host-gateway"', "alertmanager host-gateway mapping")
+    print("  ok: compose includes host-gateway mapping for host-native observability paths")
+
+    print("-- 15. POSITIVE: Prometheus docs admit separate prometheus_port for Python services --")
+    require(prom, "FastAPI services using `setup_observability(... prometheus_port=...)`", "python-service metrics contract note")
+    require(prom, "DOCUMIND_PROMETHEUS_PORT", "per-service prometheus port note")
+    print("  ok: prometheus.yml no longer claims every app exposes /metrics on its HTTP port")
+
+    print("-- 16. NEGATIVE: no manual-import-only README claim should remain true after provisioning --")
     readme = (GRAFANA_DIR / "README.md").read_text(encoding="utf-8")
     if "import this" in readme.lower() and "auto" not in readme.lower():
         raise AssertionError("dashboard README still appears to describe import-only flow without auto-provision context")
     print("  ok: README is not import-only drift")
 
-    print("\nALL 14 STEPS PASSED")
+    print("\nALL 16 STEPS PASSED")
     return 0
 
 
