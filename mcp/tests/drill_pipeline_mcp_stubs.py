@@ -146,7 +146,7 @@ def main() -> int:
     # so 'stub' is 'partial' (tests, jest still stubbed) or 'false'
     # (observe, all real). research + deploy stay full-stub.
     expected_stub = {
-        "research": "true",   # canned data
+        "research": "partial", # E6: real for urls-supplied, stub for topic-only
         "tests": "partial",   # ruff/pytest/mypy real, jest stub
         "deploy": "true",     # canned (stays canned for safety)
         "observe": "false",   # all 3 tools real (E3+E4)
