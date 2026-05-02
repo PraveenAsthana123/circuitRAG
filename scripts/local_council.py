@@ -222,6 +222,46 @@ def _file_context(repo: Path, file_rel: str, line_no: int, lines_around: int = 1
     return "\n".join(f"{i + 1:4}: {lines[i]}" for i in range(start, end))
 
 
+def _summarize_validation_failure(raw_text: str) -> str:
+    """Extract a human-readable failure summary from a rejected AUTHOR
+    output. Used to populate the retry prompt's <validation_feedback>
+    section. Per Tier 2 #2.1.
+
+    The validator returns None (no detail) so we re-validate here
+    via Pydantic to capture the actual ValidationError messages.
+    Multi-error: report top 3.
+    """
+    from pydantic import ValidationError
+    sys.path.insert(0, str(REPO / "scripts"))
+    from council_schemas import CouncilProposal, _first_balanced_object  # noqa: E402
+
+    if not raw_text:
+        return "Empty output. Emit the CouncilProposal JSON object."
+    cleaned = raw_text
+    for fence in ("```json", "```"):
+        cleaned = cleaned.replace(fence, "")
+    cleaned = cleaned.strip()
+    candidate = _first_balanced_object(cleaned)
+    if candidate is None:
+        return (
+            "No balanced JSON object found in output. "
+            "Emit ONE CouncilProposal JSON; no prose; no markdown fences."
+        )
+    try:
+        CouncilProposal.model_validate_json(candidate)
+        return "Validation passed unexpectedly; no concrete error to report."
+    except ValidationError as ve:
+        errors = ve.errors()[:3]
+        lines: list[str] = []
+        for err in errors:
+            loc = ".".join(str(p) for p in err.get("loc", ()))
+            msg = err.get("msg", "")
+            lines.append(f"  - field={loc!r} error={msg!r}")
+        return "Pydantic ValidationError (top 3):\n" + "\n".join(lines)
+    except Exception as exc:  # noqa: BLE001
+        return f"JSON parse error: {type(exc).__name__}: {exc}"
+
+
 def _grep_refs(repo: Path, message: str) -> str:
     """Extract a backticked symbol from rule msg + grep across repo.
 
@@ -315,40 +355,83 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
             print(f"  [{research_tokens} tokens, {research_lat:.1f}s]")
             print(research_brief[:600])
 
-    print(f"\n  === AUTHOR ({COUNCIL_ROLES['author']['model']}) ===")
-    started = time.time()
-    try:
-        author_text, author_tokens = call_ollama(
-            COUNCIL_ROLES["author"]["model"],
-            COUNCIL_ROLES["author"]["system"],
-            _author_prompt(issue, context, grep_refs=grep_refs, research_brief=research_brief),
-        )
-    except Exception as e:
-        print(f"  AUTHOR error: {e}")
-        audit_chain["author"] = {"model": COUNCIL_ROLES["author"]["model"], "outcome": "error", "error": str(e)}
-        _write_audit({"id": issue["id"], "lane": "council_local", "chain": audit_chain, "outcome": "error_author"})
-        return None
-    author_lat = time.time() - started
-    audit_chain["author"] = {
-        "model": COUNCIL_ROLES["author"]["model"],
-        "tokens": author_tokens,
-        "latency_s": round(author_lat, 1),
-        "output": author_text[:1500],
-    }
-    print(f"  [{author_tokens} tokens, {author_lat:.1f}s]")
+    # Tier 2 #2.1: retry-with-feedback. AUTHOR fires twice when the
+    # first output fails schema validation. Pass-2 prompt embeds the
+    # validation error so the model can correct itself. Bounded at
+    # 1 retry to cap token cost; if pass-2 also fails, escalate.
+    proposal = None
+    author_text = ""
+    author_tokens = 0
+    author_lat = 0.0
+    feedback_for_retry = ""
 
-    proposal = validate_council_proposal(author_text, repo=repo)
+    for attempt in range(2):
+        retry_label = " (retry)" if attempt == 1 else ""
+        print(f"\n  === AUTHOR{retry_label} ({COUNCIL_ROLES['author']['model']}) ===")
+        prompt = _author_prompt(
+            issue, context,
+            grep_refs=grep_refs, research_brief=research_brief,
+        )
+        if attempt == 1 and feedback_for_retry:
+            # Append the validation failure as explicit feedback so
+            # AUTHOR knows what to correct.
+            prompt = prompt + (
+                "\n\n<validation_feedback>\n"
+                "Your previous output FAILED schema validation. Reasons:\n"
+                f"{feedback_for_retry}\n"
+                "Re-emit the JSON correcting these issues. Same schema.\n"
+                "</validation_feedback>\n"
+            )
+        started = time.time()
+        try:
+            author_text, author_tokens = call_ollama(
+                COUNCIL_ROLES["author"]["model"],
+                COUNCIL_ROLES["author"]["system"],
+                prompt,
+            )
+        except Exception as e:
+            print(f"  AUTHOR error: {e}")
+            audit_chain[f"author_attempt_{attempt + 1}"] = {
+                "model": COUNCIL_ROLES["author"]["model"],
+                "outcome": "error", "error": str(e),
+            }
+            _write_audit({
+                "id": issue["id"], "lane": "council_local",
+                "chain": audit_chain, "outcome": "error_author",
+            })
+            return None
+        author_lat = time.time() - started
+        audit_chain[f"author_attempt_{attempt + 1}"] = {
+            "model": COUNCIL_ROLES["author"]["model"],
+            "tokens": author_tokens,
+            "latency_s": round(author_lat, 1),
+            "output": author_text[:1500],
+        }
+        print(f"  [{author_tokens} tokens, {author_lat:.1f}s]")
+
+        proposal = validate_council_proposal(author_text, repo=repo)
+        if proposal is not None:
+            audit_chain[f"author_attempt_{attempt + 1}"]["validation"] = "ok"
+            audit_chain[f"author_attempt_{attempt + 1}"]["proposal"] = proposal.model_dump(mode="json")
+            audit_chain["author"] = audit_chain[f"author_attempt_{attempt + 1}"]
+            audit_chain["author"]["attempt"] = attempt + 1
+            print(f"  AUTHOR proposal validated (attempt {attempt + 1}): file={proposal.file_path} confidence={proposal.confidence}")
+            break
+        # Failed validation — capture concrete feedback for retry.
+        feedback_for_retry = _summarize_validation_failure(author_text)
+        audit_chain[f"author_attempt_{attempt + 1}"]["validation"] = "rejected"
+        audit_chain[f"author_attempt_{attempt + 1}"]["feedback_for_retry"] = feedback_for_retry[:300]
+        if attempt == 0:
+            print(f"  AUTHOR pass-1 REJECTED; retrying with feedback...")
+
     if proposal is None:
-        print(f"  AUTHOR proposal REJECTED at validator (schema invalid)")
-        audit_chain["author"]["validation"] = "rejected"
+        # Both attempts failed schema. Escalate.
+        print(f"  AUTHOR proposal REJECTED both attempts; escalating")
         _write_audit({
             "id": issue["id"], "lane": "council_local",
-            "chain": audit_chain, "outcome": "author_schema_rejected",
+            "chain": audit_chain, "outcome": "author_schema_rejected_after_retry",
         })
         return None
-    print(f"  AUTHOR proposal validated: file={proposal.file_path} confidence={proposal.confidence}")
-    audit_chain["author"]["validation"] = "ok"
-    audit_chain["author"]["proposal"] = proposal.model_dump(mode="json")
 
     print(f"\n  === REVIEWER ({COUNCIL_ROLES['reviewer']['model']}) ===")
     started = time.time()
