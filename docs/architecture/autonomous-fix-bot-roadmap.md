@@ -27,6 +27,7 @@
 
 | # | Item | Effort | Apply-rate impact |
 |---|---|---|---|
+| 1.0 | **Agentic engineering framework setup** (meta-pattern: how each agent is designed, named, scoped, drilled, observed; matches user's "Agentic engineering framework setup" ask) | 8hr | sets the *shape* every Tier 1.x item must follow — so the framework doesn't drift across iterations. CrewAI / LangGraph supervisor / role+goal+backstory pattern + per-agent §52 brutal-tool-review row. |
 | 1.1 | Pydantic CouncilProposal schema | ✅ DONE | structurally sound output |
 | 1.2 | **Agent-lead-first routing** (manager agent decides: direct-fix vs council vs escalate vs skip) | 6hr | ~25% (cheap rules skip council overhead; complex routes correctly). Matches user's "agent lead first approach" ask. LangGraph supervisor pattern. |
 | 1.3 | **Per-rule fix-strategy table** | 3hr | ~30% (mechanical rules now apply) |
@@ -66,12 +67,13 @@
 | 4.3 | Ownership matrix per agent | 3hr | §43 + §53 |
 | 4.4 | Per-issue end-to-end run-book (matches "end-to-end per topic" ask) | 6hr | runbook per rule code |
 | 4.5 | **Outcome-based evaluation framework** (judge iterations by measured apply rate / regression count / cost-per-fix, NOT by effort or activity) | 5hr | matches user's "outcome based approach" ask. Eval gate per iteration: an iteration that ships without moving the needle on apply-rate, regression-count, or operator-override-rate is rejected. Forces every commit to defend its outcome contribution. |
+| 4.6 | **HITL framework — multi-gate operator scoring** (`scripts/hitl_framework.py` + drill) | ✅ DONE | matches user's "HITL framework, each advance level, more score" ask. 6 gate types (research/author/reviewer/advisor/apply/post_commit), 5 verdicts (approve/reject/edit/escalate/skip), preference-pairs export ready for Tier 3 LoRA/RLHF. Drilled 8/8 with extra='forbid' + edit-pair-required gate. |
 
 ---
 
 ## Total — and the honest answer to "how do I get to 100%"
 
-**~146 hours of net-new engineering** to fully execute the 11 rapid-fire asks (8 original + agent-lead routing + RLHF + outcome-based evaluation). **Asymptotic 100%** apply rate; realistic ceiling ~95% sustained.
+**~150 hours of net-new engineering** to fully execute the 13 rapid-fire asks (11 prior + HITL framework + agentic-engineering-framework). HITL is ✅ DONE this commit. **Asymptotic 100%** apply rate; realistic ceiling ~95% sustained.
 
 **Quickest visible win**: Tier 1 #3 (3hr) → moves apply rate from 0% to ~30% on mechanical ruff rules.
 
