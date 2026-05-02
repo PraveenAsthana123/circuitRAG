@@ -69,6 +69,39 @@
 | 4.5 | **Outcome-based evaluation framework** (judge iterations by measured apply rate / regression count / cost-per-fix, NOT by effort or activity) | 5hr | matches user's "outcome based approach" ask. Eval gate per iteration: an iteration that ships without moving the needle on apply-rate, regression-count, or operator-override-rate is rejected. Forces every commit to defend its outcome contribution. |
 | 4.6 | **HITL framework — multi-gate operator scoring** (`scripts/hitl_framework.py` + drill) | ✅ DONE | matches user's "HITL framework, each advance level, more score" ask. 6 gate types (research/author/reviewer/advisor/apply/post_commit), 5 verdicts (approve/reject/edit/escalate/skip), preference-pairs export ready for Tier 3 LoRA/RLHF. Drilled 8/8 with extra='forbid' + edit-pair-required gate. |
 
+### Tier 5 — orchestration / management subsystems (added 2026-05-02 batch)
+
+The user requested 9 management/orchestration concerns in rapid succession. Each is its own subsystem.
+
+| # | Item | Effort | What it solves |
+|---|---|---|---|
+| 5.1 | **Swarm-of-agents orchestration framework** | 12hr | matches "orchestrate a swarm of agent framework setup". CrewAI / LangGraph supervisor + subtask fanout. Multiple AUTHORs in parallel; voting on best diff. |
+| 5.2 | **Deployment sequence framework** | 8hr | matches "deployment sequence framework". Per-§47.7 4-layer rollback (app/db/AI/infra) wired to canary → blue-green → full-rollout sequence with health-probe gates. |
+| 5.3 | **Workflow automation — different parts** | 6hr | matches "automate different part of workflow". Beyond the daemon: scan-dispatch-fix-commit-test-pr is the chain; this expands to also include `pr-creation-and-review` + `dependabot-merge` + `release-note-generation`. |
+| 5.4 | **Bug management subsystem** | 10hr | matches "bug management". Bug-triage pipeline: discovery (issue-tracker integration) → severity classification → assignment to fix-bot OR human → resolution tracking → post-mortem capture. |
+| 5.5 | **PR management subsystem** | 8hr | matches "PR management". Auto-PR creation after auto-commit; auto-review by Tier-B Claude; auto-merge gates (CI green + drill green + reviewer approval); branch cleanup. |
+| 5.6 | **Error management subsystem** | 8hr | matches "error management". Production error stream → triage agent classifies → routes to fix-bot OR human → tracks incident lifecycle. Sentry / Honeybadger / OTel error spans as input. |
+| 5.7 | **Task management subsystem** | 6hr | matches "task management". Beyond the issue queue: feature work / chore / spike tasks; dependency graph; Gantt-ish view; assignment to humans + agents in unified board. |
+| 5.8 | **Agent monitoring & management subsystem** | 10hr | matches "agent monitoring management". Per-agent health (latency / cost / error rate / drift); auto-disable on drift > threshold; redeploy / replace / retire workflow. |
+| 5.9 | **Agent-task delegation management** | 8hr | matches "agent task delegation management". The supervisor's policy: which agent gets which task; load balancing; capability-matching; cost optimization. |
+
+**Tier 5 total: 76 hours** for the 9 orchestration/management subsystems.
+
+---
+
+## Updated grand total
+
+| Tier | Effort |
+|---|---|
+| Tier 1 (output structure) | 26 hr (1.0 = 8hr; 1.1 ✅ done; 1.2-1.4 = 13hr; minus 5hr ✅ done = 21hr remaining) |
+| Tier 2 (quality multipliers) | 28 hr |
+| Tier 3 (self-improvement) | 46 hr |
+| Tier 4 (meta/governance) | 15 hr (4.6 HITL ✅ done = 10hr remaining) |
+| **Tier 5 (orchestration/mgmt)** | **76 hr** |
+| **TOTAL** | **~181 hours of remaining net-new engineering** |
+
+22 distinct user asks. ~25 dedicated iterations at ~7-8hr each. **6-month roadmap for one engineer; 8-week for a 4-engineer team.**
+
 ---
 
 ## Total — and the honest answer to "how do I get to 100%"
