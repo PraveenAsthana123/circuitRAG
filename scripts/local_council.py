@@ -56,6 +56,11 @@ from council_schemas import (  # noqa: E402
     PROMPT_ADDENDUM,
     validate_council_proposal,
 )
+from rule_fix_strategy import (  # noqa: E402
+    get_strategy,
+    get_prompt_template,
+    is_human_only,
+)
 
 
 COUNCIL_ROLES: dict[str, dict[str, str]] = {
@@ -113,15 +118,31 @@ def call_ollama(model: str, system: str, prompt: str, timeout: float = 180.0) ->
     return body.get("response", ""), int(body.get("eval_count", 0))
 
 
-def _author_prompt(issue: dict, context: str) -> str:
+def _author_prompt(issue: dict, context: str, *, grep_refs: str = "") -> str:
+    """Build the AUTHOR prompt using the per-rule strategy.
+
+    Per Tier 1 #1.3 of the autonomous-fix-bot roadmap. F841 gets the
+    investigation prompt + grep-references; UP035 gets the
+    mechanical-rewrite prompt with no extra context. One generic
+    prompt for all rules was empirically wrong (see session log).
+    """
+    strategy = get_strategy(issue.get("code", ""))
+    rule_specific = get_prompt_template(strategy)
+    refs_section = ""
+    if strategy.needs_grep_refs and grep_refs:
+        refs_section = f"\n\nReferences (grep across repo):\n```\n{grep_refs[:3000]}\n```\n"
     return (
-        f"Issue ID: {issue['id']}\n"
-        f"Rule: {issue['code']}\n"
-        f"File: {issue['file']}:{issue['line']}\n"
-        f"Message: {issue['message']}\n"
-        f"\n"
-        f"Context (±10 lines around the issue):\n"
-        f"```\n{context}\n```\n"
+        rule_specific
+        + "\n"
+        + f"Issue ID: {issue['id']}\n"
+        + f"Rule: {issue['code']}\n"
+        + f"File: {issue['file']}:{issue['line']}\n"
+        + f"Message: {issue['message']}\n"
+        + f"\n"
+        + f"Context (±{strategy.context_lines} lines around the issue):\n"
+        + f"```\n{context}\n```"
+        + refs_section
+        + "\n"
         + PROMPT_ADDENDUM
     )
 
@@ -149,14 +170,38 @@ def _advisor_prompt(issue: dict, proposal: CouncilProposal, reviewer: str) -> st
     )
 
 
-def _file_context(repo: Path, file_rel: str, line_no: int) -> str:
+def _file_context(repo: Path, file_rel: str, line_no: int, lines_around: int = 10) -> str:
+    """Read ±lines_around lines around line_no. Strategy-table-driven
+    per Tier 1 #1.3 — F841 gets ±30, mechanical rules get ±5."""
     try:
         lines = (repo / file_rel).read_text(encoding="utf-8").splitlines()
     except (FileNotFoundError, UnicodeDecodeError):
         return "(file not readable)"
-    start = max(0, line_no - 11)
-    end = min(len(lines), line_no + 10)
+    start = max(0, line_no - lines_around - 1)
+    end = min(len(lines), line_no + lines_around)
     return "\n".join(f"{i + 1:4}: {lines[i]}" for i in range(start, end))
+
+
+def _grep_refs(repo: Path, message: str) -> str:
+    """Extract a backticked symbol from rule msg + grep across repo.
+
+    Used by investigation-category rules (F841, F811) where the
+    council needs to know if the symbol has any references.
+    """
+    import re as _re
+    m = _re.search(r"`([^`]+)`", message)
+    if m is None:
+        return ""
+    symbol = m.group(1)
+    try:
+        proc = subprocess.run(
+            ["grep", "-rn", "--include=*.py", symbol,
+             "services/", "libs/", "scripts/", "mcp/"],
+            cwd=repo, capture_output=True, text=True, timeout=20,
+        )
+        return (proc.stdout or "")[:4000]
+    except Exception:
+        return ""
 
 
 def _write_audit(record: dict) -> None:
@@ -175,9 +220,28 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
     repo = repo or REPO
     file_rel = issue["file"]
     line_no = issue["line"]
-    context = _file_context(repo, file_rel, line_no)
 
-    audit_chain: dict[str, dict] = {}
+    # Tier 1 #1.3: per-rule strategy chooses context window + grep need
+    strategy = get_strategy(issue.get("code", ""))
+    if is_human_only(issue.get("code", "")):
+        print(f"  SKIP: rule {issue.get('code')!r} is security-tier; never to model (per §50.5.3)")
+        _write_audit({
+            "id": issue["id"], "lane": "council_local",
+            "chain": {}, "outcome": "skipped_human_only",
+        })
+        return None
+    context = _file_context(repo, file_rel, line_no, lines_around=strategy.context_lines)
+    grep_refs = _grep_refs(repo, issue.get("message", "")) if strategy.needs_grep_refs else ""
+
+    audit_chain: dict[str, dict] = {
+        "strategy": {
+            "category": strategy.category,
+            "context_lines": strategy.context_lines,
+            "needs_grep_refs": strategy.needs_grep_refs,
+            "model_tier": strategy.model_tier,
+            "grep_refs_chars": len(grep_refs),
+        },
+    }
 
     print(f"\n  === AUTHOR ({COUNCIL_ROLES['author']['model']}) ===")
     started = time.time()
@@ -185,7 +249,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
         author_text, author_tokens = call_ollama(
             COUNCIL_ROLES["author"]["model"],
             COUNCIL_ROLES["author"]["system"],
-            _author_prompt(issue, context),
+            _author_prompt(issue, context, grep_refs=grep_refs),
         )
     except Exception as e:
         print(f"  AUTHOR error: {e}")

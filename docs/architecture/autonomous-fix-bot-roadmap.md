@@ -30,7 +30,7 @@
 | 1.0 | **Agentic engineering framework setup** (meta-pattern: how each agent is designed, named, scoped, drilled, observed; matches user's "Agentic engineering framework setup" ask) | 8hr | sets the *shape* every Tier 1.x item must follow — so the framework doesn't drift across iterations. CrewAI / LangGraph supervisor / role+goal+backstory pattern + per-agent §52 brutal-tool-review row. |
 | 1.1 | Pydantic CouncilProposal schema | ✅ DONE | structurally sound output |
 | 1.2 | **Agent-lead-first routing** (manager agent decides: direct-fix vs council vs escalate vs skip) | 6hr | ~25% (cheap rules skip council overhead; complex routes correctly). Matches user's "agent lead first approach" ask. LangGraph supervisor pattern. |
-| 1.3 | **Per-rule fix-strategy table** | 3hr | ~30% (mechanical rules now apply) |
+| 1.3 | **Per-rule fix-strategy table** | ✅ DONE | 18 rules in dispatch table; 6 categories (investigation, mechanical_rewrite, import_sort, type_fix, frontend_jsx, default) + security skip. F841 → ±30 lines + grep_refs; UP035 → ±5 lines no-grep; B*/S* → human-only. Wired into local_council.py AUTHOR prompt. Drilled 8/8 with 6 negative assertions. |
 | 1.4 | **Adaptive context window (research → council)** | 4hr | ~50% (F841-class real bugs become tractable) |
 | 2.5 | Retry-with-feedback on first schema failure | 6hr | ~70% (one rejection → second corrected attempt) |
 | 2.6 | Prior-fix RAG (retrieve past fixes as few-shots) | 8hr | ~85% (pattern-matching on past success) |
