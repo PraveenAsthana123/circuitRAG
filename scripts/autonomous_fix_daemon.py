@@ -244,32 +244,44 @@ def apply_ruff_autofix() -> tuple[int, int]:
 
 
 def run_council(issue_id: str) -> bool:
-    """Run the 3-model council on an issue. Returns True if completed."""
+    """Run the local schema-aware council. Returns True if AUTHOR validated.
+
+    Tier 1 #1 hardening: local_council.run_local_council() forces
+    AUTHOR output through CouncilProposal Pydantic schema. Failure
+    modes (tokenizer artifacts, missing markers, extra fields,
+    phantom file paths) are caught at the validator boundary instead
+    of slipping through to the apply gate.
+    """
+    issues = load_jsonl(CHECKLIST)
+    issue = next((i for i in issues if i["id"] == issue_id), None)
+    if issue is None:
+        return False
     proc = subprocess.run(
-        ["python3", str(ISSUE_DISPATCHER), "--council", "--id", issue_id],
+        ["python3", str(REPO / "scripts" / "local_council.py"), "--id", issue_id],
         cwd=REPO, capture_output=True, text=True, timeout=600,
     )
     return proc.returncode == 0
 
 
 def extract_council_diff(issue_id: str) -> str | None:
-    """Parse last council audit row for issue_id; extract clean diff or None."""
+    """Read the validated proposal from the most-recent local-council audit row."""
     rows = load_jsonl(AUDIT)
     council = next(
-        (r for r in reversed(rows) if r.get("lane") == "council" and r["id"] == issue_id),
+        (r for r in reversed(rows)
+         if r.get("lane") == "council_local" and r["id"] == issue_id),
         None,
     )
     if council is None:
         return None
-    author_output = council.get("chain", {}).get("author", {}).get("output", "")
-    m = re.search(r"```diff\n(.*?)```", author_output, re.DOTALL)
-    if m is None:
+    chain = council.get("chain", {})
+    advisor = chain.get("advisor", {})
+    if advisor.get("alternative_proposal"):
+        return advisor["alternative_proposal"]["unified_diff"]
+    author = chain.get("author", {})
+    proposal = author.get("proposal")
+    if proposal is None:
         return None
-    diff = m.group(1).rstrip()
-    # Reject deepseek tokenizer artifacts (empirical: 2/5 in our test set).
-    if "<｜begin▁of▁sentence｜>" in diff or "<｜end▁of▁sentence｜>" in diff:
-        return None
-    return diff
+    return proposal["unified_diff"]
 
 
 def ruff_check_clean() -> bool:
