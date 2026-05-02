@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from typing import Any
 
 from documind_core.db_client import DbClient
 
+from .db_circuit_breaker import DbCircuitBreaker
 from .models import (
     AgenticPolicyView,
     ApprovalView,
@@ -18,11 +20,30 @@ from .models import (
 
 
 class PostgresTaskStore:
-    def __init__(self, db: DbClient) -> None:
+    def __init__(self, db: DbClient, breaker: DbCircuitBreaker | None = None) -> None:
         self._db = db
+        # P0 #36 wiring: when breaker is set, every admin_connection
+        # acquisition routes through CircuitBreaker.guarded — outages
+        # trip after failure_threshold and /health/ready can read
+        # breaker.is_healthy to return 503. None preserves dev-mode
+        # behaviour (no degradation telemetry).
+        self._breaker = breaker
+
+    @asynccontextmanager
+    async def _admin_conn(self):  # noqa: ANN202 — yields asyncpg.Connection
+        """Acquire an admin connection, optionally guarded by the
+        DbCircuitBreaker. Used in place of `self._db.admin_connection()`
+        at every call site; the conditional lives here once instead of
+        17 inline branches."""
+        if self._breaker is not None:
+            async with self._breaker.guarded_admin_connection(self._db) as conn:
+                yield conn
+        else:
+            async with self._admin_conn() as conn:
+                yield conn
 
     async def save(self, task: TaskView) -> None:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_tasks
@@ -87,7 +108,7 @@ class PostgresTaskStore:
             )
 
     async def get(self, task_id: str) -> TaskView | None:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT task_id, tenant_id, goal, status, risk_level,
@@ -105,7 +126,7 @@ class PostgresTaskStore:
         return _row_to_task(row) if row else None
 
     async def list_recent(self, limit: int = 20) -> list[TaskView]:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             rows = await conn.fetch(
                 """
                 SELECT task_id, tenant_id, goal, status, risk_level,
@@ -124,7 +145,7 @@ class PostgresTaskStore:
         return [_row_to_task(row) for row in rows]
 
     async def get_policy(self) -> AgenticPolicyView:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT require_human_approval, approval_mode, auto_advance,
@@ -172,7 +193,7 @@ class PostgresTaskStore:
         )
 
     async def save_policy(self, policy: AgenticPolicyView) -> AgenticPolicyView:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             row = await conn.fetchrow(
                 """
                 INSERT INTO orchestration.agent_policies
@@ -225,7 +246,7 @@ class PostgresTaskStore:
         )
 
     async def save_project(self, project: ProjectView) -> None:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_projects
@@ -258,7 +279,7 @@ class PostgresTaskStore:
             )
 
     async def get_project(self, project_id: str) -> ProjectView | None:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT project_id, tenant_id, name, goal, status,
@@ -271,7 +292,7 @@ class PostgresTaskStore:
         return _row_to_project(row) if row else None
 
     async def list_projects(self, limit: int = 20) -> list[ProjectView]:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             rows = await conn.fetch(
                 """
                 SELECT project_id, tenant_id, name, goal, status,
@@ -285,7 +306,7 @@ class PostgresTaskStore:
         return [_row_to_project(row) for row in rows]
 
     async def save_project_plan_item(self, item: ProjectPlanItemView) -> None:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_project_plan_items
@@ -327,7 +348,7 @@ class PostgresTaskStore:
             )
 
     async def list_project_plan_items(self, project_id: str) -> list[ProjectPlanItemView]:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             rows = await conn.fetch(
                 """
                 SELECT plan_item_id, tenant_id, project_id, title, objective, status,
@@ -342,7 +363,7 @@ class PostgresTaskStore:
         return [_row_to_project_plan_item(row) for row in rows]
 
     async def save_task_run(self, run: TaskRunView) -> None:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_task_runs
@@ -393,7 +414,7 @@ class PostgresTaskStore:
             )
 
     async def list_task_runs(self, task_id: str) -> list[TaskRunView]:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             rows = await conn.fetch(
                 """
                 SELECT run_id, tenant_id, task_id, project_id, phase, status,
@@ -409,7 +430,7 @@ class PostgresTaskStore:
         return [_row_to_task_run(row) for row in rows]
 
     async def save_approval(self, approval: ApprovalView) -> None:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_approvals
@@ -440,7 +461,7 @@ class PostgresTaskStore:
             )
 
     async def list_approvals(self, task_id: str) -> list[ApprovalView]:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             rows = await conn.fetch(
                 """
                 SELECT approval_id, tenant_id, task_id, project_id, actor_id, decision,
@@ -454,7 +475,7 @@ class PostgresTaskStore:
         return [_row_to_approval(row) for row in rows]
 
     async def save_memory(self, memory: MemoryRecordView) -> None:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_memories
@@ -485,7 +506,7 @@ class PostgresTaskStore:
             )
 
     async def list_memories(self, scope_type: str, scope_id: str) -> list[MemoryRecordView]:
-        async with self._db.admin_connection() as conn:
+        async with self._admin_conn() as conn:
             rows = await conn.fetch(
                 """
                 SELECT memory_id, tenant_id, scope_type, scope_id, memory_kind,

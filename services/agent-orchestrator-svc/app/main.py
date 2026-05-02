@@ -5,15 +5,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from documind_core.body_limit import BodyLimitMiddleware
 from documind_core.config import get_settings
 from documind_core.db_client import DbClient
+from documind_core.dr_metrics import all_targets
 from documind_core.logging_config import setup_logging
-from documind_core.body_limit import BodyLimitMiddleware
 from documind_core.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware, register_exception_handlers
-
-from .rate_limit import RateLimitMiddleware
 from documind_core.observability import instrument_fastapi, instrument_httpx, setup_observability
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from mcp import MCPClient
 
@@ -30,6 +30,9 @@ from .models import (
     ApprovalView,
     CreateProjectRequest,
     CreateTaskRequest,
+    DrMetricComparisonView,
+    DrTargetsDashboardView,
+    DrTargetTierDashboardView,
     MemoryRecordView,
     ModelCatalogEntryView,
     ProjectPlanItemView,
@@ -37,7 +40,9 @@ from .models import (
     TaskRunView,
     TaskView,
 )
+from .db_circuit_breaker import DbCircuitBreaker
 from .postgres_store import PostgresTaskStore
+from .rate_limit import RateLimitMiddleware
 from .service import AgentOrchestratorService
 from .store import InMemoryTaskStore
 
@@ -57,15 +62,23 @@ def create_app() -> FastAPI:
         instrument_fastapi(app)
         instrument_httpx()
 
+        # P0 #36 wiring: DbCircuitBreaker around the Postgres data layer.
+        # connect_with_breaker counts the initial connect as a CB call, so
+        # if Postgres is down at boot the breaker opens immediately and
+        # /health/ready surfaces it (200 → 503). When connect fails we fall
+        # back to InMemoryTaskStore (dev mode) — but the breaker still
+        # exists and reports OPEN so observability dashboards see the gap.
         db = DbClient(dsn=settings.postgres_dsn)
+        db_breaker = DbCircuitBreaker(name="orchestrator-db")
         store = None
         try:
-            await db.connect()
-            store = PostgresTaskStore(db)
+            await db_breaker.connect_with_breaker(db)
+            store = PostgresTaskStore(db, breaker=db_breaker)
             app.state.db = db
         except Exception:  # noqa: BLE001
             app.state.db = None
             store = InMemoryTaskStore()
+        app.state.db_breaker = db_breaker
 
         mcp_clients: dict[str, MCPClient] = {}
         if settings.mcp_hr_url:
@@ -140,8 +153,78 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/health/ready")
-    async def ready() -> dict[str, str]:
-        return {"status": "ready"}
+    async def ready() -> JSONResponse:
+        """Smart readiness probe per CLAUDE.md §47.8.
+
+        Returns 200 only if the orchestrator can actually serve a
+        request right now. The DB circuit breaker is the closest
+        runtime signal we have for "data layer healthy" — when it
+        flips to OPEN, K8s should redirect traffic away from this
+        pod even though the process is still alive.
+
+        Liveness (/health/live) intentionally stays a dumb "process
+        alive" check — checking deps in liveness causes cascade pod
+        restarts when the database hiccups. Readiness is where dep
+        health belongs.
+        """
+        breaker = getattr(app.state, "db_breaker", None)
+        if breaker is None or breaker.is_healthy:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "ready",
+                    "db_breaker": breaker.state if breaker else "unwired",
+                },
+            )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "degraded",
+                "db_breaker": breaker.state,
+                "error_code": "DB_CIRCUIT_OPEN",
+                "detail": "Postgres data layer unhealthy; circuit breaker open.",
+            },
+        )
+
+    @app.get("/api/v1/admin/dr-targets", response_model=DrTargetsDashboardView)
+    async def get_admin_dr_targets() -> DrTargetsDashboardView:
+        """§35 DR Metrics L3 dashboard contract.
+
+        L2 defined target tiers. L3 exposes target-vs-current rows to
+        operators. Current values remain explicitly unmeasured until
+        the L4 quarterly DR drill writes real recovery evidence.
+        """
+        metric_fields = (
+            ("rto", "rto_seconds"),
+            ("rpo", "rpo_seconds"),
+            ("mttd", "mttd_seconds"),
+            ("mttr", "mttr_seconds"),
+            ("failover", "failover_seconds"),
+        )
+        tiers = []
+        for target in all_targets():
+            tiers.append(
+                DrTargetTierDashboardView(
+                    tier=target.tier,
+                    description=target.description,
+                    measurements=[
+                        DrMetricComparisonView(
+                            metric=metric,
+                            target_seconds=getattr(target, attr),
+                            current_seconds=None,
+                            status="not_measured",
+                            evidence="pending quarterly DR drill",
+                        )
+                        for metric, attr in metric_fields
+                    ],
+                )
+            )
+        return DrTargetsDashboardView(
+            target_source="libs/py/documind_core/dr_metrics.py",
+            current_measurement_source=None,
+            drill_required="quarterly DR drill scaffold (§35 L3→L4)",
+            tiers=tiers,
+        )
 
     @app.post("/api/v1/agentic/tasks", response_model=TaskView)
     async def create_task(req: CreateTaskRequest) -> TaskView:

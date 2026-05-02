@@ -44,3 +44,29 @@ def test_phantom_route_returns_404():
     client = TestClient(app)
     resp = client.get("/api/v1/__phantom_does_not_exist__/foo")
     assert resp.status_code == 404
+
+
+def test_admin_dr_targets_endpoint_exposes_targets_without_fake_measurements():
+    """§35 L3: dashboard contract exposes current-vs-target rows.
+
+    Until the L4 quarterly drill records evidence, current values must
+    remain explicit nulls instead of invented recovery numbers.
+    """
+    from app.main import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    resp = client.get("/api/v1/admin/dr-targets")
+    assert resp.status_code == 200, f"unexpected status {resp.status_code}: {resp.text[:200]}"
+    payload = resp.json()
+    assert payload["maturity_item"] == "35-dr-metrics"
+    assert payload["target_source"] == "libs/py/documind_core/dr_metrics.py"
+    assert payload["current_measurement_source"] is None
+    assert [tier["tier"] for tier in payload["tiers"]] == ["critical", "important", "standard"]
+    for tier in payload["tiers"]:
+        assert {m["metric"] for m in tier["measurements"]} == {"rto", "rpo", "mttd", "mttr", "failover"}
+        for measurement in tier["measurements"]:
+            assert measurement["target_seconds"] >= 0
+            assert measurement["current_seconds"] is None
+            assert measurement["status"] == "not_measured"
+            assert measurement["evidence"] == "pending quarterly DR drill"

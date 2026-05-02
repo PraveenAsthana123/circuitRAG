@@ -223,3 +223,25 @@ class ModelCatalogEntryView(BaseModel):
     description: str
     strengths: list[str] = Field(default_factory=list)
     min_ram_gb: int = 8
+
+
+class DrMetricComparisonView(BaseModel):
+    metric: Literal["rto", "rpo", "mttd", "mttr", "failover"]
+    target_seconds: int
+    current_seconds: int | None = None
+    status: Literal["not_measured", "within_target", "breach"] = "not_measured"
+    evidence: str
+
+
+class DrTargetTierDashboardView(BaseModel):
+    tier: Literal["critical", "important", "standard"]
+    description: str
+    measurements: list[DrMetricComparisonView]
+
+
+class DrTargetsDashboardView(BaseModel):
+    maturity_item: str = "35-dr-metrics"
+    target_source: str
+    current_measurement_source: str | None = None
+    drill_required: str
+    tiers: list[DrTargetTierDashboardView]
