@@ -132,54 +132,30 @@ class StrategistAgent:
 
     @staticmethod
     def _parse_json_classification(text: str) -> dict[str, Any] | None:
-        """Find the FIRST balanced {...} that parses AND has required keys.
+        """Validate LLM output against the StrategistOutput Pydantic schema.
 
-        Bracket-aware scan instead of regex — JSON nested objects break
-        non-greedy regex (matches inner {} first, never outer).
+        Phase A (this iteration): primary path is the Pydantic validator,
+        which gives us:
+          - typed fields (no string vs bool drift)
+          - Literal-enum enforcement (complexity in {trivial, medium, high})
+          - extra-field rejection (model-config extra='forbid')
+          - missing-field rejection (BaseModel required fields)
+
+        Returns the validated payload as dict[str, Any] for backward
+        compatibility with downstream consumers that still iterate over
+        plain dicts. Returns None when validation fails — caller falls
+        back to deterministic heuristic, same as before.
+
+        Old bracket-aware regex path retained inside the validator
+        (`_first_balanced_object`) so this remains robust against
+        models that pre/post-amble the JSON.
         """
-        import json
-        import re
-        cleaned = re.sub(r"```(?:json)?\s*", "", text)
-        cleaned = cleaned.replace("```", "").strip()
+        from .agent_schemas import validate_strategist_output
 
-        # Walk every '{' position, scan forward counting braces, try parse.
-        for start in range(len(cleaned)):
-            if cleaned[start] != "{":
-                continue
-            depth = 0
-            in_str = False
-            escape = False
-            for i in range(start, len(cleaned)):
-                c = cleaned[i]
-                if escape:
-                    escape = False
-                    continue
-                if c == "\\":
-                    escape = True
-                    continue
-                if c == '"':
-                    in_str = not in_str
-                    continue
-                if in_str:
-                    continue
-                if c == "{":
-                    depth += 1
-                elif c == "}":
-                    depth -= 1
-                    if depth == 0:
-                        candidate = cleaned[start:i + 1]
-                        try:
-                            obj = json.loads(candidate)
-                            if (
-                                isinstance(obj, dict)
-                                and "overall_complexity" in obj
-                                and "overall_novelty" in obj
-                            ):
-                                return obj
-                        except json.JSONDecodeError:
-                            pass
-                        break  # this {...} done; advance start to next '{'
-        return None
+        validated = validate_strategist_output(text)
+        if validated is None:
+            return None
+        return validated.model_dump(mode="json")
 
     async def classify(self, goal: str, *, classify_timeout_s: float = 30.0) -> dict[str, Any]:
         # P0 #1 (strategist): own deadline. Even when caller doesn't
