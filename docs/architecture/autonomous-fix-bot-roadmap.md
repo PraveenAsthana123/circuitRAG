@@ -61,7 +61,7 @@
 
 | # | Item | Effort | Maps to |
 |---|---|---|---|
-| 4.0 | Drill for daemon §42 boundaries | 30min | regression guard |
+| 4.0 | Drill for daemon §42 boundaries | ✅ DONE | `mcp/tests/drill_daemon_safety_boundaries.py` 8/8 with 6 negative assertions: no `git push`, no destructive ops (rm -rf / rmtree / unlink / os.remove), SAFE_PATH_PREFIXES enforced, S*/B* filtered, 3 state-mutating reject paths audit-logged + escalate() rolling log + human-review queue, no Co-Authored-By trailer in auto_commit_applied (regex match for actual `Co-Authored-By: x@y` pattern), 24 emit() events all single-line for Monitor/cron-tail. |
 | 4.1 | Daily rolling summary (`.loop/daemon_daily_report.md`) | 2hr | operator visibility |
 | 4.2 | Apply-rate drift detection (uses §44 drift_detection module) | 4hr | alert if quality drops |
 | 4.3 | Ownership matrix per agent | 3hr | §43 + §53 |
