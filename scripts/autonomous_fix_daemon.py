@@ -500,7 +500,37 @@ def auto_commit_applied(issue_id: str, issue: dict) -> tuple[bool, str]:
         capture_output=True, text=True, timeout=5,
     )
     sha = (sha_proc.stdout or "").strip()
+
+    # Tier 2 #2.10 — rollback tagging. Every daemon commit gets a
+    # tag with the issue id baked in, so operator can revert
+    # atomically by tag prefix when production weirdness ties to
+    # an autonomous fix. Tag name pattern: auto-apply-<issue_id>
+    # (sanitized for git tag's character constraints).
+    tag_name = "auto-apply-" + _sanitize_tag(issue_id)
+    tag_proc = subprocess.run(
+        ["git", "tag", "-f", tag_name, sha,
+         "-m", f"daemon auto-applied fix for {issue_id}"],
+        cwd=REPO, capture_output=True, text=True, timeout=10,
+    )
+    if tag_proc.returncode != 0:
+        # Tag failure is non-fatal — commit succeeded; just lose
+        # the convenient revert handle. Log and continue.
+        emit(f"tag_failed sha={sha[:12]} reason={tag_proc.stderr.strip()[:60]}")
+
     return True, sha
+
+
+def _sanitize_tag(raw: str) -> str:
+    """Sanitize an issue_id for use as a git tag name.
+
+    Git refs reject: spaces, ~, ^, :, ?, *, [, \\, leading/trailing
+    slashes, double-dots, .lock suffix. Replace any of these with
+    a hyphen + collapse runs. Conservative: any char that's not
+    [A-Za-z0-9._-] becomes '-'.
+    """
+    import re as _re
+    sanitized = _re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("-")
+    return sanitized or "unknown"
 
 
 def main() -> int:

@@ -42,7 +42,7 @@
 |---|---|---|---|
 | 2.8 | In-loop verification (REVIEWER sees actual ruff exit code) | 6hr | reviewer's critique grounded in real test output |
 | 2.9 | Warm pool (3 Ollama models RAM-resident) | 4hr | cold-start latency 109s → 5s |
-| 2.10 | Rollback tagging (every auto-commit has revert-tag) | 2hr | atomic revert if production weirdness ties to a daemon commit |
+| 2.10 | Rollback tagging (every auto-commit has revert-tag) | ✅ DONE | Daemon tags every successful auto-commit `auto-apply-<sanitized-id>` after `git commit`. `_sanitize_tag()` strips git-ref-forbidden chars (~^:?*[\\). Tag failure non-fatal — emits `daemon:tag_failed` event; commit not rolled back. `scripts/revert_auto_apply.sh --list/--revert/--revert-range/--status` operator surface, §42-safe (creates new commit, never force-pushes). Drilled 8/8 with format-check (`git check-ref-format refs/tags/auto-apply-X`). |
 | 5.0 | **Verifiability framework**: technical (ruff/mypy/pytest) + business (scorecard) | 10hr | trust signal ≠ "it compiled"; matches user's "business + technical verification" ask |
 | 7.0 | **End-to-end MCP hybrid** (research-svc + Ollama + Tier-B over MCP) | 15hr | matches user's "end-to-end architecture, hybrid approach with MCP" ask |
 
