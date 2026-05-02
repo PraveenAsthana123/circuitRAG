@@ -23,13 +23,13 @@
 | 41 | Change Management | **L1** | L3 | 🔴 | Frontend `/admin/agentic` exists; no training, no adoption tracking |
 | 42 | Documentation | **L3** | L5 | 🟢 | 14 per-tool reviews + C4 L1+L2 + 50+ commits with §51 metadata; missing: BRD/HLD/LLD per service, ADR catalog, runbooks |
 | 43 | Integration & Operating Model | **L2** | L5 | 🟡 | People/Platform exist; Process partial (no formal LLMOps); Governance: RAI/security/compliance docs incomplete |
-| 44 | Production Validation | **L2** | L5 | 🟡 | Drills lock contracts (per §43); no shadow testing, no drift detection, no auto-rollback (B6 observer is the closest, still scaffold) |
+| 44 | Production Validation | **L3** | L5 | 🟡 | Drills lock contracts (§43) + decision-confidence drift detection shipped (`libs/py/documind_core/drift_detection.py` with PSI; drilled both directions A/A no-false-pos + A/B detection); missing: data-drift dimension, usage-drift dimension, dashboard endpoint, alert wiring, shadow testing, auto-rollback |
 | 45 | Continuous Improvement | **L1** | L4 | 🔴 | No feedback loop, no eval harness, no experimentation engine; commits drift toward "build" not "learn" |
 | 46 | Platformization | **L2** | L5 | 🟡 | Agent framework + LLM client pool + model router exist; no prompt registry, no model gateway, no tool marketplace, no eval platform |
 | 47 | Strategic Alignment | **L1** | L4 | 🔴 | No portfolio mgmt, no value attribution per agent, no maturity tracking before this doc |
 | 48 | AI Governance OS | **L1** | L5 | 🔴 | Policy/decision/risk/compliance/audit engines do NOT exist as a unified surface; pieces scattered (model_router has policy; explainability has audit; no Compliance Engine) |
 
-**Overall**: weighted average **L2.14** (was L1.85 at first assessment; #35 moved L1→L2→L3 across two iters); target **L4.5**. Concrete gap: ~137 hr engineering + 6 mo of org change to reach L4.
+**Overall**: weighted average **L2.21** (was L1.85; #35 L1→L2→L3 + #44 L2→L3 across this session); target **L4.5**. Concrete gap: ~133 hr engineering + 6 mo of org change to reach L4.
 
 ---
 
@@ -46,7 +46,7 @@
 | # | Item | Gap | Effort |
 |---|---|---|---|
 | 48 | **AI Governance OS** | Compliance Engine missing; no GDPR / ISO 42001 / NIST AI RMF mapping concrete in code | ~30 hr |
-| 44 | **Production Validation** | No drift detection on live decisions | ~20 hr |
+| 44 | **Production Validation** | Decision-confidence drift shipped; data+usage dimensions, dashboard, alert wiring, shadow testing remaining | ~16 hr remaining |
 | 35 | **DR Metrics** | Targets + dashboard endpoint shipped; quarterly DR drill remaining (the actual recovery exercise) | ~7 hr remaining |
 | 47 | **Strategic Alignment** | No business KPI → AI use case mapping | ~15 hr |
 | 40 | **Business KPI Tracking** | Audit row exists; no aggregation / dashboard / per-segment view | ~25 hr |
