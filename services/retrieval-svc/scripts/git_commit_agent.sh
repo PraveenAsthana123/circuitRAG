@@ -1,37 +1,38 @@
 #!/bin/bash
 
-echo "🌿 GIT COMMIT AGENT"
+echo "📦 GIT COMMIT AGENT"
 
-echo "1. Run final health check"
+# Check system health
 ./scripts/full_system_check.sh
+if [ $? -ne 0 ]; then
+  echo "❌ System unhealthy. Commit blocked."
+  exit 1
+fi
 
+# Check governance
+./scripts/governance_gate.sh
+if [ $? -ne 0 ]; then
+  echo "❌ Governance failed. Commit blocked."
+  exit 1
+fi
+
+# Check bugs
 BUGS=$(python - <<'PY'
 import json
 from pathlib import Path
-
 p = Path("reports/bugs.json")
 print(len(json.load(open(p))) if p.exists() else 0)
 PY
 )
 
 if [ "$BUGS" != "0" ]; then
-  echo "❌ Bugs found: $BUGS"
-  echo "Commit blocked."
+  echo "❌ Bugs present. Commit blocked."
   exit 1
 fi
 
-echo "2. Check git status"
-git status --short
+echo "✅ All checks passed → committing"
 
-if [ -z "$(git status --short)" ]; then
-  echo "✅ No changes to commit."
-  exit 0
-fi
+git add .
+git commit -m "🤖 auto-commit: system healthy + governance passed"
 
-echo "3. Stage changes"
-git add scripts reports
-
-echo "4. Commit"
-git commit -m "agent: add validation and self-healing scripts"
-
-echo "✅ Commit complete"
+echo "🚀 Commit done"

@@ -12,7 +12,8 @@ BACKUP_DIR = Path(".loop/backups")
 
 
 def run(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(  # noqa: S603
+        cmd, capture_output=True, text=True)
     return {
         "cmd": " ".join(cmd),
         "code": result.returncode,
