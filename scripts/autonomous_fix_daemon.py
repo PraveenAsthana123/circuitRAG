@@ -352,16 +352,50 @@ def cycle_one(args: argparse.Namespace) -> str:
                     "lane": "deterministic",
                 })
 
-    # Phase 2: pick one hard task, research + council + drill-gated apply.
+    # Phase 2: pick one hard task, agent-lead decides route, then apply.
     task = find_next_task()
     if task is None:
         return "no_eligible_task"
 
     issue_id = task["id"]
     emit(f"taken_up id={issue_id} code={task['code']} file={task['file']}:{task['line']}")
+
+    # Tier 1 #1.2: agent-lead routing. Picks council_full / small_direct
+    # / tier_b / human / skip BEFORE any model fires. Saves token budget
+    # on trivial rules; escalates complex rules cleanly.
+    sys.path.insert(0, str(REPO / "scripts"))
+    from agent_lead import decide_route  # noqa: E402
+    decision = decide_route(
+        task,
+        already_attempted=already_attempted(issue_id),
+        in_safe_path=is_safe_path(task.get("file", "")),
+    )
+    emit(f"route id={issue_id} route={decision.route} model={decision.model} cost_cents={decision.estimated_cost_cents}")
+
+    if decision.route == "skip":
+        emit(f"skipped id={issue_id} reason={decision.reason[:80]}")
+        return "skipped"
+    if decision.route == "human":
+        # Already in human-review queue via export_human_review_queue();
+        # don't double-log to apply audit.
+        emit(f"human_only id={issue_id}")
+        return "human_only"
+    if decision.route == "tier_b":
+        # Tier-B escalation: write a deferral marker; operator runs
+        # a separate Claude/Codex CLI flow (out of scope for this iter).
+        emit(f"tier_b_deferred id={issue_id} (Tier-B routing not yet wired; operator-only)")
+        append_apply_audit({
+            "id": issue_id,
+            "outcome": "tier_b_deferred",
+            "reason": "agent-lead chose tier_b; needs operator Claude/Codex CLI run",
+            "estimated_cost_cents": decision.estimated_cost_cents,
+        })
+        return "tier_b_deferred"
+    # decision.route in ("council_full", "small_direct"): proceed to council
     write_status({
         "phase": "council",
         "current_id": issue_id,
+        "route": decision.route,
         "started_at": _now(),
     })
 
