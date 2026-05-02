@@ -31,7 +31,7 @@
 | 1.1 | Pydantic CouncilProposal schema | ✅ DONE | structurally sound output |
 | 1.2 | **Agent-lead-first routing** (manager agent decides: direct-fix vs council vs escalate vs skip) | 6hr | ~25% (cheap rules skip council overhead; complex routes correctly). Matches user's "agent lead first approach" ask. LangGraph supervisor pattern. |
 | 1.3 | **Per-rule fix-strategy table** | ✅ DONE | 18 rules in dispatch table; 6 categories (investigation, mechanical_rewrite, import_sort, type_fix, frontend_jsx, default) + security skip. F841 → ±30 lines + grep_refs; UP035 → ±5 lines no-grep; B*/S* → human-only. Wired into local_council.py AUTHOR prompt. Drilled 8/8 with 6 negative assertions. |
-| 1.4 | **Adaptive context window (research → council)** | 4hr | ~50% (F841-class real bugs become tractable) |
+| 1.4 | **Adaptive context window (research → council)** | ✅ DONE | qwen2.5 RESEARCHER step fires before AUTHOR for investigation + type-fix rules (when `strategy.needs_grep_refs=True`); brief embedded in AUTHOR prompt. Token-efficient: skipped for mechanical rules. Graceful degradation if researcher errors. Drilled 8/8 with 6 negative assertions covering both gates (when-fires + when-skipped) + empty-brief omission + error-fallback. |
 | 2.5 | Retry-with-feedback on first schema failure | 6hr | ~70% (one rejection → second corrected attempt) |
 | 2.6 | Prior-fix RAG (retrieve past fixes as few-shots) | 8hr | ~85% (pattern-matching on past success) |
 | 2.7 | Confidence-gated Tier-B fallback (Claude/Codex CLI) | 5hr | ~95% (low-confidence escalates) |

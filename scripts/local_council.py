@@ -64,6 +64,15 @@ from rule_fix_strategy import (  # noqa: E402
 
 
 COUNCIL_ROLES: dict[str, dict[str, str]] = {
+    "researcher": {
+        "model": "qwen2.5:latest",
+        "system": (
+            "You are RESEARCHER. Investigate the symbol the rule cites in the "
+            "context + grep references provided. Decide if it is dead code, "
+            "real bug, or pattern-known issue. Reply in 3-6 lines of plain "
+            "text — no JSON, no diff. AUTHOR reads your brief before proposing."
+        ),
+    },
     "author": {
         "model": "deepseek-coder:6.7b-instruct",
         "system": (
@@ -118,19 +127,49 @@ def call_ollama(model: str, system: str, prompt: str, timeout: float = 180.0) ->
     return body.get("response", ""), int(body.get("eval_count", 0))
 
 
-def _author_prompt(issue: dict, context: str, *, grep_refs: str = "") -> str:
+def _researcher_prompt(issue: dict, context: str, grep_refs: str) -> str:
+    """Tier 1 #1.4: RESEARCHER builds a brief BEFORE AUTHOR fires.
+
+    Only invoked when strategy.needs_grep_refs=True (investigation +
+    type-fix rules). Brief synthesizes the file context + grep
+    references into 3-6 lines of plain-text guidance for AUTHOR.
+    """
+    return (
+        f"Investigate this finding before AUTHOR proposes a fix.\n\n"
+        f"Rule: {issue['code']}\n"
+        f"File: {issue['file']}:{issue['line']}\n"
+        f"Rule message: {issue['message']}\n"
+        f"\n"
+        f"Context (±lines around issue):\n```\n{context}\n```\n"
+        f"\n"
+        f"Grep references across repo:\n```\n{grep_refs[:3000]}\n```\n"
+        f"\n"
+        f"Reply with 3-6 lines of plain text answering:\n"
+        f"  - Is the cited symbol dead code, real bug, or pattern-known?\n"
+        f"  - What's the safest minimal fix?\n"
+        f"  - Any risks AUTHOR must know?\n"
+    )
+
+
+def _author_prompt(issue: dict, context: str, *, grep_refs: str = "", research_brief: str = "") -> str:
     """Build the AUTHOR prompt using the per-rule strategy.
 
-    Per Tier 1 #1.3 of the autonomous-fix-bot roadmap. F841 gets the
-    investigation prompt + grep-references; UP035 gets the
-    mechanical-rewrite prompt with no extra context. One generic
-    prompt for all rules was empirically wrong (see session log).
+    Per Tier 1 #1.3 (strategy table) + #1.4 (research brief).
+    F841 gets the investigation prompt + grep-references + research
+    brief; UP035 gets the mechanical-rewrite prompt with no extras.
+    One generic prompt for all rules was empirically wrong.
     """
     strategy = get_strategy(issue.get("code", ""))
     rule_specific = get_prompt_template(strategy)
     refs_section = ""
     if strategy.needs_grep_refs and grep_refs:
         refs_section = f"\n\nReferences (grep across repo):\n```\n{grep_refs[:3000]}\n```\n"
+    brief_section = ""
+    if research_brief:
+        brief_section = (
+            f"\n\nResearch brief (from RESEARCHER model — read carefully):\n"
+            f"```\n{research_brief}\n```\n"
+        )
     return (
         rule_specific
         + "\n"
@@ -138,6 +177,7 @@ def _author_prompt(issue: dict, context: str, *, grep_refs: str = "") -> str:
         + f"Rule: {issue['code']}\n"
         + f"File: {issue['file']}:{issue['line']}\n"
         + f"Message: {issue['message']}\n"
+        + brief_section
         + f"\n"
         + f"Context (±{strategy.context_lines} lines around the issue):\n"
         + f"```\n{context}\n```"
@@ -243,13 +283,45 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
         },
     }
 
+    # Tier 1 #1.4: RESEARCHER fires for investigation + type-fix rules
+    # so AUTHOR sees a synthesized brief instead of raw grep output.
+    research_brief = ""
+    if strategy.needs_grep_refs and grep_refs:
+        print(f"\n  === RESEARCHER ({COUNCIL_ROLES['researcher']['model']}) ===")
+        started = time.time()
+        try:
+            research_brief, research_tokens = call_ollama(
+                COUNCIL_ROLES["researcher"]["model"],
+                COUNCIL_ROLES["researcher"]["system"],
+                _researcher_prompt(issue, context, grep_refs),
+                timeout=120.0,  # qwen2.5 is fast; cap shorter than AUTHOR
+            )
+        except Exception as e:
+            print(f"  RESEARCHER error: {e}")
+            audit_chain["researcher"] = {
+                "model": COUNCIL_ROLES["researcher"]["model"],
+                "outcome": "error",
+                "error": str(e),
+            }
+            research_brief = ""  # AUTHOR proceeds without brief
+        else:
+            research_lat = time.time() - started
+            audit_chain["researcher"] = {
+                "model": COUNCIL_ROLES["researcher"]["model"],
+                "tokens": research_tokens,
+                "latency_s": round(research_lat, 1),
+                "output": research_brief[:1500],
+            }
+            print(f"  [{research_tokens} tokens, {research_lat:.1f}s]")
+            print(research_brief[:600])
+
     print(f"\n  === AUTHOR ({COUNCIL_ROLES['author']['model']}) ===")
     started = time.time()
     try:
         author_text, author_tokens = call_ollama(
             COUNCIL_ROLES["author"]["model"],
             COUNCIL_ROLES["author"]["system"],
-            _author_prompt(issue, context, grep_refs=grep_refs),
+            _author_prompt(issue, context, grep_refs=grep_refs, research_brief=research_brief),
         )
     except Exception as e:
         print(f"  AUTHOR error: {e}")
