@@ -407,10 +407,66 @@ def cycle_one(args: argparse.Namespace) -> str:
     })
     if ok:
         emit(f"applied id={issue_id}")
+        commit_ok, commit_msg = auto_commit_applied(issue_id, task)
+        if commit_ok:
+            emit(f"committed id={issue_id} sha={commit_msg[:12]}")
+            return "committed"
+        emit(f"commit_skipped id={issue_id} reason={commit_msg[:80]}")
         return "applied"
     emit(f"rejected id={issue_id} reason={reason[:80]}")
     escalate(issue_id, reason)
     return "rejected"
+
+
+def auto_commit_applied(issue_id: str, issue: dict) -> tuple[bool, str]:
+    """Stage + commit the daemon's applied fix per §51 + §54.
+
+    Conventional-commit subject under 70 chars; body explains what
+    fixed + which agents were involved + rejects the §54 trailer.
+    Push remains §42-gated (operator-only).
+    """
+    file_rel = issue.get("file", "")
+    rule = issue.get("code", "")
+    add = subprocess.run(
+        ["git", "add", file_rel], cwd=REPO,
+        capture_output=True, text=True, timeout=15,
+    )
+    if add.returncode != 0:
+        return False, f"git add failed: {add.stderr.strip()[:80]}"
+
+    subject = f"fix({rule.lower()}): autonomous daemon — {issue_id}"[:70]
+    body = (
+        f"{subject}\n"
+        "\n"
+        "Applied by autonomous_fix_daemon.py via local Ollama council\n"
+        "(deepseek-coder AUTHOR, codegemma REVIEWER, codellama ADVISOR).\n"
+        "Drill-gated apply: ruff check passed before commit.\n"
+        "\n"
+        f"Issue:   {issue_id}\n"
+        f"Rule:    {rule}\n"
+        f"File:    {file_rel}:{issue.get('line', '?')}\n"
+        f"Message: {issue.get('message', '')[:200]}\n"
+        "\n"
+        "Forensic-substrate per §51:\n"
+        f"- Location: praveen-dev-linux-x86_64\n"
+        f"- Approach: autonomous-loop daemon cycle\n"
+        f"- Policies: §50 (issue dispatcher) + §43 (drill-gated apply)\n"
+        f"             + §54 (no Co-Authored-By trailer; this commit obeys)\n"
+        f"- Push:     §42 gated; operator must run\n"
+        f"             `python3 scripts/agent_task_board.py push --confirm`\n"
+    )
+    commit = subprocess.run(
+        ["git", "commit", "-m", body], cwd=REPO,
+        capture_output=True, text=True, timeout=30,
+    )
+    if commit.returncode != 0:
+        return False, f"git commit failed: {commit.stderr.strip()[:80]}"
+    sha_proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=REPO,
+        capture_output=True, text=True, timeout=5,
+    )
+    sha = (sha_proc.stdout or "").strip()
+    return True, sha
 
 
 def main() -> int:
