@@ -41,7 +41,7 @@
 | # | Item | Effort | What it solves |
 |---|---|---|---|
 | 2.8 | In-loop verification (REVIEWER sees actual ruff exit code) | 6hr | reviewer's critique grounded in real test output |
-| 2.9 | Warm pool (3 Ollama models RAM-resident) | 4hr | cold-start latency 109s → 5s |
+| 2.9 | Warm pool (4 Ollama models RAM-resident) | ✅ DONE | `scripts/warm_council_pool.py` warms all 4 council models with `keep_alive=24h` (overrides Ollama's 5min default). Subcommands: `warm` (one-shot), `status` (read-only via /api/ps), `watch --interval 600` (re-warm every 10 min). Drilled 8/8: 4-model roster, keep_alive=24h enforced, /api/ps read-only, no destructive ops, --interval ≥60s. |
 | 2.10 | Rollback tagging (every auto-commit has revert-tag) | ✅ DONE | Daemon tags every successful auto-commit `auto-apply-<sanitized-id>` after `git commit`. `_sanitize_tag()` strips git-ref-forbidden chars (~^:?*[\\). Tag failure non-fatal — emits `daemon:tag_failed` event; commit not rolled back. `scripts/revert_auto_apply.sh --list/--revert/--revert-range/--status` operator surface, §42-safe (creates new commit, never force-pushes). Drilled 8/8 with format-check (`git check-ref-format refs/tags/auto-apply-X`). |
 | 5.0 | **Verifiability framework**: technical (ruff/mypy/pytest) + business (scorecard) | 10hr | trust signal ≠ "it compiled"; matches user's "business + technical verification" ask |
 | 7.0 | **End-to-end MCP hybrid** (research-svc + Ollama + Tier-B over MCP) | 15hr | matches user's "end-to-end architecture, hybrid approach with MCP" ask |
