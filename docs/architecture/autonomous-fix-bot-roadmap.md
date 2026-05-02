@@ -84,6 +84,9 @@ The user requested 9 management/orchestration concerns in rapid succession. Each
 | 5.7 | **Task management subsystem** | 6hr | matches "task management". Beyond the issue queue: feature work / chore / spike tasks; dependency graph; Gantt-ish view; assignment to humans + agents in unified board. |
 | 5.8 | **Agent monitoring & management subsystem** | 10hr | matches "agent monitoring management". Per-agent health (latency / cost / error rate / drift); auto-disable on drift > threshold; redeploy / replace / retire workflow. |
 | 5.9 | **Agent-task delegation management** | 8hr | matches "agent task delegation management". The supervisor's policy: which agent gets which task; load balancing; capability-matching; cost optimization. |
+| 5.10 | **Agent-to-agent communication / A2A chat protocol** | 10hr | matches "Agent talk to another agent" + "agent to agent chat". Structured messaging between agents (CrewAI message-bus / MCP-over-stdio / pubsub). Each agent can request another agent's specialty; auditable transcript per request_id. |
+| 5.11 | **Agent-first architecture** | 14hr | matches "Agent first architect". Meta-pattern: every new system feature is designed as "what agent owns this?" first, code second. Map every CRUD to an agent role; auto-derive C4 L3 component diagram from agent registry. |
+| 5.12 | **Agent environment setup** (`scripts/setup_agent_env.sh` + drill) | ✅ DONE | matches "setup agent environment". Preflight + init for venv / pip deps / Ollama models / .loop dir / cron status / sanity scan. 8/8 drill including §42-boundary check (no git push). |
 
 **Tier 5 total: 76 hours** for the 9 orchestration/management subsystems.
 
