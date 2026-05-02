@@ -27,9 +27,9 @@
 | 45 | Continuous Improvement | **L1** | L4 | 🔴 | No feedback loop, no eval harness, no experimentation engine; commits drift toward "build" not "learn" |
 | 46 | Platformization | **L2** | L5 | 🟡 | Agent framework + LLM client pool + model router exist; no prompt registry, no model gateway, no tool marketplace, no eval platform |
 | 47 | Strategic Alignment | **L1** | L4 | 🔴 | No portfolio mgmt, no value attribution per agent, no maturity tracking before this doc |
-| 48 | AI Governance OS | **L1** | L5 | 🔴 | Policy/decision/risk/compliance/audit engines do NOT exist as a unified surface; pieces scattered (model_router has policy; explainability has audit; no Compliance Engine) |
+| 48 | AI Governance OS | **L2** | L5 | 🟡 | Unified facade shipped (`libs/py/documind_core/governance_os.py`): PolicyEngine wraps `evaluate_approval_reasons`, RiskEngine consumes DriftReport severity, ComplianceEngine returns honest `not_implemented` stubs for GDPR/PIPEDA/ISO 42001/NIST AI RMF, AuditEngine logs to in-memory store. Wired into `create_task` route + `/api/v1/admin/governance/audit` read-view. Drilled both allow + review paths. Missing: real compliance attestation, Decision Engine integration with model_router, persistent audit store, gate-mode (currently report-only). |
 
-**Overall**: weighted average **L2.21** (was L1.85; #35 L1→L2→L3 + #44 L2→L3 across this session); target **L4.5**. Concrete gap: ~133 hr engineering + 6 mo of org change to reach L4.
+**Overall**: weighted average **L2.29** (was L1.85; #35 L1→L2→L3, #44 L2→L3, #48 L1→L2 across this session); target **L4.5**. Concrete gap: ~128 hr engineering + 6 mo of org change to reach L4.
 
 ---
 
@@ -45,7 +45,7 @@
 
 | # | Item | Gap | Effort |
 |---|---|---|---|
-| 48 | **AI Governance OS** | Compliance Engine missing; no GDPR / ISO 42001 / NIST AI RMF mapping concrete in code | ~30 hr |
+| 48 | **AI Governance OS** | L1→L2 facade shipped (Policy + Audit live; Risk + Compliance honest stubs); real compliance attestation + persistent audit + gate-mode remaining | ~25 hr remaining |
 | 44 | **Production Validation** | Decision-confidence drift shipped; data+usage dimensions, dashboard, alert wiring, shadow testing remaining | ~16 hr remaining |
 | 35 | **DR Metrics** | Targets + dashboard endpoint shipped; quarterly DR drill remaining (the actual recovery exercise) | ~7 hr remaining |
 | 47 | **Strategic Alignment** | No business KPI → AI use case mapping | ~15 hr |

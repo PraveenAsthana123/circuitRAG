@@ -9,6 +9,7 @@ from documind_core.body_limit import BodyLimitMiddleware
 from documind_core.config import get_settings
 from documind_core.db_client import DbClient
 from documind_core.dr_metrics import all_targets
+from documind_core.governance_os import GovernanceOS, build_governance_os
 from documind_core.logging_config import setup_logging
 from documind_core.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware, register_exception_handlers
 from documind_core.observability import instrument_fastapi, instrument_httpx, setup_observability
@@ -41,6 +42,7 @@ from .models import (
     TaskView,
 )
 from .db_circuit_breaker import DbCircuitBreaker
+from .policy import evaluate_approval_reasons
 from .idempotency import (
     IdempotencyConflict,
     InMemoryIdempotencyStore,
@@ -97,6 +99,13 @@ def create_app() -> FastAPI:
             idempotency_store = InMemoryIdempotencyStore()
         app.state.db_breaker = db_breaker
         app.state.idempotency_store = idempotency_store
+        # §48 wiring: GovernanceOS bootstraps here so every governed
+        # request hits one structured surface for policy + risk +
+        # compliance + audit. L1→L2 is observability-only; L2→L3
+        # moves the gate into the OS.
+        app.state.governance_os = build_governance_os(
+            policy_evaluate_fn=evaluate_approval_reasons,
+        )
 
         mcp_clients: dict[str, MCPClient] = {}
         if settings.mcp_hr_url:
@@ -244,6 +253,24 @@ def create_app() -> FastAPI:
             tiers=tiers,
         )
 
+    @app.get("/api/v1/admin/governance/audit")
+    async def get_governance_audit(limit: int = Query(default=50, ge=1, le=500)) -> dict[str, Any]:
+        """§48 GovernanceOS audit-row read view.
+
+        Returns the most recent governance decisions logged by the OS
+        facade. In dev/L1→L2 the audit log is in-memory; future
+        iterations persist to orchestration.governance_audit.
+        """
+        os: GovernanceOS = app.state.governance_os
+        rows = [d.to_dict() for d in os.audit.recent(limit=limit)]
+        return {
+            "rows": rows,
+            "count": len(rows),
+            "total": os.audit.count(),
+            "storage": "in_memory_l1_l2",
+            "next_iteration_ref": "§48 L2→L3 persists to orchestration.governance_audit",
+        }
+
     @app.post("/api/v1/agentic/tasks", response_model=TaskView)
     async def create_task(
         req: CreateTaskRequest,
@@ -261,6 +288,24 @@ def create_app() -> FastAPI:
         fallback only in dev. Two pods sharing the same Postgres see
         the same idempotency state.
         """
+        # §48 GovernanceOS facade: emit one structured decision per
+        # request before the service-layer create runs. L1→L2 is
+        # report-only — service.create_task still owns gating —
+        # but the audit row + compliance attestations + risk view
+        # are now uniformly captured. L2→L3 will lift the gate here.
+        governance_os: GovernanceOS = app.state.governance_os
+        governance_os.evaluate(
+            request_state={
+                "tenant_id": req.tenant_id,
+                "goal": req.goal,
+                "risk_level": getattr(req, "risk_level", None),
+                "require_human_approval": getattr(req, "require_human_approval", False),
+                "tool_namespace": getattr(req, "tool_namespace", None),
+                "tool_name": getattr(req, "tool_name", None),
+            },
+            policy=app.state.service._default_policy,
+        )
+
         if idempotency_key is None:
             return await app.state.service.create_task(req)
 
