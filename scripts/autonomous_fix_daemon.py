@@ -69,6 +69,8 @@ CHECKLIST = REPO / ".loop" / "issue_checklist.jsonl"
 AUDIT = REPO / ".loop" / "issue_audit.jsonl"
 APPLY_AUDIT = REPO / ".loop" / "agent_task_board_apply.jsonl"
 DAEMON_STATUS = REPO / ".loop" / "daemon_status.json"
+ESCALATIONS = REPO / ".loop" / "escalations.md"
+HUMAN_REVIEW_QUEUE = REPO / ".loop" / "human_review_queue.md"
 
 ISSUE_SCANNER = Path.home() / ".claude" / "scripts" / "issue_scanner.py"
 ISSUE_DISPATCHER = Path.home() / ".claude" / "scripts" / "issue_dispatcher.py"
@@ -110,9 +112,22 @@ def append_apply_audit(record: dict) -> None:
 
 
 def scan_issues() -> int:
+    """Run the issue scanner with the broadest surface possible.
+
+    Bandit (`--include-bandit`) flags security issues that the daemon
+    will SKIP at task-claim time per §50.5.3 — but exporting them to
+    the human-review queue is more valuable than not knowing they
+    exist. Same logic for mypy + eslint.
+    """
     proc = subprocess.run(
-        ["python3", str(ISSUE_SCANNER), "--repo", str(REPO)],
-        capture_output=True, text=True, timeout=60,
+        [
+            "python3", str(ISSUE_SCANNER),
+            "--repo", str(REPO),
+            "--include-mypy",
+            "--include-bandit",
+            "--include-eslint",
+        ],
+        capture_output=True, text=True, timeout=120,
     )
     if proc.returncode != 0:
         emit(f"scan_failed rc={proc.returncode}")
@@ -130,7 +145,14 @@ def is_safe_path(rel_path: str) -> bool:
 
 
 def is_security_rule(code: str) -> bool:
-    return code.startswith("S")
+    """Per §50.5.3, security rules NEVER go to a local model.
+
+    Covers ruff S* (security) AND bandit B* AND any code starting
+    with 'security'. Earlier version only checked 'S*' which let
+    bandit codes through — drill-gate caught the resulting corrupt
+    patch but the request should never have been made.
+    """
+    return code.startswith(("S", "B")) or "security" in code.lower()
 
 
 def find_next_task() -> dict | None:
@@ -144,6 +166,69 @@ def find_next_task() -> dict | None:
             continue  # outside safe boundary
         return issue
     return None
+
+
+def export_human_review_queue() -> int:
+    """Write the security/bandit issue list to a human-readable file.
+
+    Per §50.5.3, security rules (S*/B*) NEVER go to a model. The daemon
+    skips them at task-claim time — but skipping silently means an
+    operator never sees them. Export to a markdown queue so the work
+    is visible even though the daemon won't touch it.
+
+    Returns count of items in the human-review queue.
+    """
+    issues = load_jsonl(CHECKLIST)
+    skipped: list[dict] = []
+    for issue in issues:
+        code = issue.get("code", "")
+        if is_security_rule(code) or code.startswith("B"):
+            skipped.append(issue)
+        elif not is_safe_path(issue.get("file", "")):
+            skipped.append(issue)
+    if not skipped:
+        return 0
+    HUMAN_REVIEW_QUEUE.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Human-review queue",
+        "",
+        f"**Generated**: {_now()}",
+        f"**Count**: {len(skipped)} issues the autonomous daemon REFUSES to touch",
+        "",
+        "Per CLAUDE.md §50.5.3, security rules (`S*` / `B*`) and",
+        "out-of-safe-path issues never go to a local model. Operator",
+        "must triage these manually.",
+        "",
+        "| ID | Code | File:Line | Message |",
+        "|---|---|---|---|",
+    ]
+    for i in skipped:
+        msg = i["message"].replace("|", "\\|")[:100]
+        lines.append(f"| `{i['id']}` | {i['code']} | `{i['file']}:{i['line']}` | {msg} |")
+    HUMAN_REVIEW_QUEUE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return len(skipped)
+
+
+def escalate(issue_id: str, reason: str) -> None:
+    """Append an entry to the operator-readable escalation log.
+
+    Called when the daemon rejects an issue. Without this log, every
+    rejection is buried in the JSON audit; with it, an operator can
+    `cat .loop/escalations.md` and see the full failure history at a
+    glance. Per the user's "if ollama not able to fix then they need
+    to update" — this IS the update.
+    """
+    ESCALATIONS.parent.mkdir(parents=True, exist_ok=True)
+    if not ESCALATIONS.exists():
+        ESCALATIONS.write_text(
+            "# Daemon escalation log\n\n"
+            "Each row: a council attempt the drill-gate rejected. "
+            "If an issue appears here twice, route to manual fix.\n\n"
+            "| Time | Issue | Reason |\n|---|---|---|\n",
+            encoding="utf-8",
+        )
+    with ESCALATIONS.open("a", encoding="utf-8") as fh:
+        fh.write(f"| {_now()} | `{issue_id}` | {reason[:200]} |\n")
 
 
 def apply_ruff_autofix() -> tuple[int, int]:
@@ -227,7 +312,8 @@ def cycle_one(args: argparse.Namespace) -> str:
     """Run one daemon cycle. Returns short status string for status file."""
     emit(f"cycle_start at={_now()}")
     n_pending = scan_issues()
-    emit(f"scan_complete pending={n_pending}")
+    n_human = export_human_review_queue()
+    emit(f"scan_complete pending={n_pending} human_review_queued={n_human}")
 
     if n_pending == 0:
         return "queue_empty"
@@ -311,6 +397,7 @@ def cycle_one(args: argparse.Namespace) -> str:
         emit(f"applied id={issue_id}")
         return "applied"
     emit(f"rejected id={issue_id} reason={reason[:80]}")
+    escalate(issue_id, reason)
     return "rejected"
 
 
