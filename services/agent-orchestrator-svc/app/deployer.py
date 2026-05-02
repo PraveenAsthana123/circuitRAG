@@ -10,7 +10,6 @@ from typing import Any
 
 from .llm_clients import AllBackendsUnavailable, LlmClientPool
 
-
 RouteFn = Any
 
 
@@ -43,7 +42,7 @@ class DeployerAgent:
                 ),
                 timeout=preflight_timeout_s,
             )
-        except _asyncio.TimeoutError:
+        except TimeoutError:
             return self._heuristic(diff_summary, target, error=f"deployer exceeded {preflight_timeout_s}s")
 
     async def _preflight_unbounded(

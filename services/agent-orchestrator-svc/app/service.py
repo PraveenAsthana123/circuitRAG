@@ -17,9 +17,6 @@ from .llm_clients import (
     OllamaHttpClient,
 )
 from .model_router import route as model_router_route
-from .observer import ObserverAgent
-from .research import ResearchAgent
-from .tester import TesterAgent
 from .models import (
     AgenticPolicyUpdateRequest,
     AgenticPolicyView,
@@ -37,9 +34,12 @@ from .models import (
     TaskRunView,
     TaskView,
 )
+from .observer import ObserverAgent
 from .ollama_client import OllamaGenerateClient
 from .policy import evaluate_approval_reasons
+from .research import ResearchAgent
 from .store import InMemoryTaskStore
+from .tester import TesterAgent
 
 
 class AgentOrchestratorService:

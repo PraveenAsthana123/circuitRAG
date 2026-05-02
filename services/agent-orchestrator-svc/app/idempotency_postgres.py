@@ -31,7 +31,7 @@ class PostgresIdempotencyStore:
     Protocol from app/idempotency.py. Reads/writes orchestration.idempotency_keys
     via DbClient.tenant_connection (RLS-enforced)."""
 
-    def __init__(self, db: "DbClient") -> None:
+    def __init__(self, db: DbClient) -> None:
         self._db = db
 
     async def get(self, tenant_id: str, key: str) -> IdempotencyRecord | None:

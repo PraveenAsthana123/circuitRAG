@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional, TypedDict
+from typing import Any, TypedDict
 
 from .agents import ManagerAgent, ReviewerAgent, SecurityAdvisor, WorkerAgent
 from .models import AgenticPolicyView
 from .policy import evaluate_approval_reasons
-
 
 # Type-only import marker (avoid circular imports for the new agents).
 # build_graph accepts Any for these so the legacy 4-agent path doesn't
@@ -73,12 +72,10 @@ def build_graph(
 ):
     from langgraph.graph import END, StateGraph
 
-    pipeline_v2 = (
-        strategist is not None
-        or researcher is not None
-        or tester is not None
-        or deployer is not None
-    )
+    # NOTE: a `pipeline_v2 = (strategist|researcher|tester|deployer) is not None`
+    # local previously lived here for an upcoming router gate but was never
+    # consumed; ruff F841 caught it. The router decision is made downstream
+    # via the per-spec model + Tier-A/B routing, so the local was redundant.
 
     async def entry_router(state: AgenticState) -> AgenticState:
         return state

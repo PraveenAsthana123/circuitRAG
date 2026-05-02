@@ -43,7 +43,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-
 Complexity = Literal["trivial", "medium", "high"]
 Novelty = Literal["routine", "novel"]
 

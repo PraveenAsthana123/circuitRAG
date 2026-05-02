@@ -18,15 +18,15 @@ into the task_runs.outputs payload (A5 adds the column).
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from mcp import MCPClient
 
 from .agent_registry import AgentRoleSpec
 from .llm_clients import AllBackendsUnavailable, LlmClientPool
 from .ollama_client import OllamaGenerateClient
-
 
 # Type alias: route_fn returns RouteDecision but we keep this loose so
 # agents.py doesn't import model_router (avoids tight coupling — the pool
@@ -167,7 +167,7 @@ class StrategistAgent:
                 self._classify_unbounded(goal),
                 timeout=classify_timeout_s,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             heuristic = self._heuristic_classification(goal)
             heuristic["llm_unavailable"] = f"strategist exceeded {classify_timeout_s}s"
             return heuristic

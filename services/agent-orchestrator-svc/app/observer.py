@@ -13,8 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .llm_clients import AllBackendsUnavailable, LlmClientPool
-
+from .llm_clients import LlmClientPool
 
 RouteFn = Any
 P95_BREACH_RATIO = 2.0       # p95 > 2x baseline → breach

@@ -15,7 +15,6 @@ from typing import Any
 
 from .llm_clients import AllBackendsUnavailable, LlmClientPool
 
-
 RouteFn = Any
 
 
@@ -64,7 +63,7 @@ class TesterAgent:
                 ),
                 timeout=tests_timeout_s,
             )
-        except _asyncio.TimeoutError:
+        except TimeoutError:
             heuristic = self._heuristic(runner)
             heuristic["llm_unavailable"] = f"tester exceeded {tests_timeout_s}s"
             return heuristic

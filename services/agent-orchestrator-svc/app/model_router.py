@@ -29,7 +29,6 @@ from typing import Literal
 
 from .model_catalog import CatalogEntry, get_entry
 
-
 Complexity = Literal["trivial", "medium", "high"]
 Novelty = Literal["routine", "novel"]
 Tier = Literal["tier_a", "tier_b"]

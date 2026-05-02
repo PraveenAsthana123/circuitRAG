@@ -20,7 +20,6 @@ from typing import Any
 
 from .protocol import LlmCallResult, LlmClientUnavailable
 
-
 _DEFAULT_INPUT_RATE = float(os.environ.get("CODEX_RATE_INPUT_PER_MTOK", "1.0"))
 _DEFAULT_OUTPUT_RATE = float(os.environ.get("CODEX_RATE_OUTPUT_PER_MTOK", "4.0"))
 
@@ -84,7 +83,7 @@ class CodexCliClient:
                 proc.communicate(prompt.encode("utf-8")),
                 timeout=timeout_seconds,
             )
-        except asyncio.TimeoutError as terr:
+        except TimeoutError as terr:
             proc.kill()
             await proc.wait()
             raise LlmClientUnavailable(

@@ -37,8 +37,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from documind_core.exceptions import NotFoundError, ValidationError
-from fastapi import APIRouter, FastAPI, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, FastAPI, Query, status
 from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)

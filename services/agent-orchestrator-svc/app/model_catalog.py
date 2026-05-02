@@ -16,7 +16,7 @@ within the §43 drill suite — the catalog is itself drilled.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

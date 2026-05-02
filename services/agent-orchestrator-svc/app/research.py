@@ -25,7 +25,6 @@ from typing import Any
 
 from .llm_clients import AllBackendsUnavailable, LlmClientPool
 
-
 # Type alias — see app/agents.py::RouteFn comment.
 RouteFn = Any
 
@@ -57,8 +56,8 @@ class ResearchAgent:
         self._cache_max = max(0, cache_max)
         # P1 #21: LRU cache. OrderedDict for eviction; entries are
         # (timestamp, result_dict). Bounded by cache_max.
-        from collections import OrderedDict
         import threading as _threading
+        from collections import OrderedDict
         self._cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
         self._cache_lock = _threading.Lock()
 
@@ -89,11 +88,14 @@ class ResearchAgent:
             for i in range(start, len(cleaned)):
                 c = cleaned[i]
                 if escape:
-                    escape = False; continue
+                    escape = False
+                    continue
                 if c == "\\":
-                    escape = True; continue
+                    escape = True
+                    continue
                 if c == '"':
-                    in_str = not in_str; continue
+                    in_str = not in_str
+                    continue
                 if in_str:
                     continue
                 if c == "{":
@@ -131,7 +133,7 @@ class ResearchAgent:
                 self._research_unbounded(topic, complexity=complexity, novelty=novelty),
                 timeout=research_timeout_s,
             )
-        except _asyncio.TimeoutError:
+        except TimeoutError:
             heuristic = self._heuristic_research(topic)
             heuristic["llm_unavailable"] = f"researcher exceeded {research_timeout_s}s"
             return heuristic
