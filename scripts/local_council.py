@@ -151,6 +151,27 @@ def _researcher_prompt(issue: dict, context: str, grep_refs: str) -> str:
     )
 
 
+def _prior_fix_section(issue: dict) -> str:
+    """Tier 2 #2.6 — query prior-fix RAG; return prompt section or ''.
+
+    Empty string when no preference data accumulated yet (zero-data
+    behavior). Wired into AUTHOR prompt for ALL rule categories,
+    not just investigation — past mechanical fixes are also useful
+    few-shot examples.
+    """
+    try:
+        sys.path.insert(0, str(REPO / "scripts"))
+        from prior_fix_rag import query_similar_fixes, render_few_shot  # noqa: E402
+    except ImportError:
+        return ""
+    examples = query_similar_fixes(
+        query=issue.get("message", ""),
+        rule_code=issue.get("code", ""),
+        limit=3,
+    )
+    return render_few_shot(examples)
+
+
 def _author_prompt(issue: dict, context: str, *, grep_refs: str = "", research_brief: str = "") -> str:
     """Build the AUTHOR prompt using the per-rule strategy.
 
@@ -170,6 +191,9 @@ def _author_prompt(issue: dict, context: str, *, grep_refs: str = "", research_b
             f"\n\nResearch brief (from RESEARCHER model — read carefully):\n"
             f"```\n{research_brief}\n```\n"
         )
+    # Tier 2 #2.6 — prior-fix RAG few-shot. Returns "" when no
+    # operator preference data; doesn't bloat the prompt.
+    prior_fix_section = _prior_fix_section(issue)
     return (
         rule_specific
         + "\n"
@@ -178,6 +202,7 @@ def _author_prompt(issue: dict, context: str, *, grep_refs: str = "", research_b
         + f"File: {issue['file']}:{issue['line']}\n"
         + f"Message: {issue['message']}\n"
         + brief_section
+        + prior_fix_section
         + f"\n"
         + f"Context (±{strategy.context_lines} lines around the issue):\n"
         + f"```\n{context}\n```"
