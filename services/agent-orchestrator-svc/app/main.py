@@ -12,7 +12,7 @@ from documind_core.dr_metrics import all_targets
 from documind_core.logging_config import setup_logging
 from documind_core.middleware import CorrelationIdMiddleware, SecurityHeadersMiddleware, register_exception_handlers
 from documind_core.observability import instrument_fastapi, instrument_httpx, setup_observability
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from mcp import MCPClient
@@ -41,6 +41,14 @@ from .models import (
     TaskView,
 )
 from .db_circuit_breaker import DbCircuitBreaker
+from .idempotency import (
+    IdempotencyConflict,
+    InMemoryIdempotencyStore,
+    hash_body,
+    lookup_or_reserve,
+    save_record,
+)
+from .idempotency_postgres import PostgresIdempotencyStore
 from .postgres_store import PostgresTaskStore
 from .rate_limit import RateLimitMiddleware
 from .service import AgentOrchestratorService
@@ -71,14 +79,24 @@ def create_app() -> FastAPI:
         db = DbClient(dsn=settings.postgres_dsn)
         db_breaker = DbCircuitBreaker(name="orchestrator-db")
         store = None
+        # P0 #34 wiring: PostgresIdempotencyStore for multi-pod safety.
+        # InMemoryIdempotencyStore is fine for single-instance dev where
+        # restart-loss of idempotency state is acceptable; multi-pod prod
+        # MUST use Postgres because two pods cannot share an in-memory
+        # dict. Selection is made HERE so the route handler doesn't have
+        # to know which is wired.
+        idempotency_store: PostgresIdempotencyStore | InMemoryIdempotencyStore
         try:
             await db_breaker.connect_with_breaker(db)
             store = PostgresTaskStore(db, breaker=db_breaker)
             app.state.db = db
+            idempotency_store = PostgresIdempotencyStore(db)
         except Exception:  # noqa: BLE001
             app.state.db = None
             store = InMemoryTaskStore()
+            idempotency_store = InMemoryIdempotencyStore()
         app.state.db_breaker = db_breaker
+        app.state.idempotency_store = idempotency_store
 
         mcp_clients: dict[str, MCPClient] = {}
         if settings.mcp_hr_url:
@@ -227,8 +245,58 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/api/v1/agentic/tasks", response_model=TaskView)
-    async def create_task(req: CreateTaskRequest) -> TaskView:
-        return await app.state.service.create_task(req)
+    async def create_task(
+        req: CreateTaskRequest,
+        idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    ) -> TaskView:
+        """Create an agentic task.
+
+        Per CLAUDE.md §6.3 idempotency contract:
+          - same (tenant_id, key) + same body  -> cached task_id (200)
+          - same (tenant_id, key) + diff body  -> 409 Conflict
+          - no key                              -> create unconditionally
+
+        Multi-pod safety per P0 #34 fix: idempotency_store is the
+        Postgres-backed implementation when the DB is up, an in-memory
+        fallback only in dev. Two pods sharing the same Postgres see
+        the same idempotency state.
+        """
+        if idempotency_key is None:
+            return await app.state.service.create_task(req)
+
+        body_hash = hash_body(req.model_dump(mode="json"))
+        try:
+            existing = await lookup_or_reserve(
+                store=app.state.idempotency_store,
+                tenant_id=req.tenant_id,
+                key=idempotency_key,
+                body_hash=body_hash,
+            )
+        except IdempotencyConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "IDEMPOTENCY_CONFLICT",
+                    "detail": str(exc),
+                },
+            ) from exc
+
+        if existing is not None:
+            cached = await app.state.service.get_task(existing.task_id)
+            if cached is not None:
+                return cached
+            # Cached task_id but no task: data inconsistency (manual
+            # delete?). Fall through to a fresh create + re-save.
+
+        task = await app.state.service.create_task(req)
+        await save_record(
+            store=app.state.idempotency_store,
+            tenant_id=req.tenant_id,
+            key=idempotency_key,
+            task_id=task.task_id,
+            body_hash=body_hash,
+        )
+        return task
 
     @app.post("/api/v1/agentic/projects", response_model=ProjectView)
     async def create_project(req: CreateProjectRequest) -> ProjectView:

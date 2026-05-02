@@ -7,8 +7,8 @@
 
 | Severity | Count | Top items |
 |---|---|---|
-| **P0** | 1 | row #34 (graceful shutdown — InMemoryIdempotencyStore not multi-pod safe; not yet wired to Postgres-backed store) |
-| **P1** | 2 | rows #20 (TTL cleanup not scheduled), #21 (persistence wired schema-only, not service-side) |
+| **P0** | 0 | row #34 closed: PostgresIdempotencyStore wired into POST /api/v1/agentic/tasks via X-Idempotency-Key header (drilled by `drill_idempotency_postgres_wired.py`). Lifespan picks Postgres when DB is up, falls back to InMemoryIdempotencyStore in dev. |
+| **P1** | 1 | row #20 (TTL cleanup not scheduled) — row #21 closed by P0 #34 wiring |
 | **P2** | 2 | rows #19, #22 |
 
 ## Highlights
@@ -24,9 +24,9 @@
 |---|---|---|---|
 | 19 | Operator override | ✗ | Operator can't manually retire an idempotency key (e.g. force-replay) |
 | 20 | TTL cleanup cron | ✗ | **P1** — schema has TTL index hint but no scheduled cleanup |
-| 21 | Persistent store | ⚠ | **P1** — schema present; Protocol allows in-memory and Postgres but Postgres adapter not yet implemented |
+| 21 | Persistent store | ✅ | **closed** — PostgresIdempotencyStore wired in main.py lifespan; route handler calls lookup_or_reserve + save_record on every keyed POST |
 | 33 | Rate limit | ✗ | Same key submitted 1000× returns the cached result quickly — but the LOOKUP could be DOS'd |
-| 34 | Graceful shutdown | ✗ | **P0** — InMemoryIdempotencyStore loses data on restart; multi-pod unsafe (different pods see different idempotency state) |
+| 34 | Graceful shutdown | ✅ | **closed** — PostgresIdempotencyStore on the request hot path; multi-pod safe via shared Postgres `orchestration.idempotency_keys` table. Drilled end-to-end (cache hit + conflict + persistence) by `drill_idempotency_postgres_wired.py`. |
 | 38 | Deadletter | n/a | — |
 
 ## Brutal one-liner
