@@ -425,8 +425,32 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
             print(f"  AUTHOR pass-1 REJECTED; retrying with feedback...")
 
     if proposal is None:
-        # Both attempts failed schema. Escalate.
-        print(f"  AUTHOR proposal REJECTED both attempts; escalating")
+        # Both local attempts failed schema. Per Tier 2 #2.7,
+        # check if we should escalate to Tier-B (Claude/Codex CLI)
+        # before declaring schema-rejected. The escalation runs
+        # through the SAME validator — no schema bypass.
+        from tier_b_fallback import should_escalate_to_tier_b, try_tier_b  # noqa: E402
+        if should_escalate_to_tier_b(audit_chain):
+            print(f"  Local council exhausted; escalating to Tier-B...")
+            tier_b_proposal = try_tier_b(
+                issue, context, research_brief=research_brief,
+            )
+            if tier_b_proposal is not None:
+                audit_chain["tier_b"] = {
+                    "outcome": "validated",
+                    "proposal": tier_b_proposal.model_dump(mode="json"),
+                }
+                _write_audit({
+                    "id": issue["id"], "lane": "council_local",
+                    "chain": audit_chain, "outcome": "tier_b_validated",
+                })
+                print(f"  Tier-B proposal validated: file={tier_b_proposal.file_path}")
+                return tier_b_proposal
+            audit_chain["tier_b"] = {
+                "outcome": "unavailable_or_invalid",
+                "reason": "no Tier-B binary on PATH OR output failed schema",
+            }
+        print(f"  AUTHOR proposal REJECTED both local + Tier-B; escalating to human")
         _write_audit({
             "id": issue["id"], "lane": "council_local",
             "chain": audit_chain, "outcome": "author_schema_rejected_after_retry",
