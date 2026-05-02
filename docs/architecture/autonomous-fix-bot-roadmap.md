@@ -34,7 +34,7 @@
 | 1.4 | **Adaptive context window (research → council)** | ✅ DONE | qwen2.5 RESEARCHER step fires before AUTHOR for investigation + type-fix rules (when `strategy.needs_grep_refs=True`); brief embedded in AUTHOR prompt. Token-efficient: skipped for mechanical rules. Graceful degradation if researcher errors. Drilled 8/8 with 6 negative assertions covering both gates (when-fires + when-skipped) + empty-brief omission + error-fallback. |
 | 2.5 | Retry-with-feedback on first schema failure | ✅ DONE | AUTHOR fires twice; pass-2 prompt embeds top-3 Pydantic ValidationError messages so model can correct itself. Bounded at 1 retry (cap cost). Audit row preserves both attempts; legacy "author" key aliases winner. Drilled 8/8: empty / prose-only / missing-field / extra-field / tokenizer-artifact all yield human-readable feedback. |
 | 2.6 | Prior-fix RAG (retrieve past fixes as few-shots) | 8hr | ~85% (pattern-matching on past success) |
-| 2.7 | Confidence-gated Tier-B fallback (Claude/Codex CLI) | 5hr | ~95% (low-confidence escalates) |
+| 2.7 | Confidence-gated Tier-B fallback (Claude/Codex CLI) | ✅ DONE | `scripts/tier_b_fallback.py` — `should_escalate_to_tier_b()` fires on 3 triggers: (1) both local AUTHOR attempts schema-rejected, (2) validated proposal confidence < 0.6, (3) advisor alternative with ≥3 risks OR 'breaking' keyword. `try_tier_b()` invokes `claude` CLI then `codex` CLI; output runs through SAME CouncilProposal validator (no schema bypass). Graceful degradation: no Tier-B on PATH → None → daemon escalates to human-review queue. Drilled 8/8 with confident-proposal-no-theater anti-test. |
 
 ### Tier 2 — quality multipliers (~28hr)
 
