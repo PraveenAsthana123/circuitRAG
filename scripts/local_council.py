@@ -187,13 +187,40 @@ def _author_prompt(issue: dict, context: str, *, grep_refs: str = "", research_b
     )
 
 
-def _reviewer_prompt(issue: dict, proposal: CouncilProposal) -> str:
+def _reviewer_prompt(issue: dict, proposal: CouncilProposal, *, verification: dict | None = None) -> str:
+    """Build REVIEWER prompt; embed Tier 2 #2.4 verification result if present."""
+    verification_section = ""
+    if verification is not None:
+        applied = verification.get("applied", False)
+        rc = verification.get("ruff_exit_code")
+        ruff_out = verification.get("ruff_output", "")
+        err = verification.get("error")
+        if err:
+            verification_section = (
+                f"\n\nVerification result (from in-loop ruff run):\n"
+                f"  diff applied: NO — {err}\n"
+                f"  → AUTHOR's diff is malformed or doesn't apply cleanly.\n"
+                f"  → recommend SCORE: 1-3 unless the rejection reason is trivial.\n"
+            )
+        else:
+            verdict = "ruff CLEAN" if rc == 0 else f"ruff still has issues (exit={rc})"
+            ruff_preview = ruff_out[:800] if ruff_out else "(no ruff output)"
+            verification_section = (
+                f"\n\nVerification result (from in-loop ruff run):\n"
+                f"  diff applied + reverted: yes\n"
+                f"  ruff verdict: {verdict}\n"
+                f"  ruff output:\n```\n{ruff_preview}\n```\n"
+                f"  → If ruff is CLEAN, the fix DOES resolve the rule violation.\n"
+                f"  → If ruff still has issues, identify which violation remains.\n"
+            )
     return (
         f"AUTHOR proposed a fix for {issue['id']} (rule {issue['code']}).\n\n"
         f"AUTHOR summary: {proposal.summary}\n"
         f"AUTHOR confidence: {proposal.confidence}\n"
         f"AUTHOR diff:\n```\n{proposal.unified_diff}\n```\n\n"
-        f"Issue message: {issue['message']}\n\n"
+        f"Issue message: {issue['message']}"
+        + verification_section
+        + f"\n\n"
         f"Critique. Is the diff correct? Does it actually resolve the\n"
         f"rule violation? Any side effects? 3-6 lines plain text."
     )
@@ -260,6 +287,66 @@ def _summarize_validation_failure(raw_text: str) -> str:
         return "Pydantic ValidationError (top 3):\n" + "\n".join(lines)
     except Exception as exc:  # noqa: BLE001
         return f"JSON parse error: {type(exc).__name__}: {exc}"
+
+
+def _verify_diff_in_worktree(repo: Path, diff: str) -> dict:
+    """Tier 2 #2.4 — apply the diff, run ruff, capture exit code, roll back.
+
+    The REVIEWER prompt embeds this verification result so the model
+    can say "ruff confirmed X" / "ruff still fails because Y" instead
+    of guessing. The diff is rolled back after verification — daemon's
+    apply gate still owns the actual mutation.
+
+    Returns dict with: applied (bool), ruff_exit_code (int), ruff_output (str),
+    error (str | None). Never raises — verification failure is captured,
+    not propagated; REVIEWER sees the failure.
+    """
+    out: dict = {
+        "applied": False,
+        "ruff_exit_code": None,
+        "ruff_output": "",
+        "error": None,
+    }
+    if not diff.strip():
+        out["error"] = "empty diff"
+        return out
+    # Apply with -p0 to match the daemon's gate logic.
+    apply = subprocess.run(
+        ["git", "apply", "-p0", "--check", "-"],
+        cwd=repo, input=diff + "\n",
+        capture_output=True, text=True, timeout=15,
+    )
+    if apply.returncode != 0:
+        out["error"] = f"git apply --check failed: {apply.stderr.strip()[:200]}"
+        return out
+    real_apply = subprocess.run(
+        ["git", "apply", "-p0", "-"],
+        cwd=repo, input=diff + "\n",
+        capture_output=True, text=True, timeout=15,
+    )
+    if real_apply.returncode != 0:
+        out["error"] = f"git apply failed: {real_apply.stderr.strip()[:200]}"
+        return out
+    out["applied"] = True
+    try:
+        ruff = subprocess.run(
+            [".venv/bin/ruff", "check",
+             "services/agent-orchestrator-svc/app/", "libs/py/"],
+            cwd=repo, capture_output=True, text=True, timeout=30,
+        )
+        out["ruff_exit_code"] = ruff.returncode
+        out["ruff_output"] = ((ruff.stdout or "") + (ruff.stderr or ""))[:2000]
+    except subprocess.TimeoutExpired:
+        out["error"] = "ruff timed out (>30s)"
+    finally:
+        # ALWAYS roll back regardless of ruff outcome — verification
+        # never leaves the worktree mutated.
+        subprocess.run(
+            ["git", "apply", "-p0", "-R", "-"],
+            cwd=repo, input=diff + "\n",
+            capture_output=True, text=True, timeout=15,
+        )
+    return out
 
 
 def _grep_refs(repo: Path, message: str) -> str:
@@ -457,13 +544,26 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
         })
         return None
 
+    # Tier 2 #2.4 — in-loop verification: actually apply the proposal,
+    # run ruff, capture exit code; pass result to REVIEWER prompt so
+    # critique is grounded in real test output instead of opinion.
+    print(f"\n  === IN-LOOP VERIFY (apply + ruff + revert) ===")
+    verification = _verify_diff_in_worktree(repo, proposal.unified_diff)
+    audit_chain["verification"] = verification
+    if verification.get("error"):
+        print(f"  verify: error = {verification['error'][:80]}")
+    else:
+        rc = verification.get("ruff_exit_code")
+        verdict = "CLEAN" if rc == 0 else f"still issues (exit={rc})"
+        print(f"  verify: applied + reverted; ruff {verdict}")
+
     print(f"\n  === REVIEWER ({COUNCIL_ROLES['reviewer']['model']}) ===")
     started = time.time()
     try:
         reviewer_text, reviewer_tokens = call_ollama(
             COUNCIL_ROLES["reviewer"]["model"],
             COUNCIL_ROLES["reviewer"]["system"],
-            _reviewer_prompt(issue, proposal),
+            _reviewer_prompt(issue, proposal, verification=verification),
         )
     except Exception as e:
         print(f"  REVIEWER error: {e}")
