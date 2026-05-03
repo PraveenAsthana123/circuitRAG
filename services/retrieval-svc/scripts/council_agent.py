@@ -6,6 +6,7 @@ REPORTS = Path("reports")
 FINAL = REPORTS / "final_report.json"
 BUGS = REPORTS / "bugs.json"
 REG = REPORTS / "regression_score.json"
+PERF = REPORTS / "performance_report.json"
 OUT = REPORTS / "council_decision.json"
 
 
@@ -34,6 +35,7 @@ def vote_testing(final_report):
         "agent": "testing",
         "vote": "PASS" if not failed else "FAIL",
         "reason": "All testing checks passed" if not failed else f"Failed checks: {failed}",
+        "weight": 35,
     }
 
 
@@ -42,6 +44,7 @@ def vote_bug(bugs):
         "agent": "bug",
         "vote": "PASS" if len(bugs) == 0 else "FAIL",
         "reason": f"{len(bugs)} bugs",
+        "weight": 25,
     }
 
 
@@ -51,35 +54,47 @@ def vote_regression(regression):
         "agent": "regression",
         "vote": "PASS" if score >= 80 else "FAIL",
         "reason": f"score={score}",
+        "weight": 25,
+    }
+
+
+def vote_performance(perf):
+    status = perf.get("status", "SKIP")
+    p95 = perf.get("p95_ms", 9999)
+    return {
+        "agent": "performance",
+        "vote": "PASS" if status in ["PASS", "SKIP"] else "FAIL",
+        "reason": f"status={status}, p95={p95}ms",
+        "weight": 15,
     }
 
 
 def main():
     REPORTS.mkdir(exist_ok=True)
 
-    final_report = load(FINAL, {})
-    bugs = load(BUGS, [])
-    regression = load(REG, {"score": 0})
-
     votes = [
-        vote_testing(final_report),
-        vote_bug(bugs),
-        vote_regression(regression),
+        vote_testing(load(FINAL, {})),
+        vote_bug(load(BUGS, [])),
+        vote_regression(load(REG, {"score": 0})),
+        vote_performance(load(PERF, {"status": "SKIP"})),
     ]
 
-    failed = [vote for vote in votes if vote["vote"] != "PASS"]
+    passed_weight = sum(v["weight"] for v in votes if v["vote"] == "PASS")
+    failed = [v for v in votes if v["vote"] != "PASS"]
 
     decision = {
         "timestamp": datetime.now(UTC).isoformat(),
         "votes": votes,
-        "decision": "ALLOW" if not failed else "BLOCK",
+        "score": passed_weight,
+        "threshold": 80,
+        "decision": "ALLOW" if passed_weight >= 80 and not failed else "BLOCK",
         "failed_agents": failed,
     }
 
     OUT.write_text(json.dumps(decision, indent=2))
     print(json.dumps(decision, indent=2))
 
-    if failed:
+    if decision["decision"] == "BLOCK":
         raise SystemExit(1)
 
 

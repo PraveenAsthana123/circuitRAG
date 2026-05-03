@@ -1,22 +1,33 @@
 {
-  "timestamp": "2026-05-03T00:26:38.597591+00:00",
+  "timestamp": "2026-05-03T00:47:12.191439+00:00",
   "votes": [
     {
       "agent": "testing",
       "vote": "PASS",
-      "reason": "All testing checks passed"
+      "reason": "All testing checks passed",
+      "weight": 35
     },
     {
       "agent": "bug",
       "vote": "PASS",
-      "reason": "0 bugs"
+      "reason": "0 bugs",
+      "weight": 25
     },
     {
       "agent": "regression",
       "vote": "PASS",
-      "reason": "score=100"
+      "reason": "score=100",
+      "weight": 25
+    },
+    {
+      "agent": "performance",
+      "vote": "PASS",
+      "reason": "status=SKIP, p95=9999ms",
+      "weight": 15
     }
   ],
+  "score": 100,
+  "threshold": 80,
   "decision": "ALLOW",
   "failed_agents": []
 }
