@@ -74,11 +74,12 @@ GATE_TYPES: tuple[GateType, ...] = (
 )
 
 Verdict = Literal[
-    "approve",      # operator agrees; sample becomes positive label
-    "reject",       # operator disagrees; sample becomes negative label
-    "edit",         # operator approved-with-modifications; preference pair (operator's edit > model output)
-    "escalate",     # operator routes to higher tier (Claude/Codex); not a label
-    "skip",         # operator no-opinion; not a label
+    "approve",       # operator agrees; sample becomes positive label
+    "reject",        # operator disagrees; sample becomes negative label
+    "edit",          # operator approved-with-modifications; preference pair (operator's edit > model output)
+    "escalate",      # operator routes to higher tier (Claude/Codex); not a label
+    "skip",          # operator no-opinion; not a label
+    "auto_capture",  # daemon auto-recorded; pending operator rating (Phase C #3.1)
 ]
 
 
@@ -136,6 +137,64 @@ def load_scores() -> list[HitlScore]:
 
 def now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def auto_capture_council_outcome(
+    *,
+    issue_id: str,
+    rule_code: str | None,
+    council_outcome: str,
+    author_model: str | None,
+    author_proposal_summary: str | None = None,
+    confidence: float | None = None,
+) -> HitlScore:
+    """Phase C #3.1 — daemon auto-records a council outcome as
+    pending-operator-rating HITL row.
+
+    Used by autonomous_fix_daemon + local_council on every cycle so
+    no council fire vanishes without a row in the preference dataset.
+    Operator later batch-reviews via `hitl_framework.py review` and
+    transitions verdict='auto_capture' → 'approve'/'reject'/'edit'.
+
+    Returns the score (also appends to the JSONL log).
+    """
+    note = f"daemon auto-capture; council_outcome={council_outcome}"
+    if author_proposal_summary:
+        note += f"; author_summary={author_proposal_summary[:200]}"
+    score = HitlScore(
+        timestamp=now_iso(),
+        gate="author",
+        issue_id=issue_id,
+        rule_code=rule_code,
+        model=author_model,
+        verdict="auto_capture",
+        score=0,  # 0 = pending operator rating; will be set on review
+        confidence=confidence if confidence is not None else 0.5,
+        note=note,
+        chosen_text=None,
+        rejected_text=None,
+    )
+    append_score(score)
+    return score
+
+
+def cmd_review(args: argparse.Namespace) -> int:
+    """List auto_capture rows operator hasn't yet rated."""
+    scores = load_scores()
+    pending = [s for s in scores if s.verdict == "auto_capture"]
+    if not pending:
+        print("(no pending auto-captured rows)")
+        return 0
+    print(f"=== {len(pending)} pending auto-captures ===\n")
+    for s in pending[: args.limit]:
+        print(f"  [{s.timestamp[:19]}] issue={s.issue_id}")
+        print(f"    rule={s.rule_code} model={s.model} confidence={s.confidence}")
+        print(f"    note: {s.note[:120]}")
+        print(f"    rate via: hitl_framework.py record author {s.issue_id} <approve|reject|edit> [...]")
+        print()
+    if len(pending) > args.limit:
+        print(f"  ... +{len(pending) - args.limit} more")
+    return 0
 
 
 def cmd_record(args: argparse.Namespace) -> int:
@@ -261,6 +320,10 @@ def main() -> int:
     p_ls = sub.add_parser("list", help="list scores for one issue")
     p_ls.add_argument("issue_id")
     p_ls.set_defaults(func=cmd_list)
+
+    p_rv = sub.add_parser("review", help="list pending auto-captured rows")
+    p_rv.add_argument("--limit", type=int, default=20)
+    p_rv.set_defaults(func=cmd_review)
 
     args = parser.parse_args()
     return args.func(args)

@@ -50,7 +50,7 @@
 
 | # | Item | Effort | What it solves |
 |---|---|---|---|
-| 3.11 | Preference-dataset capture (CHAIR selections → `.loop/preferences.jsonl`) | 5hr | input for LoRA fine-tune |
+| 3.11 | Preference-dataset auto-capture (every council outcome → HITL row) | ✅ DONE | `hitl_framework.auto_capture_council_outcome()` writes a `verdict='auto_capture'` row per council fire (score=0 = operator-pending). `local_council.run_local_council` invokes it fire-and-forget at end of every cycle. New CLI: `hitl_framework.py review` lists pending rows for batch operator triage; transition path is `record <id> approve|reject|edit`. Drilled 8/8 with extra='forbid' preserved + fire-and-forget guard required. |
 | 3.12 | Multi-file refactor support | 12hr | F841-style bugs that span files |
 | 3.13 | Hallucinated-path validation | 1hr | already partial (schema does it); extend to grep-cross-check |
 | 3.14 | Token-cost dashboard | 3hr | cost visibility at scale |

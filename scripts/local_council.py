@@ -637,6 +637,25 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
         "id": issue["id"], "lane": "council_local",
         "chain": audit_chain, "outcome": "council_complete",
     })
+    # Phase C #3.1 — auto-capture pending operator rating. Every
+    # successful council fire becomes one HitlScore row with
+    # verdict='auto_capture'; operator later transitions via
+    # `hitl_framework.py review` + record.
+    try:
+        from hitl_framework import auto_capture_council_outcome  # noqa: E402
+        auto_capture_council_outcome(
+            issue_id=issue["id"],
+            rule_code=issue.get("code"),
+            council_outcome="council_complete",
+            author_model=COUNCIL_ROLES["author"]["model"],
+            author_proposal_summary=proposal.summary,
+            confidence=proposal.confidence,
+        )
+    except Exception:  # noqa: BLE001
+        # Auto-capture is fire-and-forget; if hitl_framework imports
+        # fail (test environment, missing pydantic, etc.) the council
+        # itself MUST NOT fail.
+        pass
     return proposal
 
 
