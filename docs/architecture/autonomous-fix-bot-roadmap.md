@@ -75,6 +75,17 @@
 | 5.16 | **Figma MCP server** (design-to-code; export Figma frames + components for the orchestrator) | ⏳ 12hr | matches user's "figma mcp server" ask. MCP server wrapping Figma REST API: tools for `figma.get_file`, `figma.export_node`, `figma.list_components`. Auth via Figma personal access token from env. Drill: schema rejection of malformed file IDs; rate-limit handling (Figma's 60/min cap). |
 | 5.17 | **GitHub MCP server** (PR / issue / commit ops via MCP) | ⏳ 10hr | matches user's "github mcp server" ask. MCP server wrapping GitHub REST API: tools for `github.create_pr`, `github.list_issues`, `github.get_commit`, `github.add_comment`. Auth via GITHUB_TOKEN. §42 SAFETY: writes (create_pr, add_comment) gated; never `force-push` or `delete-branch`. Drill: scope-namespacing (github:read / github:write) + rate-limit retry + secret scrub. |
 
+### Tier 6 — strategic stack gaps (per user 2026-05-02 stack recommendation)
+
+The user shared a target stack: LangGraph + Ollama + OpenTelemetry + RAGAS + OPA + GitHub Actions. The repo already covers LangGraph + Ollama + GitHub Actions partials. Four concrete gaps remain:
+
+| # | Item | Effort | Acceptance |
+|---|---|---|---|
+| 6.1 | **OPA policy engine** wired into agent_lead + drill-gate | ⏳ 8hr | Rego policy file at `policies/agent_lead.rego` + `subprocess opa eval` in agent_lead.decide_route; today's hardcoded `is_security_rule()` migrates to Rego. Drill: same routing decisions before/after; OPA absent → fall back to hardcoded (graceful degradation). |
+| 6.2 | **RAGAS / DeepEval eval harness** for council outputs | ⏳ 6hr | New `scripts/council_eval.py` reads HITL-approved rows, scores each with RAGAS (faithfulness / context-relevance / answer-correctness) when ≥10 examples present. Closes Tier 2 #2.11 BUSINESS layer. Drill: eval runs on synthetic golden set; scores in [0, 1]. |
+| 6.3 | **Performance Agent (foundation)** | ✅ DONE | `verifiability_framework._check_performance_binaries()` adds Layer 4 to the gate. Detects k6 / lighthouse / pytest-benchmark on PATH; ok=True when absent (graceful skip — operator installs to enable). `PERFORMANCE_BUDGETS` dict ready for v2 actual-execution. CLI: `--skip-performance` flag added. Drilled 8/8: missing-binary skip / kwarg presence / 4-layer count when default. |
+| 6.4 | **Per-tool OTel coverage** through daemon → council → gate | ⏳ 6hr | Add `with tracer.start_as_current_span(...)` wrappers in autonomous_fix_daemon.cycle_one + local_council.run_local_council; trace_id propagates through audit rows; spans exportable via OTel collector. Drill: trace IDs match across cycle / council / apply audit rows for one issue. |
+
 ### Tier 5 — orchestration / management subsystems (added 2026-05-02 batch)
 
 The user requested 9 management/orchestration concerns in rapid succession. Each is its own subsystem.

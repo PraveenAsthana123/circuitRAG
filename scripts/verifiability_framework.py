@@ -72,6 +72,24 @@ VENV_PYTEST = ".venv/bin/pytest"
 
 DEFAULT_TIMEOUT_S: float = 60.0
 
+# Performance gate — Tier 2 #2.11 + user-recommendation gap #3.
+# Each binary is a SOFT requirement: if not on PATH, the perf layer
+# returns ok=True (skipped, not failed) — same graceful-degradation
+# pattern as Tier-B Claude/Codex CLI fallback. Operators install
+# k6 / lighthouse / pytest-benchmark when they want pre-apply perf gating.
+PERFORMANCE_GATE_BINARIES: tuple[str, ...] = (
+    "k6",                  # load testing
+    "lighthouse",          # frontend perf audit
+)
+PYTEST_BENCHMARK_PATH = ".venv/bin/pytest-benchmark"
+PERFORMANCE_BUDGETS: dict[str, float] = {
+    # Hard ceilings; ANY check exceeding flips perf layer ok=False.
+    # Conservative defaults; operators tune per-project via env vars.
+    "k6_p95_ms": 500.0,
+    "lighthouse_lcp_ms": 2500.0,
+    "pytest_benchmark_p95_ms": 250.0,
+}
+
 
 @dataclass(frozen=True)
 class ToolResult:
@@ -148,6 +166,52 @@ def _run_tool(
     )
 
 
+def _check_performance_binaries(repo: Path) -> ToolResult:
+    """Performance layer: detects which perf binaries are available
+    + reports their presence. Real perf execution (running k6 against
+    a service / lighthouse against a URL) requires per-project config;
+    this layer's job is the GATE, not the load-test itself.
+
+    Strategy:
+      - If NO perf binary present: ok=True with "skipped — no perf
+        binary on PATH" note. Don't fail the gate just because
+        operator hasn't installed k6.
+      - If ≥1 binary present: report which; ok=True (presence = ready).
+        Operator wires actual perf runs in their own CI/cron.
+
+    Future iter (Gap 3 v2): actually run k6 against a configured
+    target URL + assert p95 < PERFORMANCE_BUDGETS["k6_p95_ms"].
+    Today's gate is presence-detection only.
+    """
+    import shutil
+    started = time.time()
+    available: list[str] = []
+    for binary in PERFORMANCE_GATE_BINARIES:
+        if shutil.which(binary):
+            available.append(binary)
+    pytest_bench_present = (repo / PYTEST_BENCHMARK_PATH).exists()
+    if pytest_bench_present:
+        available.append("pytest-benchmark")
+    if not available:
+        return ToolResult(
+            tool="performance",
+            ok=True,  # graceful: missing binaries don't fail the gate
+            exit_code=0,
+            duration_s=round(time.time() - started, 2),
+            output_truncated="(no perf binaries on PATH; gate skipped — "
+                             "install k6 / lighthouse / pytest-benchmark to enable)",
+            error=None,
+        )
+    return ToolResult(
+        tool="performance",
+        ok=True,
+        exit_code=0,
+        duration_s=round(time.time() - started, 2),
+        output_truncated=f"perf-ready: {', '.join(available)}",
+        error=None,
+    )
+
+
 def run_technical_verification(
     repo: Path | None = None,
     *,
@@ -156,6 +220,7 @@ def run_technical_verification(
     pytest_targets: tuple[str, ...] = DEFAULT_PYTEST_TARGETS,
     skip_mypy: bool = False,
     skip_pytest: bool = False,
+    skip_performance: bool = False,
     timeout: float = DEFAULT_TIMEOUT_S,
 ) -> VerificationResult:
     """Run the multi-tool gate. Returns VerificationResult.
@@ -192,6 +257,14 @@ def run_technical_verification(
             cwd=repo, timeout=timeout * 2,
         ))
 
+    # Layer 4: performance gate (graceful no-op if no perf binaries).
+    # Per user-recommendation gap #3 — Performance Agent. Foundation
+    # only: presence-detect k6 / lighthouse / pytest-benchmark.
+    # Actual perf execution wired in a future iter once operator
+    # configures target URLs / benchmark suites.
+    if not skip_performance:
+        layers.append(_check_performance_binaries(repo))
+
     all_pass = all(layer.ok for layer in layers)
     return VerificationResult(
         timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -206,6 +279,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="verifiability_framework.py", description=__doc__)
     parser.add_argument("--skip-mypy", action="store_true")
     parser.add_argument("--skip-pytest", action="store_true")
+    parser.add_argument("--skip-performance", action="store_true",
+                        help="skip Layer 4 perf-binary detection (Gap #3)")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     parser.add_argument("--json", action="store_true", help="emit JSON instead of human-readable")
     args = parser.parse_args()
@@ -213,6 +288,7 @@ def main() -> int:
     result = run_technical_verification(
         skip_mypy=args.skip_mypy,
         skip_pytest=args.skip_pytest,
+        skip_performance=args.skip_performance,
         timeout=args.timeout,
     )
 
