@@ -18,7 +18,7 @@ python --version
 pip --version
 
 echo "2. API HEALTH"
-HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/health)
+HEALTH_CODE=$(curl --max-time 5 -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/health)
 if [ "$HEALTH_CODE" != "200" ]; then
   echo "❌ API DOWN ($HEALTH_CODE)"
   FAIL=1

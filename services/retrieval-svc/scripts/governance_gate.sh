@@ -31,6 +31,11 @@ if [ "$BUGS" != "0" ]; then
   FAIL=1
 fi
 
+
+echo "4. Council agent decision"
+python scripts/regression_score.py || FAIL=1
+python scripts/council_agent.py || FAIL=1
+
 if [ "$FAIL" -eq 1 ]; then
   echo "🚫 GOVERNANCE BLOCKED"
   exit 1

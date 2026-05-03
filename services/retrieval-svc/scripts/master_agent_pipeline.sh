@@ -20,4 +20,8 @@ echo "5. Pending task report"
 echo "6. Git status"
 git status --short
 
+echo "7. Git commit agent"
+./scripts/git_commit_agent.sh || exit 1
+
 echo "✅ MASTER PIPELINE COMPLETE"
+

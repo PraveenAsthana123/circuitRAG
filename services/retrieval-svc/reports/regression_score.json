@@ -1,0 +1,10 @@
+{
+  "timestamp": "2026-05-03T00:26:38.568359+00:00",
+  "score": 100,
+  "status": "PASS",
+  "checks": {
+    "pytest": "PASS",
+    "openapi": "PASS",
+    "smoke_docs": "PASS"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-05-03T00:26:38.597591+00:00",
+  "votes": [
+    {
+      "agent": "testing",
+      "vote": "PASS",
+      "reason": "All testing checks passed"
+    },
+    {
+      "agent": "bug",
+      "vote": "PASS",
+      "reason": "0 bugs"
+    },
+    {
+      "agent": "regression",
+      "vote": "PASS",
+      "reason": "score=100"
+    }
+  ],
+  "decision": "ALLOW",
+  "failed_agents": []
+}
