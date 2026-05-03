@@ -66,7 +66,6 @@ except ImportError:  # pragma: no cover — optional
 
 from .exceptions import CircuitOpenError
 
-
 # CB-A3: narrowed default for expected_exception. The pre-fix default
 # was `Exception`, which catches caller bugs (KeyError/TypeError) and
 # trips the breaker on those — operators see "downstream is degraded"
@@ -697,7 +696,7 @@ class CircuitBreaker:
                     result = await fn()
             except asyncio.CancelledError:
                 raise
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 # CB-C #13: latency histogram for timeouts.
                 self._record_call_duration(time.monotonic() - start, "timeout")
                 self._on_failure(exc)
@@ -769,7 +768,7 @@ class CircuitBreaker:
                             self._half_open_slots = self.half_open_max_concurrent
                             self._half_open_successes = 0
                             return
-                    except Exception:  # noqa: BLE001 — broken probe → ignore
+                    except Exception:  # noqa: BLE001, S110 — broken probe → ignore
                         pass
                 if time.monotonic() - self._opened_at >= self._effective_recovery_timeout():
                     self._transition(State.HALF_OPEN)
@@ -793,7 +792,7 @@ class CircuitBreaker:
             from opentelemetry import context as _ctx  # type: ignore[import-not-found]
             ctx = _baggage.set_baggage(f"cb.{self.name}.state", self._state.value)
             _ctx.attach(ctx)
-        except Exception:  # noqa: BLE001 — OTel optional / detach gracefully
+        except Exception:  # noqa: BLE001, S110 — OTel optional / detach gracefully
             pass
 
     def _on_success(self, *, duration_s: float | None = None) -> None:

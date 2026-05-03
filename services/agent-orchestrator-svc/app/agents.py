@@ -209,7 +209,7 @@ class StrategistAgent:
                 if parsed is not None:
                     parsed["source"] = "llm_ollama"
                     return parsed
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         return self._heuristic_classification(goal)

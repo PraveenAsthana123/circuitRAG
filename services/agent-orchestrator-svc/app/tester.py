@@ -88,7 +88,7 @@ class TesterAgent:
                     payload["source_origin"] = "mcp_tests"
                     payload.setdefault("runner", runner)
                     return payload
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         if self._pool is not None and self._route_fn is not None and self._spec is not None:

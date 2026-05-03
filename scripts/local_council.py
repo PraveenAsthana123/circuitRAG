@@ -52,16 +52,15 @@ AUDIT = REPO / ".loop" / "issue_audit.jsonl"
 
 sys.path.insert(0, str(REPO / "scripts"))
 from council_schemas import (  # noqa: E402
-    CouncilProposal,
     PROMPT_ADDENDUM,
+    CouncilProposal,
     validate_council_proposal,
 )
 from rule_fix_strategy import (  # noqa: E402
-    get_strategy,
     get_prompt_template,
+    get_strategy,
     is_human_only,
 )
-
 
 COUNCIL_ROLES: dict[str, dict[str, str]] = {
     "researcher": {
@@ -203,7 +202,7 @@ def _author_prompt(issue: dict, context: str, *, grep_refs: str = "", research_b
         + f"Message: {issue['message']}\n"
         + brief_section
         + prior_fix_section
-        + f"\n"
+        + "\n"
         + f"Context (±{strategy.context_lines} lines around the issue):\n"
         + f"```\n{context}\n```"
         + refs_section
@@ -216,7 +215,6 @@ def _reviewer_prompt(issue: dict, proposal: CouncilProposal, *, verification: di
     """Build REVIEWER prompt; embed Tier 2 #2.4 verification result if present."""
     verification_section = ""
     if verification is not None:
-        applied = verification.get("applied", False)
         rc = verification.get("ruff_exit_code")
         ruff_out = verification.get("ruff_output", "")
         err = verification.get("error")
@@ -245,9 +243,9 @@ def _reviewer_prompt(issue: dict, proposal: CouncilProposal, *, verification: di
         f"AUTHOR diff:\n```\n{proposal.unified_diff}\n```\n\n"
         f"Issue message: {issue['message']}"
         + verification_section
-        + f"\n\n"
-        f"Critique. Is the diff correct? Does it actually resolve the\n"
-        f"rule violation? Any side effects? 3-6 lines plain text."
+        + "\n\n"
+        "Critique. Is the diff correct? Does it actually resolve the\n"
+        "rule violation? Any side effects? 3-6 lines plain text."
     )
 
 
@@ -534,7 +532,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
         audit_chain[f"author_attempt_{attempt + 1}"]["validation"] = "rejected"
         audit_chain[f"author_attempt_{attempt + 1}"]["feedback_for_retry"] = feedback_for_retry[:300]
         if attempt == 0:
-            print(f"  AUTHOR pass-1 REJECTED; retrying with feedback...")
+            print("  AUTHOR pass-1 REJECTED; retrying with feedback...")
 
     if proposal is None:
         # Both local attempts failed schema. Per Tier 2 #2.7,
@@ -543,7 +541,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
         # through the SAME validator — no schema bypass.
         from tier_b_fallback import should_escalate_to_tier_b, try_tier_b  # noqa: E402
         if should_escalate_to_tier_b(audit_chain):
-            print(f"  Local council exhausted; escalating to Tier-B...")
+            print("  Local council exhausted; escalating to Tier-B...")
             tier_b_proposal = try_tier_b(
                 issue, context, research_brief=research_brief,
             )
@@ -562,7 +560,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
                 "outcome": "unavailable_or_invalid",
                 "reason": "no Tier-B binary on PATH OR output failed schema",
             }
-        print(f"  AUTHOR proposal REJECTED both local + Tier-B; escalating to human")
+        print("  AUTHOR proposal REJECTED both local + Tier-B; escalating to human")
         _write_audit({
             "id": issue["id"], "lane": "council_local",
             "chain": audit_chain, "outcome": "author_schema_rejected_after_retry",
@@ -572,7 +570,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
     # Tier 2 #2.4 — in-loop verification: actually apply the proposal,
     # run ruff, capture exit code; pass result to REVIEWER prompt so
     # critique is grounded in real test output instead of opinion.
-    print(f"\n  === IN-LOOP VERIFY (apply + ruff + revert) ===")
+    print("\n  === IN-LOOP VERIFY (apply + ruff + revert) ===")
     verification = _verify_diff_in_worktree(repo, proposal.unified_diff)
     audit_chain["verification"] = verification
     if verification.get("error"):
@@ -651,7 +649,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
             author_proposal_summary=proposal.summary,
             confidence=proposal.confidence,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110
         # Auto-capture is fire-and-forget; if hitl_framework imports
         # fail (test environment, missing pydantic, etc.) the council
         # itself MUST NOT fail.
@@ -667,7 +665,7 @@ def main() -> int:
     args = parser.parse_args()
 
     checklist = REPO / ".loop" / "issue_checklist.jsonl"
-    issues = [json.loads(l) for l in checklist.read_text().splitlines() if l.strip()]
+    issues = [json.loads(line) for line in checklist.read_text().splitlines() if line.strip()]
     issue = next((i for i in issues if i["id"] == args.id), None)
     if issue is None:
         print(f"x issue not found: {args.id}")
@@ -677,7 +675,7 @@ def main() -> int:
     if proposal is None:
         print("\n✗ council returned no validated proposal")
         return 2
-    print(f"\n✓ council returned validated proposal:")
+    print("\n✓ council returned validated proposal:")
     print(f"  file_path: {proposal.file_path}")
     print(f"  rule_code: {proposal.rule_code}")
     print(f"  confidence: {proposal.confidence}")

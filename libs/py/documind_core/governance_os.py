@@ -52,9 +52,8 @@ import datetime
 import threading
 import uuid
 from collections.abc import Iterable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any, Literal
-
 
 Action = Literal["allow", "block", "review"]
 ComplianceStatus = Literal[
@@ -297,7 +296,7 @@ class GovernanceOS:
         drift_severity: str | None = None,
     ) -> GovernanceDecision:
         request_id = request_id or str(uuid.uuid4())
-        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        timestamp = datetime.datetime.now(datetime.UTC).isoformat()
 
         # Policy reasons (existing rules; single source of truth).
         reasons = self._policy.reasons(request_state, policy)

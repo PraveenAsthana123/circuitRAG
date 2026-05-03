@@ -57,11 +57,10 @@ REPO = Path(__file__).resolve().parent.parent
 
 sys.path.insert(0, str(REPO / "scripts"))
 from council_schemas import (  # noqa: E402
-    CouncilProposal,
     PROMPT_ADDENDUM,
+    CouncilProposal,
     validate_council_proposal,
 )
-
 
 # Default confidence threshold below which we treat the local council
 # result as "low confidence; would benefit from Tier-B."
@@ -197,7 +196,7 @@ def main() -> int:
         return 1
     print(f"Tier-B fallback module ready. Threshold={args.threshold}")
     print(f"Available: {find_available_tier_b() or '(none)'}")
-    print(f"Run --check to verify; --help for usage.")
+    print("Run --check to verify; --help for usage.")
     return 0
 
 

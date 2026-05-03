@@ -43,10 +43,9 @@ import argparse
 import json
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
-
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -250,7 +249,6 @@ def run_technical_verification(
 
     # Layer 3: pytest smoke (skippable per operator flag)
     if not skip_pytest:
-        env_pythonpath = f"{repo}:libs/py:services/agent-orchestrator-svc"
         layers.append(_run_tool(
             tool="pytest",
             cmd=[VENV_PYTEST, "-q", "--no-header", *pytest_targets],

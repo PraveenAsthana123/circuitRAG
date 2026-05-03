@@ -64,7 +64,6 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-
 Channel = Literal["slack", "email", "whatsapp", "webhook"]
 Severity = Literal["info", "warn", "error", "critical"]
 
@@ -200,7 +199,7 @@ def _send_whatsapp(notification: Notification) -> DispatchResult:
             body = json.loads(proc.stdout) if proc.stdout else {}
         except json.JSONDecodeError:
             return DispatchResult("whatsapp", sent=False,
-                                  error=f"non-JSON response from twilio",
+                                  error="non-JSON response from twilio",
                                   skipped_reason=None)
         if "sid" in body:
             return DispatchResult("whatsapp", sent=True, error=None, skipped_reason=None)

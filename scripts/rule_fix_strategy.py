@@ -34,8 +34,7 @@ Drilled by mcp/tests/drill_rule_fix_strategy.py — both directions:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Literal
-
+from typing import Literal
 
 Category = Literal[
     "investigation",      # F841, F811: maybe-real-bug; investigate references

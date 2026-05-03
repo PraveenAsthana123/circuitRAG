@@ -64,7 +64,7 @@ class LlmClientPool:
         for client in self._clients.values():
             try:
                 await client.close()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 # Closing must never raise; the agent loop is shutting down.
                 pass
 

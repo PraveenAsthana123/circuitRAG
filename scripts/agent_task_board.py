@@ -86,7 +86,7 @@ COUNCIL_AGENTS: dict[str, dict[str, str]] = {
 def _load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 def _git(cmd: list[str], capture: bool = True) -> subprocess.CompletedProcess:
@@ -200,11 +200,7 @@ def cmd_research(args: argparse.Namespace) -> int:
     grep_target: str | None = None
     rule = target["code"]
     msg = target["message"]
-    if rule == "F841":
-        m = re.search(r"`([^`]+)`", msg)
-        if m:
-            grep_target = m.group(1)
-    elif rule == "UP035":
+    if rule == "F841" or rule == "UP035":
         m = re.search(r"`([^`]+)`", msg)
         if m:
             grep_target = m.group(1)
@@ -241,7 +237,7 @@ def cmd_research(args: argparse.Namespace) -> int:
     )
     out_path.write_text(brief, encoding="utf-8")
     print(f"✓ research brief written: {out_path.relative_to(REPO)}")
-    print(f"  context window: ±30 lines")
+    print("  context window: ±30 lines")
     if grep_target:
         ref_lines = len(grep_out.splitlines()) if grep_out else 0
         print(f"  grep target: '{grep_target}' -> {ref_lines} reference line(s)")
@@ -335,7 +331,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
     if not clean:
         # Roll back the apply.
         subprocess.run(["git", "apply", "-p0", "-R", "-"], cwd=REPO, input=diff + "\n", text=True, timeout=30)
-        apply_record["reason"] = f"ruff check failed after apply; reverted"
+        apply_record["reason"] = "ruff check failed after apply; reverted"
         _append_audit(apply_record)
         print(f"x rejected: {apply_record['reason']}")
         print("ruff output (first 600 chars):")
@@ -345,15 +341,15 @@ def cmd_apply(args: argparse.Namespace) -> int:
     apply_record["outcome"] = "applied"
     apply_record["reason"] = "ruff clean after apply; left in working tree for operator commit"
     _append_audit(apply_record)
-    print(f"✓ applied to working tree; ruff clean")
-    print(f"  next: stage + commit per §51/§54 (no Co-Authored-By trailer)")
+    print("✓ applied to working tree; ruff clean")
+    print("  next: stage + commit per §51/§54 (no Co-Authored-By trailer)")
     return 0
 
 
 def _append_audit(record: dict) -> None:
     APPLY_AUDIT.parent.mkdir(parents=True, exist_ok=True)
     import datetime
-    record["timestamp"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    record["timestamp"] = datetime.datetime.now(datetime.UTC).isoformat()
     with APPLY_AUDIT.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(record) + "\n")
 

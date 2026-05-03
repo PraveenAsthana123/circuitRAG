@@ -47,12 +47,10 @@ directions: valid proposal accepted, every failure mode rejected.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import ClassVar
 
-from pydantic import BaseModel, Field, field_validator, ValidationError
-
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 # Tokenizer artifacts seen empirically in deepseek-coder output (this
 # session: 2 of 5 council runs produced these in file paths). Reject

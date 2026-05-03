@@ -75,12 +75,10 @@ import hashlib
 import json
 import threading
 import uuid
-from collections import defaultdict
 from collections.abc import Callable
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, Field, ValidationError
-
+from pydantic import BaseModel, Field
 
 MessageType = Literal[
     "request",         # agent A asks agent B for something
@@ -132,7 +130,7 @@ class AgentRegistry:
     Thread-safe via a single mutex.
     """
 
-    _instance: ClassVar["AgentRegistry | None"] = None
+    _instance: ClassVar[AgentRegistry | None] = None
     _lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(self) -> None:
@@ -140,7 +138,7 @@ class AgentRegistry:
         self._mutex = threading.Lock()
 
     @classmethod
-    def get_instance(cls) -> "AgentRegistry":
+    def get_instance(cls) -> AgentRegistry:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls()
@@ -238,7 +236,7 @@ class A2AMessageBus:
 # ---------------------------------------------------------------------
 
 def now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 class AgentConnector:

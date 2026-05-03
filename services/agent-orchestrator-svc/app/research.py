@@ -201,7 +201,7 @@ class ResearchAgent:
                     payload["source_origin"] = "mcp_research"
                     payload.setdefault("topic", topic)
                     return payload
-            except Exception:  # noqa: BLE001 — fall through to LLM
+            except Exception:  # noqa: BLE001, S110 — fall through to LLM
                 pass
 
         # Routed LLM path.

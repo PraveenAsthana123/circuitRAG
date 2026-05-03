@@ -41,14 +41,12 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import json
 import uuid
 from collections import defaultdict
 from pathlib import Path
 from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field, ValidationError
-
 
 REPO = Path(__file__).resolve().parent.parent
 TASKS_LOG = REPO / ".loop" / "tasks.jsonl"
@@ -87,7 +85,7 @@ class Task(BaseModel):
 
 
 def now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 def _load_tasks() -> list[Task]:

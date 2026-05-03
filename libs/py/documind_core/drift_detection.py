@@ -38,9 +38,8 @@ empty → insufficient_data.
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Literal
-
 
 Severity = Literal["ok", "minor", "significant", "insufficient_data"]
 

@@ -87,12 +87,12 @@ class AgentOrchestratorService:
             try:
                 claude = ClaudeCliClient()
                 backends["claude_cli"] = claude
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
             try:
                 codex = CodexCliClient()
                 backends["codex_cli"] = codex
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
             self._pool = LlmClientPool(backends)  # type: ignore[arg-type]
 

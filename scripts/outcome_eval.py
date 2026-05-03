@@ -39,7 +39,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import ClassVar
 
-
 REPO = Path(__file__).resolve().parent.parent
 APPLY_AUDIT = REPO / ".loop" / "agent_task_board_apply.jsonl"
 ISSUE_AUDIT = REPO / ".loop" / "issue_audit.jsonl"
@@ -83,7 +82,7 @@ class OutcomeMetrics:
 
 
 def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -106,9 +105,9 @@ def _within_window(ts_str: str, *, days: int) -> bool:
         ts = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
     except (TypeError, ValueError):
         return True  # tolerant: rows without parseable ts count
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=datetime.timezone.utc)
+        ts = ts.replace(tzinfo=datetime.UTC)
     delta = now - ts
     return delta.days <= days
 
@@ -242,7 +241,7 @@ def cmd_compare_to(args: argparse.Namespace) -> int:
     new_passing = sorted(now_passing - pre_passing)
 
     print(f"=== Outcome delta vs {args.name} ===")
-    print(f"               PRE          POST          DELTA")
+    print("               PRE          POST          DELTA")
     print(f"  apply_rate   {pre['apply_rate']:>5.2%}        {post.apply_rate:>5.2%}        {post.apply_rate - pre['apply_rate']:+.2%}")
     print(f"  attempts     {pre['apply_attempts']:>5}        {post.apply_attempts:>5}        {post.apply_attempts - pre['apply_attempts']:+}")
     print(f"  succeeded    {pre['apply_succeeded']:>5}        {post.apply_succeeded:>5}        {post.apply_succeeded - pre['apply_succeeded']:+}")
@@ -269,7 +268,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     if metrics.cost_per_fix_cents is not None:
         print(f"  Cost per fix         {metrics.cost_per_fix_cents}¢")
     else:
-        print(f"  Cost per fix         (no fixes applied in window)")
+        print("  Cost per fix         (no fixes applied in window)")
     return 0
 
 

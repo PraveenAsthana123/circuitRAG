@@ -58,7 +58,6 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
-import re
 import subprocess
 import sys
 import time
@@ -85,7 +84,7 @@ SAFE_PATH_PREFIXES = (
 
 
 def _now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 def emit(event: str) -> None:
@@ -101,7 +100,7 @@ def write_status(state: dict) -> None:
 def load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 def append_apply_audit(record: dict) -> None:
@@ -182,9 +181,7 @@ def export_human_review_queue() -> int:
     skipped: list[dict] = []
     for issue in issues:
         code = issue.get("code", "")
-        if is_security_rule(code) or code.startswith("B"):
-            skipped.append(issue)
-        elif not is_safe_path(issue.get("file", "")):
+        if is_security_rule(code) or code.startswith("B") or not is_safe_path(issue.get("file", "")):
             skipped.append(issue)
     if not skipped:
         return 0
@@ -234,7 +231,7 @@ def escalate(issue_id: str, reason: str) -> None:
 def apply_ruff_autofix() -> tuple[int, int]:
     """Returns (before_count, after_count)."""
     before = len(load_jsonl(CHECKLIST))
-    proc = subprocess.run(
+    subprocess.run(
         [".venv/bin/ruff", "check", "--fix",
          "services/agent-orchestrator-svc/app/", "libs/py/"],
         cwd=REPO, capture_output=True, text=True, timeout=60,

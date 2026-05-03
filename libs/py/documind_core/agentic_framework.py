@@ -80,8 +80,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar, Literal
 
-from pydantic import BaseModel, Field, ValidationError
-
+from pydantic import BaseModel, Field
 
 RoleType = Literal[
     "researcher",       # context-gather BEFORE other agents

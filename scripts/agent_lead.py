@@ -37,11 +37,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Literal
 
-
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
-from rule_fix_strategy import RuleStrategy, get_strategy, is_human_only  # noqa: E402
-
+from rule_fix_strategy import get_strategy, is_human_only  # noqa: E402
 
 Route = Literal[
     "council_full",
@@ -229,7 +227,7 @@ def main() -> int:
         if not checklist_path.exists():
             print("x .loop/issue_checklist.jsonl missing; run scanner first")
             return 1
-        issues = [json.loads(l) for l in checklist_path.read_text().splitlines() if l.strip()]
+        issues = [json.loads(line) for line in checklist_path.read_text().splitlines() if line.strip()]
         issue = next((i for i in issues if i["id"] == args.id), None)
         if issue is None:
             print(f"x issue not found: {args.id}")

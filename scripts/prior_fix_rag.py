@@ -56,7 +56,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
-
 REPO = Path(__file__).resolve().parent.parent
 HITL_LOG = REPO / ".loop" / "hitl_scores.jsonl"
 
@@ -181,7 +180,7 @@ def query_similar_fixes(
         return []
 
     scored: list[tuple[float, dict]] = []
-    for row, doc_tokens in zip(rows, docs):
+    for row, doc_tokens in zip(rows, docs, strict=True):
         score = _bm25_score(query_tokens, doc_tokens, avgdl, df, n)
         if score >= min_score:
             scored.append((score, row))

@@ -37,15 +37,13 @@ Drilled by mcp/tests/drill_pr_management.py.
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
-from pydantic import BaseModel, Field, ValidationError
-
+from pydantic import BaseModel, Field
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -196,7 +194,7 @@ def cmd_preview(args: argparse.Namespace) -> int:
     rc, branch, _ = _git(["branch", "--show-current"])
     head = branch.strip() if rc == 0 else "HEAD"
     spec = build_pr_spec(commits, head=head, base=args.base)
-    print(f"=== PR preview ===")
+    print("=== PR preview ===")
     print(f"  title: {spec.title}")
     print(f"  head:  {spec.head}")
     print(f"  base:  {spec.base}")
@@ -217,7 +215,7 @@ def cmd_create(args: argparse.Namespace) -> int:
         return 2
     commits = find_batch_commits(since_ref=args.since_ref)
     if not commits:
-        print(f"x no commits to PR")
+        print("x no commits to PR")
         return 1
     rc, branch, _ = _git(["branch", "--show-current"])
     head = branch.strip() if rc == 0 else "HEAD"
