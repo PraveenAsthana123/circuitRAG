@@ -1,0 +1,70 @@
+{
+  "reports/final_report.json": {
+    "timestamp": "2026-05-03T05:24:20.325328+00:00",
+    "sanitation": {
+      "pytest": {
+        "cmd": "pytest -q -W ignore::pytest.PytestConfigWarning",
+        "status": "PASS",
+        "stdout": "\n",
+        "stderr": ""
+      },
+      "smoke_docs": {
+        "cmd": "curl -s http://127.0.0.1:8000/docs",
+        "status": "PASS",
+        "stdout": "\n    <!DOCTYPE html>\n    <html>\n    <head>\n    <link type=\"text/css\" rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css\">\n    <link rel=\"shortcut icon\" href=\"https://fastapi.tiangolo.com/img/favicon.png\">\n    <title>DocuMind \u2014 Retrieval Service - Swagger UI</title>\n    </head>\n    <body>\n    <div id=\"swagger-ui\">\n    </div>\n    <script src=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js\"></script>\n    <!-- `SwaggerUIBundle` is now available on the page -->\n    <script>\n    const ui = SwaggerUIBundle({\n        url: '/openapi.json',\n    \"dom_id\": \"#swagger-ui\",\n\"layout\": \"BaseLayout\",\n\"deepLinking\": true,\n\"showExtensions\": true,\n\"showCommonExtensions\": true,\noauth2RedirectUrl: window.location.origin + '/docs/oauth2-redirect',\n    presets: [\n        SwaggerUIBundle.presets.apis,\n        SwaggerUIBundle.SwaggerUIStandalonePreset\n        ],\n    })\n    </script>\n    </body>\n    </html>\n    ",
+        "stderr": ""
+      },
+      "openapi": {
+        "cmd": "curl -s -o reports/openapi.json -w %{http_code} http://127.0.0.1:8000/openapi.json",
+        "status": "PASS",
+        "stdout": "200",
+        "stderr": ""
+      }
+    }
+  },
+  "reports/bugs.json": [],
+  "reports/regression_score.json": {
+    "timestamp": "2026-05-03T05:24:31.875737+00:00",
+    "score": 100,
+    "status": "PASS",
+    "checks": {
+      "pytest": "PASS",
+      "openapi": "PASS",
+      "smoke_docs": "PASS"
+    }
+  },
+  "reports/performance_report.json": "MISSING",
+  "reports/council_decision.json": {
+    "timestamp": "2026-05-03T05:24:31.903438+00:00",
+    "votes": [
+      {
+        "agent": "testing",
+        "vote": "PASS",
+        "reason": "All testing checks passed",
+        "weight": 35
+      },
+      {
+        "agent": "bug",
+        "vote": "PASS",
+        "reason": "0 bugs",
+        "weight": 25
+      },
+      {
+        "agent": "regression",
+        "vote": "PASS",
+        "reason": "score=100",
+        "weight": 25
+      },
+      {
+        "agent": "performance",
+        "vote": "PASS",
+        "reason": "status=SKIP, p95=9999ms",
+        "weight": 15
+      }
+    ],
+    "score": 100,
+    "threshold": 80,
+    "decision": "ALLOW",
+    "failed_agents": []
+  }
+}

@@ -33,7 +33,12 @@ import json
 from pathlib import Path
 
 summary = json.load(open("reports/k6_summary.json"))
-p95 = summary["metrics"]["http_req_duration"]["percentiles"]["95"]
+
+metrics = summary.get("metrics", {})
+duration = metrics.get("http_req_duration", {})
+values = duration.get("values", {})
+p95 = values.get("p(95)", 9999)
+
 failed = summary["metrics"]["http_req_failed"]["rate"]
 
 out = {
