@@ -205,12 +205,19 @@ def _conservative_default(
 
 
 def _append_audit(decision: RouterDecision) -> None:
-    """Best-effort append to .loop/agent_router_audit.jsonl."""
+    """Best-effort append to .loop/agent_router_audit.jsonl + Kafka fan-out."""
     try:
         AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
         with AUDIT_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(decision.to_dict(), default=str) + "\n")
     except OSError:
+        pass
+    # Stage-2 fan-out to Kafka observability bus per §47 Layer 8.
+    # Fail-open: publish failure never blocks classify() return.
+    try:
+        from event_publisher import publish_router_classification  # noqa: PLC0415
+        publish_router_classification(classification=decision.to_dict())
+    except Exception:  # noqa: BLE001 — fan-out is best-effort
         pass
 
 

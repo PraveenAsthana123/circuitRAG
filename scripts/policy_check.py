@@ -226,6 +226,13 @@ def evaluate(
 
     if persist_audit:
         _append_audit(decision)
+        # Stage-2 fan-out to Kafka observability bus per §47 Layer 8.
+        # Fail-open: publish failure never blocks the decision return.
+        try:
+            from event_publisher import publish_policy_decision  # noqa: PLC0415
+            publish_policy_decision(decision=decision.to_dict())
+        except Exception:  # noqa: BLE001 — fan-out is best-effort
+            pass
     return decision
 
 

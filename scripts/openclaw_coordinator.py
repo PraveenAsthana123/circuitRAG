@@ -244,6 +244,16 @@ def evaluate_dispatch(
         )
 
     _append_audit(decision, envelope)
+    # Stage-2 fan-out to Kafka observability bus per §47 Layer 8.
+    # Fail-open: publish failure never blocks the dispatch return.
+    try:
+        from event_publisher import publish_openclaw_dispatch  # noqa: PLC0415
+        publish_openclaw_dispatch(
+            dispatch_decision=decision.to_dict(),
+            correlation_id=envelope.correlation_id if envelope else None,
+        )
+    except Exception:  # noqa: BLE001 — fan-out is best-effort
+        pass
     return decision, envelope
 
 
