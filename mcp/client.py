@@ -215,6 +215,7 @@ class MCPClient:
         correlation_id: str | None = None,
         idempotency_key: str | None = None,
         auth_token: str | None = None,
+        actor: str = "mcp:client:unknown",
     ) -> ToolResult:
         """
         Call a tool. On CB OPEN or any HTTP failure: persist a draft,
@@ -224,9 +225,65 @@ class MCPClient:
         the MCP server can enforce per-tool scopes defence-in-depth.
         If not supplied, no Authorization header is sent (fine when MCP
         runs with MCP_AUTH_REQUIRED=false).
+
+        ``actor`` is the calling agent (e.g., "council:author") — used
+        by the MCP Gateway gate (when MCP_GATEWAY_ENABLED=1) to check
+        the per-server allowlist BEFORE the CB or HTTP call fires. The
+        default 'mcp:client:unknown' is a deliberate trip-wire that
+        default-denies through the gateway — call sites must pass the
+        right actor.
         """
         key = idempotency_key or uuid.uuid4().hex
         cid = correlation_id or uuid.uuid4().hex
+
+        # MCP Gateway gate (Stage-2 wiring per the 2026-05-04 enterprise-
+        # architecture page's brutal rule: "do not allow direct MCP
+        # access"). Fires BEFORE circuit-breaker, BEFORE HTTP. When
+        # MCP_GATEWAY_ENABLED=1 the gate is enforced; when unset the
+        # gateway is opt-out (Stage-1 default — gate raises
+        # MCPGatewayDisabled which we catch + fall through to the
+        # existing path).
+        #
+        # Import is dynamic: scripts/ is not a Python package, so we
+        # add it to sys.path lazily on first call. Same pattern as
+        # local_council.py's _polisai_gate import.
+        try:
+            import sys as _sys  # noqa: PLC0415
+            from pathlib import Path as _Path  # noqa: PLC0415
+            _scripts_dir = str(_Path(__file__).resolve().parent.parent / "scripts")
+            if _scripts_dir not in _sys.path:
+                _sys.path.insert(0, _scripts_dir)
+            from mcp_gateway import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                MCPGatewayDisabled,
+                check as _gateway_check,
+            )
+            # tool name format is "<server>.<tool>" — split for gateway
+            server_name = name.split(".", 1)[0] if "." in name else name
+            tool_name = name.split(".", 1)[1] if "." in name else ""
+            try:
+                gate_decision = _gateway_check(
+                    actor=actor,
+                    server=server_name,
+                    tool=tool_name,
+                    persist_audit=True,
+                )
+                if not gate_decision.allow:
+                    return ToolResult(
+                        ok=False,
+                        error=(
+                            f"mcp gateway denied: {gate_decision.reason} "
+                            f"(rule={gate_decision.rule_matched})"
+                        ),
+                    )
+            except MCPGatewayDisabled:
+                # Stage-1 default — gateway opt-out. Pre-Stage-2 path
+                # remains unchanged. This is the explicit fall-through
+                # the gate contract documents.
+                pass
+        except ImportError:
+            # mcp_gateway module missing — same as Stage-1 default.
+            # Tool calls proceed to existing CB+HTTP path.
+            pass
 
         # CB check
         if not self._breaker.allow():
