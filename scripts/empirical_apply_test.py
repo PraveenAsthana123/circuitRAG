@@ -119,11 +119,19 @@ def cmd_simulate(args: argparse.Namespace) -> int:
     if not daemon.exists():
         print(f"x daemon missing: {daemon}")
         return 1
-    cmd = [str(PYTHON), str(daemon), "--max-cycles", str(args.max_cycles)]
+    # Empirical retest only needs F401 detection on the synthetic file;
+    # mypy/bandit/eslint full-scan can exceed 600s and timeout the daemon.
+    # Per docs/architecture/empirical-retest-2026-05-04-scanner-timeout.md.
+    cmd = [
+        str(PYTHON), str(daemon),
+        "--max-cycles", str(args.max_cycles),
+        "--scan-fast",
+        "--scan-paths", "tests/_empirical_synthetic.py",
+    ]
     if not args.apply:
         cmd.append("--dry-run")
     print(f"  running: {' '.join(cmd)}")
-    print(f"  expected wall time: 5-15 min per cycle (real Ollama council fires)")
+    print(f"  expected wall time: 1-3 min per cycle (ruff-only scan + Ollama council)")
     started = time.time()
     proc = subprocess.run(cmd, cwd=REPO, capture_output=False, text=True)
     elapsed = time.time() - started

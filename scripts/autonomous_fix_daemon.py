@@ -75,11 +75,16 @@ ISSUE_SCANNER = Path.home() / ".claude" / "scripts" / "issue_scanner.py"
 ISSUE_DISPATCHER = Path.home() / ".claude" / "scripts" / "issue_dispatcher.py"
 
 # §42 boundaries: don't touch outside these paths.
+# `tests/_empirical_` is the harness-prefix for empirical retest synthetic
+# files (per scripts/empirical_apply_test.py + §55.3). No real test file
+# starts with `_empirical_` — the prefix is reserved for drill-injected
+# synthetic broken files. Keeps tests/ otherwise off-limits to the daemon.
 SAFE_PATH_PREFIXES = (
     "services/",
     "libs/py/",
     "mcp/",
     "scripts/",
+    "tests/_empirical_",
 )
 
 
@@ -110,26 +115,31 @@ def append_apply_audit(record: dict) -> None:
         fh.write(json.dumps(record) + "\n")
 
 
-def scan_issues() -> int:
-    """Run the issue scanner with the broadest surface possible.
+def scan_issues(scan_fast: bool = False, scan_paths: list[str] | None = None) -> int:
+    """Run the issue scanner.
 
     Bandit (`--include-bandit`) flags security issues that the daemon
     will SKIP at task-claim time per §50.5.3 — but exporting them to
     the human-review queue is more valuable than not knowing they
     exist. Same logic for mypy + eslint.
+
+    `scan_fast=True` drops mypy/bandit/eslint and runs ruff only — used
+    by the empirical retest harness, where the synthetic file only
+    needs F401 (ruff) detection. Reduces 600s+ scan to <30s.
+
+    `scan_paths` overrides the default `--targets services` with a
+    narrower path list — used to scope retest cycles to a single file
+    instead of the whole tree.
     """
-    proc = subprocess.run(
-        [
-            "python3", str(ISSUE_SCANNER),
-            "--repo", str(REPO),
-            "--include-mypy",
-            "--include-bandit",
-            "--include-eslint",
-        ],
-        capture_output=True, text=True, timeout=120,
-    )
+    cmd = ["python3", str(ISSUE_SCANNER), "--repo", str(REPO)]
+    if not scan_fast:
+        cmd.extend(["--include-mypy", "--include-bandit", "--include-eslint"])
+    if scan_paths:
+        cmd.append("--targets")
+        cmd.extend(scan_paths)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     if proc.returncode != 0:
-        emit(f"scan_failed rc={proc.returncode}")
+        emit(f"scan_failed rc={proc.returncode} fast={scan_fast}")
         return 0
     issues = load_jsonl(CHECKLIST)
     return len(issues)
@@ -320,7 +330,10 @@ def drill_gated_apply(issue_id: str, diff: str) -> tuple[bool, str]:
 def cycle_one(args: argparse.Namespace) -> str:
     """Run one daemon cycle. Returns short status string for status file."""
     emit(f"cycle_start at={_now()}")
-    n_pending = scan_issues()
+    n_pending = scan_issues(
+        scan_fast=getattr(args, "scan_fast", False),
+        scan_paths=getattr(args, "scan_paths", None),
+    )
     n_human = export_human_review_queue()
     emit(f"scan_complete pending={n_pending} human_review_queued={n_human}")
 
@@ -542,6 +555,11 @@ def main() -> int:
                         help="seconds between cycles (default: 120)")
     parser.add_argument("--dry-run", action="store_true",
                         help="emit events but do not mutate files")
+    parser.add_argument("--scan-fast", action="store_true",
+                        help="ruff-only scan; skip mypy/bandit/eslint "
+                             "(empirical retest mode; full scan can exceed 600s)")
+    parser.add_argument("--scan-paths", nargs="*", default=None,
+                        help="narrow scanner --targets (default: services)")
     args = parser.parse_args()
 
     emit(f"start max_cycles={args.max_cycles} interval={args.interval} dry_run={args.dry_run}")
