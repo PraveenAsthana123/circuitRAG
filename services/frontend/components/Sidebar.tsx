@@ -79,6 +79,7 @@ const GROUPS: Group[] = [
       { href: '/admin/techstack-audit', label: '🧮 Techstack audit (empirical install state · §56 gate 4)' },
       { href: '/admin/mcp-gateway', label: '🛂 MCP Gateway (allowlist · 4-layer defense)' },
       { href: '/admin/sitemap', label: '🗺 Sitemap (categorized index of all admin pages)' },
+      { href: '/admin/stage-promotions', label: '🎚 Stage promotions (Stage 1/2/3 lifecycle tracker)' },
       { href: '/admin/vectorless-elasticsearch', label: '🔍 Vectorless RAG (Elasticsearch BM25 patterns)' },
       { href: '/admin/simulation', label: '🛰 Simulation hub (live agent + tool state)' },
       { href: '/admin/pipelines', label: '🪢 Pipelines hub (all RAG flows in one node)' },
