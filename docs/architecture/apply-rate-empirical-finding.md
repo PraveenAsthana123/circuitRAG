@@ -111,12 +111,17 @@ schema contract per §55 Tier 1.1's intent.
 
 ## Composes with
 
+- `scripts/local_council.py` — author/reviewer/advisor council loop the apply-rate measures
+- `scripts/empirical_apply_test.py` — operator harness that produces the live retest numbers
+- `scripts/paperclip_manager.py` — surfaces apply rate on the agent_task_board
+- `scripts/autonomous_fix_daemon.py` — the loop being measured
+- `mcp/tests/drill_apply_check_preflight.py` — locks Tier 1.3.b synthetic 8/8 outcome
+- `mcp/tests/drill_empirical_apply_test.py` — locks the harness contract
+- `docs/architecture/full-stack-architecture.md` — full system map this finding contributes to
 - §43 — drill discipline; this finding has its own drill
 - §52 — brutal tool review row 1 (CouncilProposal correctness)
 - §55.2 Tier 1.3 — adaptive context (per-rule strategy + per-failure retry)
 - §55.3 — apply rate as the outcome contract
-- [feat(paperclip) commit 3fb3679](../../scripts/paperclip_manager.py) — surfaces this number
-- [feat(council) commit 21bca92](../../scripts/local_council.py) — the file we'll modify
 
 ## The brutal rule, restated
 

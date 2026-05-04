@@ -7,7 +7,7 @@ audit). Locks both directions of the policy:
 
   POSITIVE:
     - known actor + known tool + correct scope → allow + rule_matched
-    - rules surface lists 8 documented rules
+    - rules surface lists 12 documented rules
     - audit row persisted on each decision
 
   NEGATIVE (default-deny posture):
@@ -54,14 +54,14 @@ def main() -> int:
         return 1
     print(f"  ok: policy_check.py + policy file present")
 
-    print("-- 2. POSITIVE: rules surface lists 8 documented rules + version --")
+    print("-- 2. POSITIVE: rules surface lists 12 documented rules + version --")
     rc, out, err = _run("rules")
     if rc != 0:
         print(f"x rules cmd exit {rc}: {err[:200]}")
         return 1
     payload = json.loads(out)
-    if payload.get("rule_count") != 8:
-        print(f"x expected 8 rules; got {payload.get('rule_count')}")
+    if payload.get("rule_count") != 12:
+        print(f"x expected 12 rules; got {payload.get('rule_count')}")
         return 1
     if payload.get("default_effect") != "deny":
         print(f"x default_effect must be 'deny'; got {payload.get('default_effect')!r}")
@@ -69,7 +69,7 @@ def main() -> int:
     if not payload.get("policy_version"):
         print("x policy_version missing")
         return 1
-    print(f"  ok: 8 rules; default-deny; version={payload['policy_version']}")
+    print(f"  ok: 12 rules; default-deny; version={payload['policy_version']}")
 
     print("-- 3. POSITIVE: known actor + tool + scope → allow (exit 0) --")
     rc, out, err = _run(

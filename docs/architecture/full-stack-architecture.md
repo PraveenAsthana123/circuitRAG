@@ -150,11 +150,19 @@ as the actual delegation path. Stage-2 = full multi-agent task graph.
 
 ## Composes with
 
-- [ADR-012 — orchestration layer local-first](adr/012-orchestration-layer-local-first.md) — refined here
-- [§38 decision audit](../../CLAUDE.md#38-mandatory--ai-production-governance-every-project)
-- [§42 gated operations](../../CLAUDE.md#42-global-operational-autonomy--all-bash-commands-approved)
-- [§43 drill discipline](../../CLAUDE.md#43-mandatory--drill-testing-pattern-every-project)
-- [§47 architecture & design patterns](../../CLAUDE.md#47-mandatory--architecture--design-patterns-every-system)
-- [§48.4 audit row schema](../../CLAUDE.md#48-mandatory--ai-explainability--interpretability-every-ai-feature)
-- [Paperclip Stage-1 commit `3fb3679`](../../scripts/paperclip_manager.py)
+- `scripts/paperclip_manager.py` — Paperclip Stage-1/2 sandbox + propose loop
+- `scripts/paperclip_dispatcher.py` — Stage-3 propose+dispatch composition
+- `scripts/openclaw_coordinator.py` — A2A dispatch contract (gate + envelope + transport)
+- `scripts/agent_router.py` — Stage-2 Ollama-backed intent classifier
+- `scripts/policy_check.py` — PolisAI default-deny evaluator
+- `scripts/mcp_gateway.py` — MCP request gate (PolisAI + actors + rate limits)
+- `scripts/local_council.py` — 3-model author/reviewer/advisor loop
+- `config/policies/agent_dispatch.json` — runtime allowlist (12 rules)
+- `config/policies/agent_dispatch.rego` — Stage-2 OPA scaffold
+- `docs/architecture/adr/012-orchestration-layer-local-first.md` — refined here
+- §38 — decision-audit schema
+- §42 — gated operations
+- §43 — drill discipline
+- §47 — architecture & design patterns
+- §48.4 — audit row schema
 - [PolisAI Stage-1 commit (this iteration)](../../scripts/policy_check.py)

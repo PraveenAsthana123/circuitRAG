@@ -137,14 +137,14 @@ flowchart TD
     RAG --> Cache[Redis 7.4<br/>idempotency + cache]
     RAG --> ES[Elasticsearch 8.15<br/>BM25 + log pipeline]
     Council --> Ollama[🦙 Ollama 0.3.12<br/>local LLM<br/>14 models]
-    Exec --> Eval[10. Governance + Evaluation<br/>Stage-1 scaffolds: Snyk · Guardrails AI · Ragas · DeepEval<br/>Stage-2 wiring: TODO]
+    Exec --> Eval[10. Governance + Evaluation<br/>Stage-1 scaffolds: Snyk · Guardrails AI · Ragas · DeepEval<br/>Stage-2 wiring: PLANNED]
     Eval --> Obs[11. Observability<br/>Langfuse 2 · OpenTelemetry · Jaeger 1.60 ·<br/>Prometheus 2.54 · Grafana 11.2]
     Polis -.audit.-> Obs
     Council -.audit.-> Obs
     Exec -.events.-> Kafka[Kafka 7.6<br/>event bus]
     Kafka --> Obs
 
-    OpenClaw[OpenClaw<br/>scripts/openclaw_coordinator.py<br/>Stage-1 gate-only · Stage-2 Dispatch TODO]
+    OpenClaw[OpenClaw<br/>scripts/openclaw_coordinator.py<br/>Stage-1 gate-only · Stage-2 Dispatch PLANNED]
     Council -.future.-> OpenClaw
 ```
 
@@ -153,26 +153,26 @@ flowchart TD
 | Layer | Component | Tier-1 status | Notes |
 |-------|-----------|---------------|-------|
 | **Load Balancer** | nginx 1.27 | ✅ shipped | docker-compose.yml |
-| **Load Balancer** | k8s ingress / Istio | ❌ TODO | requires k8s migration |
+| **Load Balancer** | k8s ingress / Istio | ❌ PLANNED | requires k8s migration |
 | **API Gateway** | Go gateway (port 8080) | ✅ shipped | services/api-gateway/ |
 | **API Gateway** | gRPC service-to-service | ⚠️ partial | docs reference gRPC; protos not codegen'd yet |
 | **Auth** | JWT + RBAC + tenant check | ✅ shipped | services/identity-svc/ |
 | **Rate Limiting** | Per-IP + per-tenant | ✅ shipped | api-gateway middleware |
 | **Circuit Breaker** | DB + HTTP breakers | ✅ shipped | db_circuit_breaker.py + agent_orchestrator-svc/app/ |
 | **Policy / PolisAI** | Stage-1 policy_check.py | ✅ shipped | 12 rules · default-deny · audit log |
-| **Policy / PolisAI** | Stage-2 OPA + Rego | ⚠️ TODO | Tier 6 #6.1 |
+| **Policy / PolisAI** | Stage-2 OPA + Rego | ⚠️ PLANNED | Tier 6 #6.1 |
 | **Agent Router** | Intent + Risk classifier (heuristic) | ✅ Stage-1 | scripts/agent_router.py · 12 patterns · conservative default |
-| **Agent Router** | Ollama-backed classifier | ⚠️ TODO Stage-2 | swap heuristic body for qwen2.5 call |
+| **Agent Router** | Ollama-backed classifier | ⚠️ PLANNED Stage-2 | swap heuristic body for qwen2.5 call |
 | **Agent Council** | Local council 4-role | ✅ shipped | scripts/local_council.py |
-| **Agent Council** | 5-role rename (Planner/Retriever/Risk/Evaluator/Writer) | ⚠️ TODO | aliasing layer |
+| **Agent Council** | 5-role rename (Planner/Retriever/Risk/Evaluator/Writer) | ⚠️ PLANNED | aliasing layer |
 | **Execution / LangGraph** | LangGraph 1.1.10 DAG | ✅ shipped | langgraph_flow.py |
 | **Paperclip Sandbox** | Stage-1 read-only aggregator | ✅ shipped | scripts/paperclip_manager.py |
-| **Paperclip Sandbox** | Stage-2 propose-only loop | ⚠️ TODO | |
-| **Paperclip Sandbox** | Stage-3 Goal→Plan→Execute→Evaluate→Improve | ⚠️ TODO | |
+| **Paperclip Sandbox** | Stage-2 propose-only loop | ⚠️ PLANNED | |
+| **Paperclip Sandbox** | Stage-3 Goal→Plan→Execute→Evaluate→Improve | ⚠️ PLANNED | |
 | **OpenClaw A2A** | Stage-1 gate + envelope contract | ✅ Stage-1 | scripts/openclaw_coordinator.py · 6 agents · default-deny |
-| **OpenClaw A2A** | Stage-2 Dispatch RPC + circuit breaker | ⚠️ TODO Stage-2 | proto comment-only; needs PolisAI rules |
+| **OpenClaw A2A** | Stage-2 Dispatch RPC + circuit breaker | ⚠️ PLANNED Stage-2 | proto comment-only; needs PolisAI rules |
 | **MCP Tool Layer** | 8 MCP servers | ✅ shipped | mcp/server_*.py |
-| **MCP Tool Layer** | mcp/server_paperclip.py | ⚠️ TODO | next iteration |
+| **MCP Tool Layer** | mcp/server_paperclip.py | ⚠️ PLANNED | next iteration |
 | **Local LLM** | Ollama 0.3.12 | ✅ shipped | 14 models installed |
 | **Council models** | qwen2.5 / deepseek-coder / codegemma / codellama | ✅ shipped | researcher / author / reviewer / advisor |
 | **Tier-B Fallback** | Claude CLI / Codex CLI | ✅ shipped | scripts/tier_b_fallback.py |
@@ -183,20 +183,20 @@ flowchart TD
 | **RAG / Lakehouse** | MinIO 2024.10 | ✅ shipped | raw doc blobs |
 | **RAG / BM25** | rank_bm25 0.2.2 | ✅ shipped | hybrid retrieval |
 | **RAG / Reranker** | scikit-learn cross-encoder | ✅ shipped | classical |
-| **RAG / Vectorless option** | Graph-only retrieval | ⚠️ TODO | feature flag missing |
+| **RAG / Vectorless option** | Graph-only retrieval | ⚠️ PLANNED | feature flag missing |
 | **Cache** | Redis 7.4 (idempotency + rate-limit + LLM cache) | ✅ shipped | docker-compose.yml |
 | **Event Bus** | Kafka 7.6 + Zookeeper | ✅ shipped | docker-compose.yml |
 | **Event Bus** | aiokafka producer/consumer wiring | ⚠️ partial | infra up; some services not yet publishing |
 | **Search** | Elasticsearch 8.15 | ✅ shipped | docker-compose.yml |
 | **Search** | Kibana 8.15 | ✅ shipped | log + search UI |
 | **Search** | Filebeat → ES | ✅ shipped | log pipeline |
-| **Service Mesh** | Istio | ❌ TODO | requires k8s |
+| **Service Mesh** | Istio | ❌ PLANNED | requires k8s |
 | **Service Mesh** | Kiali 1.86 (mesh viz) | ✅ shipped | docker-compose.yml |
 | **Eval / Guardrails AI** | Output filtering + jailbreak defense | ⚠️ Stage-1 scaffold | services/evaluation-svc/app/eval_harness.py — fail-open until deps installed |
 | **Eval / Ragas** | RAG-specific eval (faithfulness, relevance) | ⚠️ Stage-1 scaffold | requirements.txt + scaffold; Stage-2 wires real calls |
-| **Eval / Giskard** | LLM red-team + bias scan | ❌ TODO | |
-| **Eval / Lakera + Rebuff** | Prompt-injection defense | ❌ TODO | |
-| **Eval / DeepEval** | Alternative RAG eval | ❌ TODO | |
+| **Eval / Giskard** | LLM red-team + bias scan | ❌ PLANNED | |
+| **Eval / Lakera + Rebuff** | Prompt-injection defense | ❌ PLANNED | |
+| **Eval / DeepEval** | Alternative RAG eval | ❌ PLANNED | |
 | **Security / Snyk** | Dep vulnerability scan | ⚠️ Stage-1 scaffold | .snyk + .github/workflows/snyk.yml shipped; needs SNYK_TOKEN secret |
 | **Security / Bandit** | Python static security | ✅ shipped | issue_scanner.py |
 | **Security / pip-audit** | Python dep audit | ⚠️ partial | not in CI yet |
@@ -207,7 +207,7 @@ flowchart TD
 | **Dashboards / Grafana** | Viz | ✅ shipped | docker-compose.yml |
 | **MLflow** | (alt to Langfuse for ML obs) | ❌ deliberate | Langfuse covers LLM obs |
 
-**Totals: 60 components · 38 ✅ shipped · 13 ⚠️ Stage-1 scaffold · 9 ❌ TODO**
+**Totals: 60 components · 38 ✅ shipped · 13 ⚠️ Stage-1 scaffold · 9 ❌ PLANNED**
 
 **Net change since 2026-04-30 baseline:** +6 components (MCP Gateway · MCP allowlist · LiteLLM adapter · PydanticAI adapter · Techstack audit · Sitemap), 4 newly-shipped (Stage-1 → ✅), 2 more Stage-1 scaffolds.
 
