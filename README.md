@@ -8,7 +8,9 @@ Upload documents → they get parsed, chunked, embedded, graphed, indexed → us
 
 ---
 
-## Snapshot (2026-04-30, MDT — Linux x86_64 dev host)
+## Snapshot (2026-05-03, MDT — Linux x86_64 dev host)
+
+**This session adds**: PolisAI Stage-1 policy engine · Paperclip Stage-1 sandbox aggregator · 11-layer architecture doc · Ollama × PolisAI integration (every council call gated) · Frontend page `/admin/paperclip` · scripts/run.sh `paperclip` + `policy` verbs · Apply-rate empirical finding · **Tier 1.3.b: git-apply-check pre-flight inside AUTHOR retry loop (closes 5/8 of historical apply failures)**.
 
 ### Code metrics
 
@@ -17,7 +19,7 @@ Upload documents → they get parsed, chunked, embedded, graphed, indexed → us
 | Python LOC (services + libs) | **22,453** | `find services libs -name '*.py' \| xargs wc -l` |
 | TypeScript LOC (frontend) | **56,621** | `find services/frontend -name '*.ts' -o -name '*.tsx' \| xargs wc -l` |
 | Go LOC (api-gateway + identity-svc + others) | **1,527** | `find services -name '*.go' \| xargs wc -l` |
-| **Drills** (regression contracts) | **204** | `ls mcp/tests/drill_*.py \| wc -l` |
+| **Drills** (regression contracts) | **297** | `ls mcp/tests/drill_*.py \| wc -l` |
 | **ADRs** (architectural decisions) | **23** | `ls docs/architecture/adr/*.md \| wc -l` |
 | **Runbooks** (operator paths) | **17** | `ls docs/runbooks/*.md \| wc -l` |
 | **Deep-dive pages** (`/admin/*/deep`) | **45** | `find services/frontend/app/admin -name page.tsx -path '*/deep/*' \| wc -l` |
@@ -90,34 +92,112 @@ DocuMind answers all of these — 67 design areas in total, each implemented as 
 
 ---
 
-## Architecture at a glance
+## Architecture at a glance — the 11-layer stack
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│             Next.js 14 Frontend + Admin UI (port 3000)              │
-└───────────────────────────┬─────────────────────────────────────────┘
-                            │ HTTPS + JWT
-┌───────────────────────────▼─────────────────────────────────────────┐
-│                 API Gateway (Go, port 8080)                         │
-│        routing • JWT • rate limit • correlation ID • CORS           │
-└─┬──────────┬──────────┬──────────┬──────────┬──────────┬──────────┬┘
-  │ gRPC     │ gRPC     │ gRPC     │ gRPC     │ gRPC     │ gRPC     │
-┌─▼─────┐ ┌──▼────┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐ ┌───▼───┐
-│Identity│ │Ingest │ │Retriev │ │Inferen │ │Eval    │ │Govern  │ │FinOps │
-│  (Go)  │ │ (Py)  │ │ (Py)   │ │ (Py)   │ │ (Py)   │ │ (Go)   │ │ (Go)  │
-└────────┘ └───┬───┘ └────┬───┘ └────┬───┘ └────┬───┘ └────┬───┘ └───┬───┘
-               │          │          │          │          │         │
-               └──────────┴──────────┴──────────┴──────────┴─────────┘
-                                     │
-         ┌────────┬────────┬─────────┼─────────┬─────────┬────────┐
-         ▼        ▼        ▼         ▼         ▼         ▼        ▼
-    ┌───────┐┌──────┐ ┌───────┐ ┌───────┐ ┌────────┐ ┌──────┐ ┌───────┐
-    │Postgres││Qdrant│ │ Neo4j │ │ Redis │ │ Kafka  │ │Ollama│ │MinIO  │
-    │  RLS   ││vector│ │ graph │ │ cache │ │ events │ │ LLM  │ │ blob  │
-    └───────┘└──────┘ └───────┘ └───────┘ └────────┘ └──────┘ └───────┘
+The full request path with every cross-cutting concern (load balancing, gateway, circuit breakers, policy, council, sandbox, observability):
+
+```mermaid
+flowchart TD
+    User[User / Business App]
+    User --> LB[Load Balancer<br/>nginx 1.27 / k8s ingress]
+    LB --> GW[1. API Gateway<br/>Go · port 8080<br/>SSO · RBAC · rate limit · tenant check · correlation-id]
+    GW --> CB1{2. Circuit Breaker<br/>db_circuit_breaker.py<br/>+ http breaker per dep}
+    CB1 --> Router[3. Agent Router<br/>intent + risk classify<br/>⚠️ TODO]
+    Router --> Polis[4. PolisAI Policy Layer<br/>scripts/policy_check.py<br/>default-deny · 12 rules · §38 audit]
+    Polis --> Council[5. Agent Council<br/>scripts/local_council.py<br/>Researcher · Author · Reviewer · Advisor]
+    Council --> Exec[6. Agent Execution Layer<br/>LangGraph DAG<br/>services/agent-orchestrator-svc/]
+    Exec --> Paperclip[7. Paperclip Sandbox 📎<br/>scripts/paperclip_manager.py<br/>read-only · §42-gated · drill-locked]
+    Exec --> MCP[8. MCP Tool Layer<br/>8 servers: research / drills / deploy /<br/>hr / itsm / observe / ollama / tests]
+    MCP --> RAG[9. RAG + Data Layer<br/>retrieval-svc · ingestion-svc<br/>chunking · embeddings · hybrid retrieval]
+    RAG --> VDB[Qdrant 1.11<br/>vector DB]
+    RAG --> KG[Neo4j 5.21<br/>knowledge graph]
+    RAG --> Lake[MinIO<br/>blob lakehouse]
+    RAG --> Cache[Redis 7.4<br/>idempotency + cache]
+    RAG --> ES[Elasticsearch 8.15<br/>BM25 + log pipeline]
+    Council --> Ollama[🦙 Ollama 0.3.12<br/>local LLM<br/>14 models]
+    Exec --> Eval[10. Governance + Evaluation<br/>Guardrails AI · Ragas · Giskard · Lakera · Rebuff<br/>⚠️ TODO]
+    Eval --> Obs[11. Observability<br/>Langfuse 2 · OpenTelemetry · Jaeger 1.60 ·<br/>Prometheus 2.54 · Grafana 11.2]
+    Polis -.audit.-> Obs
+    Council -.audit.-> Obs
+    Exec -.events.-> Kafka[Kafka 7.6<br/>event bus]
+    Kafka --> Obs
+
+    OpenClaw[OpenClaw<br/>heavy-autonomy A2A<br/>⚠️ TODO]
+    Council -.future.-> OpenClaw
 ```
 
-See [`docs/architecture/C4-container.md`](docs/architecture/C4-container.md) for the full C4 container view, [`docs/design-areas/`](docs/design-areas/) for per-area deep-dives.
+### Tool inventory (52 components)
+
+| Layer | Component | Tier-1 status | Notes |
+|-------|-----------|---------------|-------|
+| **Load Balancer** | nginx 1.27 | ✅ shipped | docker-compose.yml |
+| **Load Balancer** | k8s ingress / Istio | ❌ TODO | requires k8s migration |
+| **API Gateway** | Go gateway (port 8080) | ✅ shipped | services/api-gateway/ |
+| **API Gateway** | gRPC service-to-service | ⚠️ partial | docs reference gRPC; protos not codegen'd yet |
+| **Auth** | JWT + RBAC + tenant check | ✅ shipped | services/identity-svc/ |
+| **Rate Limiting** | Per-IP + per-tenant | ✅ shipped | api-gateway middleware |
+| **Circuit Breaker** | DB + HTTP breakers | ✅ shipped | db_circuit_breaker.py + agent_orchestrator-svc/app/ |
+| **Policy / PolisAI** | Stage-1 policy_check.py | ✅ shipped | 12 rules · default-deny · audit log |
+| **Policy / PolisAI** | Stage-2 OPA + Rego | ⚠️ TODO | Tier 6 #6.1 |
+| **Agent Router** | Intent + Risk classifier | ❌ TODO | new build needed |
+| **Agent Council** | Local council 4-role | ✅ shipped | scripts/local_council.py |
+| **Agent Council** | 5-role rename (Planner/Retriever/Risk/Evaluator/Writer) | ⚠️ TODO | aliasing layer |
+| **Execution / LangGraph** | LangGraph 1.1.10 DAG | ✅ shipped | langgraph_flow.py |
+| **Paperclip Sandbox** | Stage-1 read-only aggregator | ✅ shipped | scripts/paperclip_manager.py |
+| **Paperclip Sandbox** | Stage-2 propose-only loop | ⚠️ TODO | |
+| **Paperclip Sandbox** | Stage-3 Goal→Plan→Execute→Evaluate→Improve | ⚠️ TODO | |
+| **OpenClaw A2A** | Heavy-autonomy coordinator | ❌ TODO | ADR-012 reserved |
+| **MCP Tool Layer** | 8 MCP servers | ✅ shipped | mcp/server_*.py |
+| **MCP Tool Layer** | mcp/server_paperclip.py | ⚠️ TODO | next iteration |
+| **Local LLM** | Ollama 0.3.12 | ✅ shipped | 14 models installed |
+| **Council models** | qwen2.5 / deepseek-coder / codegemma / codellama | ✅ shipped | researcher / author / reviewer / advisor |
+| **Tier-B Fallback** | Claude CLI / Codex CLI | ✅ shipped | scripts/tier_b_fallback.py |
+| **RAG / Chunking** | Recursive token chunking | ✅ shipped | ingestion-svc · 256-1024 tokens · 10-20% overlap |
+| **RAG / Embedding** | tiktoken + ollama embeddings | ✅ shipped | versioned per §39.2 |
+| **RAG / Vector DB** | Qdrant 1.11 | ✅ shipped | tenant-isolated namespaces |
+| **RAG / Graph DB** | Neo4j 5.21 | ✅ shipped | knowledge graph |
+| **RAG / Lakehouse** | MinIO 2024.10 | ✅ shipped | raw doc blobs |
+| **RAG / BM25** | rank_bm25 0.2.2 | ✅ shipped | hybrid retrieval |
+| **RAG / Reranker** | scikit-learn cross-encoder | ✅ shipped | classical |
+| **RAG / Vectorless option** | Graph-only retrieval | ⚠️ TODO | feature flag missing |
+| **Cache** | Redis 7.4 (idempotency + rate-limit + LLM cache) | ✅ shipped | docker-compose.yml |
+| **Event Bus** | Kafka 7.6 + Zookeeper | ✅ shipped | docker-compose.yml |
+| **Event Bus** | aiokafka producer/consumer wiring | ⚠️ partial | infra up; some services not yet publishing |
+| **Search** | Elasticsearch 8.15 | ✅ shipped | docker-compose.yml |
+| **Search** | Kibana 8.15 | ✅ shipped | log + search UI |
+| **Search** | Filebeat → ES | ✅ shipped | log pipeline |
+| **Service Mesh** | Istio | ❌ TODO | requires k8s |
+| **Service Mesh** | Kiali 1.86 (mesh viz) | ✅ shipped | docker-compose.yml |
+| **Eval / Guardrails AI** | Output filtering + jailbreak defense | ❌ TODO | dependency missing |
+| **Eval / Ragas** | RAG-specific eval (faithfulness, relevance) | ❌ TODO | Tier 6 #6.2 |
+| **Eval / Giskard** | LLM red-team + bias scan | ❌ TODO | |
+| **Eval / Lakera + Rebuff** | Prompt-injection defense | ❌ TODO | |
+| **Eval / DeepEval** | Alternative RAG eval | ❌ TODO | |
+| **Security / Snyk** | Dep vulnerability scan | ❌ TODO | |
+| **Security / Bandit** | Python static security | ✅ shipped | issue_scanner.py |
+| **Security / pip-audit** | Python dep audit | ⚠️ partial | not in CI yet |
+| **LLM Observability / Langfuse** | Prompt/cost tracking | ✅ shipped | docker-compose.yml |
+| **Tracing / Jaeger** | Distributed traces | ✅ shipped | docker-compose.yml |
+| **Tracing / OpenTelemetry** | OTel collector + SDK | ✅ shipped | docker-compose.yml |
+| **Metrics / Prometheus** | Time-series metrics | ✅ shipped | + Alertmanager + node-exporter |
+| **Dashboards / Grafana** | Viz | ✅ shipped | docker-compose.yml |
+| **MLflow** | (alt to Langfuse for ML obs) | ❌ deliberate | Langfuse covers LLM obs |
+
+**Totals: 52 components · 32 ✅ shipped · 6 ⚠️ partial · 14 ❌ TODO**
+
+### Architectural invariants (drill-locked)
+
+1. **PolisAI fires BEFORE agent execution** — every Ollama call goes through `policy_check.evaluate()` first. Drill: [`drill_council_polisai_gate.py`](mcp/tests/drill_council_polisai_gate.py) (8 steps, 4 negative).
+2. **Paperclip is sandbox-only** — no write methods, no outbound HTTP, write verbs refused with §42 citation. Drill: [`drill_paperclip_stage1.py`](mcp/tests/drill_paperclip_stage1.py) (8 steps, 6 negative).
+3. **Schema-as-contract includes git-apply-check** — Tier 1.3.b: every accepted CouncilProposal must pass `git apply --check` BEFORE acceptance. Drill: [`drill_apply_check_preflight.py`](mcp/tests/drill_apply_check_preflight.py) (8 steps, 5 negative).
+4. **Default-deny policy** — any (actor, tool) not matched by an explicit allow rule is denied + audited. Drill: [`drill_policy_engine.py`](mcp/tests/drill_policy_engine.py) (8 steps, 4 negative).
+5. **§42 boundary** — destructive ops (force-push, hard reset, branch -D) and `git push` without `--confirm` are gated. Drill: [`drill_run_sh.py`](mcp/tests/drill_run_sh.py) (8 steps, 6 negative).
+
+### Composes with policies
+
+[§38 governance](CLAUDE.md#38) · [§42 autonomy](CLAUDE.md#42) · [§43 drill](CLAUDE.md#43) · [§47 architecture](CLAUDE.md#47) · [§48.4 audit row](CLAUDE.md#48) · [§50 issue dispatcher](CLAUDE.md#50) · [§52 brutal review](CLAUDE.md#52) · [§55.3 outcome contract](CLAUDE.md#55) · [ADR-012 orchestration](docs/architecture/adr/012-orchestration-layer-local-first.md) · [Full architecture doc](docs/architecture/full-stack-architecture.md)
+
+See also: [`docs/architecture/C4-container.md`](docs/architecture/C4-container.md) for the full C4 container view, [`docs/design-areas/`](docs/design-areas/) for per-area deep-dives.
 
 ---
 
