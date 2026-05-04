@@ -87,22 +87,27 @@ def main() -> int:
         return 1
     print(f"  ok: {stage1_count} components × 3 stages each")
 
-    print("-- 7. NEGATIVE: fully-promoted adapters (LiteLLM, MCP Gateway) all 3 ✅ --")
-    # Drill enforces the session's 2 fully-promoted adapters retain
+    print("-- 7. NEGATIVE: fully-promoted components retain 3 ✅ stages --")
+    # Drill enforces session-shipped fully-promoted components retain
     # all 3 stages as 'shipped'. A regression that moved one to
     # 'pending' would silently undo the achievement.
-    for adapter in ("LiteLLM adapter", "MCP Gateway"):
-        idx = src.find(f"name: '{adapter}'")
+    fully_promoted = (
+        "LiteLLM adapter",
+        "MCP Gateway",
+        "Paperclip Sandbox",  # added 2026-05-04: Stage-3 dispatcher
+    )
+    for component in fully_promoted:
+        idx = src.find(f"name: '{component}'")
         if idx == -1:
-            print(f"x adapter {adapter!r} not found")
+            print(f"x component {component!r} not found")
             return 1
         section = src[idx:idx + 2000]
-        # Count 'shipped' occurrences in this adapter's section
+        # Count 'shipped' occurrences in this component's section
         shipped_count = section.count("status: 'shipped'")
         if shipped_count < 3:
-            print(f"x {adapter!r} should have 3 'shipped' stages; got {shipped_count}")
+            print(f"x {component!r} should have 3 'shipped' stages; got {shipped_count}")
             return 1
-    print("  ok: LiteLLM + MCP Gateway both fully-promoted (3 'shipped' stages each)")
+    print(f"  ok: {len(fully_promoted)} components fully-promoted (3 'shipped' stages each)")
 
     print("-- 8. POSITIVE: §49 footer + sidebar wired + composes-with refs --")
     if "Composes with" not in src:
