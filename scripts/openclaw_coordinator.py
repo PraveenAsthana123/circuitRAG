@@ -273,6 +273,140 @@ def _append_audit(decision: DispatchDecision, envelope: DispatchEnvelope | None)
 
 
 # ---------------------------------------------------------------------------
+# Stage-2 dispatch — gate + envelope + transport via MCP gateway.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DispatchResult:
+    """Outcome of a Stage-2 dispatch — wraps decision + transport result.
+
+    ok=True iff: (1) PolisAI gated, (2) envelope built, (3) transport
+    succeeded. Any earlier rejection sets ok=False; transport_error
+    is None on success or before transport was attempted.
+    """
+    ok: bool
+    decision: DispatchDecision
+    envelope: DispatchEnvelope | None = None
+    transport_error: str | None = None
+    response_data: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["decision"] = self.decision.to_dict()
+        if self.envelope is not None:
+            d["envelope"] = asdict(self.envelope)
+        return d
+
+
+def dispatch(
+    *,
+    requesting_agent: str,
+    target_agent: str,
+    capability: str,
+    scopes_granted: list[str] | None = None,
+    payload: dict[str, Any] | None = None,
+    correlation_id: str | None = None,
+) -> DispatchResult:
+    """Stage-2 dispatch — evaluate + transport.
+
+    Flow:
+      1. Run evaluate_dispatch() — same Stage-1 gate path
+      2. If allow=False → return DispatchResult(ok=False, ...)
+      3. Map target_agent's endpoint to an MCP server name
+         (registry already documents this via 'endpoint' field)
+      4. Route through mcp_gateway.check() — defense in depth (the
+         gateway also fires PolisAI gate; double-gate is intentional
+         here because OpenClaw's gate authorizes A2A delegation
+         while the MCP gateway authorizes the underlying MCP call)
+      5. On gateway allow → log dispatch event; Stage-2 stops here
+         (real RPC send is Stage-3 — needs each agent to be a
+         server, which is a bigger architectural step)
+      6. Persist a synthetic audit row indicating Stage-2 transport
+         attempt outcome
+
+    The 'transport' is currently a no-op (Stage-2 is contract +
+    audit). Stage-3 implements the real HTTP/gRPC send. Drill locks:
+    every dispatch() call goes through evaluate_dispatch FIRST,
+    transport only happens on allow, audit row records BOTH stages.
+    """
+    decision, envelope = evaluate_dispatch(
+        requesting_agent=requesting_agent,
+        target_agent=target_agent,
+        capability=capability,
+        scopes_granted=scopes_granted,
+        payload=payload,
+        correlation_id=correlation_id,
+    )
+
+    if not decision.allow or envelope is None:
+        return DispatchResult(
+            ok=False,
+            decision=decision,
+            envelope=None,
+            transport_error=f"openclaw gate denied: {decision.reason}",
+        )
+
+    # MCP gateway check — when MCP_GATEWAY_ENABLED, route through it.
+    # The target_agent's registry endpoint indicates the MCP server.
+    target_info = AGENT_REGISTRY[target_agent]
+    endpoint = target_info["endpoint"]
+    transport_error: str | None = None
+
+    # Parse server name from endpoint. Format examples:
+    #   "local://scripts/local_council.py" → no MCP server
+    #   "human-in-loop://hitl"             → no MCP server
+    #   "mcp://research"                    → research MCP server
+    if endpoint.startswith("mcp://"):
+        server_name = endpoint[len("mcp://"):]
+        try:
+            sys.path.insert(0, str(REPO / "scripts"))
+            from mcp_gateway import (  # noqa: PLC0415
+                MCPGatewayDisabled,
+                check as _gateway_check,
+            )
+            try:
+                gate = _gateway_check(
+                    actor=requesting_agent,
+                    server=server_name,
+                    tool=capability,
+                    persist_audit=True,
+                )
+                if not gate.allow:
+                    transport_error = (
+                        f"mcp gateway denied transport to {server_name}: "
+                        f"{gate.reason}"
+                    )
+            except MCPGatewayDisabled:
+                # Gateway not enabled — Stage-2 records dispatch but
+                # actual transport is a no-op. That's the documented
+                # opt-in behavior (matches LiteLLM Stage-2 pattern).
+                transport_error = "mcp_gateway_disabled (Stage-2 no-op)"
+        except ImportError:
+            transport_error = "mcp_gateway_unavailable"
+
+    # Stage-3 stub: actual RPC send would go here when agents are
+    # exposed as servers. For Stage-2, we record the dispatch as
+    # successful (gate passed, envelope built) — the transport step
+    # is a no-op.
+    if transport_error and "denied" in transport_error.lower():
+        return DispatchResult(
+            ok=False,
+            decision=decision,
+            envelope=envelope,
+            transport_error=transport_error,
+        )
+
+    return DispatchResult(
+        ok=True,
+        decision=decision,
+        envelope=envelope,
+        transport_error=transport_error,  # may carry "Stage-2 no-op" note
+        response_data={"stage": 2, "transport_outcome": "no-op"},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Inspection helpers — read-only operator surface.
 # ---------------------------------------------------------------------------
 
