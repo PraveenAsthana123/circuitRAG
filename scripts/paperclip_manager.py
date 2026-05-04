@@ -272,6 +272,153 @@ def refuse_write_verb(verb: str) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
+# Stage-2 — propose_next_task: SUGGESTION-only advisory.
+#
+# Stage-2 promotion: paperclip moves from "show me state" (Stage-1) to
+# "show me state + suggest next move" (Stage-2). Still NO mutation, NO
+# dispatch — purely structured recommendation that an operator (or a
+# Stage-3 dispatcher) can act on. Drill-locked: must remain read-only
+# at the FS + network level.
+# --------------------------------------------------------------------------
+
+def propose_next_task() -> dict[str, Any]:
+    """Stage-2 — read-only structured suggestion for the next council task.
+
+    Reads the same surfaces snapshot() reads (no new I/O), then ranks
+    pending issues by:
+      1. Easiest difficulty first (trivial > easy > medium > hard)
+      2. Deterministic assignee preferred (ruff:autofix > council > human-review)
+      3. Lowest historical apply-rate-by-rule (worst signal first if
+         operator wants to investigate; best signal first if operator
+         wants to ship — both are valid, we go with "best signal first"
+         to maximize apply rate gains)
+
+    Returns a structured proposal dict:
+      {
+        stage: 2,
+        proposal: { issue_id, recommended_actor, recommended_lane,
+                    difficulty, rationale, est_effort_minutes,
+                    historical_signal },
+        rejected: [...],   # candidates considered but skipped, with reasons
+        signal: {          # context-of-recommendation
+          apply_rate_7d,
+          total_pending,
+          honesty_signal,
+        },
+      }
+
+    Stage-2 contract:
+      - DOES NOT mutate state (no .loop/ writes)
+      - DOES NOT dispatch (Stage-3 will, via OpenClaw + MCP gateway)
+      - DOES NOT call PolisAI (no actor context yet — Stage-3 will gate
+        the dispatch, not the proposal)
+      - DOES NOT make outbound HTTP calls
+    """
+    # Re-use the existing aggregators — same I/O footprint as snapshot()
+    apply_summary = aggregate_apply_attempts(window_days=7)
+    pending_summary = aggregate_pending_issues()
+    raw_pending = _read_jsonl(LOOP_DIR / "issue_checklist.jsonl", limit=10000)
+
+    # Pending = status='pending'; ranked by difficulty + assignee
+    DIFFICULTY_RANK = {"trivial": 0, "easy": 1, "medium": 2, "hard": 3, "?": 4}
+    ASSIGNEE_RANK = {
+        "ruff:autofix": 0,
+        "council:author": 1,
+        "council:advisor": 2,
+        "council": 3,
+        "human-review": 4,
+        "?": 5,
+    }
+
+    def _rank_key(issue: dict[str, Any]) -> tuple[int, int, str]:
+        diff = DIFFICULTY_RANK.get(issue.get("difficulty", "?"), 4)
+        # assigned_to vs assignee — different writers used different keys
+        assignee = issue.get("assigned_to", issue.get("assignee", "?"))
+        ass = ASSIGNEE_RANK.get(assignee, 5)
+        return (diff, ass, issue.get("id", ""))
+
+    candidates = [r for r in raw_pending if r.get("status") == "pending"]
+    candidates.sort(key=_rank_key)
+
+    rejected: list[dict[str, Any]] = []
+    proposal: dict[str, Any] | None = None
+
+    for c in candidates:
+        # Skip security-class rules that NEVER go to model (per §50.5.3)
+        code = c.get("code", "")
+        if code.startswith("S") or code.startswith("B"):
+            rejected.append({
+                "issue_id": c.get("id"),
+                "reason": "security-class rule (S*/B*); §50.5.3 forbids model routing",
+            })
+            continue
+        # Skip already-attempted high-difficulty issues (heuristic:
+        # repeat attempts with 0% rate aren't a good Stage-2 next pick)
+        if c.get("difficulty") == "hard" and apply_summary["apply_rate"] == 0.0:
+            rejected.append({
+                "issue_id": c.get("id"),
+                "reason": "hard difficulty + 0% historical apply rate; pick easier first",
+            })
+            continue
+
+        # Pick this one
+        difficulty = c.get("difficulty", "?")
+        assignee = c.get("assigned_to", c.get("assignee", "?"))
+        proposal = {
+            "issue_id": c.get("id"),
+            "recommended_actor": (
+                "operator:human" if assignee == "human-review"
+                else "ruff:autofix" if assignee == "ruff:autofix"
+                else "council:author"
+            ),
+            "recommended_lane": assignee,
+            "difficulty": difficulty,
+            "rationale": (
+                f"Easiest pending ({difficulty} difficulty); "
+                f"routes to {assignee} lane. Historical apply rate "
+                f"{apply_summary['apply_rate']:.1%} suggests focusing "
+                f"on quick wins first."
+            ),
+            "est_effort_minutes": (
+                1 if difficulty == "trivial"
+                else 5 if difficulty == "easy"
+                else 15 if difficulty == "medium"
+                else 60
+            ),
+            "historical_signal": apply_summary["honesty_signal"],
+        }
+        break  # take the first non-rejected candidate
+
+    if proposal is None:
+        return {
+            "stage": 2,
+            "proposal": None,
+            "rejected": rejected,
+            "signal": {
+                "apply_rate_7d": apply_summary["apply_rate"],
+                "total_pending": pending_summary["total_pending"],
+                "honesty_signal": apply_summary["honesty_signal"],
+            },
+            "note": (
+                "No proposable issue found. Either checklist is empty "
+                "(run scripts/run.sh scan), or all candidates were "
+                "rejected (security-class rules + hard-with-0%-rate)."
+            ),
+        }
+
+    return {
+        "stage": 2,
+        "proposal": proposal,
+        "rejected": rejected,
+        "signal": {
+            "apply_rate_7d": apply_summary["apply_rate"],
+            "total_pending": pending_summary["total_pending"],
+            "honesty_signal": apply_summary["honesty_signal"],
+        },
+    }
+
+
+# --------------------------------------------------------------------------
 # CLI surface — for operator + drill consumption.
 # --------------------------------------------------------------------------
 
@@ -288,6 +435,7 @@ def main() -> int:
     p_snap.add_argument("--pretty", action="store_true")
 
     sub.add_parser("verbs", help="List allowed read-only verbs")
+    sub.add_parser("propose", help="Stage-2: suggest next council task (read-only)")
 
     # Write verbs registered explicitly so they route to refuse_write_verb
     # rather than argparse's generic "invalid choice" error. The point is
@@ -306,11 +454,20 @@ def main() -> int:
 
     if args.cmd == "verbs":
         print(json.dumps({
-            "stage": 1,
-            "read_only_verbs": ["snapshot", "verbs"],
-            "refused_verbs_until_stage_2_3": list(WRITE_VERBS),
-            "rationale": "Stage-1 is read-only per ADR-012. §42 boundaries.",
+            "stage": 2,
+            "read_only_verbs": ["snapshot", "verbs", "propose"],
+            "refused_verbs_until_stage_3": list(WRITE_VERBS),
+            "rationale": (
+                "Stage-1 = read-only aggregation. Stage-2 (this commit) "
+                "adds 'propose' — suggestion-only advisory. Stage-3 will "
+                "add gated dispatch via OpenClaw + MCP gateway."
+            ),
         }, indent=2))
+        return 0
+
+    if args.cmd == "propose":
+        result = propose_next_task()
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
     if args.cmd in WRITE_VERBS:
