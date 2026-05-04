@@ -161,14 +161,48 @@ def validate_council_proposal(
     for fence in ("```json", "```"):
         cleaned = cleaned.replace(fence, "")
     cleaned = cleaned.strip()
+
+    proposal: CouncilProposal | None = None
     candidate = _first_balanced_object(cleaned)
-    if candidate is None:
-        return None
-    try:
-        proposal = CouncilProposal.model_validate_json(candidate)
-    except ValidationError:
-        return None
-    except json.JSONDecodeError:
+    if candidate is not None:
+        try:
+            proposal = CouncilProposal.model_validate_json(candidate)
+        except (ValidationError, json.JSONDecodeError):
+            proposal = None
+
+    # Stage-2 PydanticAI fallback — when bracket-aware regex extraction
+    # fails (no balanced object found OR parse rejected), try
+    # pydanticai_adapter.validate() before giving up. Per the
+    # 2026-05-04 tool-evaluation: PydanticAI may catch outputs the
+    # regex path misses (e.g., split JSON, malformed fences).
+    #
+    # Fail-open: any exception from the fallback means "regex was
+    # the truth; PydanticAI didn't help." Re-raises original-extraction
+    # outcome (None) — does NOT propagate the fallback's exception.
+    if proposal is None:
+        try:
+            from pydanticai_adapter import (  # noqa: PLC0415
+                PydanticAIUnavailable,
+                validate as _pyaai_validate,
+            )
+            try:
+                # Use the cleaned-of-fences text — pydantic-ai handles
+                # extraction itself; we just give it the prose+JSON.
+                proposal = _pyaai_validate(cleaned, CouncilProposal)
+            except PydanticAIUnavailable:
+                # Stage-1 default — adapter not enabled. Same outcome
+                # as before this commit: regex failed → return None.
+                pass
+            except (ValueError, ValidationError, json.JSONDecodeError):
+                # PydanticAI tried + failed validation. Same as regex
+                # path failing — return None.
+                proposal = None
+        except ImportError:
+            # pydanticai_adapter module missing — still fail-open;
+            # this was the pre-Stage-2 behavior.
+            pass
+
+    if proposal is None:
         return None
 
     if repo is not None:
