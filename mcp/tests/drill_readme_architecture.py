@@ -95,8 +95,15 @@ def main() -> int:
     # The 14 TODO components must each be flagged so a reader can tell
     # "shipped" from "aspirational." Without ❌ markers the inventory
     # becomes a wishlist masquerading as a fact list.
+    # 2026-05-03 update: items that have moved through Stage-1 are
+    # removed from the must-flag list. Remaining truly-TODO items:
+    #   - Istio (no k8s migration yet)
+    # Items in Stage-1 scaffold (Snyk, Guardrails AI, Ragas, OpenClaw,
+    # Agent Router, etc.) are no longer required to be flagged ❌
+    # because they have observable evidence in the repo (scaffold +
+    # drill). They MAY be flagged ⚠️ Stage-2-TODO; the drill no longer
+    # requires that.
     todo_must_flag = (
-        "Agent Router", "OpenClaw", "Snyk", "Guardrails AI", "Ragas",
         "Istio",
     )
     for item in todo_must_flag:
