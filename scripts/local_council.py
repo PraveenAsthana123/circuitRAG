@@ -533,6 +533,50 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
         },
     }
 
+    # §47 Layer 3 — Agent Router cross-check. Every council run
+    # classifies the issue's `message` field through the router.
+    # The router's recommendation is recorded in the audit chain so
+    # forensics can spot disagreements between upstream lane assignment
+    # and the router's judgment. This is a CROSS-CHECK, not a gate;
+    # the council still proceeds (issue was already routed to council
+    # by issue_dispatcher.py based on rule code). Stage-2 would gate.
+    try:
+        from agent_router import classify as _router_classify
+    except ImportError:
+        sys.path.insert(0, str(REPO / "scripts"))
+        from agent_router import classify as _router_classify
+    try:
+        router_decision = _router_classify(
+            issue.get("message", "") or issue.get("id", ""),
+            persist_audit=False,  # the council audit_chain captures it
+        )
+        audit_chain["agent_router"] = {
+            "intent": router_decision.intent,
+            "risk": router_decision.risk,
+            "recommended_actor": router_decision.recommended_actor,
+            "recommended_tool": router_decision.recommended_tool,
+            "confidence": router_decision.confidence,
+            "reasons": router_decision.reasons[:3],  # cap audit row size
+            "disagrees_with_council": router_decision.recommended_actor not in (
+                "council:author", "council:reviewer", "council:advisor",
+                "council:researcher",
+            ),
+        }
+        if audit_chain["agent_router"]["disagrees_with_council"]:
+            print(
+                f"  [router] WARNING — issue routed to council but router "
+                f"recommends actor={router_decision.recommended_actor!r}; "
+                f"continuing per upstream lane assignment"
+            )
+    except Exception as exc:  # noqa: BLE001 — router failure is non-fatal
+        # Router classification is observability, not gate. Failure
+        # should not block the council; it just leaves the audit row
+        # without a router section.
+        audit_chain["agent_router"] = {
+            "error": str(exc)[:200],
+            "fallback": "router_unavailable",
+        }
+
     # Tier 1 #1.4: RESEARCHER fires for investigation + type-fix rules
     # so AUTHOR sees a synthesized brief instead of raw grep output.
     research_brief = ""
