@@ -43,14 +43,19 @@ def main() -> int:
             return 1
     print("  ok: 4 surfaces exported")
 
-    print("-- 2. POSITIVE: complete() signature matches call_ollama() exactly --")
-    # Drop-in swap requires identical signature.
+    print("-- 2. POSITIVE: complete() public signature matches call_ollama() --")
+    # Drop-in swap requires the PUBLIC signature to match. Stage-3
+    # adds `_skip_gate` (underscore-prefix internal) — drill ALLOWS
+    # underscore-prefixed extras as long as they're keyword-only +
+    # have safe defaults (False / None).
     import inspect
     sig_complete = inspect.signature(litellm_adapter.complete)
-    expected_params = ["model", "system", "prompt", "timeout", "actor"]
-    actual_params = list(sig_complete.parameters.keys())
-    if actual_params != expected_params:
-        print(f"x signature mismatch — expected {expected_params}, got {actual_params}")
+    public_params = [
+        p for p in sig_complete.parameters.keys() if not p.startswith("_")
+    ]
+    expected_public = ["model", "system", "prompt", "timeout", "actor"]
+    if public_params != expected_public:
+        print(f"x public signature mismatch — expected {expected_public}, got {public_params}")
         return 1
     # actor must be keyword-only (matches call_ollama)
     actor_param = sig_complete.parameters["actor"]
@@ -60,7 +65,17 @@ def main() -> int:
     if actor_param.default != "council:unknown":
         print(f"x actor default must be 'council:unknown'; got {actor_param.default!r}")
         return 1
-    print("  ok: signature drop-in compatible with call_ollama()")
+    # Underscore-prefix internal kwargs MUST be keyword-only with
+    # falsy defaults (so callers omitting them get safe behavior)
+    for name, param in sig_complete.parameters.items():
+        if name.startswith("_"):
+            if param.kind != inspect.Parameter.KEYWORD_ONLY:
+                print(f"x internal kwarg {name!r} must be keyword-only")
+                return 1
+            if param.default not in (False, None, 0, ""):
+                print(f"x internal kwarg {name!r} must have falsy default; got {param.default!r}")
+                return 1
+    print(f"  ok: 5 public params + {len([p for p in sig_complete.parameters if p.startswith('_')])} internal underscore-kwargs")
 
     print("-- 3. NEGATIVE: default is_available() = False (LITELLM_ENABLED unset) --")
     if litellm_adapter.is_available():

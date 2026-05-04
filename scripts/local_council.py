@@ -224,9 +224,13 @@ def _litellm_fallback(
     """Try LiteLLM. Raises _LiteLLMNotApplicable when the path isn't
     available so call_ollama can re-raise the original curl error.
 
-    PolisAI gating: NOT re-fired here. call_ollama already gated
-    (line 174); calling litellm_adapter.complete would double-gate.
-    Stage-3 may consolidate; Stage-2 prioritizes minimal audit churn.
+    Stage-3 (this commit): pass _skip_gate=True to litellm_adapter.complete
+    since call_ollama already fired the PolisAI gate at line 174.
+    Eliminates the duplicate audit row from Stage-2's double-gate.
+
+    Stage-2 had two audit rows per fallback (one per call_ollama gate,
+    one per adapter gate). Same decision both times — harmless but
+    storage cost. Stage-3 is the consolidation: gate once, audit once.
     """
     try:
         from litellm_adapter import (  # noqa: PLC0415
@@ -237,17 +241,15 @@ def _litellm_fallback(
         raise _LiteLLMNotApplicable() from exc
 
     try:
-        # The adapter's complete() also fires a PolisAI gate. That's
-        # a double-gate per fallback call — harmless (same actor,
-        # tool, scopes → same decision) but produces 2 audit rows.
-        # The second row is intentionally distinct: it documents that
-        # the litellm path was attempted, not just curl. Stage-3
-        # cleanup may add a `_skip_gate` kwarg; for Stage-2 the
-        # honesty of "two audit rows = curl failed + litellm tried"
-        # outweighs the storage cost.
+        # Stage-3: _skip_gate=True. The adapter trusts that we already
+        # gated (call_ollama line 174). Drill enforces the contract:
+        # the adapter's _skip_gate kwarg is keyword-only + underscore-
+        # prefixed; no public caller may set it. The fallback
+        # dispatcher is one of the SHORT list of trusted callers.
         return _litellm_complete(
             model=model, system=system, prompt=prompt,
             timeout=timeout, actor=actor,
+            _skip_gate=True,
         )
     except LiteLLMUnavailable as exc:
         raise _LiteLLMNotApplicable() from exc

@@ -105,15 +105,20 @@ def complete(
     timeout: float = 180.0,
     *,
     actor: str = "council:unknown",
+    _skip_gate: bool = False,
 ) -> tuple[str, int]:
     """LiteLLM completion — drop-in replacement for call_ollama().
 
-    Signature MUST match call_ollama(model, system, prompt, timeout, actor)
-    for clean swap. Returns (response_text, tokens_used).
+    Public signature matches call_ollama(model, system, prompt, timeout, actor)
+    for clean swap. The internal `_skip_gate` kwarg (underscore-prefixed
+    by convention) is for trusted callers who already gated; bypassing
+    requires the caller to assert the gate fired upstream.
+
+    Returns (response_text, tokens_used).
 
     Raises:
       LiteLLMUnavailable — litellm not installed OR feature flag off
-      OllamaPolicyDenied — PolisAI rejected the call (re-raised through)
+      OllamaPolicyDenied — PolisAI rejected the call (when _skip_gate=False)
       RuntimeError       — actual litellm/provider error
 
     The model arg uses litellm's provider-prefix convention:
@@ -121,9 +126,14 @@ def complete(
       anthropic/<name>  — Anthropic API (Stage-3 fallback)
       openai/<name>     — OpenAI API (Stage-3 fallback)
 
-    Stage-1 implementation note: when not LITELLM_ENABLED, this
-    function ALWAYS raises LiteLLMUnavailable. That's deliberate —
-    Stage-1 ships only the contract; behavior is locked Stage-2.
+    Stage-3 _skip_gate consolidation: when call_ollama falls through to
+    this adapter, it has ALREADY gated upstream (line 174 in
+    local_council.py). The Stage-2 fallback fired the gate twice —
+    harmless (same actor/tool/scopes → same decision) but produced
+    duplicate audit rows. Stage-3 eliminates the duplicate by passing
+    _skip_gate=True from the fallback dispatcher. Drill enforces:
+    public callers must NOT pass _skip_gate (signature is keyword-only
+    + underscore-prefix-conventional).
     """
     if not is_available():
         raise LiteLLMUnavailable(
@@ -133,7 +143,11 @@ def complete(
 
     # PolisAI gate fires BEFORE the litellm call — same §47 invariant
     # the direct-curl path enforces. Drill locks this ordering.
-    _polisai_gate(actor)
+    # Stage-3: _skip_gate=True bypasses gate (caller must have gated
+    # upstream). Drill enforces _skip_gate is NOT in the public-call
+    # signature (keyword-only + underscore-prefix marks it as internal).
+    if not _skip_gate:
+        _polisai_gate(actor)
 
     # Lazy import — only loaded when the feature flag + lib are present
     import litellm  # noqa: PLC0415
