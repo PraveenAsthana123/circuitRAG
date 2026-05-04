@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package documind.openclaw.v1;
+option go_package = "github.com/documind/proto/openclaw/v1;openclawv1";
+
+import "common/v1/common.proto";
+
+// OpenClaw Stage-1 — heavy-autonomy A2A coordinator (gate-only).
+//
+// Per CLAUDE.md §47 (Layer 11 of 11-layer architecture) + ADR-012.
+// Stage-1 ships gate + envelope contract; does NOT yet ship actual
+// remote-agent execution. Why: A2A delegation that ships before the
+// policy gate is wired is exactly OWASP A15 (Excessive Agency).
+//
+// Stage-2 will add Dispatch RPC that actually delivers to the target
+// agent. Stage-1's EvaluateDispatch returns the envelope but does
+// NOT send it.
+
+service OpenClawService {
+  rpc Health           (documind.common.v1.HealthRequest) returns (documind.common.v1.HealthReply);
+
+  // Stage-1: gate + envelope only. See header for stage promotion.
+  rpc EvaluateDispatch (EvaluateDispatchRequest) returns (EvaluateDispatchReply);
+  rpc ListAgents       (ListAgentsRequest) returns (ListAgentsReply);
+  rpc RecentDispatches (RecentDispatchesRequest) returns (RecentDispatchesReply);
+
+  // Stage-2: real dispatch (NOT registered yet — ship in own commit
+  // with PolisAI a2a:dispatch:* rules + drill update)
+  // rpc Dispatch       (DispatchRequest) returns (DispatchReply);
+}
+
+message AgentInfo {
+  string name                   = 1;     // e.g. "council:author"
+  repeated string capabilities  = 2;
+  string required_scope         = 3;
+  string endpoint               = 4;
+}
+
+message ListAgentsRequest {
+  documind.common.v1.RequestMeta meta = 1;
+}
+
+message ListAgentsReply {
+  int32  stage                  = 1;
+  int32  agent_count            = 2;
+  repeated AgentInfo agents     = 3;
+}
+
+message EvaluateDispatchRequest {
+  documind.common.v1.RequestMeta meta = 1;
+  string requesting_agent       = 2;
+  string target_agent           = 3;
+  string capability             = 4;
+  repeated string scopes_granted = 5;
+  bytes  payload                = 6;     // JSON-encoded blob
+  string correlation_id         = 7;
+}
+
+message DispatchEnvelope {
+  string dispatch_id            = 1;
+  double timestamp              = 2;
+  string requesting_agent       = 3;
+  string target_agent           = 4;
+  string capability             = 5;
+  string correlation_id         = 6;
+  bytes  payload                = 7;     // JSON-encoded
+  repeated string scopes_granted = 8;
+}
+
+message DispatchDecision {
+  bool   allow                  = 1;
+  string reason                 = 2;
+  string rule_matched           = 3;
+  string requesting_agent       = 4;
+  string target_agent           = 5;
+  string capability             = 6;
+  repeated string scopes_required = 7;
+  repeated string scopes_granted  = 8;
+  repeated string missing_scopes  = 9;
+  double timestamp              = 10;
+  string dispatch_id            = 11;
+}
+
+message EvaluateDispatchReply {
+  DispatchDecision decision     = 1;
+  // envelope is null when decision.allow=false; per Stage-1 contract.
+  DispatchEnvelope envelope     = 2;
+}
+
+message RecentDispatchesRequest {
+  documind.common.v1.RequestMeta meta = 1;
+  int32  limit = 2;                      // default 10, max 100
+}
+
+message AuditRow {
+  string type                   = 1;     // "dispatch"
+  DispatchDecision decision     = 2;
+  DispatchEnvelope envelope     = 3;     // present iff decision.allow=true
+}
+
+message RecentDispatchesReply {
+  repeated AuditRow rows        = 1;
+}

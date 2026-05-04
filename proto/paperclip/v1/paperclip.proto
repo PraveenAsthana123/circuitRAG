@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package documind.paperclip.v1;
+option go_package = "github.com/documind/proto/paperclip/v1;paperclipv1";
+
+import "common/v1/common.proto";
+
+// Paperclip Stage-1 — sandbox manager-layer aggregator.
+//
+// Per CLAUDE.md §47 (Layer 6 of 11-layer architecture) + ADR-012.
+// Stage-1 is read-only by contract: NO mutating RPCs registered.
+// Adding any mutating RPC requires:
+//   1. ADR documenting why the sandbox boundary moved
+//   2. PolisAI rule with explicit scope token
+//   3. Drill update to lock the new contract
+//
+// Drill: mcp/tests/drill_mcp_server_paperclip.py + frontend drill +
+// CLI drill all enforce the read-only contract at their boundaries.
+
+service PaperclipService {
+  rpc Health    (documind.common.v1.HealthRequest) returns (documind.common.v1.HealthReply);
+
+  // Read-only Stage-1 RPCs ONLY. See header comment for promotion rules.
+  rpc Snapshot  (SnapshotRequest) returns (SnapshotReply);
+  rpc Status    (StatusRequest)   returns (StatusReply);
+}
+
+message SnapshotRequest {
+  documind.common.v1.RequestMeta meta = 1;
+  int32  window_days = 2;            // [1, 90]; default 7
+}
+
+message ApplyAttemptsSummary {
+  int32  window_days        = 1;
+  int32  total_attempts     = 2;
+  int32  applied            = 3;
+  int32  rejected           = 4;
+  int32  drill_failed       = 5;
+  int32  errored            = 6;
+  float  apply_rate         = 7;     // §55.3 brutal-honesty signal
+  string honesty_signal     = 8;     // human-readable summary
+}
+
+message CouncilBatchSummary {
+  int32  total_attempted    = 1;
+  int32  unique_ids_run     = 2;
+  float  total_elapsed_s    = 3;
+  int32  last_run_count     = 4;
+}
+
+message AuditDecisionRow {
+  string issue_id           = 1;
+  string lane               = 2;
+  string model              = 3;
+  string outcome            = 4;
+  int32  tokens_total       = 5;
+  float  max_latency_s      = 6;
+}
+
+message PendingIssuesSummary {
+  int32  total_pending                 = 1;
+  map<string, int32> by_assignee       = 2;
+  map<string, int32> by_severity       = 3;
+  map<string, int32> by_difficulty     = 4;
+}
+
+message CouncilOutcomes {
+  map<string, int32> by_outcome = 1;
+  int32  total                  = 2;
+}
+
+message SnapshotReply {
+  int32  stage             = 1;
+  string version           = 2;
+  double generated_at      = 3;
+  CouncilBatchSummary council_batch       = 4;
+  ApplyAttemptsSummary apply_attempts     = 5;
+  repeated AuditDecisionRow audit_decisions = 6;
+  PendingIssuesSummary pending_issues     = 7;
+  CouncilOutcomes council_outcomes        = 8;
+}
+
+message StatusRequest {
+  documind.common.v1.RequestMeta meta = 1;
+}
+
+message StatusReply {
+  bool   ok                = 1;
+  int32  stage             = 2;
+  bool   script_present    = 3;
+  double last_snapshot_at  = 4;
+  double snapshot_age_s    = 5;
+  string error             = 6;       // empty when ok=true
+}
