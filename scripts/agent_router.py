@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -52,6 +53,11 @@ from typing import Any, Literal
 
 REPO = Path(__file__).resolve().parents[1]
 AUDIT_LOG = REPO / ".loop" / "agent_router_audit.jsonl"
+
+# Stage-2 opt-in — same pattern as KAFKA_PUBLISH / LITELLM_ENABLED /
+# PYDANTICAI_ENABLED. When set, classify() tries Ollama qwen2.5 FIRST;
+# on failure or non-conforming output, falls back to heuristic.
+AGENT_ROUTER_OLLAMA_ENABLED = os.getenv("AGENT_ROUTER_OLLAMA_ENABLED", "").strip() == "1"
 
 RiskLevel = Literal["low", "medium", "high", "unknown"]
 
@@ -133,6 +139,113 @@ def _hash_message(message: str) -> str:
     return hashlib.sha256(message.encode("utf-8")).hexdigest()[:12]
 
 
+# ---------------------------------------------------------------------------
+# Stage-2 — Ollama-backed classifier (feature-flag opt-in).
+# ---------------------------------------------------------------------------
+
+class _OllamaClassifierUnavailable(Exception):
+    """Internal — Ollama path not applicable; heuristic should fire.
+
+    Raised when (a) flag off, (b) Ollama call fails, (c) Ollama
+    output doesn't conform to the expected JSON shape. The dispatcher
+    catches this and falls through to the heuristic path — Stage-1
+    behavior preserved.
+    """
+
+
+def _classify_via_ollama(message: str) -> RouterDecision:
+    """Stage-2 — call qwen2.5 with a structured prompt; parse + validate.
+
+    Raises _OllamaClassifierUnavailable on any failure (flag off,
+    network error, malformed output, missing fields). Caller falls back
+    to heuristic.
+
+    Why qwen2.5: matches the council's Researcher role; ~7B model is
+    fast enough for classifier latency. PolisAI gate fires via
+    call_ollama itself (actor='council:researcher').
+    """
+    if not AGENT_ROUTER_OLLAMA_ENABLED:
+        raise _OllamaClassifierUnavailable("AGENT_ROUTER_OLLAMA_ENABLED!=1")
+
+    # Lazy import — only loads call_ollama when this Stage-2 path fires
+    try:
+        sys.path.insert(0, str(REPO / "scripts"))
+        from local_council import call_ollama  # noqa: PLC0415
+    except ImportError as exc:
+        raise _OllamaClassifierUnavailable(f"call_ollama import failed: {exc}") from exc
+
+    system_prompt = (
+        "You are a request classifier. Given a user message, return ONLY "
+        "JSON of shape:\n"
+        "{\n"
+        '  "intent": "<short verb>",\n'
+        '  "risk": "low" | "medium" | "high",\n'
+        '  "recommended_actor": "operator:human" | "council:author" | '
+        '"council:researcher" | "council:reviewer" | "council:advisor" | '
+        '"paperclip:manager",\n'
+        '  "recommended_tool": "<short tool name>",\n'
+        '  "confidence": 0.0-1.0,\n'
+        '  "reason": "<one sentence>"\n'
+        "}\n"
+        "Rules:\n"
+        "- delete/deploy/secret/force-push → high risk\n"
+        "- fix-lint/refactor/write-test → medium risk\n"
+        "- explain/read/search → low risk\n"
+        "- ambiguous/unknown → high risk + operator:human"
+    )
+
+    try:
+        text, _tokens = call_ollama(
+            model="qwen2.5:latest",
+            system=system_prompt,
+            prompt=message,
+            timeout=30.0,
+            actor="council:researcher",
+        )
+    except Exception as exc:  # noqa: BLE001 — wrap as Unavailable for fallback
+        raise _OllamaClassifierUnavailable(f"call_ollama failed: {str(exc)[:120]}") from exc
+
+    # Parse — bracket-aware JSON extraction (LLMs sometimes pre/post-amble)
+    cleaned = text.replace("```json", "").replace("```", "").strip()
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start < 0 or end <= start:
+        raise _OllamaClassifierUnavailable(f"no JSON object in output: {text[:120]!r}")
+
+    try:
+        parsed = json.loads(cleaned[start:end + 1])
+    except json.JSONDecodeError as exc:
+        raise _OllamaClassifierUnavailable(f"output not JSON: {exc}") from exc
+
+    # Validate required fields + types
+    required = {"intent", "risk", "recommended_actor", "recommended_tool", "confidence"}
+    missing = required - set(parsed.keys())
+    if missing:
+        raise _OllamaClassifierUnavailable(f"output missing fields: {missing}")
+
+    risk = parsed.get("risk")
+    if risk not in ("low", "medium", "high"):
+        raise _OllamaClassifierUnavailable(f"risk not in valid set: {risk!r}")
+
+    confidence = parsed.get("confidence")
+    if not isinstance(confidence, (int, float)) or not (0.0 <= confidence <= 1.0):
+        raise _OllamaClassifierUnavailable(f"confidence out of [0,1]: {confidence!r}")
+
+    return RouterDecision(
+        intent=str(parsed["intent"])[:40],
+        risk=risk,  # type: ignore[arg-type]
+        recommended_actor=str(parsed["recommended_actor"])[:40],
+        recommended_tool=str(parsed["recommended_tool"])[:40],
+        confidence=float(confidence),
+        reasons=[
+            "ollama:qwen2.5",
+            parsed.get("reason", "")[:120],
+        ],
+        timestamp=time.time(),
+        message_hash=_hash_message(message),
+    )
+
+
 def classify(
     message: str,
     context: dict[str, Any] | None = None,
@@ -152,6 +265,20 @@ def classify(
     if not text:
         # Empty input is conservative-deny (operator must specify).
         return _conservative_default(message, reasons=["empty input"])
+
+    # Stage-2: try Ollama-backed classifier FIRST when AGENT_ROUTER_OLLAMA_ENABLED=1.
+    # On any failure (flag off, network, malformed output) → fall through
+    # to the Stage-1 heuristic path. Stage-1 behavior preserved verbatim
+    # when flag is off (default).
+    if AGENT_ROUTER_OLLAMA_ENABLED:
+        try:
+            decision = _classify_via_ollama(message)
+            if persist_audit:
+                _append_audit(decision)
+            return decision
+        except _OllamaClassifierUnavailable:
+            # Fall through to heuristic — same Stage-1 path
+            pass
 
     reasons: list[str] = []
 
