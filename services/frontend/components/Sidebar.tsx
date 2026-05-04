@@ -66,6 +66,7 @@ const GROUPS: Group[] = [
       { href: '/admin/knowledge-graph/deep', label: 'Knowledge graph (ontology + graph)' },
       { href: '/admin/ops-fabric/deep', label: 'Ops fabric (runbooks + integrations + debugging)' },
       { href: '/admin/local-models', label: '🦙 Local models (live operator view)' },
+      { href: '/admin/paperclip', label: '📎 Paperclip (Stage-1 sandbox snapshot)' },
       { href: '/admin/simulation', label: '🛰 Simulation hub (live agent + tool state)' },
       { href: '/admin/pipelines', label: '🪢 Pipelines hub (all RAG flows in one node)' },
       { href: '/admin/breakers/deep', label: 'Breakers deep dive (interview)' },

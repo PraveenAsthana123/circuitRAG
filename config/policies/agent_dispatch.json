@@ -67,6 +67,38 @@
       "scope_required": ["operator:write", "git:push", "confirm:42"],
       "effect": "allow",
       "rationale": "§42 boundary: push requires the explicit confirm:42 scope token."
+    },
+    {
+      "rule_id": "council-researcher-ollama-generate",
+      "actor": "council:researcher",
+      "tool": "ollama:generate",
+      "scope_required": ["ollama:call"],
+      "effect": "allow",
+      "rationale": "Researcher invokes Ollama (qwen2.5) for context-gathering before council fires."
+    },
+    {
+      "rule_id": "council-author-ollama-generate",
+      "actor": "council:author",
+      "tool": "ollama:generate",
+      "scope_required": ["ollama:call"],
+      "effect": "allow",
+      "rationale": "Author invokes Ollama (deepseek-coder) for proposal generation."
+    },
+    {
+      "rule_id": "council-reviewer-ollama-generate",
+      "actor": "council:reviewer",
+      "tool": "ollama:generate",
+      "scope_required": ["ollama:call"],
+      "effect": "allow",
+      "rationale": "Reviewer invokes Ollama (codegemma) for critique."
+    },
+    {
+      "rule_id": "council-advisor-ollama-generate",
+      "actor": "council:advisor",
+      "tool": "ollama:generate",
+      "scope_required": ["ollama:call"],
+      "effect": "allow",
+      "rationale": "Advisor invokes Ollama (codellama) for synthesis."
     }
   ],
   "default_effect": "deny",

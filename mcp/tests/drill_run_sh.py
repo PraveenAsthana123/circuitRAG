@@ -118,11 +118,12 @@ def main() -> int:
                 return 1
     print("  ok: no destructive ops (rm -rf /, force-push, hard reset, force-delete-branch)")
 
-    print("-- 7. POSITIVE: script supports the 14 documented verbs --")
+    print("-- 7. POSITIVE: script supports the 16 documented verbs --")
     expected_verbs = (
         "status", "check", "warm", "scan", "fix", "fix-dry",
         "metrics", "review", "frontend", "orchestrator",
         "pr-preview", "push", "drills", "ollama-mcp",
+        "paperclip", "policy",
     )
     for verb in expected_verbs:
         # Verify each verb has a corresponding `case "VERB")` clause

@@ -18,6 +18,8 @@
 #   bash scripts/run.sh frontend        # start Next.js admin (port 3000)
 #   bash scripts/run.sh orchestrator    # start FastAPI orchestrator (port 8082)
 #   bash scripts/run.sh push            # §42-confirm git push
+#   bash scripts/run.sh paperclip       # PolisAI/Paperclip sandbox snapshot
+#   bash scripts/run.sh policy          # PolisAI rules + recent decisions
 #
 # §42 SAFETY:
 #   - 'fix' mutates the working tree but ALWAYS rolls back on gate failure
@@ -168,11 +170,33 @@ case "$VERB" in
     MCP_OLLAMA_PORT=8098 exec .venv/bin/python3 mcp/server_ollama.py
     ;;
 
+  paperclip)
+    hdr "PAPERCLIP — sandbox manager-layer snapshot (Stage-1 read-only)"
+    .venv/bin/python3 scripts/paperclip_manager.py snapshot --pretty
+    ;;
+
+  policy)
+    hdr "POLICY — PolisAI rule list + recent decisions"
+    .venv/bin/python3 scripts/policy_check.py rules
+    echo
+    if [ -f .loop/policy_audit.jsonl ]; then
+      n=$(wc -l < .loop/policy_audit.jsonl | tr -d ' ')
+      info "$n decisions logged in .loop/policy_audit.jsonl"
+      tail -5 .loop/policy_audit.jsonl 2>/dev/null | python3 -c "import json,sys
+for line in sys.stdin:
+    d=json.loads(line)
+    mark = '✓' if d.get('allow') else '✗'
+    print(f\"  {mark} actor={d.get('actor')} tool={d.get('tool')} rule={d.get('rule_matched')}\")"
+    else
+      info "no policy audit log yet"
+    fi
+    ;;
+
   *)
     err "unknown verb: $VERB"
     echo "valid: status / check / warm / scan / fix / fix-dry / metrics /"
     echo "       review / frontend / orchestrator / pr-preview / push /"
-    echo "       drills / ollama-mcp"
+    echo "       drills / ollama-mcp / paperclip / policy"
     echo "Run 'bash scripts/run.sh --help' for full doc."
     exit 1
     ;;

@@ -100,9 +100,79 @@ COUNCIL_ROLES: dict[str, dict[str, str]] = {
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
+# PolisAI integration scopes — emitted by the local council host to
+# satisfy the policy rules in config/policies/agent_dispatch.json. In
+# production these come from the JWT scope claim; in local-dev the
+# council process is the trust boundary.
+COUNCIL_OLLAMA_SCOPES = ("ollama:call",)
 
-def call_ollama(model: str, system: str, prompt: str, timeout: float = 180.0) -> tuple[str, int]:
-    """One Ollama generate call. Returns (response_text, tokens_used)."""
+
+class OllamaPolicyDenied(RuntimeError):
+    """Raised when PolisAI denies the Ollama call before it fires.
+
+    Distinct from RuntimeError("ollama call failed: ...") so callers
+    can tell a policy denial apart from a network/server fault.
+    Carries the PolicyDecision for the audit row.
+    """
+
+    def __init__(self, decision) -> None:  # decision: PolicyDecision
+        self.decision = decision
+        super().__init__(
+            f"PolisAI denied ollama:generate for actor={decision.actor!r}: "
+            f"{decision.reason} (rule={decision.rule_matched})"
+        )
+
+
+def _polisai_gate(actor: str) -> None:
+    """Check the policy gate BEFORE the actual Ollama call.
+
+    Audit row lands in .loop/policy_audit.jsonl regardless of decision,
+    per §38 / §48.4. On deny, raises OllamaPolicyDenied — the council
+    treats this as a hard stop (the decision is logged, the request is
+    rejected, the role's chain entry records 'policy_denied').
+    """
+    # Local import to avoid a hard cycle if policy_check is missing
+    # in some embedded test envs. Importing inside the function also
+    # means the side-effect of loading the policy file happens only
+    # when an Ollama call is attempted, not on module import.
+    try:
+        from policy_check import evaluate as _policy_evaluate
+    except ImportError:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent))
+        from policy_check import evaluate as _policy_evaluate
+
+    decision = _policy_evaluate(
+        actor=actor,
+        tool="ollama:generate",
+        scopes_granted=list(COUNCIL_OLLAMA_SCOPES),
+        persist_audit=True,
+    )
+    if not decision.allow:
+        raise OllamaPolicyDenied(decision)
+
+
+def call_ollama(
+    model: str,
+    system: str,
+    prompt: str,
+    timeout: float = 180.0,
+    *,
+    actor: str = "council:unknown",
+) -> tuple[str, int]:
+    """One Ollama generate call, gated by PolisAI.
+
+    The actor kwarg names which council role is calling; it is matched
+    against the rules in config/policies/agent_dispatch.json. The
+    default 'council:unknown' is a deliberate trip-wire — any call site
+    that forgot to pass actor will hit default-deny + a loud audit row
+    rather than silently bypassing the gate.
+
+    Returns (response_text, tokens_used). Raises OllamaPolicyDenied if
+    PolisAI rejects the call; RuntimeError on actual Ollama faults.
+    """
+    _polisai_gate(actor)
+
     payload = {
         "model": model,
         "system": system,
@@ -445,6 +515,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
                 COUNCIL_ROLES["researcher"]["system"],
                 _researcher_prompt(issue, context, grep_refs),
                 timeout=120.0,  # qwen2.5 is fast; cap shorter than AUTHOR
+                actor="council:researcher",
             )
         except Exception as e:
             print(f"  RESEARCHER error: {e}")
@@ -498,6 +569,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
                 COUNCIL_ROLES["author"]["model"],
                 COUNCIL_ROLES["author"]["system"],
                 prompt,
+                actor="council:author",
             )
         except Exception as e:
             print(f"  AUTHOR error: {e}")
@@ -587,6 +659,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
             COUNCIL_ROLES["reviewer"]["model"],
             COUNCIL_ROLES["reviewer"]["system"],
             _reviewer_prompt(issue, proposal, verification=verification),
+            actor="council:reviewer",
         )
     except Exception as e:
         print(f"  REVIEWER error: {e}")
@@ -609,6 +682,7 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
             COUNCIL_ROLES["advisor"]["model"],
             COUNCIL_ROLES["advisor"]["system"],
             _advisor_prompt(issue, proposal, reviewer_text),
+            actor="council:advisor",
         )
     except Exception as e:
         print(f"  ADVISOR error: {e}")
