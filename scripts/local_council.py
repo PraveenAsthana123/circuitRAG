@@ -188,12 +188,69 @@ def call_ollama(
         capture_output=True, text=True, timeout=timeout + 5,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"ollama call failed: {proc.stderr.strip()[:200]}")
+        # Stage-2 — try the LiteLLM fallback path before giving up.
+        # Per the 2026-05-04 tool-evaluation, LiteLLM is the unified
+        # gateway alternative. Only fires when:
+        #   1. Direct curl actually failed (not a "preventive" detour)
+        #   2. LITELLM_ENABLED=1 in environment
+        #   3. litellm is pip-installed in the running interpreter
+        # If any of those is false, re-raise the original curl error
+        # so the diagnostic stays clear (operator sees curl's stderr,
+        # not "litellm not configured").
+        original_err = f"ollama curl failed: {proc.stderr.strip()[:200]}"
+        try:
+            return _litellm_fallback(model, system, prompt, timeout, actor)
+        except _LiteLLMNotApplicable:
+            raise RuntimeError(original_err)  # noqa: B904 — preserve original
     try:
         body = json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"ollama returned non-JSON: {proc.stdout[:200]}") from exc
     return body.get("response", ""), int(body.get("eval_count", 0))
+
+
+class _LiteLLMNotApplicable(Exception):
+    """Internal — litellm fallback isn't available (flag off OR not installed).
+
+    Distinct from OllamaPolicyDenied + LiteLLMUnavailable so the
+    fallback dispatcher can re-raise the ORIGINAL curl error
+    (operator-readable diagnostic), not "litellm not configured."
+    """
+
+
+def _litellm_fallback(
+    model: str, system: str, prompt: str, timeout: float, actor: str,
+) -> tuple[str, int]:
+    """Try LiteLLM. Raises _LiteLLMNotApplicable when the path isn't
+    available so call_ollama can re-raise the original curl error.
+
+    PolisAI gating: NOT re-fired here. call_ollama already gated
+    (line 174); calling litellm_adapter.complete would double-gate.
+    Stage-3 may consolidate; Stage-2 prioritizes minimal audit churn.
+    """
+    try:
+        from litellm_adapter import (  # noqa: PLC0415
+            LiteLLMUnavailable,
+            complete as _litellm_complete,
+        )
+    except ImportError as exc:
+        raise _LiteLLMNotApplicable() from exc
+
+    try:
+        # The adapter's complete() also fires a PolisAI gate. That's
+        # a double-gate per fallback call — harmless (same actor,
+        # tool, scopes → same decision) but produces 2 audit rows.
+        # The second row is intentionally distinct: it documents that
+        # the litellm path was attempted, not just curl. Stage-3
+        # cleanup may add a `_skip_gate` kwarg; for Stage-2 the
+        # honesty of "two audit rows = curl failed + litellm tried"
+        # outweighs the storage cost.
+        return _litellm_complete(
+            model=model, system=system, prompt=prompt,
+            timeout=timeout, actor=actor,
+        )
+    except LiteLLMUnavailable as exc:
+        raise _LiteLLMNotApplicable() from exc
 
 
 def _researcher_prompt(issue: dict, context: str, grep_refs: str) -> str:
