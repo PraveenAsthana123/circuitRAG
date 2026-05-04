@@ -89,19 +89,24 @@ def main() -> int:
             return 1
     print(f"  ok: all {len(expected_stats)} stat headlines present")
 
-    print("-- 6. NEGATIVE: page does NOT bypass BFF (no direct policy_check call) --")
+    print("-- 6. NEGATIVE: page does NOT bypass BFF (no invocation patterns) --")
     # Stage-1 contract: page → /api/v1/policy → policy_check.py (3 hops).
-    # Page must NOT spawn or import policy_check directly.
+    # Page must NOT spawn or import policy_check directly. Documentation
+    # references inside <code>...</code> are fine — only invocation-
+    # style patterns are forbidden (so the description can mention the
+    # backend script without false-positive).
     forbidden = (
-        r"\bpolicy_check\.py",
-        r"child_process",  # spawn at page level
+        r"child_process",
         r"\.venv/bin/python",
+        r"\bspawn\s*\(",
+        r"from\s+child_process",
+        r"require\s*\(\s*['\"]child_process['\"]",
     )
     for pat in forbidden:
         if re.search(pat, page_src):
             print(f"x page must NOT bypass BFF; found pattern: {pat!r}")
             return 1
-    print("  ok: page routes through BFF (no direct script invocation)")
+    print("  ok: page routes through BFF (no invocation patterns)")
 
     print("-- 7. NEGATIVE: filter UI uses CSP-safe styling (no inline event handlers) --")
     # Inline `onclick=` HTML attributes would violate CSP. React's

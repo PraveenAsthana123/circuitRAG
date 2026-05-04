@@ -68,6 +68,7 @@ const GROUPS: Group[] = [
       { href: '/admin/local-models', label: '🦙 Local models (live operator view)' },
       { href: '/admin/paperclip', label: '📎 Paperclip (Stage-1 sandbox snapshot)' },
       { href: '/admin/policy', label: '🛡 PolisAI policy (rules + recent decisions)' },
+      { href: '/admin/agent-router', label: '🚦 Agent Router (intent + risk classifier)' },
       { href: '/admin/vectorless-elasticsearch', label: '🔍 Vectorless RAG (Elasticsearch BM25 patterns)' },
       { href: '/admin/simulation', label: '🛰 Simulation hub (live agent + tool state)' },
       { href: '/admin/pipelines', label: '🪢 Pipelines hub (all RAG flows in one node)' },
