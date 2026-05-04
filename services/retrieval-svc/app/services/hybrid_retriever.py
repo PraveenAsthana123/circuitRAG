@@ -133,6 +133,23 @@ class HybridRetriever:
         fused = fused[: request.top_k]
         chunks = [RetrievedChunk(**h) for h in fused]
 
+        # Per docs/architecture/rag-deep-test-2026-05-04.md — empirical
+        # RAG test surfaced that retrieval returns top-K even with
+        # zero-match corpus (Q1 "Half-Life 2" returned 5 unrelated
+        # chunks). Hard floor on similarity score: chunks below
+        # request.min_score are rejected. Default 0.0 preserves
+        # legacy behavior; callers explicitly pass min_score>0 to
+        # enforce quality.
+        if request.min_score > 0.0:
+            n_before = len(chunks)
+            chunks = [c for c in chunks if c.score >= request.min_score]
+            n_after = len(chunks)
+            if n_after < n_before:
+                log.info(
+                    "min_score_filter dropped=%d kept=%d threshold=%.3f",
+                    n_before - n_after, n_after, request.min_score,
+                )
+
         latency_ms = (time.monotonic() - start) * 1000
 
         # Record a quality sample so the breaker can notice a corpus trend.

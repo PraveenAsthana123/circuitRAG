@@ -14,6 +14,22 @@ class RetrieveRequest(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
     strategy: str = Field(default="hybrid", description="vector | graph | hybrid")
     include_sources: tuple[str, ...] = Field(default=("vector", "graph"))
+    # Per docs/architecture/rag-deep-test-2026-05-04.md — empirical RAG
+    # test surfaced that retrieval returns top-K even with zero-match
+    # corpus. min_score sets a hard floor below which chunks are
+    # rejected. Default 0.0 preserves prior behavior; callers can pass
+    # min_score=0.3 (typical hybrid floor) to enforce quality.
+    min_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Hard similarity floor. Chunks scoring below this value are "
+            "rejected even if they're in the top-K. Use 0.0 to preserve "
+            "legacy unfiltered behavior; 0.3 typical for hybrid score; "
+            "0.5+ for high-precision applications."
+        ),
+    )
 
 
 class RetrievedChunk(BaseModel):
