@@ -1,0 +1,38 @@
+# Snyk policy file — DocuMind / circuitRAG
+# Per CLAUDE.md §16 (dependency management) + §28 (security standards) +
+# §47.6 four security lenses (OWASP + STRIDE + DevSecOps + SOC2)
+#
+# Snyk runs in CI on every PR; severity threshold is HIGH+ for blocking.
+# MEDIUM and LOW are reported as warnings.
+#
+# Path: scanned via the GitHub workflow at .github/workflows/snyk.yml
+version: v1.27.0
+
+# Severity threshold for failure: high + critical block CI
+# medium + low are reported as warnings only
+severity-threshold: high
+
+# File globs to scan
+patterns:
+  - "**/requirements*.txt"
+  - "**/pyproject.toml"
+  - "**/package.json"
+  - "**/go.mod"
+
+# Files to exclude
+exclude:
+  - "**/.venv/**"
+  - "**/node_modules/**"
+  - "**/__pycache__/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/.next/**"
+
+# Known issues that are accepted with rationale + expiry
+# Add entries as `ignore: { SNYK-...: { reason: ..., expires: YYYY-MM-DD }}`
+# Empty by default — anything that lands here MUST have an ADR explaining
+# why we accept the risk.
+ignore: {}
+
+# Org slug for snyk.io (set via SNYK_ORG env var in CI; this is fallback)
+# org: documind-rag

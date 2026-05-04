@@ -1,0 +1,83 @@
+name: Snyk Security Scan
+
+# Runs on every PR + on push to main + weekly cron.
+# Per CLAUDE.md sections 16 + 28 + 47.6 (DevSecOps shift-left).
+# Severity threshold: HIGH+ blocks the merge; MEDIUM/LOW are warnings.
+# Requires the SNYK_TOKEN secret in repo settings.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  snyk-python:
+    name: Snyk Python deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Snyk monitor (Python)
+        uses: snyk/actions/python@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: monitor
+          args: --severity-threshold=high --all-projects --skip-unresolved
+      - name: Snyk test (blocking)
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --severity-threshold=high --all-projects --skip-unresolved
+
+  snyk-node:
+    name: Snyk Node deps (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install frontend deps
+        run: cd services/frontend && npm ci
+      - name: Snyk test (Node)
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --severity-threshold=high --file=services/frontend/package.json
+
+  snyk-go:
+    name: Snyk Go deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Snyk test (Go)
+        uses: snyk/actions/golang@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --severity-threshold=high --all-projects
+
+  snyk-iac:
+    name: Snyk IaC (docker-compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Snyk IaC test
+        uses: snyk/actions/iac@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          file: docker-compose.yml
+          args: --severity-threshold=high

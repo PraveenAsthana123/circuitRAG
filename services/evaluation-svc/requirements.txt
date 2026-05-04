@@ -7,3 +7,12 @@ numpy>=1.26,<2
 scikit-learn>=1.5,<2
 pytest>=8
 pytest-asyncio>=0.23
+
+# Governance + evaluation layer — added 2026-05-03 per architecture
+# requirement (Layer 10 of the 11-layer stack). Each is opt-in via
+# service config — services that don't need them don't import them.
+ragas>=0.1.21,<0.3              # RAG-specific eval (faithfulness, relevance, context-precision)
+guardrails-ai>=0.5,<0.7         # output validation + jailbreak defense
+deepeval>=1.0,<2                # alternative RAG eval suite
+datasets>=2.20,<3               # eval-dataset loading for ragas
+
