@@ -382,6 +382,36 @@ def _summarize_validation_failure(raw_text: str) -> str:
         return f"JSON parse error: {type(exc).__name__}: {exc}"
 
 
+def _git_apply_check_only(repo: Path, diff: str) -> dict:
+    """Tier 1.3.b — pre-flight read-only `git apply --check`.
+
+    Distinct from `_verify_diff_in_worktree` (which actually applies +
+    runs ruff): this helper ONLY runs `git apply --check`, never
+    mutates the worktree, completes in <1s on the local box, and is
+    cheap enough to run inside the AUTHOR retry loop.
+
+    Per the 2026-05-03 empirical finding (docs/architecture/
+    apply-rate-empirical-finding.md), 5/8 historical apply failures
+    were structurally-valid JSON proposals whose diff failed
+    `git apply --check` for path / offset / line-content reasons. The
+    schema-as-contract upgrade: every accepted proposal must pass
+    BOTH schema validation AND apply-check.
+
+    Returns dict with: ok (bool), error (str | "" if ok).
+    """
+    if not diff or not diff.strip():
+        return {"ok": False, "error": "empty diff"}
+    proc = subprocess.run(
+        ["git", "apply", "-p0", "--check", "-"],
+        cwd=repo, input=diff + "\n",
+        capture_output=True, text=True, timeout=10,
+    )
+    if proc.returncode == 0:
+        return {"ok": True, "error": ""}
+    err = (proc.stderr.strip() or proc.stdout.strip())[:400]
+    return {"ok": False, "error": err}
+
+
 def _verify_diff_in_worktree(repo: Path, diff: str) -> dict:
     """Tier 2 #2.4 — apply the diff, run ruff, capture exit code, roll back.
 
@@ -593,15 +623,49 @@ def run_local_council(issue: dict, repo: Path | None = None) -> CouncilProposal 
 
         proposal = validate_council_proposal(author_text, repo=repo)
         if proposal is not None:
+            # Tier 1.3.b — schema passed; now verify the diff ACTUALLY
+            # applies. The empirical 2026-05-03 finding showed 5/8
+            # failures were structurally-valid JSON whose diff failed
+            # `git apply --check` (wrong file path, bad @@ offsets,
+            # line-content mismatch). Schema-as-contract MUST include
+            # "this output works", not just "this JSON parses."
+            apply_check = _git_apply_check_only(repo, proposal.unified_diff)
+            if apply_check["ok"]:
+                audit_chain[f"author_attempt_{attempt + 1}"]["validation"] = "ok"
+                audit_chain[f"author_attempt_{attempt + 1}"]["apply_check"] = "ok"
+                audit_chain[f"author_attempt_{attempt + 1}"]["proposal"] = proposal.model_dump(mode="json")
+                audit_chain["author"] = audit_chain[f"author_attempt_{attempt + 1}"]
+                audit_chain["author"]["attempt"] = attempt + 1
+                print(f"  AUTHOR proposal validated + apply-check OK (attempt {attempt + 1}): file={proposal.file_path} confidence={proposal.confidence}")
+                break
+            # Schema OK but diff doesn't apply — treat as rejection
+            # AND feed the actual git error back to AUTHOR for retry.
+            # This is the Tier 1.3.b upgrade: previously the apply-check
+            # ran AFTER the retry loop, so apply-failures could not be
+            # retried. Now they are.
+            apply_err = apply_check["error"]
             audit_chain[f"author_attempt_{attempt + 1}"]["validation"] = "ok"
-            audit_chain[f"author_attempt_{attempt + 1}"]["proposal"] = proposal.model_dump(mode="json")
-            audit_chain["author"] = audit_chain[f"author_attempt_{attempt + 1}"]
-            audit_chain["author"]["attempt"] = attempt + 1
-            print(f"  AUTHOR proposal validated (attempt {attempt + 1}): file={proposal.file_path} confidence={proposal.confidence}")
-            break
-        # Failed validation — capture concrete feedback for retry.
-        feedback_for_retry = _summarize_validation_failure(author_text)
-        audit_chain[f"author_attempt_{attempt + 1}"]["validation"] = "rejected"
+            audit_chain[f"author_attempt_{attempt + 1}"]["apply_check"] = "rejected"
+            audit_chain[f"author_attempt_{attempt + 1}"]["apply_check_error"] = apply_err[:300]
+            print(f"  AUTHOR pass-{attempt + 1} schema OK but diff FAILED git apply --check:")
+            print(f"    {apply_err[:120]}")
+            # Override feedback_for_retry with the apply error so the
+            # retry prompt addresses the actual cause (path / offset /
+            # line content) rather than schema shape.
+            feedback_for_retry = (
+                f"Schema OK, but diff failed `git apply --check`:\n"
+                f"  {apply_err}\n\n"
+                f"Common causes:\n"
+                f"  - File path wrong (you wrote relative; we need repo-root-relative)\n"
+                f"  - @@ line offsets don't match the source\n"
+                f"  - Context lines (no `+`/`-` prefix) don't match what's at that line\n"
+                f"Re-emit the proposal with the corrected diff."
+            )
+            proposal = None  # force retry path below
+        else:
+            # Failed schema validation — capture concrete feedback for retry.
+            feedback_for_retry = _summarize_validation_failure(author_text)
+            audit_chain[f"author_attempt_{attempt + 1}"]["validation"] = "rejected"
         audit_chain[f"author_attempt_{attempt + 1}"]["feedback_for_retry"] = feedback_for_retry[:300]
         if attempt == 0:
             print("  AUTHOR pass-1 REJECTED; retrying with feedback...")
