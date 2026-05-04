@@ -277,3 +277,12 @@ PROMPT_ADDENDUM: str = (
     " 5. DO NOT use markdown code fences around the JSON.\n"
     "</output_spec>\n"
 )
+
+
+if __name__ == "__main__":
+    import sys
+    print("scripts/council_schemas.py — Pydantic schemas for the local-Ollama issue-fix council")
+    print("Library module — imported by scripts/local_council.py and 2 drills.")
+    print("Exports: CouncilProposal · validate_council_proposal · PROMPT_ADDENDUM")
+    print("This script has no CLI; --help prints this summary. See module docstring for full context.")
+    sys.exit(0)

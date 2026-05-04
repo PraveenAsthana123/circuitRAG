@@ -205,3 +205,12 @@ def get_prompt_template(strategy: RuleStrategy) -> str:
 def is_human_only(rule_code: str) -> bool:
     """True if this rule must be routed to a human (security)."""
     return get_strategy(rule_code).model_tier == "human"
+
+
+if __name__ == "__main__":
+    import sys
+    print("scripts/rule_fix_strategy.py — per-rule fix-strategy table (§50 + §55 Tier 1.3)")
+    print("Library module — imported by scripts/local_council.py, scripts/agent_lead.py, and 1 drill.")
+    print("Exports: get_strategy(rule_code) · is_human_only(rule_code) · STRATEGY_BY_RULE")
+    print("This script has no CLI; --help prints this summary. See module docstring for full context.")
+    sys.exit(0)
