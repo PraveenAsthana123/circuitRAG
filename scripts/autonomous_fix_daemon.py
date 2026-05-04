@@ -238,15 +238,25 @@ def escalate(issue_id: str, reason: str) -> None:
         fh.write(f"| {_now()} | `{issue_id}` | {reason[:200]} |\n")
 
 
-def apply_ruff_autofix() -> tuple[int, int]:
-    """Returns (before_count, after_count)."""
+def apply_ruff_autofix(
+    scan_fast: bool = False,
+    scan_paths: list[str] | None = None,
+) -> tuple[int, int]:
+    """Returns (before_count, after_count).
+
+    `scan_paths` overrides the hardcoded autofix targets — used by
+    the empirical retest harness so ruff --fix only touches the
+    synthetic file. Default behavior unchanged.
+    """
     before = len(load_jsonl(CHECKLIST))
+    fix_paths = scan_paths if scan_paths else [
+        "services/agent-orchestrator-svc/app/", "libs/py/"
+    ]
     subprocess.run(
-        [".venv/bin/ruff", "check", "--fix",
-         "services/agent-orchestrator-svc/app/", "libs/py/"],
+        [".venv/bin/ruff", "check", "--fix", *fix_paths],
         cwd=REPO, capture_output=True, text=True, timeout=60,
     )
-    after_count = scan_issues()
+    after_count = scan_issues(scan_fast=scan_fast, scan_paths=scan_paths)
     return before, after_count
 
 
@@ -351,7 +361,10 @@ def cycle_one(args: argparse.Namespace) -> str:
     if easy_unattempted:
         emit(f"ruff_autofix_batch count={len(easy_unattempted)}")
         if not args.dry_run:
-            before, after = apply_ruff_autofix()
+            before, after = apply_ruff_autofix(
+                scan_fast=getattr(args, "scan_fast", False),
+                scan_paths=getattr(args, "scan_paths", None),
+            )
             emit(f"ruff_autofix_done before={before} after={after}")
             for i in easy_unattempted:
                 append_apply_audit({
