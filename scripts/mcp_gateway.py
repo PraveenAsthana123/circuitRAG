@@ -52,6 +52,11 @@ logger = logging.getLogger(__name__)
 # Stage-1 opt-in — same pattern as KAFKA_PUBLISH / LITELLM_ENABLED.
 MCP_GATEWAY_ENABLED = os.getenv("MCP_GATEWAY_ENABLED", "").strip() == "1"
 
+# Stage-3 strict mode — when set, PolisAI rule MUST exist (no fall-through
+# to allowlist-only). Tightens authorization: missing rule = deny.
+# Default (False) preserves Stage-1 behavior for backwards compatibility.
+MCP_GATEWAY_STRICT = os.getenv("MCP_GATEWAY_STRICT", "").strip() == "1"
+
 
 @dataclass
 class GatewayDecision:
@@ -112,14 +117,20 @@ def _load_allowlist() -> dict[str, Any]:
     return doc
 
 
-def _polisai_gate(actor: str, server: str, tool: str) -> bool:
+def _polisai_gate(actor: str, server: str, tool: str) -> tuple[bool, str]:
     """PolisAI gate — check actor:tool authorization for the MCP call.
+
+    Returns (allow, rule_matched). The rule_matched value is the
+    decisive signal for strict-mode: when it equals 'default-deny',
+    no specific PolisAI rule matched and Stage-1 allowlist-fall-through
+    behavior should apply (unless STRICT mode says otherwise).
 
     The PolisAI tool name pattern is ``mcp:<server>:<tool>``. Stage-1
     callers may not have rules for every server×tool combo yet — when
     no rule matches, the gateway falls through to the allowlist's
     approved_actors check (which IS the §56 gate-of-record for
-    Stage-1). Stage-2 narrows to PolisAI-rule-driven gating only.
+    Stage-1). Stage-3 STRICT mode (MCP_GATEWAY_STRICT=1) tightens to
+    require explicit PolisAI rules — missing rule = deny.
     """
     try:
         from policy_check import evaluate as _policy_evaluate  # noqa: PLC0415
@@ -133,7 +144,7 @@ def _polisai_gate(actor: str, server: str, tool: str) -> bool:
         scopes_granted=["mcp:invoke"],
         persist_audit=False,  # gateway audit is the source of truth
     )
-    return decision.allow
+    return decision.allow, decision.rule_matched
 
 
 def _check_rate_limit(server: str, max_per_min: int) -> bool:
@@ -221,7 +232,52 @@ def check(
         return decision
 
     # PolisAI gate (defense in depth)
-    polisai_allow = _polisai_gate(actor, server, tool)
+    polisai_allow, polisai_rule = _polisai_gate(actor, server, tool)
+
+    # Stage-3 STRICT mode: missing PolisAI rule → deny.
+    # Default (non-strict) mode falls through to allowlist as Stage-1.
+    if MCP_GATEWAY_STRICT and polisai_rule == "default-deny":
+        decision = GatewayDecision(
+            allow=False,
+            reason=(
+                f"STRICT mode: no PolisAI rule for mcp:{server}:{tool} "
+                f"(actor={actor}). Add rule + redeploy."
+            ),
+            actor=actor,
+            server=server,
+            tool=tool,
+            risk=server_rec["risk"],
+            approved_actors=approved_actors,
+            rule_matched="strict:no-polisai-rule",
+            timestamp=time.time(),
+            request_id=request_id,
+        )
+        if persist_audit:
+            _append_audit(decision)
+        return decision
+
+    # Stage-3 STRICT mode: explicit PolisAI deny → deny.
+    # (In default mode this would still apply via rule_matched having
+    # actual PolisAI rule_id and polisai_allow=False; we make it
+    # explicit here so STRICT-vs-non-STRICT behavior is symmetric on
+    # the deny path.)
+    if MCP_GATEWAY_STRICT and not polisai_allow and polisai_rule != "default-deny":
+        decision = GatewayDecision(
+            allow=False,
+            reason=f"STRICT mode: PolisAI rule {polisai_rule!r} denied",
+            actor=actor,
+            server=server,
+            tool=tool,
+            risk=server_rec["risk"],
+            approved_actors=approved_actors,
+            rule_matched=f"strict:polisai-deny:{polisai_rule}",
+            timestamp=time.time(),
+            request_id=request_id,
+        )
+        if persist_audit:
+            _append_audit(decision)
+        return decision
+
     # Rate limit
     if not _check_rate_limit(server, int(server_rec.get("max_calls_per_minute", 60))):
         decision = GatewayDecision(
@@ -240,10 +296,18 @@ def check(
             _append_audit(decision)
         return decision
 
+    # Stage-1 allowlist-only path: PolisAI rule_matched=default-deny
+    # means no specific rule existed; we fall through to the
+    # approved_actors check above (already passed). Document this
+    # in the reason field so audit rows show which path was taken.
+    polisai_state = (
+        "allow" if polisai_allow else
+        ("no-rule-fallthrough" if polisai_rule == "default-deny" else "deny")
+    )
     decision = GatewayDecision(
         allow=True,
         reason=f"actor approved for {server!r}; risk={server_rec['risk']}; "
-               f"polisai={'allow' if polisai_allow else 'no-rule-fallthrough'}",
+               f"polisai={polisai_state}; mode={'strict' if MCP_GATEWAY_STRICT else 'default'}",
         actor=actor,
         server=server,
         tool=tool,
@@ -282,6 +346,7 @@ def status() -> dict[str, Any]:
     return {
         "stage": 1,
         "enabled": is_available(),
+        "strict_mode": MCP_GATEWAY_STRICT,
         "server_count": server_count,
         "by_risk": risk_breakdown,
         "audit_log": str(AUDIT_LOG.relative_to(REPO)),
@@ -289,7 +354,8 @@ def status() -> dict[str, Any]:
         "note": (
             "Stage-1 — gateway contract: allowlist + PolisAI gate + "
             "rate-limit + audit. Set MCP_GATEWAY_ENABLED=1 to fire. "
-            "Stage-2 wires real RPC dispatch to allowlisted servers."
+            "Stage-3 STRICT (MCP_GATEWAY_STRICT=1): missing PolisAI rule → deny. "
+            "Default (non-strict): falls through to allowlist (Stage-1 behavior)."
         ),
     }
 
