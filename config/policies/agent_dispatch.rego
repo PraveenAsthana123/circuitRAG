@@ -1,0 +1,161 @@
+# Agent dispatch policy — Rego (Stage-2 scaffold)
+#
+# Per CLAUDE.md §47 + §56. This Rego file mirrors the JSON allowlist at
+# config/policies/agent_dispatch.json. Stage-2 ships the Rego SHAPE;
+# Stage-3 swaps the Python evaluator (scripts/policy_check.py) to call
+# `opa eval` against this file when OPA binary is on PATH.
+#
+# Sync invariant (drilled): every rule_id in the JSON allowlist has a
+# matching rego rule + same actor + same tool + same scope_required.
+# scripts/rego_sync_check.py enforces this on every commit.
+#
+# Default-deny posture: allow is ONLY true when an explicit rule fires.
+
+package documind.agent_dispatch
+
+# Default decision is deny. Stage-3 callers ask:
+#   data.documind.agent_dispatch.allow
+# which evaluates each `allow` rule below; if none fire → deny.
+default allow := false
+
+# ---------------------------------------------------------------------------
+# Rule: council-author-read-checklist
+# ---------------------------------------------------------------------------
+# Author needs the issue list to propose fixes.
+allow {
+  input.actor == "council:author"
+  input.tool == "read_checklist"
+  required := {"checklist:read"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: council-reviewer-read-proposal
+# ---------------------------------------------------------------------------
+# Reviewer needs the author's diff to critique.
+allow {
+  input.actor == "council:reviewer"
+  input.tool == "read_proposal"
+  required := {"proposal:read"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: council-advisor-read-history
+# ---------------------------------------------------------------------------
+# Advisor needs prior-fix RAG context.
+allow {
+  input.actor == "council:advisor"
+  input.tool == "read_history"
+  required := {"history:read"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: researcher-read-codebase
+# ---------------------------------------------------------------------------
+# Researcher needs grep over the repo to gather context.
+allow {
+  input.actor == "council:researcher"
+  input.tool == "read_codebase"
+  required := {"codebase:read"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: paperclip-read-snapshot
+# ---------------------------------------------------------------------------
+# Stage-1 Paperclip aggregator needs to read .loop/ surfaces.
+allow {
+  input.actor == "paperclip:manager"
+  input.tool == "read_snapshot"
+  required := {"snapshot:read"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: operator-read-anything
+# ---------------------------------------------------------------------------
+# Operator (human-in-loop) has unconditional read scope.
+# Tool wildcard "*" handled in Python via _matches; in Rego the wildcard
+# logic stays the SAME: any tool matches when actor is operator.
+allow {
+  input.actor == "operator:human"
+  required := {"operator:read"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: operator-apply-with-confirm
+# ---------------------------------------------------------------------------
+# Operator may apply proposals only after drill gate + explicit confirm.
+allow {
+  input.actor == "operator:human"
+  input.tool == "apply_proposal"
+  required := {"operator:write", "drill:gated"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: operator-push-with-confirm
+# ---------------------------------------------------------------------------
+# §42 boundary: push requires the explicit confirm:42 scope token.
+allow {
+  input.actor == "operator:human"
+  input.tool == "git_push"
+  required := {"operator:write", "git:push", "confirm:42"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: council-researcher-ollama-generate
+# ---------------------------------------------------------------------------
+# Researcher invokes Ollama (qwen2.5) for context-gathering before council.
+allow {
+  input.actor == "council:researcher"
+  input.tool == "ollama:generate"
+  required := {"ollama:call"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: council-author-ollama-generate
+# ---------------------------------------------------------------------------
+allow {
+  input.actor == "council:author"
+  input.tool == "ollama:generate"
+  required := {"ollama:call"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: council-reviewer-ollama-generate
+# ---------------------------------------------------------------------------
+allow {
+  input.actor == "council:reviewer"
+  input.tool == "ollama:generate"
+  required := {"ollama:call"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
+
+# ---------------------------------------------------------------------------
+# Rule: council-advisor-ollama-generate
+# ---------------------------------------------------------------------------
+allow {
+  input.actor == "council:advisor"
+  input.tool == "ollama:generate"
+  required := {"ollama:call"}
+  granted := {x | x := input.scopes_granted[_]}
+  required & granted == required
+}
