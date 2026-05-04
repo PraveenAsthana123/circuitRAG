@@ -71,6 +71,7 @@ const GROUPS: Group[] = [
       { href: '/admin/agent-router', label: '🚦 Agent Router (intent + risk classifier)' },
       { href: '/admin/openclaw', label: '🦅 OpenClaw (Stage-1 A2A coordinator gate)' },
       { href: '/admin/kafka-events', label: '📡 Kafka events (publisher status + topic catalog)' },
+      { href: '/admin/eval-harness', label: '🧪 Eval harness (Ragas · Guardrails · DeepEval · Snyk)' },
       { href: '/admin/vectorless-elasticsearch', label: '🔍 Vectorless RAG (Elasticsearch BM25 patterns)' },
       { href: '/admin/simulation', label: '🛰 Simulation hub (live agent + tool state)' },
       { href: '/admin/pipelines', label: '🪢 Pipelines hub (all RAG flows in one node)' },
