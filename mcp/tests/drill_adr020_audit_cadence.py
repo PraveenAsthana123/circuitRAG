@@ -299,7 +299,7 @@ def _audit_time_latency_hours(parallel_sha: str, audit_drill_path: Path) -> floa
 
 def _discover_parallel_tool_commits() -> dict[str, str]:
     """Return {short_sha: subject} for every parallel-tool commit
-    in the last HISTORY_DEPTH commits, by parallel-tool-specific signals.
+    in the last HISTORY_DEPTH commits, by SUBJECT-ONLY signal.
 
     HISTORICAL NOTE — broken Path A: this drill originally used
     "no Co-Authored-By: Claude trailer" as Path A. That worked when
@@ -307,41 +307,35 @@ def _discover_parallel_tool_commits() -> dict[str, str]:
     §54 (2026-05-04 "Git Commit Signature Policy"), the trailer is now
     DROPPED from autonomous-loop commits — so absence of the trailer
     no longer discriminates parallel-tool from autonomous-loop work.
-    Path A removed; Path B (G-<digit> token in subject) and Path C
-    (explicit "parallel-tool" / "G-<digit>" mention in body) remain.
+    Path A removed.
+
+    BROKEN Path C: an earlier rewrite added a body-search for
+    "parallel-tool" / G-<digit>. That self-triggered on any commit
+    whose body explained or referenced parallel-tool work — including
+    THIS drill's own fix-commit. False-positive city.
+
+    Surviving signal: SUBJECT contains an explicit G-<digit> token.
+    Strong positive — only declared parallel-tool work uses this prefix.
+    Better to under-detect (let real parallel-tool work without G-<N>
+    explicitly land in KNOWN_UNAUDITED) than over-detect.
     """
     out: dict[str, str] = {}
     log = _git(["log", "-" + str(HISTORY_DEPTH),
-                "--pretty=%H%x09%s%x09%(trailers:key=Co-Authored-By)%x09%b",
-                "-z"])
-    # -z separator means commits separated by NUL; safer than splitlines()
-    # for multi-line bodies. Each commit is one chunk.
-    for chunk in log.split("\0"):
-        if not chunk.strip():
+                "--pretty=%H%x09%s"])
+    for line in log.splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) < 2:
             continue
-        parts = chunk.split("\t", 3)
-        if len(parts) < 3:
-            continue
-        sha_full = parts[0]
-        subject = parts[1] if len(parts) > 1 else ""
-        # parts[2] is trailers; parts[3] is body (may be empty)
-        body = parts[3] if len(parts) > 3 else ""
+        sha_full, subject = parts
         sha = sha_full[:7]
-        # Path B: subject contains G-<digit> token. Robust to the
-        # observed naming variations:
+        # Subject contains G-<digit> token. Robust to observed
+        # naming variations:
         #   "feat(sidecar): G-5 - sidecar event rating surface"
         #   "feat(sidecar): G-5.2-followon - rating route extension"
         #   "G-5: ..."
         #   "feat(agentic): G-4 - agentic control plane"
         if re.match(r"^[a-z]+\(.+?\):\s*G-\d+[\s\.\-:]", subject) or \
                 re.match(r"^G-\d+[\s\.\-:]", subject):
-            out[sha] = subject
-            continue
-        # Path C: body explicitly references G-<digit> work or
-        # mentions "parallel-tool" / "parallel tool" as the source.
-        # This catches commits that bundle parallel-tool work but
-        # use a non-G-<N> subject.
-        if re.search(r"\bG-\d+\b", body) or "parallel-tool" in body.lower():
             out[sha] = subject
     return out
 
