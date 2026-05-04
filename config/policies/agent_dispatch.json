@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "policy_version": "stage-1-v1",
+  "policy_id": "agent_dispatch",
+  "description": "Stage-1 policy engine: which actors may call which tools with which required scopes. Default-deny: any (actor, tool) combination not matched by an explicit allow rule is rejected. Mirrors the OPA Rego shape but uses pure-Python eval so the council host doesn't need the OPA binary on the request hot path. Stage-2 swaps to OPA without changing the audit row schema.",
+  "rules": [
+    {
+      "rule_id": "council-author-read-checklist",
+      "actor": "council:author",
+      "tool": "read_checklist",
+      "scope_required": ["checklist:read"],
+      "effect": "allow",
+      "rationale": "Author needs the issue list to propose fixes."
+    },
+    {
+      "rule_id": "council-reviewer-read-proposal",
+      "actor": "council:reviewer",
+      "tool": "read_proposal",
+      "scope_required": ["proposal:read"],
+      "effect": "allow",
+      "rationale": "Reviewer needs the author's diff to critique."
+    },
+    {
+      "rule_id": "council-advisor-read-history",
+      "actor": "council:advisor",
+      "tool": "read_history",
+      "scope_required": ["history:read"],
+      "effect": "allow",
+      "rationale": "Advisor needs prior-fix RAG context."
+    },
+    {
+      "rule_id": "researcher-read-codebase",
+      "actor": "council:researcher",
+      "tool": "read_codebase",
+      "scope_required": ["codebase:read"],
+      "effect": "allow",
+      "rationale": "Researcher needs grep over the repo to gather context."
+    },
+    {
+      "rule_id": "paperclip-read-snapshot",
+      "actor": "paperclip:manager",
+      "tool": "read_snapshot",
+      "scope_required": ["snapshot:read"],
+      "effect": "allow",
+      "rationale": "Stage-1 Paperclip aggregator needs to read .loop/ surfaces."
+    },
+    {
+      "rule_id": "operator-read-anything",
+      "actor": "operator:human",
+      "tool": "*",
+      "scope_required": ["operator:read"],
+      "effect": "allow",
+      "rationale": "Operator (human-in-loop) has unconditional read scope."
+    },
+    {
+      "rule_id": "operator-apply-with-confirm",
+      "actor": "operator:human",
+      "tool": "apply_proposal",
+      "scope_required": ["operator:write", "drill:gated"],
+      "effect": "allow",
+      "rationale": "Operator may apply proposals only after drill gate + explicit confirm."
+    },
+    {
+      "rule_id": "operator-push-with-confirm",
+      "actor": "operator:human",
+      "tool": "git_push",
+      "scope_required": ["operator:write", "git:push", "confirm:42"],
+      "effect": "allow",
+      "rationale": "§42 boundary: push requires the explicit confirm:42 scope token."
+    }
+  ],
+  "default_effect": "deny",
+  "deny_rationale": "No allow rule matched (actor, tool) — Stage-1 is default-deny. Add a rule explicitly + re-deploy."
+}
