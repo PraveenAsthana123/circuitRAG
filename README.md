@@ -8,9 +8,31 @@ Upload documents → they get parsed, chunked, embedded, graphed, indexed → us
 
 ---
 
-## Snapshot (2026-05-03, MDT — Linux x86_64 dev host)
+## Snapshot (2026-05-04, MDT — Linux x86_64 dev host)
 
-**This session adds**: PolisAI Stage-1 policy engine · Paperclip Stage-1 sandbox aggregator · 11-layer architecture doc · Ollama × PolisAI integration (every council call gated) · Frontend page `/admin/paperclip` · scripts/run.sh `paperclip` + `policy` verbs · Apply-rate empirical finding · **Tier 1.3.b: git-apply-check pre-flight inside AUTHOR retry loop (closes 5/8 of historical apply failures)**.
+**This session adds (40+ commits across 2026-05-03/04)**:
+
+- **All 11 architecture layers** scaffolded + drill-locked + frontend-surfaced:
+  Layer 3 Agent Router · Layer 4 PolisAI Policy · Layer 7 Paperclip Sandbox ·
+  Layer 8 Kafka events + MCP Gateway · Layer 9 Vectorless+ES · Layer 10 Eval
+  Harness · Layer 11 OpenClaw A2A — each with backend script + drill +
+  frontend admin page + BFF route.
+- **Stage-2 adapter wirings** for LiteLLM (curl-failure fallback in
+  `call_ollama`) + PydanticAI (regex-failure fallback in
+  `validate_council_proposal`) + MCP Gateway (gates every `mcp/client.py`
+  call before CB+HTTP).
+- **Tier 1.3.b apply-check pre-flight** inside the AUTHOR retry loop —
+  empirically validated against 8/8 historical failure modes (synthetic
+  reproduction; live retest pending).
+- **`/admin/sitemap`** — 10-category × 66-entry index of all admin surfaces.
+- **§56 Techstack-Additions Policy** (global) — 6-gate adoption process for
+  ANY new tool entering the stack; empirical install-checker
+  (`scripts/techstack_audit.py`) + frontend audit surface
+  (`/admin/techstack-audit`).
+- **MCP Security Gateway** — closes 3 of the 17 missing items the
+  enterprise-architecture page identified: allowlist (9 servers, 4 risk
+  tiers) + 4-layer defense (feature flag + allowlist + approved actors
+  + rate limit) + audit log + Stage-2 wiring through `mcp/client.py`.
 
 ### Code metrics
 
@@ -19,11 +41,11 @@ Upload documents → they get parsed, chunked, embedded, graphed, indexed → us
 | Python LOC (services + libs) | **22,453** | `find services libs -name '*.py' \| xargs wc -l` |
 | TypeScript LOC (frontend) | **56,621** | `find services/frontend -name '*.ts' -o -name '*.tsx' \| xargs wc -l` |
 | Go LOC (api-gateway + identity-svc + others) | **1,527** | `find services -name '*.go' \| xargs wc -l` |
-| **Drills** (regression contracts) | **297** | `ls mcp/tests/drill_*.py \| wc -l` |
+| **Drills** (regression contracts) | **326** | `ls mcp/tests/drill_*.py \| wc -l` |
 | **ADRs** (architectural decisions) | **23** | `ls docs/architecture/adr/*.md \| wc -l` |
 | **Runbooks** (operator paths) | **17** | `ls docs/runbooks/*.md \| wc -l` |
 | **Deep-dive pages** (`/admin/*/deep`) | **45** | `find services/frontend/app/admin -name page.tsx -path '*/deep/*' \| wc -l` |
-| Commits this session (after `37a802c`) | **24** | `git log --oneline 37a802c..HEAD \| wc -l` |
+| Commits this session (after `37a802c`) | **179** | `git log --oneline 37a802c..HEAD \| wc -l` |
 
 ### Trust signals — run these to verify
 
@@ -185,7 +207,9 @@ flowchart TD
 | **Dashboards / Grafana** | Viz | ✅ shipped | docker-compose.yml |
 | **MLflow** | (alt to Langfuse for ML obs) | ❌ deliberate | Langfuse covers LLM obs |
 
-**Totals: 54 components · 34 ✅ shipped · 11 ⚠️ Stage-1 scaffold · 9 ❌ TODO**
+**Totals: 60 components · 38 ✅ shipped · 13 ⚠️ Stage-1 scaffold · 9 ❌ TODO**
+
+**Net change since 2026-04-30 baseline:** +6 components (MCP Gateway · MCP allowlist · LiteLLM adapter · PydanticAI adapter · Techstack audit · Sitemap), 4 newly-shipped (Stage-1 → ✅), 2 more Stage-1 scaffolds.
 
 ### Architectural invariants (drill-locked)
 
