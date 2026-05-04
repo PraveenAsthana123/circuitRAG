@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "policy_version": "stage-1-v1",
+  "policy_id": "mcp_allowlist",
+  "description": "Stage-1 MCP server allowlist. Per CLAUDE.md §56 + the 2026-05-04 enterprise-architecture page's brutal rule: do not allow direct MCP access. Every MCP call goes through this allowlist + PolisAI + audit. Adding a server requires the §56 6-gate adoption process.",
+  "servers": [
+    {
+      "name": "research",
+      "module": "mcp.server_research",
+      "risk": "medium",
+      "approved_actors": ["council:researcher", "council:author"],
+      "max_calls_per_minute": 30,
+      "rationale": "Research-context retrieval; bounded read surface."
+    },
+    {
+      "name": "drills",
+      "module": "mcp.server_drills",
+      "risk": "high",
+      "approved_actors": ["operator:human", "ci:runner"],
+      "max_calls_per_minute": 10,
+      "rationale": "Drill execution can spawn subprocesses + restart services. High-risk; operator-only by default."
+    },
+    {
+      "name": "deploy",
+      "module": "mcp.server_deploy",
+      "risk": "critical",
+      "approved_actors": ["operator:human"],
+      "max_calls_per_minute": 5,
+      "rationale": "Deployment surface; CRITICAL risk. Operator confirm required for every call."
+    },
+    {
+      "name": "hr",
+      "module": "mcp.server_hr",
+      "risk": "medium",
+      "approved_actors": ["operator:human", "council:researcher"],
+      "max_calls_per_minute": 30,
+      "rationale": "HR/people data lookups; medium risk per PII."
+    },
+    {
+      "name": "itsm",
+      "module": "mcp.server_itsm",
+      "risk": "medium",
+      "approved_actors": ["operator:human", "council:author"],
+      "max_calls_per_minute": 30,
+      "rationale": "Ticket workflow surface."
+    },
+    {
+      "name": "observe",
+      "module": "mcp.server_observe",
+      "risk": "low",
+      "approved_actors": ["council:researcher", "council:reviewer", "operator:human"],
+      "max_calls_per_minute": 60,
+      "rationale": "Read-only observability surface."
+    },
+    {
+      "name": "ollama",
+      "module": "mcp.server_ollama",
+      "risk": "high",
+      "approved_actors": ["council:researcher", "council:author", "council:reviewer", "council:advisor"],
+      "max_calls_per_minute": 60,
+      "rationale": "LLM gateway; high-risk per token-cost + prompt-injection surface."
+    },
+    {
+      "name": "tests",
+      "module": "mcp.server_tests",
+      "risk": "high",
+      "approved_actors": ["operator:human", "ci:runner"],
+      "max_calls_per_minute": 10,
+      "rationale": "Test execution; can mutate test artifacts."
+    },
+    {
+      "name": "paperclip",
+      "module": "mcp.server_paperclip",
+      "risk": "low",
+      "approved_actors": ["council:researcher", "operator:human", "paperclip:manager"],
+      "max_calls_per_minute": 60,
+      "rationale": "Stage-1 read-only sandbox aggregator. Drill-locked no-write contract."
+    }
+  ],
+  "default_decision": "deny",
+  "deny_rationale": "MCP server not in allowlist. Add a row + run §56 6-gate adoption process before invoking."
+}
