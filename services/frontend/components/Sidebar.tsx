@@ -74,6 +74,7 @@ const GROUPS: Group[] = [
       { href: '/admin/eval-harness', label: '🧪 Eval harness (Ragas · Guardrails · DeepEval · Snyk)' },
       { href: '/admin/tool-evaluation', label: '🔬 Tool evaluation (useful + safe analysis of 13 candidates)' },
       { href: '/admin/pr-management', label: '📤 PR management (push queue · §42 gated)' },
+      { href: '/admin/adapters', label: '🔌 Adapter inventory (LiteLLM · PydanticAI · Kafka)' },
       { href: '/admin/vectorless-elasticsearch', label: '🔍 Vectorless RAG (Elasticsearch BM25 patterns)' },
       { href: '/admin/simulation', label: '🛰 Simulation hub (live agent + tool state)' },
       { href: '/admin/pipelines', label: '🪢 Pipelines hub (all RAG flows in one node)' },
