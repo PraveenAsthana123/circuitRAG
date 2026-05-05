@@ -61,22 +61,76 @@ class RagasEngine:
                 "reason": "ragas not installed",
                 "stub": True,
             }
-        return {
-            "available": True,
-            "stub": True,  # Stage-2 replaces this body with real ragas call
-            "metrics": {
-                "faithfulness": None,  # 0..1
-                "answer_relevance": None,
-                "context_precision": None,
-                "context_recall": None,
-            },
-            "input": {
-                "question": question[:80],
-                "answer_len": len(answer),
-                "context_count": len(contexts),
-                "has_ground_truth": ground_truth is not None,
-            },
-        }
+        # Stage-2 wire: delegate to scripts/ragas_eval_adapter.py so this
+        # harness composes with the canonical Stage-1 adapter (5 metrics,
+        # AssessmentMatrix shape, per-metric thresholds, audit-ready).
+        # When the adapter is disabled or errors, fall back to the
+        # stub shape so callers don't see a regression. Per §47 fail-safe.
+        import os as _os  # noqa: PLC0415
+        import sys as _sys  # noqa: PLC0415
+        _sys.path.insert(0, "/mnt/deepa/rag/scripts")
+        try:
+            # Adapter requires its own env flag to be set, separate from
+            # ragas being installed. If operator hasn't opted in, return
+            # a clear reason so the dashboard shows "not configured" not
+            # "not available".
+            if _os.getenv("RAGAS_EVAL_ENABLED", "").strip() != "1":
+                return {
+                    "available": True,
+                    "configured": False,
+                    "reason": "RAGAS_EVAL_ENABLED unset",
+                    "metrics": {
+                        "faithfulness": None,
+                        "answer_relevance": None,
+                        "context_precision": None,
+                        "context_recall": None,
+                    },
+                }
+            from ragas_eval_adapter import score as _ragas_score  # noqa: PLC0415
+            matrix = _ragas_score(
+                question=question,
+                answer=answer,
+                contexts=contexts,
+                ground_truth=ground_truth,
+            )
+            return {
+                "available": True,
+                "configured": True,
+                # 'scores' is the canonical AssessmentMatrix field;
+                # 'metrics' is the legacy alias for dashboard backward
+                # compat. Both populated identically.
+                "scores": dict(matrix.scores),
+                "metrics": dict(matrix.scores),
+                "thresholds": dict(matrix.thresholds),
+                "passes": dict(matrix.passes),
+                "failures": list(matrix.failures),
+                "overall_pass": matrix.overall_pass,
+                "summary": matrix.summary,
+                "judge_model": matrix.judge_model,
+                "input": {
+                    "question": question[:80],
+                    "answer_len": len(answer),
+                    "context_count": len(contexts),
+                    "has_ground_truth": ground_truth is not None,
+                },
+            }
+        except Exception as _exc:
+            # Per §47 fail-safe: never break the eval-svc on adapter
+            # error. Return the stub shape with the error attached so
+            # ops can see it without losing the request.
+            logger.warning("ragas_adapter_error: %s", _exc)
+            return {
+                "available": True,
+                "configured": True,
+                "error": f"{type(_exc).__name__}: {str(_exc)[:200]}",
+                "stub": True,
+                "metrics": {
+                    "faithfulness": None,
+                    "answer_relevance": None,
+                    "context_precision": None,
+                    "context_recall": None,
+                },
+            }
 
 
 # ---------- Guardrails AI ---------- (Stage-1 scaffold)

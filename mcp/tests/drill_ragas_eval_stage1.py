@@ -48,13 +48,18 @@ def main() -> int:
         return 1
     print(f"  ok: ragas_eval_adapter present ({len(src)} chars)")
 
-    print("-- 2. NEGATIVE: eval_harness.py source UNCHANGED (Stage-2 wires) --")
-    if EVAL_HARNESS.exists():
-        eh = EVAL_HARNESS.read_text(encoding="utf-8")
-        if "ragas_eval_adapter" in eh or "AssessmentMatrix" in eh:
-            print("x eval_harness has Stage-1 reference — Stage-2 hasn't landed")
-            return 1
-    print("  ok: eval_harness source unchanged (Stage-1 purely additive)")
+    print("-- 2. NEGATIVE: ragas_eval_adapter doesn't IMPORT eval_harness (clean layering) --")
+    # Post-Stage-2 reality: eval_harness DOES legitimately import
+    # ragas_eval_adapter (Stage-2 wire). The check now enforces the
+    # adapter doesn't reverse-import the harness (cycle prevention).
+    rev_import = re.compile(
+        r"^\s*(from\s+.*eval_harness|import\s+.*eval_harness|from\s+app\.|import\s+app\.)",
+        re.MULTILINE,
+    )
+    if rev_import.search(src):
+        print("x ragas_eval_adapter imports eval_harness / app modules (cycle risk)")
+        return 1
+    print("  ok: ragas_eval_adapter doesn't import eval_harness (clean layering)")
 
     print("-- 3. POSITIVE: 7 contract surfaces exported --")
     os.environ.pop("RAGAS_EVAL_ENABLED", None)
