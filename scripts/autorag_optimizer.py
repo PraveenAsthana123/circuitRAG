@@ -141,15 +141,47 @@ class SearchReport:
     summary: str = ""
 
 
-def is_available() -> bool:
-    """Stage-1 §56 default-deny check + AutoRAG install probe."""
-    if not AUTORAG_OPTIMIZER_ENABLED:
-        return False
+def is_env_enabled() -> bool:
+    """Pure env-flag check — used to gate search_config_space.
+
+    The custom search loop in this module is implemented in pure
+    Python and DOES NOT call into the autorag package's runtime.
+    Operator opt-in via env flag is the binding gate; package
+    install is informational (see is_package_installed()).
+
+    This split exists because autorag (as of 2026-05-05) pins
+    matplotlib<3.7 which uses configparser.SafeConfigParser, removed
+    in Python 3.12+. Forcing autorag-package-installed would block
+    every operator on Python 3.13 from running their own empirical
+    search — a §47 fail-safe contradiction.
+    """
+    return AUTORAG_OPTIMIZER_ENABLED
+
+
+def is_package_installed() -> bool:
+    """Probe whether the autorag PyPI package is importable.
+    Informational only — search_config_space does NOT require it.
+    Drives the §56 Gate-4 'empirical install verification' surface
+    in status(); operators can see whether they completed the full
+    techstack adoption regardless of whether the search runs.
+    """
     try:
         import autorag  # noqa: F401, PLC0415
     except ImportError:
         return False
     return True
+
+
+def is_available() -> bool:
+    """Backward-compatible alias for is_env_enabled().
+
+    Historically this returned True only when both env flag AND
+    package install were satisfied. As of 2026-05-05 the search
+    loop has been verified to NOT use autorag's runtime, so the
+    gate is reduced to env-flag-only. Operators reading status()
+    still see is_package_installed in a separate field.
+    """
+    return is_env_enabled()
 
 
 def status() -> dict[str, Any]:
@@ -158,6 +190,7 @@ def status() -> dict[str, Any]:
         "stage": 1,
         "enabled_env": AUTORAG_OPTIMIZER_ENABLED,
         "available": is_available(),
+        "package_installed": is_package_installed(),
         "default_search_axes": SearchAxes().grid_size(),
         "composes_with": [
             "scripts/chunking_strategy_selector.py",
@@ -173,7 +206,7 @@ def status() -> dict[str, Any]:
             "to inference-svc config registry"
         ),
     }
-    if is_available():
+    if is_package_installed():
         try:
             import autorag
             out["autorag_version"] = getattr(autorag, "__version__", "unknown")
@@ -208,10 +241,11 @@ def search_config_space(
     Raises:
         AutoRAGOptimizerDisabled: when env flag unset.
     """
-    if not is_available():
+    if not is_env_enabled():
         raise AutoRAGOptimizerDisabled(
-            "AutoRAG optimizer disabled. Set AUTORAG_OPTIMIZER_ENABLED=1 "
-            "and ensure autorag is installed."
+            "AutoRAG optimizer disabled. Set AUTORAG_OPTIMIZER_ENABLED=1. "
+            "(autorag package install is OPTIONAL — search loop is pure-Python; "
+            "see is_package_installed() if you want the §56 Gate-4 status.)"
         )
     import time
 
