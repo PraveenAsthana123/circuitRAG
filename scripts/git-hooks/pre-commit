@@ -60,6 +60,33 @@ if git diff --cached --name-only 2>/dev/null \
     HIGH_BLAST_RADIUS=1
 fi
 
+# Phase 7AAA refinement (2026-05-05): if the ONLY high-blast-radius
+# files are NEW drill additions (status A in --diff-filter), the
+# refresh is wasteful — a brand-new drill can't regress the existing
+# snapshot because its first run hasn't happened yet. Only MODIFIED
+# (M) or DELETED (D) drill files genuinely need a forced refresh.
+#
+# This cuts wall-clock cost on the common autonomous-loop pattern
+# of "add a new drill that locks a new feature" from ~4min (full
+# 292-drill refresh dominated by drill_outcome_eval's ~4min snapshot
+# walk) down to ~10s (just the trailing-whitespace + ruff hooks).
+if [ "$HIGH_BLAST_RADIUS" -eq 1 ]; then
+    # Check whether the high-blast-radius files are EXCLUSIVELY new
+    # drill additions. If any non-drill HBR file OR any modified/deleted
+    # drill is staged, keep the original force-refresh behavior.
+    NON_NEW_HBR=$(git diff --cached --name-only --diff-filter=MD 2>/dev/null \
+        | grep -E '^(services/frontend/app/admin/sidecar/|mcp/server.*\.py$|services/sidecar-advisor/|mcp/tests/drill_.*\.py$)' \
+        | head -1)
+    NON_DRILL_HBR=$(git diff --cached --name-only --diff-filter=A 2>/dev/null \
+        | grep -E '^(services/frontend/app/admin/sidecar/|mcp/server.*\.py$|services/sidecar-advisor/)' \
+        | head -1)
+    if [ -z "$NON_NEW_HBR" ] && [ -z "$NON_DRILL_HBR" ]; then
+        # Only new drill additions — refresh won't catch regressions
+        HIGH_BLAST_RADIUS=0
+        echo "[pre-commit] only new drill files staged; skipping force refresh (hook §7AAA)" >&2
+    fi
+fi
+
 # If status is fresh AND no high-blast-radius file staged, skip.
 if [ "$HIGH_BLAST_RADIUS" -eq 0 ] && [ -f "$STATUS" ]; then
     age=$(( $(date +%s) - $(stat -c %Y "$STATUS") ))
