@@ -186,12 +186,45 @@ class RagInferenceService:
             )
             st.output("within_budget")
 
+        # 0.5. Stage-2 best-config defaults (per scripts/best_config_loader.py
+        #      + CLAUDE.md §47 + §56). When BEST_CONFIG_LOADER_ENABLED=1 AND
+        #      the AskRequest didn't EXPLICITLY set top_k, fall back to the
+        #      empirically-best top_k from .loop/best_config.json. Pydantic's
+        #      model_fields_set distinguishes "caller omitted field" from
+        #      "caller passed the default value" — only the FORMER triggers
+        #      the override (caller intent wins).
+        #      Per §47 fail-safe: loader errors NEVER block the request path.
+        effective_top_k = request.top_k
+        with trace.step("best_config_defaults") as st:
+            st.input(f"request_top_k={request.top_k} fields_set={sorted(request.model_fields_set)}")
+            try:
+                import os as _os  # noqa: PLC0415
+                if _os.getenv("BEST_CONFIG_LOADER_ENABLED", "").strip() == "1":
+                    import sys as _sys  # noqa: PLC0415
+                    _sys.path.insert(0, "/mnt/deepa/rag/scripts")
+                    from best_config_loader import (  # noqa: PLC0415
+                        get_default_top_k as _bc_top_k,
+                        is_available as _bc_avail,
+                    )
+                    if _bc_avail() and "top_k" not in request.model_fields_set:
+                        effective_top_k = _bc_top_k()
+                        st.output(f"override top_k={effective_top_k}")
+                        st.meta(source="best_config")
+                    else:
+                        st.output(f"keep request_top_k={request.top_k}")
+                else:
+                    st.output("disabled")
+            except Exception as exc:
+                # Offline-safe: NEVER block the request path
+                st.output(f"loader_error_keep_request_top_k={request.top_k}")
+                st.meta(error=str(exc)[:200])
+
         # 1. Retrieve
         chunks = await self._retrieval.retrieve(
             tenant_id=tenant_id,
             correlation_id=correlation_id,
             query=request.query,
-            top_k=request.top_k,
+            top_k=effective_top_k,
             strategy=request.strategy,
         )
         if not chunks:
