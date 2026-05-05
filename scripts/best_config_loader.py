@@ -1,8 +1,13 @@
-"""Best-config registry loader — Stage-1 adapter (per CLAUDE.md §56).
+"""Best-config registry loader — Stage-3 default-on (per ADR-024).
 
 Reads .loop/best_config.json (produced by run_autorag_empirical.py)
 so callers (inference-svc, retrieval-svc) can seed retrieval defaults
 from the empirically-best config without hard-coding.
+
+History:
+  Stage-1 (ADR-023, default-deny via opt-in env flag) → SUPERSEDED.
+  Stage-3 (ADR-024, default-on after earned verdict landed live with
+  19 promotions × 2 distinct configs × 1.00 success ratio).
 
 CONTRACT:
   - load_best_config(path) → BestConfig | None
@@ -23,8 +28,8 @@ SAFETY:
   - Defaults match the legacy un-tuned production behavior so callers
     that don't override get the same thing they had before
 
-OPERATOR OPT-IN:
-    BEST_CONFIG_LOADER_ENABLED=1
+OPERATOR OPT-OUT (post-Stage-3 default-on):
+    BEST_CONFIG_LOADER_ENABLED=0     # explicit opt-out
     BEST_CONFIG_PATH=.loop/best_config.json   # default
 
 COMPOSES WITH:
@@ -32,8 +37,9 @@ COMPOSES WITH:
     scripts/autorag_optimizer.py — ConfigPoint shape
     services/inference-svc/app/services/rag_inference.py — Stage-2 wire site
     services/retrieval-svc/app/schemas/__init__.py — RetrieveRequest defaults
-    docs/architecture/six-plane-audit-2026-05-04.md — control plane
-    §38 (audit), §43 (drill), §47 (fail-safe defaults), §56 (Stage-1)
+    docs/architecture/empirical-rag-config-loop.md — chain overview
+    docs/architecture/adr/024-best-config-loader-default-on.md — Stage-3 ADR
+    §38 (audit), §43 (drill), §47 (fail-safe defaults), §56.3 (Stage-3)
 """
 from __future__ import annotations
 
@@ -106,7 +112,11 @@ _cached_at: float = 0.0
 
 
 def is_available() -> bool:
-    """Stage-1 default-deny check."""
+    """Stage-3 default-on check (per ADR-024).
+
+    Returns True unless BEST_CONFIG_LOADER_ENABLED=0 explicitly opts out.
+    Pre-Stage-3 (ADR-023), this required env=1 opt-in.
+    """
     return BEST_CONFIG_LOADER_ENABLED
 
 
@@ -214,8 +224,8 @@ def force_reload() -> BestConfig | None:
 
 if __name__ == "__main__":
     import sys
-    print("scripts/best_config_loader.py — Stage-1 best-config registry reader")
-    print(f"Stage-1 opt-in via BEST_CONFIG_LOADER_ENABLED=1")
+    print("scripts/best_config_loader.py — Stage-3 default-on registry reader (ADR-024)")
+    print(f"Stage-3 opt-OUT via BEST_CONFIG_LOADER_ENABLED=0 (default-on after earned verdict)")
     print()
     print(json.dumps(status(), indent=2, default=str))
     print()
