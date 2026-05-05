@@ -106,3 +106,28 @@ class HealthBestConfigResponse(BaseModel):
     fallback_defaults: dict[str, Any] = Field(default_factory=dict)
     config: BestConfigInfo | None = None
     next_stage: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Audit-trail history projection — symmetric to inference-svc's
+# HealthBestConfigHistoryResponse (commit 2741a93).
+# ---------------------------------------------------------------------------
+class HealthBestConfigHistoryResponse(BaseModel):
+    """Aggregate view of the .loop/best_config_history.jsonl audit
+    trail as seen by retrieval-svc."""
+
+    service: str = "retrieval-svc"
+    observed_at: str
+    enabled: bool
+    history_path: str
+    history_exists: bool
+    history_size_bytes: int = 0
+    window_days: int = 7
+    total_attempts: int = 0
+    promoted: int = 0
+    rejected: int = 0
+    skipped: int = 0
+    gates_failed_counts: dict[str, int] = Field(default_factory=dict)
+    latest_decision: dict[str, Any] | None = None
+    earliest_ts: float = 0.0
+    latest_ts: float = 0.0

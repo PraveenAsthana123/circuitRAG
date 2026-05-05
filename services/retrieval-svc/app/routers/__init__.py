@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from documind_core.exceptions import ValidationError
 from documind_core.schemas import HealthResponse
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.schemas import (
     BestConfigInfo,
+    HealthBestConfigHistoryResponse,
     HealthBestConfigResponse,
     RetrieveRequest,
     RetrieveResponse,
@@ -101,6 +104,94 @@ async def health_best_config() -> HealthBestConfigResponse:
         fallback_defaults=fallback_defaults,
         config=config,
         next_stage=next_stage,
+    )
+
+
+@router.get(
+    "/api/v1/health/best-config-history",
+    response_model=HealthBestConfigHistoryResponse,
+    tags=["health"],
+    summary="Promotion-gate audit trail summary (retrieval-svc projection)",
+)
+async def health_best_config_history(
+    days: int = Query(
+        7,
+        ge=-1,
+        le=365,
+        description="Window in days; -1 means 'all rows'",
+    ),
+) -> HealthBestConfigHistoryResponse:
+    """
+    Symmetric to inference-svc /api/v1/health/best-config-history (commit 2741a93).
+    Both services surface the SAME audit trail; the dashboard renders
+    them side by side and verifies the two services agree on what's
+    been promoted/rejected.
+
+    Always returns 200. enabled+history_exists distinguish state.
+    """
+    from datetime import UTC, datetime
+
+    observed_at = datetime.now(UTC).isoformat()
+    enabled = False
+    history_path = ".loop/best_config_history.jsonl"
+    history_exists = False
+    history_size_bytes = 0
+    total = 0
+    promoted = 0
+    rejected = 0
+    skipped = 0
+    gates_failed_counts: dict[str, int] = {}
+    latest_decision: dict[str, Any] | None = None
+    earliest_ts = 0.0
+    latest_ts = 0.0
+
+    try:
+        import sys
+
+        sys.path.insert(0, "/mnt/deepa/rag/scripts")
+        from best_config_history import (
+            is_available,
+            load_history,
+            status,
+            summarize,
+        )
+
+        st = status()
+        enabled = bool(st.get("enabled_env", False))
+        history_path = str(st.get("history_path", history_path))
+        history_exists = bool(st.get("history_exists", False))
+        history_size_bytes = int(st.get("history_size_bytes", 0))
+
+        if is_available():
+            rows = load_history()
+            summary = summarize(rows, days=days)
+            total = summary.total_attempts
+            promoted = summary.promoted
+            rejected = summary.rejected
+            skipped = summary.skipped
+            gates_failed_counts = dict(summary.gates_failed_counts)
+            latest_decision = summary.latest_decision
+            earliest_ts = summary.earliest_ts
+            latest_ts = summary.latest_ts
+    except Exception:  # noqa: BLE001 — visibility never crashes
+        pass
+
+    return HealthBestConfigHistoryResponse(
+        service="retrieval-svc",
+        observed_at=observed_at,
+        enabled=enabled,
+        history_path=history_path,
+        history_exists=history_exists,
+        history_size_bytes=history_size_bytes,
+        window_days=days,
+        total_attempts=total,
+        promoted=promoted,
+        rejected=rejected,
+        skipped=skipped,
+        gates_failed_counts=gates_failed_counts,
+        latest_decision=latest_decision,
+        earliest_ts=earliest_ts,
+        latest_ts=latest_ts,
     )
 
 
