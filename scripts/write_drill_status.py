@@ -173,7 +173,17 @@ def write_drill_status(
     per_drill: dict[str, dict] = {}
     failed: list[str] = []
 
+    # Self-reference race fix (2026-05-05): drill_drill_status_freshness
+    # checks the previous snapshot's age. When run as part of THIS
+    # function (which produces the new snapshot), it reads the OLD
+    # snapshot — possibly stale → drill fails → new snapshot records
+    # the false-positive. Defer this drill to AFTER the write so it
+    # checks the snapshot we just produced.
+    SELF_REF_DRILLS = {"drill_drill_status_freshness"}
+
     for path in drill_paths:
+        if path.stem in SELF_REF_DRILLS:
+            continue  # run after write
         result = run_drill(path, timeout_s=timeout_s)
         per_drill[result.name] = {
             "passed": result.passed,
@@ -195,6 +205,37 @@ def write_drill_status(
     }
     status_path.parent.mkdir(parents=True, exist_ok=True)
     status_path.write_text(json.dumps(status, indent=2) + "\n")
+
+    # Run the deferred self-reference drills NOW so they check the
+    # snapshot we just wrote. Then re-write the status with their
+    # results merged in.
+    deferred_changed = False
+    for path in drill_paths:
+        if path.stem not in SELF_REF_DRILLS:
+            continue
+        result = run_drill(path, timeout_s=timeout_s)
+        per_drill[result.name] = {
+            "passed": result.passed,
+            "error": result.error,
+            "duration_s": round(result.duration_s, 3),
+        }
+        if not result.passed and result.name not in failed:
+            failed.append(result.name)
+            log.warning(
+                "drill_failed name=%s error=%s (post-write self-ref)",
+                result.name, (result.error or "")[:120],
+            )
+        deferred_changed = True
+
+    if deferred_changed:
+        status = {
+            "timestamp": timestamp,
+            "failed_drills": failed,
+            "total_drills": len(drill_paths),
+            "per_drill": per_drill,
+        }
+        status_path.write_text(json.dumps(status, indent=2) + "\n")
+
     return status
 
 
