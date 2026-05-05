@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -52,19 +53,18 @@ def main() -> int:
         return 1
     print(f"  ok: selector present ({len(src)} chars)")
 
-    print("-- 2. NEGATIVE: ingestion-svc Chunker + saga UNCHANGED (Stage-2 not wired) --")
-    if INGESTION_SAGA.exists():
-        saga_src = INGESTION_SAGA.read_text(encoding="utf-8")
-        if "chunking_strategy_selector" in saga_src or "ChunkingStrategy" in saga_src:
-            print("x saga has selector reference — Stage-2 hasn't landed yet")
-            return 1
-    if INGESTION_CHUNKING.exists():
-        # The Chunker package may be a directory; sweep all py files
-        for py in INGESTION_CHUNKING.rglob("*.py"):
-            if "chunking_strategy_selector" in py.read_text(encoding="utf-8"):
-                print(f"x {py} has selector reference — Stage-2 not landed yet")
-                return 1
-    print("  ok: ingestion-svc source unchanged (Stage-1 is purely additive)")
+    print("-- 2. NEGATIVE: chunking_strategy_selector doesn't IMPORT chunker/saga (clean layering) --")
+    # Post-Stage-3 reality: saga DOES legitimately import the selector
+    # (Stage-3 wire). The check now enforces the selector itself
+    # doesn't reverse-import (cycle prevention).
+    rev_import = re.compile(
+        r"^\s*(from\s+.*ingestion|import\s+.*ingestion|from\s+app\.chunking|from\s+app\.saga)",
+        re.MULTILINE,
+    )
+    if rev_import.search(src):
+        print("x chunking_strategy_selector imports chunker / saga (cycle risk)")
+        return 1
+    print("  ok: selector doesn't import chunker / saga (clean layering)")
 
     print("-- 3. POSITIVE: 5 contract surfaces exported --")
     os.environ["CHUNKING_STRATEGY_SELECTOR_ENABLED"] = "1"

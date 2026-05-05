@@ -89,23 +89,65 @@ class RecursiveChunker(Chunker):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def chunk(self, document: ParsedDocument) -> list[Chunk]:
-        raw_pieces: list[_Piece] = []
-        for page in document.pages:
-            for piece in self._split_page(page):
-                raw_pieces.append(piece)
+    def chunk(
+        self,
+        document: ParsedDocument,
+        *,
+        strategy: dict | None = None,
+    ) -> list[Chunk]:
+        # Stage-3 chunking-strategy wire (per
+        # docs/architecture/six-plane-audit-2026-05-04.md +
+        # scripts/chunking_strategy_selector.py). When the saga calls
+        # us with a `strategy` dict (auto-derived from file_type +
+        # use_case via chunking_strategy_selector.choose()), we use
+        # its chunk_size_tokens + overlap_percent for THIS call,
+        # falling back to the constructor defaults otherwise.
+        # Default behavior (strategy=None): legacy callers see no
+        # change — purely additive.
+        if strategy is not None:
+            target = int(strategy.get("chunk_size_tokens") or self._target)
+            overlap_pct = int(strategy.get("overlap_percent") or 0)
+            # Convert percent → absolute token count; clamp to safe
+            # bounds so a malformed strategy can't yield overlap >=
+            # target (the constructor validation that would otherwise
+            # have caught this).
+            overlap = min(int(target * overlap_pct / 100), target - 1) if overlap_pct > 0 else self._overlap
+            local_target = max(target, 32)  # don't go below a useful floor
+            local_overlap = max(overlap, 0)
+            log.info(
+                "chunker_strategy_override target=%d overlap=%d strategy=%s",
+                local_target, local_overlap,
+                strategy.get("strategy_name", "?"),
+            )
+        else:
+            local_target = self._target
+            local_overlap = self._overlap
 
-        chunks = self._apply_overlap(raw_pieces)
+        # Save + restore so the strategy override is per-call only
+        # (stateless — each call sees its own target/overlap).
+        saved_target, saved_overlap = self._target, self._overlap
+        self._target, self._overlap = local_target, local_overlap
+        try:
+            raw_pieces: list[_Piece] = []
+            for page in document.pages:
+                for piece in self._split_page(page):
+                    raw_pieces.append(piece)
 
-        log.info(
-            "chunked pages=%d raw=%d final=%d target=%d overlap=%d",
-            len(document.pages),
-            len(raw_pieces),
-            len(chunks),
-            self._target,
-            self._overlap,
-        )
-        return chunks
+            chunks = self._apply_overlap(raw_pieces)
+
+            log.info(
+                "chunked pages=%d raw=%d final=%d target=%d overlap=%d",
+                len(document.pages),
+                len(raw_pieces),
+                len(chunks),
+                self._target,
+                self._overlap,
+            )
+            return chunks
+        finally:
+            # Restore constructor-time defaults so the per-call
+            # strategy override doesn't leak into subsequent calls.
+            self._target, self._overlap = saved_target, saved_overlap
 
     # ------------------------------------------------------------------
     # Implementation

@@ -325,7 +325,32 @@ class DocumentIngestionSaga:
                 # for ops; chunker proceeds with original text.
                 pass  # noqa: S110
 
-        raw_chunks = await asyncio.to_thread(self._chunker.chunk, self._parsed_doc)
+        # Stage-3 chunking-strategy wire (per
+        # scripts/chunking_strategy_selector.py + commit dcd497d).
+        # When CHUNKING_STRATEGY_SELECTOR_ENABLED=1, derive a chunking
+        # strategy from file_type + use_case and pass it to the chunker.
+        # Default off: chunker uses constructor defaults (legacy path).
+        # Per §47 fail-safe: any selector error → fall through to default.
+        import os as _os_chunk  # noqa: PLC0415  # explicit so this wire
+        # works independently of other wires that may also import os
+        _strategy: dict | None = None
+        if _os_chunk.getenv("CHUNKING_STRATEGY_SELECTOR_ENABLED", "").strip() == "1":
+            try:
+                import sys as _sys  # noqa: PLC0415
+                _sys.path.insert(0, "/mnt/deepa/rag/scripts")
+                from chunking_strategy_selector import choose as _choose  # noqa: PLC0415
+                # Map filename extension to canonical file_type.
+                # The selector handles unknown types via recursive fallback.
+                ext = self._filename.rsplit(".", 1)[-1].lower() if "." in self._filename else "txt"
+                use_case = _os_chunk.getenv("CHUNKING_USE_CASE", "general")
+                strat = _choose(file_type=ext, use_case=use_case)
+                _strategy = strat.as_dict()
+            except Exception as _exc:
+                # Fail-safe: fall through to default chunker behavior
+                _strategy = None
+        raw_chunks = await asyncio.to_thread(
+            self._chunker.chunk, self._parsed_doc, strategy=_strategy,
+        )
 
         # Retrieval-poisoning defense: scan each chunk for injection +
         # PII BEFORE they reach the vector index. REJECT offensive chunks;
