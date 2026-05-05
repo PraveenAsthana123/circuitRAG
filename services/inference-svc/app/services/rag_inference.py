@@ -168,6 +168,48 @@ class RagInferenceService:
                 details={"tenant_id": tenant_id},
             )
 
+        # Stage-3 PII redaction wire (per CLAUDE.md §39 + §43 + §48 +
+        # docs/architecture/six-plane-audit-2026-05-04.md). Symmetric
+        # to the ingestion-side wire (commit cd77b0c). When
+        # PII_REDACTOR_ENABLED=1, redact PII from each retrieved chunk
+        # BEFORE prompt assembly. This protects against PII that
+        # entered the corpus before the ingestion-side wire was active
+        # (legacy data) AND PII that the ingestion redactor missed
+        # (defense in depth). The audit row goes to .loop/pii_audit.jsonl
+        # with TYPE+POSITION only — NEVER raw PII (§48.4 invariant).
+        # Default off: legacy callers see no behavior change.
+        # Per §47 fail-safe: PII errors NEVER block the request path.
+        import os as _os  # noqa: PLC0415
+        if _os.getenv("PII_REDACTOR_ENABLED", "").strip() == "1":
+            try:
+                # Lazy import — saga-side hook lives in ingestion-svc; we
+                # share the underlying scripts/pii_redactor.py adapter
+                # directly to avoid cross-service path coupling.
+                import sys as _sys  # noqa: PLC0415
+                _sys.path.insert(0, "/mnt/deepa/rag/scripts")
+                import pii_redactor as _pii  # noqa: PLC0415
+                if _pii.is_available():
+                    redacted_count = 0
+                    for chunk in chunks:
+                        text = chunk.get("text") if isinstance(chunk, dict) else getattr(chunk, "text", None)
+                        if not text or not text.strip():
+                            continue
+                        clean, entities = _pii.redact(text)
+                        if entities:
+                            redacted_count += 1
+                            if isinstance(chunk, dict):
+                                chunk["text"] = clean
+                            else:
+                                chunk.text = clean
+                    if redacted_count:
+                        log.info(
+                            "pii_redact_inference tenant=%s chunks_redacted=%d/%d",
+                            tenant_id, redacted_count, len(chunks),
+                        )
+            except Exception as _exc:
+                # Fail-safe: PII error must not block the request.
+                log.warning("pii_redact_inference skipped: %s", _exc)
+
         # 2. Prompt
         system, user, citation_map = self._prompts.build(
             template_name=self._default_prompt,
