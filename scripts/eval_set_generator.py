@@ -294,6 +294,7 @@ def main() -> int:
     """
     import argparse  # noqa: PLC0415
     import csv  # noqa: PLC0415
+    import random  # noqa: PLC0415
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--corpus", required=True,
@@ -307,6 +308,14 @@ def main() -> int:
                         help="max Q&A pairs to generate")
     parser.add_argument("--limit-chunks", type=int, default=50,
                         help="max chunks to consider (sample N from top of CSV)")
+    parser.add_argument("--seed", type=int, default=None,
+                        help=("Random seed for chunk-order shuffling. "
+                              "Different seed → different eval set → unblocks "
+                              "Stage-3-earned 'stable_single_winner' verdict "
+                              "by producing distinct empirical winners across "
+                              "varied query distributions. Without this, the "
+                              "first N chunks are always sampled (overfitting "
+                              "risk). Per stage3_earned_check.py rationale."))
     args = parser.parse_args()
 
     if not is_available():
@@ -318,11 +327,21 @@ def main() -> int:
     chunks: list[dict[str, Any]] = []
     with open(args.corpus, encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
-        for i, row in enumerate(reader):
-            if i >= args.limit_chunks:
-                break
+        for row in reader:
             text = row.get(args.text_col, "")
-            chunks.append({"text": text, "id": row.get(args.id_col, str(i))})
+            chunks.append({"text": text, "id": row.get(args.id_col, str(len(chunks)))})
+
+    # Shuffle BEFORE truncating to limit-chunks. Without --seed the
+    # order is whatever csv.DictReader yields (usually file order).
+    # With --seed we get a deterministic permutation so operators
+    # can reproduce a specific eval set when needed.
+    if args.seed is not None:
+        rng = random.Random(args.seed)
+        rng.shuffle(chunks)
+        print(f"shuffled corpus with seed={args.seed}")
+
+    # Truncate AFTER shuffle so the sample is from a varied prefix
+    chunks = chunks[: args.limit_chunks]
 
     print(f"loaded {len(chunks)} chunks from {args.corpus}")
     pairs = generate_set(chunks, max_pairs=args.max)
