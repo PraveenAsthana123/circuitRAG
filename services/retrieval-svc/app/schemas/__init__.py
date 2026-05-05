@@ -63,3 +63,46 @@ class RetrieveResponse(BaseModel):
             "False when all requested backends succeeded."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# best_config registry visibility — symmetric to inference-svc HealthBestConfig
+# Response (commit 01729e0). Operators see what BestConfig the retriever
+# would seed defaults from RIGHT NOW. Per §38 governance + §47 fail-safe.
+# ---------------------------------------------------------------------------
+class BestConfigInfo(BaseModel):
+    """Effective BestConfig as seen by the retriever."""
+
+    min_score: float = Field(description="Empirically-best similarity floor")
+    top_k: int = Field(description="Empirically-best retrieval top_k")
+    rerank_enabled: bool
+    rerank_top_k: int = Field(default=10)
+    chunking_strategy: str = Field(default="recursive_paragraph_sentence")
+    pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    promoted_at_ts: float = Field(default=0.0)
+    eval_set_size: int = Field(default=0)
+
+
+class HealthBestConfigResponse(BaseModel):
+    """Live BestConfig visibility for retrieval-svc operators.
+
+    enabled+loaded fields distinguish:
+      * disabled (no env flag)
+      * enabled but file missing/malformed (legacy fallback)
+      * enabled and loaded (config block populated)
+
+    Always 200 — visibility never crashes the dashboard.
+    """
+
+    service: str = "retrieval-svc"
+    observed_at: str
+    enabled: bool
+    loaded: bool
+    config_path: str
+    config_exists: bool
+    config_size_bytes: int = 0
+    ttl_s: float
+    cache_age_s: float = 0.0
+    fallback_defaults: dict[str, Any] = Field(default_factory=dict)
+    config: BestConfigInfo | None = None
+    next_stage: str = ""
