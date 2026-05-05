@@ -576,3 +576,92 @@ class ClientErrorListResponse(BaseModel):
     capacity: int = Field(description="Ring buffer capacity")
     count: int = Field(description="Records currently in buffer")
     records: list[ClientErrorRecord] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# best_config registry visibility — operators see what BestConfig is
+# live RIGHT NOW (per CLAUDE.md §38 "live state, not what's in code").
+# Reads scripts/best_config_loader.status() + the loaded BestConfig if
+# available. Returns 200 even when disabled / file missing — the
+# `enabled` + `loaded` fields tell the UI how to render.
+# ---------------------------------------------------------------------------
+class BestConfigInfo(BaseModel):
+    """Effective BestConfig the loader would surface to callers.
+    Empty when the loader is disabled OR the file is missing — the
+    UI surfaces 'using legacy fallback defaults' in that case."""
+
+    min_score: float = Field(
+        description="Empirically-best similarity floor",
+    )
+    top_k: int = Field(description="Empirically-best retrieval top_k")
+    rerank_enabled: bool = Field(
+        description="Whether the empirical winner used reranking",
+    )
+    rerank_top_k: int = Field(default=10)
+    chunking_strategy: str = Field(
+        default="recursive_paragraph_sentence",
+        description="Empirically-best chunking strategy name",
+    )
+    pass_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Eval-set pass-rate of the promoted config",
+    )
+    promoted_at_ts: float = Field(
+        default=0.0,
+        description="Unix epoch when this config was promoted",
+    )
+    eval_set_size: int = Field(
+        default=0,
+        description="Number of eval pairs the search used",
+    )
+
+
+class HealthBestConfigResponse(BaseModel):
+    """Live BestConfig visibility for operators.
+
+    `enabled` reflects BEST_CONFIG_LOADER_ENABLED env state.
+    `loaded` is True when the loader successfully read the file AND
+    the loader is enabled. When `loaded=False` the system uses the
+    legacy-compatible fallback defaults (min_score=0.0, top_k=10,
+    rerank=False) — exposed in `fallback_defaults` so the UI can
+    surface "we'd be using X, Y, Z right now."
+
+    Returns 200 even when disabled/missing — operators read the
+    enabled+loaded fields to understand the state, not the HTTP code.
+    """
+
+    service: str = "inference-svc"
+    observed_at: str = Field(description="ISO 8601 sample timestamp")
+    enabled: bool = Field(description="BEST_CONFIG_LOADER_ENABLED env state")
+    loaded: bool = Field(
+        description=(
+            "True when loader is enabled AND a valid best_config.json "
+            "was successfully read. False otherwise — UI surfaces "
+            "'(using legacy defaults)'."
+        ),
+    )
+    config_path: str = Field(description="Path the loader is reading from")
+    config_exists: bool = Field(description="Whether the file exists on disk")
+    config_size_bytes: int = Field(default=0)
+    ttl_s: float = Field(description="Cache TTL in seconds")
+    cache_age_s: float = Field(
+        default=0.0,
+        description="Seconds since the cache was last refreshed (0 when cold)",
+    )
+    fallback_defaults: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Legacy un-tuned defaults used when loaded=False. Exposed so "
+            "operators can see what they'd get without the loader."
+        ),
+    )
+    config: BestConfigInfo | None = Field(
+        default=None,
+        description="The loaded config when loaded=True; None otherwise.",
+    )
+    next_stage: str = Field(
+        default="",
+        description="Stage-2 wiring status hint from loader.status()",
+    )

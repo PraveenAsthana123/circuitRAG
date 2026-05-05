@@ -12,6 +12,7 @@ from app.schemas import (
     AgentAskResponse,
     AskRequest,
     AskResponse,
+    BestConfigInfo,
     BreakerState,
     ClientErrorListResponse,
     ClientErrorRecord,
@@ -21,6 +22,7 @@ from app.schemas import (
     DraftRejectResponse,
     DraftResolveResponse,
     DraftSummary,
+    HealthBestConfigResponse,
     HealthDetailedResponse,
     HealthPromptsResponse,
     HealthTechstackResponse,
@@ -877,6 +879,98 @@ async def health_techstack(request: Request) -> HealthTechstackResponse:
         installed_count=installed_count,
         pending_count=pending_count,
         entries=entries,
+    )
+
+
+@router.get(
+    "/api/v1/health/best-config",
+    response_model=HealthBestConfigResponse,
+    tags=["health"],
+    summary="Live best_config registry — what BestConfig is in effect RIGHT NOW",
+)
+async def health_best_config() -> HealthBestConfigResponse:
+    """
+    Operator-facing visibility into the empirically-best config the
+    inference + retrieval services would seed defaults from. Closes
+    the §38 governance gap "what's live RIGHT NOW?" for the
+    AutoRAG → best_config.json → loader chain.
+
+    Always returns 200. The `enabled` + `loaded` fields tell the UI
+    how to render:
+      enabled=False, loaded=False → "(loader disabled)"
+      enabled=True,  loaded=False → "(file missing/malformed —
+                                     using legacy fallback defaults)"
+      enabled=True,  loaded=True  → "(loader active — see config block)"
+
+    Per CLAUDE.md §47 fail-safe: this endpoint NEVER raises on loader
+    error; the UI sees `enabled=False, loaded=False` if the import
+    fails, which is the same as "disabled" — graceful degradation.
+    """
+    from datetime import UTC, datetime
+
+    observed_at = datetime.now(UTC).isoformat()
+    config: BestConfigInfo | None = None
+    enabled = False
+    loaded = False
+    config_path = ".loop/best_config.json"
+    config_exists = False
+    config_size_bytes = 0
+    ttl_s = 300.0
+    cache_age_s = 0.0
+    fallback_defaults: dict = {}
+    next_stage = ""
+
+    try:
+        import sys
+
+        sys.path.insert(0, "/mnt/deepa/rag/scripts")
+        from best_config_loader import (
+            is_available,
+            load_best_config,
+            status,
+        )
+
+        st = status()
+        enabled = bool(st.get("enabled_env", False))
+        config_path = str(st.get("config_path", config_path))
+        config_exists = bool(st.get("config_exists", False))
+        config_size_bytes = int(st.get("config_size_bytes", 0))
+        ttl_s = float(st.get("ttl_s", 300.0))
+        cache_age_s = float(st.get("cache_age_s", 0.0))
+        fallback_defaults = dict(st.get("fallback_defaults", {}))
+        next_stage = str(st.get("next_stage", ""))
+
+        if is_available():
+            cfg = load_best_config()
+            if cfg is not None:
+                loaded = True
+                config = BestConfigInfo(
+                    min_score=cfg.min_score,
+                    top_k=cfg.top_k,
+                    rerank_enabled=cfg.rerank_enabled,
+                    rerank_top_k=cfg.rerank_top_k,
+                    chunking_strategy=cfg.chunking_strategy,
+                    pass_rate=cfg.pass_rate,
+                    promoted_at_ts=cfg.promoted_at_ts,
+                    eval_set_size=cfg.eval_set_size,
+                )
+    except Exception:  # noqa: BLE001 — visibility must never crash
+        # §47 fail-safe: surface as "(unavailable)" rather than 500
+        pass
+
+    return HealthBestConfigResponse(
+        service="inference-svc",
+        observed_at=observed_at,
+        enabled=enabled,
+        loaded=loaded,
+        config_path=config_path,
+        config_exists=config_exists,
+        config_size_bytes=config_size_bytes,
+        ttl_s=ttl_s,
+        cache_age_s=cache_age_s,
+        fallback_defaults=fallback_defaults,
+        config=config,
+        next_stage=next_stage,
     )
 
 
