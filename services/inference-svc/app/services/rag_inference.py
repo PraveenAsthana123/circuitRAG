@@ -128,6 +128,38 @@ class RagInferenceService:
     ) -> AskResponse:
         trace = InterpretabilityTrace()
 
+        # Stage-2 Langfuse trace wire (per scripts/langfuse_tracer.py +
+        # docs/architecture/six-plane-audit-2026-05-04.md). Per the
+        # OFFLINE-SAFE contract on the Stage-1 adapter, this is a fire-
+        # and-forget metadata emission — never blocks the request path,
+        # never raises. We emit the top-level trace event up-front so
+        # the Langfuse dashboard sees the request even if the rest of
+        # ask() takes a long time. Stage-3 will add per-step spans
+        # (retrieve / pii / rerank / generate) inside this same trace.
+        # Per §38 (audit) + §47 (fail-safe) + §48 (explainability).
+        import sys as _sys  # noqa: PLC0415
+        _sys.path.insert(0, "/mnt/deepa/rag/scripts")
+        try:
+            from langfuse_tracer import is_available as _lf_avail, _get_client as _lf_client  # noqa: PLC0415
+            if _lf_avail():
+                _client = _lf_client()
+                if _client is not None:
+                    _client.trace(
+                        id=correlation_id,
+                        name="rag.ask",
+                        user_id=None,
+                        input={"query": request.query[:500],
+                               "top_k": request.top_k,
+                               "model": request.model},
+                        metadata={
+                            "tenant_id": tenant_id,
+                            "strategy": request.strategy,
+                        },
+                    )
+        except Exception:
+            # Offline-safe: NEVER block the request path on observability
+            pass
+
         # -1. Adversarial input heuristics — reject early for length / DoS /
         #     non-printable / URL-burst patterns.
         with trace.step("adversarial_filter") as st:

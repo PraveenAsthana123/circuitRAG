@@ -45,13 +45,18 @@ def main() -> int:
         return 1
     print(f"  ok: langfuse_tracer present ({len(src)} chars)")
 
-    print("-- 2. NEGATIVE: rag_inference.py UNCHANGED (Stage-2 wires) --")
-    if RAG_INFER.exists():
-        ri_src = RAG_INFER.read_text(encoding="utf-8")
-        if "langfuse_tracer" in ri_src or "trace_context" in ri_src:
-            print("x rag_inference has Langfuse wire — Stage-2 hasn't landed")
-            return 1
-    print("  ok: rag_inference unchanged (Stage-1 purely additive)")
+    print("-- 2. NEGATIVE: langfuse_tracer doesn't IMPORT inference (clean layering) --")
+    # Post-Stage-2 reality: rag_inference DOES legitimately import
+    # langfuse_tracer (Stage-2 wire). The check now enforces the
+    # adapter doesn't reverse-import (cycle prevention).
+    rev_import = re.compile(
+        r"^\s*(from\s+.*rag_inference|import\s+.*rag_inference|from\s+app\.|import\s+app\.)",
+        re.MULTILINE,
+    )
+    if rev_import.search(src):
+        print("x langfuse_tracer imports rag_inference / app modules (cycle risk)")
+        return 1
+    print("  ok: langfuse_tracer doesn't import inference (clean layering)")
 
     print("-- 3. POSITIVE: 8 contract surfaces exported --")
     os.environ.pop("LANGFUSE_TRACER_ENABLED", None)
