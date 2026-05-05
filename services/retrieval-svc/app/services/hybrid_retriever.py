@@ -93,6 +93,36 @@ class HybridRetriever:
 
     @staticmethod
     def _cache_key(tenant_id: str, req: RetrieveRequest) -> str:
+        # Stage-2 cache_fingerprint wire (per scripts/cache_fingerprint.py +
+        # docs/architecture/six-plane-audit-2026-05-04.md). When
+        # CACHE_FINGERPRINT_ENABLED=1, use the multi-dimension fingerprint
+        # (tenant + normalized_query + prompt_v + model_v + embed_v +
+        # min_score + rerank flag) so prompt/model/embedding version
+        # changes properly invalidate the cache. Default off: legacy
+        # (tenant + query + strategy + top_k) hash preserved.
+        # Per the brutal cache-key invariant: skip ANY dimension and
+        # you serve stale results when that dimension changes.
+        import os as _os  # noqa: PLC0415
+        if _os.getenv("CACHE_FINGERPRINT_ENABLED", "").strip() == "1":
+            try:
+                import sys as _sys  # noqa: PLC0415
+                _sys.path.insert(0, "/mnt/deepa/rag/scripts")
+                from cache_fingerprint import fingerprint as _fp  # noqa: PLC0415
+                fp = _fp(
+                    tenant_id=tenant_id,
+                    query=req.query,
+                    prompt_version=_os.getenv("PROMPT_VERSION", "rag_v1"),
+                    model_version=_os.getenv("LLM_MODEL_VERSION", "gemma2:9b"),
+                    embedding_model_version=_os.getenv("EMBED_MODEL_VERSION", "nomic-embed-text:latest"),
+                    cache_layer="retrieval",
+                    strategy=req.strategy,
+                    top_k=str(req.top_k),
+                    min_score=str(req.min_score),
+                )
+                return Cache.tenant_key(tenant_id, "retr", fp.hash())
+            except Exception:
+                # Fail-safe: fall through to legacy key shape
+                pass
         h = hashlib.sha256(f"{req.strategy}|{req.top_k}|{req.query}|{sorted(req.filters.items())}".encode()).hexdigest()
         return Cache.tenant_key(tenant_id, "retr", h)
 
@@ -149,6 +179,53 @@ class HybridRetriever:
                     "min_score_filter dropped=%d kept=%d threshold=%.3f",
                     n_before - n_after, n_after, request.min_score,
                 )
+
+        # Stage-2 HyDE wire (per scripts/hyde_adapter.py +
+        # docs/architecture/rag-deep-test-2026-05-04.md). When
+        # min_score floor returns ZERO chunks AND HYDE_ENABLED=1,
+        # generate a hypothetical answer via small LM (gemma3:1b),
+        # embed THAT, and re-run vector search. Closes the empirical
+        # recall gap where Q1/Q2 returned 0 useful chunks.
+        # Default off: HYDE_ENABLED=1 explicit opt-in. Composes with
+        # the heuristic "fire only when min_score returns empty" to
+        # avoid 2x latency on easy queries.
+        import os as _os  # noqa: PLC0415
+        if (
+            len(chunks) == 0
+            and _os.getenv("HYDE_ENABLED", "").strip() == "1"
+        ):
+            try:
+                import sys as _sys  # noqa: PLC0415
+                _sys.path.insert(0, "/mnt/deepa/rag/scripts")
+                from hyde_adapter import generate as _hyde_gen  # noqa: PLC0415
+                hyde_result = _hyde_gen(request.query)
+                if hyde_result.ok and hyde_result.hypothetical:
+                    log.info(
+                        "hyde_fallback_fire q=%.40s hyp_len=%d elapsed_ms=%d",
+                        request.query, len(hyde_result.hypothetical),
+                        hyde_result.elapsed_ms,
+                    )
+                    # Re-run vector search with the hypothetical as query
+                    hyde_request = RetrieveRequest(
+                        query=hyde_result.hypothetical,
+                        top_k=request.top_k,
+                        strategy="vector",
+                        min_score=0.0,  # don't double-floor; HyDE chunks
+                                        # are already by definition the
+                                        # closest matches we'll find
+                    )
+                    hyde_chunks_raw = await self._do_vector(tenant_id, hyde_request)
+                    if hyde_chunks_raw:
+                        chunks = [RetrievedChunk(**h) for h in hyde_chunks_raw[:request.top_k]]
+                        log.info(
+                            "hyde_fallback_chunks original_q=%.40s hyde_chunks=%d",
+                            request.query, len(chunks),
+                        )
+            except Exception as _exc:
+                # Fail-safe: HyDE failure must not break the request.
+                # Empty chunks are an acceptable non-error outcome —
+                # caller (inference-svc) gracefully degrades.
+                log.warning("hyde_fallback skipped: %s", _exc)
 
         # Stage-3 BGE rerank wiring (per CLAUDE.md §56 + §49):
         # When BGE_RERANKER_IN_HOT_PATH=1 AND BGE_RERANKER_ENABLED=1

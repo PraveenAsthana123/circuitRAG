@@ -39,13 +39,18 @@ def main() -> int:
         return 1
     print(f"  ok: hyde_adapter present ({len(src)} chars)")
 
-    print("-- 2. NEGATIVE: HybridRetriever UNCHANGED (Stage-2 wires) --")
-    if RETRIEVER.exists():
-        ret_src = RETRIEVER.read_text(encoding="utf-8")
-        if "hyde_adapter" in ret_src or "HyDEResult" in ret_src:
-            print("x HybridRetriever has HyDE reference — Stage-2 hasn't landed yet")
-            return 1
-    print("  ok: HybridRetriever unchanged (Stage-1 purely additive)")
+    print("-- 2. NEGATIVE: hyde_adapter doesn't IMPORT HybridRetriever (clean layering) --")
+    # Post-Stage-2 reality: HybridRetriever DOES legitimately reference
+    # hyde_adapter (Stage-2 wire). The drill check now enforces the
+    # adapter doesn't reverse-import the retriever (cycle prevention).
+    rev_import = re.compile(
+        r"^\s*(from\s+.*hybrid_retriever|import\s+.*hybrid_retriever)",
+        re.MULTILINE,
+    )
+    if rev_import.search(src):
+        print("x hyde_adapter imports HybridRetriever (cycle risk)")
+        return 1
+    print("  ok: hyde_adapter doesn't import retriever (clean layering)")
 
     print("-- 3. POSITIVE: 4 contract surfaces exported --")
     os.environ.pop("HYDE_ENABLED", None)
