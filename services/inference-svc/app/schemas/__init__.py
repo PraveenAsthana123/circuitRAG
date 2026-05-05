@@ -665,3 +665,33 @@ class HealthBestConfigResponse(BaseModel):
         default="",
         description="Stage-2 wiring status hint from loader.status()",
     )
+
+
+# ---------------------------------------------------------------------------
+# best_config_history visibility — operator-facing audit-trail projection
+# Composes with scripts/best_config_history.py:summarize()
+# ---------------------------------------------------------------------------
+class HealthBestConfigHistoryResponse(BaseModel):
+    """Aggregate view of the .loop/best_config_history.jsonl audit trail.
+
+    The promotion gate appends one row per evaluation (success OR
+    rejection); this endpoint projects them into a window-bounded
+    summary. Returns 200 even when the history reader is disabled
+    or the file is missing — empty/null fields signal degradation.
+    """
+
+    service: str = "inference-svc"
+    observed_at: str = Field(description="ISO 8601 sample timestamp")
+    enabled: bool = Field(description="BEST_CONFIG_HISTORY_ENABLED env state")
+    history_path: str
+    history_exists: bool
+    history_size_bytes: int = 0
+    window_days: int = 7
+    total_attempts: int = 0
+    promoted: int = 0
+    rejected: int = 0
+    skipped: int = 0
+    gates_failed_counts: dict[str, int] = Field(default_factory=dict)
+    latest_decision: dict[str, Any] | None = Field(default=None)
+    earliest_ts: float = 0.0
+    latest_ts: float = 0.0
