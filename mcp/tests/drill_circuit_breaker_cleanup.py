@@ -2,6 +2,10 @@
 # RESOURCES: readonly
 """Drill for CB-G — cleanup items (#11, #28, #29, #30).
 
+Includes negative assertions: legacy `_MCPBreaker` must NOT exist;
+unknown-cause sentinel must NOT propagate after deprecation; cleanup
+work must NOT regress to the prior duplicate-class state.
+
 Locks 4 small contracts:
 
   #11  No `_MCPBreaker` leftover in mcp/client.py — already

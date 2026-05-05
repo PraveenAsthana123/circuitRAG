@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
-"""Drill for P0 #1 — own-timeouts on Research/Tester/Deployer agents."""
+"""Drill for P0 #1 — own-timeouts on Research/Tester/Deployer agents.
+
+Includes negative assertions: agents must NOT inherit framework
+default timeouts; missing per-agent timeout config must FAIL the
+drill; agents must NOT run unbounded when caller forgot to pass
+a deadline.
+"""
 from __future__ import annotations
 
 import asyncio

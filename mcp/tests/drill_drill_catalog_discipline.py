@@ -78,15 +78,11 @@ KNOWN_MISSING: set[str] = set()
 # docstring just describes them by feature number, not by NEGATIVE/POSITIVE
 # label. Rather than re-writing 7 docstrings to add the literal token,
 # grandfather them and let the ratchet shrink as docstrings get refreshed.
-KNOWN_MISSING_NEG_MARKER: set[str] = {
-    "drill_circuit_breaker_advanced.py",        # CB-F-small features #22/26/27
-    "drill_circuit_breaker_cleanup.py",         # CB cleanup invariants
-    "drill_circuit_breaker_integration.py",     # CB end-to-end integration
-    "drill_p0_agent_timeouts.py",               # P0 agent timeout enforcement
-    "drill_p0_mcp_graceful_shutdown.py",        # P0 graceful shutdown
-    "drill_p1_rate_limit.py",                   # P1 rate-limit enforcement
-    "drill_p1_research_cache.py",               # P1 research cache invariants
-}
+KNOWN_MISSING_NEG_MARKER: set[str] = set()
+# Paid down 2026-05-05: 7 entries → 0. All 7 prior drills now carry
+# explicit "negative assertions: ..." passages in their module
+# docstrings. Per ADR-015 ratchet, the set "should only shrink" —
+# this is the empty-state target.
 
 # Step-4 ratchet: drills that legitimately use unittest.mock to test
 # fallback paths when an OPTIONAL Stage-1 dependency isn't installed

@@ -71,7 +71,10 @@ COVERAGE_DRILL = REPO / "mcp" / "tests" / "drill_cheatsheet_adr_coverage.py"
 # default to loop-discipline unless operator extends this set in
 # the same commit. Per ADR-015 ratchet pattern: floor stays at
 # the explicit list; growth is a deliberate decision.
-DOMAIN_ADR_NUMBERS = frozenset(list(range(1, 14)) + [23])  # 001-013, 023
+DOMAIN_ADR_NUMBERS = frozenset({
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,  # 001-013
+    23,                                            # ADR-023 empirical RAG-config loop (2026-05-05)
+})
 
 MIN_ADRS = 15
 

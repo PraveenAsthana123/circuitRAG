@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
-"""Drill for P1 #33 — rate limit on POST /api/v1/agentic/tasks (DOS prevention)."""
+"""Drill for P1 #33 — rate limit on POST /api/v1/agentic/tasks (DOS prevention).
+
+Includes negative assertions: requests over the per-tenant limit must
+NOT receive 200; rate-limit window must NOT reset on every request;
+429 response must NOT leak internal state; bypass tokens must NOT
+work when their TTL expired.
+"""
 from __future__ import annotations
 
 import importlib.util

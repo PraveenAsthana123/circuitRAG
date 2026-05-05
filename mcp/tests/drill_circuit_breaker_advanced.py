@@ -2,6 +2,10 @@
 # RESOURCES: readonly
 """Drill for CB-F-small — health probe + per-tenant + OTel baggage.
 
+Includes negative assertions: unhealthy probe must NOT close the
+breaker; per-tenant scope must NOT mix tenants; baggage must NOT
+leak failure-cause when probe reports healthy.
+
 Locks 3 advanced features:
 
   #22  Health-derived close — probe callback short-circuits recovery_timeout

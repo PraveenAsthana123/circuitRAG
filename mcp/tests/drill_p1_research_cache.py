@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
-"""Drill for P1 #21 — ResearchAgent caching (eliminate duplicate fetches)."""
+"""Drill for P1 #21 — ResearchAgent caching (eliminate duplicate fetches).
+
+Includes negative assertions: different topics must NOT share a cache
+slot; cache_max=0 must NOT cache; expired entries must NOT serve
+stale data; cached values must NOT be mutated by callers (deep-copy).
+"""
 from __future__ import annotations
 
 import asyncio

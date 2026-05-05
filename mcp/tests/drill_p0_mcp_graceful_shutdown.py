@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
-"""Drill for P0 #34 — graceful shutdown across all 4 MCP server stubs."""
+"""Drill for P0 #34 — graceful shutdown across all 4 MCP server stubs.
+
+Includes negative assertions: MCP server must NOT drop in-flight
+requests on SIGTERM; new connections must NOT be accepted after
+shutdown signal; servers without graceful-shutdown handler must
+FAIL the drill (regression catch).
+"""
 from __future__ import annotations
 
 import importlib.util

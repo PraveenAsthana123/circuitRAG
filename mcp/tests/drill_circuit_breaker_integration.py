@@ -2,6 +2,11 @@
 # RESOURCES: readonly
 """Drill for CB-E — §41/§47/§48 integrations (#23, #24, #25).
 
+Includes negative assertions: failure-cost metric must NOT
+silently zero on shadow Tier-B fallback; observer must NOT miss
+degradation when only 2 signals fire; integration tests must NOT
+pass when any of the three §41/§47/§48 surfaces is unwired.
+
 Locks 3 cross-cutting integrations:
 
   #23  documind_circuit_breaker_failure_cost_usd_cents_total — Tier-B
