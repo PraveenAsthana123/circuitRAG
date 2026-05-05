@@ -63,22 +63,31 @@ def main() -> int:
         return 1
     print("  ok: default=0.0 (legacy callers unaffected)")
 
-    print("-- 5. NEGATIVE: filter is skipped when min_score == 0.0 --")
+    print("-- 5. NEGATIVE: filter is skipped when threshold == 0.0 --")
     # Skipping when 0.0 is the no-op path. Drilled to lock the optimization
     # so a future contributor doesn't accidentally apply the filter even
     # at threshold 0.0 (which would still drop chunks scored exactly 0,
     # which CAN happen on cold-start/no-embedding cases).
-    if "request.min_score > 0.0" not in retriever_src:
-        print("x retriever must guard the filter with `if request.min_score > 0.0`")
+    # Post-2741a93: the threshold may be EITHER request.min_score (legacy)
+    # OR effective_min_score (when best_config_loader Stage-2 wire is
+    # active and the caller didn't explicitly set min_score). Either form
+    # correctly skips the filter at 0.0.
+    has_legacy = "request.min_score > 0.0" in retriever_src
+    has_effective = "effective_min_score > 0.0" in retriever_src
+    if not (has_legacy or has_effective):
+        print("x retriever must guard the filter with `if (request.min_score|effective_min_score) > 0.0`")
         return 1
-    print("  ok: filter guarded behind min_score > 0.0")
+    print("  ok: filter guarded behind > 0.0")
 
     print("-- 6. NEGATIVE: filter applies AFTER top_k truncation --")
     # The min_score filter must run AFTER the fused top_k slice. Otherwise
     # the filter could drop chunks BEFORE ranking, breaking the contract
     # that callers asking for top_k=5 get the best 5 (subject to floor).
     truncate_idx = retriever_src.find("fused = fused[: request.top_k]")
-    filter_idx = retriever_src.find("if request.min_score > 0.0:")
+    filter_idx = retriever_src.find("if effective_min_score > 0.0:")
+    if filter_idx < 0:
+        # Fall back to legacy form
+        filter_idx = retriever_src.find("if request.min_score > 0.0:")
     if truncate_idx < 0 or filter_idx < 0:
         print("x missing top_k truncation or min_score filter block")
         return 1
