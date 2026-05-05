@@ -189,18 +189,59 @@ def main() -> int:
 
     # Write best-config registry entry
     if report.best_config is not None:
-        best_dict = {
-            "promoted_at_ts": time.time(),
-            "config": asdict(report.best_config),
-            "pass_rate": report.best_pass_rate,
-            "eval_set_size": report.eval_set_size,
-            "search_method": "substring_match (Stage-2)",
-            "next_stage": "Stage-3 — re-rank top 3 configs with RAGAS judge for final promotion",
-        }
-        Path(args.best).parent.mkdir(parents=True, exist_ok=True)
-        with open(args.best, "w", encoding="utf-8") as f:
-            json.dump(best_dict, f, indent=2)
-        log.info("wrote best-config registry → %s", args.best)
+        # Stage-2 promotion-gate wire (per scripts/promote_best_config.py
+        # + CLAUDE.md §38). When PROMOTION_GATE_ENABLED=1, the gate
+        # decides whether to write best_config.json based on:
+        #   - minimum absolute pass_rate
+        #   - minimum margin over runner-up
+        #   - minimum eval_set_size
+        #   - Occam tie-break on identical pass_rates
+        # AND appends every decision to .loop/best_config_history.jsonl
+        # for audit (success OR rejection).
+        #
+        # When the gate is DISABLED, the legacy 'highest wins' write
+        # path runs unchanged — preserving Stage-1 default-deny.
+        #
+        # Per §47 fail-safe: gate import errors fall back to the legacy
+        # write path; never block the empirical run.
+        gate_used = False
+        try:
+            if os.environ.get("PROMOTION_GATE_ENABLED", "").strip() == "1":
+                from promote_best_config import is_available, promote
+                if is_available():
+                    decision = promote(
+                        report_path=args.out,
+                        best_path=args.best,
+                        history_path=str(Path(args.best).parent / "best_config_history.jsonl"),
+                    )
+                    gate_used = True
+                    print(f"\n=== promotion gate ===")
+                    print(f"  promoted: {decision.promoted}")
+                    print(f"  reason:   {decision.reason}")
+                    print(f"  pass_rate={decision.pass_rate:.2f} margin={decision.margin:.2f} "
+                          f"eval_set={decision.eval_set_size}")
+                    if decision.gates_failed:
+                        print(f"  gates_failed: {decision.gates_failed}")
+                    if not decision.promoted:
+                        log.warning("gate REJECTED promotion; legacy best_config left untouched")
+        except Exception as _gate_exc:
+            log.warning("promotion gate skipped: %s", _gate_exc)
+            gate_used = False
+
+        if not gate_used:
+            # Legacy path — gate disabled or errored. Blind-write.
+            best_dict = {
+                "promoted_at_ts": time.time(),
+                "config": asdict(report.best_config),
+                "pass_rate": report.best_pass_rate,
+                "eval_set_size": report.eval_set_size,
+                "search_method": "substring_match (Stage-2)",
+                "next_stage": "Stage-3 — re-rank top 3 configs with RAGAS judge for final promotion",
+            }
+            Path(args.best).parent.mkdir(parents=True, exist_ok=True)
+            with open(args.best, "w", encoding="utf-8") as f:
+                json.dump(best_dict, f, indent=2)
+            log.info("wrote best-config registry → %s (no gate)", args.best)
         print(f"\n=== AutoRAG empirical search complete ===")
         print(f"grid: {report.grid_size} configs × {report.eval_set_size} questions")
         print(f"elapsed: {report.total_elapsed_s:.1f}s")
