@@ -124,21 +124,38 @@ on import errors — silent skip would be a regression.
 
 ## After verdict flips to `earned`
 
-The deliberate next step is operator-driven, NOT autonomous-loop scope:
+**As of 2026-05-05 (commit `4be8498` + ADR-024) the default-flip has
+already happened.** New deploys consume the empirical winner by default;
+operators opt OUT explicitly via `BEST_CONFIG_LOADER_ENABLED=0`.
 
-1. Read `scripts/best_config_loader.py` line 50:
-   ```python
-   BEST_CONFIG_LOADER_ENABLED = os.getenv("BEST_CONFIG_LOADER_ENABLED", "").strip() == "1"
-   ```
-2. Flip the default. One option:
-   ```python
-   BEST_CONFIG_LOADER_ENABLED = os.getenv("BEST_CONFIG_LOADER_ENABLED", "1").strip() == "1"
-   ```
-3. Add a drill that locks the new default-on contract.
-4. Update ADR-023 with a "supersedes ADR-023" note documenting the
-   Stage-3 transition (NEW ADR per §47.3 — never edit accepted ADRs).
-5. Commit + push. Operator-action audit row goes in
-   `.loop/best_config_history.jsonl` via free-form rationale field.
+If you ever need to manually re-do the default-flip cycle (e.g., for a
+new adapter that's at Stage-2 today), the recipe is:
+
+1. Read the env-flag site (e.g. `scripts/best_config_loader.py:50`).
+2. Flip the default from opt-in to opt-out form.
+3. Update the drill that locks the new default-on contract.
+4. Write a NEW ADR superseding the prior one (§47.3 — never edit
+   accepted ADRs; supersede them).
+5. Commit + push. Audit row in `.loop/best_config_history.jsonl`.
+
+ADR-024 is the worked example of this transition for `best_config_loader`.
+
+## Stage-3 GEPA prompt optimization
+
+After the empirical-config loop earned its Stage-3 default-flip, the
+NEXT stage is GEPA prompt optimization for the Gemma council.
+Implementation shipped in commit `6cc6ddd` via `--mode=compile`:
+
+```bash
+make empirical-gepa-preflight              # cheap shape check
+make empirical-gepa-compile                # full compile (10-120 min)
+GEPA_AUTO=heavy make empirical-gepa-compile  # ~60-120 min, exhaustive
+```
+
+The compile invokes `dspy.GEPA().compile()` against the council program
+and persists optimized prompts to `.loop/gepa_optimized_prompts.json`.
+Stage-4 (deferred) wires those optimized prompts back into
+`services/inference-svc/app/services/prompt_repo.py`.
 
 ## Composes with
 

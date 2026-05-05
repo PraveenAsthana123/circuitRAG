@@ -222,3 +222,16 @@ empirical-stage3: ## Show Stage-3-earned verdict (cycles + ratio + diversity)
 	  $(PY) scripts/stage3_earned_check.py
 
 empirical-status: empirical-history empirical-stage3 ## Combined: history + Stage-3 verdict
+
+empirical-gepa-preflight: ## GEPA Stage-2 preflight (cheap, no LLM)
+	DSPY_OPTIMIZER_ENABLED=1 \
+	  $(PY) scripts/run_gepa_empirical.py \
+	    --eval-set .loop/eval_set.jsonl \
+	    --out .loop/gepa_optimized_prompts.json
+
+empirical-gepa-compile: ## GEPA Stage-3 compile against council (10-120 min Ollama)
+	DSPY_OPTIMIZER_ENABLED=1 OLLAMA_HOST=$${OLLAMA_HOST:-http://localhost:11434} \
+	  $(PY) scripts/run_gepa_empirical.py \
+	    --eval-set .loop/eval_set.jsonl \
+	    --out .loop/gepa_optimized_prompts.json \
+	    --mode=compile --auto=$${GEPA_AUTO:-light}
