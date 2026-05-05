@@ -131,34 +131,66 @@ def main() -> int:
             return 1
     print("  ok: high rejection → flapping (correctly identifies gate-vs-writer fight)")
 
-    print("-- 7. POSITIVE: ≥min_cycles + ratio + diverse configs → earned --")
+    print("-- 7. POSITIVE+NEGATIVE: cycles+ratio+diversity → earned; single-winner → stable_single_winner --")
+    # Two sub-cases drilled here:
+    #   7a. Multi-distinct: 12 promotions × 4 distinct configs → earned
+    #   7b. Single-winner: 12 promotions × 1 distinct config → stable_single_winner
+    #   (overfitting evidence, not generalization — operator must
+    #   diversify eval set before trusting Stage-3 default-flip).
     with TemporaryDirectory() as tmp:
         tmp_p = Path(tmp)
         now = time.time()
-        # 12 promotions across 4 distinct configs, 1 rejection — ratio ≈ 0.92
-        rows = []
+
+        # 7a. Multi-distinct → earned
+        rows_multi = []
         for i in range(12):
-            rows.append({
+            rows_multi.append({
                 "promoted": True, "decided_at_ts": now - i,
                 "config": {"chunking_strategy": "rps", "min_score": 0.5,
                            "rerank_enabled": (i % 4 == 0),
                            "retrieval_top_k": 5 + (i % 4) * 5},
             })
-        rows.append({
+        rows_multi.append({
             "promoted": False, "reason": "rejected — gates failed",
             "decided_at_ts": now - 100,
             "gates_failed": ["margin=0.01 < min=0.05"],
         })
-        hp = _make_history(tmp_p, rows)
+        hp = _make_history(tmp_p, rows_multi)
         report = mod.check(history_path=str(hp), min_cycles=10,
                            min_success_ratio=0.8)
         if report.verdict != "earned":
-            print(f"x 12 promotions + ratio 0.92 should be earned; got {report.verdict} ({report.rationale})")
+            print(f"x 7a: multi-distinct must be 'earned'; got {report.verdict} ({report.rationale})")
             return 1
         if report.distinct_winning_configs < 2:
-            print(f"x diversity check should count ≥2 distinct configs; got {report.distinct_winning_configs}")
+            print(f"x 7a: must count ≥2 distinct configs; got {report.distinct_winning_configs}")
             return 1
-    print("  ok: cycles + ratio + diversity → earned")
+
+        # 7b. Single-winner → stable_single_winner (overfitting flag)
+        rows_single = []
+        for i in range(12):
+            rows_single.append({
+                "promoted": True, "decided_at_ts": now - i,
+                "config": {"chunking_strategy": "rps", "min_score": 0.5,
+                           "rerank_enabled": False, "retrieval_top_k": 10},
+            })
+        hp2 = tmp_p / "single.jsonl"
+        hp2.write_text("\n".join(json.dumps(r) for r in rows_single) + "\n", encoding="utf-8")
+        report2 = mod.check(history_path=str(hp2), min_cycles=10,
+                            min_success_ratio=0.8)
+        if report2.verdict != "stable_single_winner":
+            print(f"x 7b: single-winner must be 'stable_single_winner'; got {report2.verdict}")
+            return 1
+        if "overfitting" not in report2.rationale.lower():
+            print(f"x 7b: rationale must cite 'overfitting'; got {report2.rationale!r}")
+            return 1
+
+        # 7c. Operator override — STAGE3_MIN_DISTINCT=1 accepts single-winner
+        report3 = mod.check(history_path=str(hp2), min_cycles=10,
+                            min_success_ratio=0.8, min_distinct=1)
+        if report3.verdict != "earned":
+            print(f"x 7c: min_distinct=1 must accept single-winner as earned; got {report3.verdict}")
+            return 1
+    print("  ok: multi-distinct → earned; single-winner → stable_single_winner; min_distinct=1 override works")
 
     print("-- 8. NEGATIVE: skipped rows are EXCLUDED from success_ratio --")
     # Rationale: skipped means the gate was disabled (env unset / no rows).

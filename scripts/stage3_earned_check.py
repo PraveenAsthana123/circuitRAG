@@ -22,10 +22,16 @@ ALGORITHM:
   1. Load all history rows
   2. Count promoted vs total (excluding skipped — they're env-state, not work)
   3. Verdict:
-     - earned       — promoted >= min_cycles AND ratio >= min_success_ratio
-     - not_earned   — too few cycles
-     - flapping     — promoted occurred but rejection rate too high
-     - cold         — no rows at all (loader never ran)
+     - earned                — promoted >= min_cycles AND ratio >= ratio
+                               AND distinct_winning_configs >= min_distinct
+     - stable_single_winner  — meets cycles + ratio but only 1 distinct
+                               config; eval set never varied → likely
+                               overfitting, not generalization. Operator
+                               must vary eval set or extend cycles before
+                               trusting Stage-3 default-flip.
+     - not_earned            — too few cycles
+     - flapping              — promoted occurred but rejection rate too high
+     - cold                  — no rows at all (loader never ran)
 
 OPERATOR FLOW:
   Run quarterly:
@@ -58,6 +64,13 @@ STAGE3_EARNED_CHECK_ENABLED = os.getenv("STAGE3_EARNED_CHECK_ENABLED", "").strip
 
 DEFAULT_MIN_CYCLES = int(os.getenv("STAGE3_MIN_CYCLES", "10"))
 DEFAULT_MIN_SUCCESS_RATIO = float(os.getenv("STAGE3_MIN_SUCCESS_RATIO", "0.8"))
+# Diversity threshold — Stage-3 needs evidence that the empirical
+# winner generalizes across DIFFERENT evals, not that it overfits to
+# one fixed eval set. Default 2: at least 2 distinct configs must
+# have won across the cycles. Operator can lower to 1 with
+# STAGE3_MIN_DISTINCT=1 if they explicitly accept "stable single
+# winner against fixed eval set" as sufficient.
+DEFAULT_MIN_DISTINCT = int(os.getenv("STAGE3_MIN_DISTINCT", "2"))
 DEFAULT_HISTORY_PATH = os.getenv(
     "BEST_CONFIG_HISTORY_PATH",
     ".loop/best_config_history.jsonl",
@@ -81,6 +94,7 @@ class EarnedReport:
     success_ratio: float = 0.0
     min_cycles_required: int = 0
     min_success_ratio_required: float = 0.0
+    min_distinct_required: int = 0
     distinct_winning_configs: int = 0
     earliest_ts: float = 0.0
     latest_ts: float = 0.0
@@ -103,6 +117,7 @@ def status() -> dict[str, Any]:
         "thresholds": {
             "min_cycles": DEFAULT_MIN_CYCLES,
             "min_success_ratio": DEFAULT_MIN_SUCCESS_RATIO,
+            "min_distinct": DEFAULT_MIN_DISTINCT,
         },
         "history_path": DEFAULT_HISTORY_PATH,
         "next_stage": (
@@ -128,6 +143,7 @@ def check(
     history_path: str | None = None,
     min_cycles: int | None = None,
     min_success_ratio: float | None = None,
+    min_distinct: int | None = None,
 ) -> EarnedReport:
     """Apply the Stage-3-earned heuristic.
 
@@ -143,10 +159,16 @@ def check(
         if min_success_ratio is not None
         else DEFAULT_MIN_SUCCESS_RATIO
     )
+    distinct_threshold = (
+        min_distinct
+        if min_distinct is not None
+        else DEFAULT_MIN_DISTINCT
+    )
     report = EarnedReport(
         decided_at_ts=decided_at,
         min_cycles_required=cycles,
         min_success_ratio_required=ratio_threshold,
+        min_distinct_required=distinct_threshold,
     )
 
     if not is_available():
@@ -230,6 +252,20 @@ def check(
         report.rationale = (
             f"success_ratio={report.success_ratio:.2f} < "
             f"required={ratio_threshold:.2f}; gate is fighting the writer"
+        )
+    elif report.distinct_winning_configs < distinct_threshold:
+        # Cycles + ratio met, but only ONE distinct config has won.
+        # That's not generalization — that's overfitting to a fixed
+        # eval set. Operator must vary the eval set OR explicitly
+        # accept the single-winner case via STAGE3_MIN_DISTINCT=1
+        # before trusting the Stage-3 default-flip.
+        report.verdict = "stable_single_winner"
+        report.rationale = (
+            f"{report.promoted} promotions but only "
+            f"{report.distinct_winning_configs} distinct config(s); "
+            f"need ≥{distinct_threshold} winners across diverse eval "
+            f"sets to prove generalization. Likely overfitting — "
+            f"vary the eval set or set STAGE3_MIN_DISTINCT=1 to accept."
         )
     else:
         report.verdict = "earned"
