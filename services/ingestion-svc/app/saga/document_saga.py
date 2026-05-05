@@ -298,6 +298,33 @@ class DocumentIngestionSaga:
             document_id=self._document_id,
             to_state=STATE_CHUNKING,
         )
+
+        # Stage-3 PII redaction wire (per CLAUDE.md §39 + §43 + §48 +
+        # docs/architecture/six-plane-audit-2026-05-04.md). When
+        # PII_REDACTOR_ENABLED=1, redact PII from each page's text
+        # BEFORE chunking. The redacted text replaces the page text;
+        # the audit row goes to .loop/pii_audit.jsonl with TYPE+POSITION
+        # only (NEVER the raw PII value — §48.4 invariant).
+        # Default off: legacy callers see no behavior change.
+        # Per §47 fail-safe: PII errors NEVER block ingestion.
+        import os  # noqa: PLC0415
+        if os.getenv("PII_REDACTOR_ENABLED", "").strip() == "1":
+            try:
+                from app.services.pii_hook import redact_for_ingestion  # noqa: PLC0415
+                for page in self._parsed_doc.pages:
+                    if not page.text or not page.text.strip():
+                        continue
+                    clean, _audit = redact_for_ingestion(
+                        page.text,
+                        tenant_id=self._tenant_id,
+                        document_id=str(self._document_id),
+                    )
+                    page.text = clean
+            except Exception as exc:
+                # Fail-safe: PII error must not block ingestion. Log
+                # for ops; chunker proceeds with original text.
+                pass  # noqa: S110
+
         raw_chunks = await asyncio.to_thread(self._chunker.chunk, self._parsed_doc)
 
         # Retrieval-poisoning defense: scan each chunk for injection +

@@ -49,10 +49,20 @@ def main() -> int:
     print("-- 2. NEGATIVE: DocumentIngestionSaga UNCHANGED (Stage-3 wires) --")
     if SAGA.exists():
         saga_src = SAGA.read_text(encoding="utf-8")
-        if "pii_hook" in saga_src or "redact_for_ingestion" in saga_src:
-            print("x document_saga has pii_hook reference — Stage-3 hasn't landed yet")
-            return 1
-    print("  ok: saga source unchanged (Stage-2 is purely additive hook module)")
+        # NOTE (post-Stage-3): the saga DOES legitimately call
+        # redact_for_ingestion now — that's Stage-3 wire. We retain
+        # this drill step as a check that Stage-2 hook MODULE itself
+        # didn't modify the saga directly. Stage-2 ships the adapter;
+        # Stage-3 lands the saga edit. Both are legitimate.
+        # Soft check: saga should reference redact_for_ingestion
+        # only inside _step_chunk (Stage-3 wire location).
+        if "redact_for_ingestion" in saga_src:
+            chunk_idx = saga_src.find("async def _step_chunk")
+            redact_idx = saga_src.find("redact_for_ingestion")
+            if chunk_idx < 0 or redact_idx < chunk_idx:
+                print("x redact_for_ingestion call is OUTSIDE _step_chunk — wrong saga location")
+                return 1
+    print("  ok: saga either unchanged OR Stage-3 wire is in the correct _step_chunk location")
 
     print("-- 3. POSITIVE: 3 contract surfaces exported --")
     os.environ.pop("PII_REDACTOR_ENABLED", None)
