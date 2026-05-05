@@ -150,6 +150,46 @@ class HybridRetriever:
                     n_before - n_after, n_after, request.min_score,
                 )
 
+        # Stage-3 BGE rerank wiring (per CLAUDE.md §56 + §49):
+        # When BGE_RERANKER_IN_HOT_PATH=1 AND BGE_RERANKER_ENABLED=1
+        # AND NATIVE_COMPUTE_WRAPPER_ENABLED=1, fire the protected
+        # cross-encoder reranker AFTER min_score floor. Default off:
+        # legacy callers see no behavior change. The wrapper handles
+        # timeout (1500ms) + circuit-breaker + RRF-order fallback.
+        # Per docs/architecture/llvm-mlir-circuit-breaker-2026-05-04.md
+        # — shield-around-blade composition.
+        import os  # noqa: PLC0415
+        if os.getenv("BGE_RERANKER_IN_HOT_PATH", "").strip() == "1":
+            try:
+                from app.services.bge_reranker_protected import (  # noqa: PLC0415
+                    protected_rerank, is_available as _bge_avail,
+                )
+                if _bge_avail() and chunks:
+                    chunks_dicts = [c.model_dump() for c in chunks]
+                    reranked = protected_rerank(
+                        request.query, chunks_dicts,
+                        top_k=request.top_k,
+                    )
+                    # Keep only RetrievedChunk-compatible fields when
+                    # rebuilding (drop the bge_score keyword which is
+                    # additive; preserve via metadata if needed).
+                    rebuilt = []
+                    for d in reranked:
+                        bge_score = d.pop("bge_score", None)
+                        if bge_score is not None:
+                            d.setdefault("metadata", {})["bge_score"] = bge_score
+                        rebuilt.append(RetrievedChunk(**d))
+                    log.info(
+                        "bge_rerank_in_hot_path before=%d after=%d",
+                        len(chunks), len(rebuilt),
+                    )
+                    chunks = rebuilt
+            except Exception as exc:
+                # Fail-safe: never break the request path on rerank
+                # error — log + return original chunks. This is the
+                # reliability shield around the optimization plane.
+                log.warning("bge_rerank_in_hot_path skipped: %s", exc)
+
         latency_ms = (time.monotonic() - start) * 1000
 
         # Record a quality sample so the breaker can notice a corpus trend.
