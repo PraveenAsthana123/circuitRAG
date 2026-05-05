@@ -152,9 +152,21 @@ def _stage3_compile(args, eval_set: list[dict]) -> int:
 
     log.info("invoking GEPA(auto=%s).compile(...)", args.auto)
     try:
+        # GEPA's reflection_lm is the model that proposes new prompt
+        # instructions based on observed traces. Default to the same
+        # local Ollama LM as the program LM — operators with a
+        # stronger reflection LM (gpt-4 / claude-3-opus) can override
+        # via env GEPA_REFLECTION_MODEL.
+        reflection_model = os.environ.get(
+            "GEPA_REFLECTION_MODEL", lm_model,
+        )
+        reflection_lm = dspy.LM(model=reflection_model, api_base=ollama_host)
+        log.info("reflection LM: %s (override via GEPA_REFLECTION_MODEL)",
+                 reflection_model)
         teleprompter = GEPA(
             metric=gepa_metric,
             auto=args.auto,
+            reflection_lm=reflection_lm,
             seed=42,
             track_stats=True,
         )
