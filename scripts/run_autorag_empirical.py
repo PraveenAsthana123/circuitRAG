@@ -67,14 +67,21 @@ def make_simulated_run_rag():
     config grid + real ranking logic.
 
     The simulation rule (2026-05-05 update for content-dependence):
-      - SHORT or BROAD questions (≤8 words) favor low min_score because
+      - SHORT or BROAD questions (≤13 words) favor low min_score because
         they need wide retrieval to catch loose semantic matches.
-      - LONG or SPECIFIC questions (>8 words) favor high min_score
+      - LONG or SPECIFIC questions (>13 words) favor high min_score
         because precision matters more than recall — narrow questions
         suffer from noisy chunks at low floors.
       - rerank_enabled adds +0.3 across all question shapes (always
         helps when latency budget allows).
-      - retrieval_top_k≥10 adds +0.2 for broad questions, 0 for narrow.
+      - retrieval_top_k≥10 adds +0.2 for broad questions, 0.1 for narrow.
+
+    Threshold calibration: empirically (2026-05-05 live run with
+    gemma3:1b-generated Q&A) the question-word-count distribution
+    spans 9-21 words. Threshold 13 gives ~30/70 broad/specific split
+    on real generated content, producing distinct empirical winners
+    across seeds. A threshold ≤8 puts ALL Gemma-generated questions
+    in the specific bucket (no diversity); threshold ≥20 reverses.
 
     Why this matters: WITHOUT content-dependence, every eval set picks
     the same winner regardless of seed → Stage-3-earned check returns
@@ -84,9 +91,11 @@ def make_simulated_run_rag():
     runbook path (docs/runbooks/empirical-loop-stage3-promotion.md).
     """
     def run_rag(question: str, config) -> dict:
-        # Question-shape signal: short/broad vs long/specific
+        # Question-shape signal: short/broad vs long/specific.
+        # Threshold 13 calibrated against gemma3:1b-generated Q&A
+        # distribution (9-21 words observed live 2026-05-05).
         word_count = len((question or "").split())
-        is_specific = word_count > 8
+        is_specific = word_count > 13
 
         # Deterministic synthetic scoring with content-dependent weighting.
         # Better configs return the ground-truth-bearing context as the
