@@ -196,3 +196,29 @@ regression: ## Run regression gate against baseline
 .PHONY: docs-serve
 docs-serve: ## Serve docs/ on port 8000 for local browsing
 	$(PY) -m http.server 8000 --directory docs
+
+# ----------------------------------------------------------------------------
+# Empirical RAG-config promotion loop (ADR-023)
+# ----------------------------------------------------------------------------
+# See:
+#   docs/architecture/empirical-rag-config-loop.md
+#   docs/architecture/adr/023-empirical-rag-config-promotion-loop.md
+#   docs/runbooks/empirical-loop-stage3-promotion.md
+.PHONY: empirical-search empirical-history empirical-stage3 empirical-status
+
+empirical-search: ## Run AutoRAG empirical search + promotion gate
+	AUTORAG_OPTIMIZER_ENABLED=1 PROMOTION_GATE_ENABLED=1 \
+	  $(PY) scripts/run_autorag_empirical.py \
+	    --eval-set .loop/eval_set.jsonl \
+	    --out .loop/autorag_search_report.json \
+	    --best .loop/best_config.json
+
+empirical-history: ## Show last 7 days of promotion-gate decisions
+	BEST_CONFIG_HISTORY_ENABLED=1 \
+	  $(PY) scripts/best_config_history.py --days 7
+
+empirical-stage3: ## Show Stage-3-earned verdict (cycles + ratio + diversity)
+	STAGE3_EARNED_CHECK_ENABLED=1 \
+	  $(PY) scripts/stage3_earned_check.py
+
+empirical-status: empirical-history empirical-stage3 ## Combined: history + Stage-3 verdict
