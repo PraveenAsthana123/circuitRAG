@@ -43,13 +43,19 @@ import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 # Repo root import so libs/py/documind_core is resolvable
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-import asyncpg  # noqa: E402
+# Defer asyncpg import to runtime — cold-import is ~0.5-1s. Module-
+# level import made `audit_verify.py --help` race the drill_scripts_
+# have_help 5s timeout under contended load (snapshot-refresh run).
+# Type checkers still see the symbol via TYPE_CHECKING; runtime imports
+# at first use inside main_async.
+if TYPE_CHECKING:
+    import asyncpg  # noqa: F401
 
 from libs.py.documind_core.audit import _compute_entry_hash  # type: ignore  # noqa: E402
 
@@ -264,6 +270,7 @@ async def _seal_breaks(
 
 
 async def main_async(args: argparse.Namespace) -> int:
+    import asyncpg  # noqa: PLC0415  # deferred — see TYPE_CHECKING note above
     conn = await asyncpg.connect(dsn=_dsn())
     try:
         rows = await _fetch_rows(conn, args.tenant, args.since)

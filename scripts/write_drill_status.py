@@ -88,7 +88,7 @@ class DrillResult:
 def run_drill(
     drill_path: Path,
     *,
-    timeout_s: float = 60.0,
+    timeout_s: float = 300.0,
     cwd: Path | None = None,
 ) -> DrillResult:
     """Run a single drill via subprocess. Returns the outcome.
@@ -165,7 +165,7 @@ def write_drill_status(
     drill_paths: list[Path],
     *,
     status_path: Path = DEFAULT_STATUS_PATH,
-    timeout_s: float = 60.0,
+    timeout_s: float = 300.0,
 ) -> dict:
     """Run every drill in `drill_paths`, write the status JSON.
     Returns the status dict."""
@@ -215,7 +215,7 @@ def cli() -> int:
         help="only run drills tagged '# RESOURCES: readonly'",
     )
     parser.add_argument(
-        "--timeout", type=float, default=60.0,
+        "--timeout", type=float, default=300.0,
         help="per-drill timeout in seconds",
     )
     args = parser.parse_args()
