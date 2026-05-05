@@ -142,14 +142,19 @@ curl http://localhost:8001/api/v1/health/best-config
 
 ## Composes with
 
-- **§38** governance: every promotion logged with version + provenance + actor
-- **§43** drill discipline: 9 drills × 8 steps = 72 step-locks on this chain
-- **§47** fail-safe: every layer of the chain falls back to legacy defaults on error
-- **§48** explainability: `trace.step("best_config_defaults")` audit row in `ask()`
-- **§49** compose-footer: this doc itself is the cross-reference for the chain
-- **§51** forensic substrate: every commit cites Location/Approach/Policies/Verify
-- **§54** no Co-Authored-By trailer: applies
-- **§56** Stage-1/2 6-gate adoption: each adapter went through gate-1 (eval) → gate-5 (drill)
+- `§38` governance: every promotion logged with version + provenance + actor
+- `§43` drill discipline: 9 drills × 8 steps = 72 step-locks on this chain
+- `§47` fail-safe: every layer of the chain falls back to legacy defaults on error
+- `§48` explainability: `trace.step("best_config_defaults")` audit row in `ask()`
+- `§49` compose-footer: this doc itself is the cross-reference for the chain
+- `§51` forensic substrate: every commit cites Location/Approach/Policies/Verify
+- `§54` no Co-Authored-By trailer: applies
+- `§56` Stage-1/2 6-gate adoption: each adapter went through gate-1 (eval) → gate-5 (drill)
+- `scripts/best_config_loader.py` — TTL-cached registry reader
+- `scripts/promote_best_config.py` — gate Stage-1
+- `scripts/best_config_history.py` — audit-trail projection
+- `services/inference-svc/app/services/rag_inference.py` — Stage-2 wire site
+- `services/retrieval-svc/app/services/hybrid_retriever.py` — Stage-2 wire site
 
 ## Commit map
 
