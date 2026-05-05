@@ -348,6 +348,47 @@ class DocumentIngestionSaga:
             except Exception as _exc:
                 # Fail-safe: fall through to default chunker behavior
                 _strategy = None
+
+        # Stage-2 best_config_loader wire (companion to the consumer
+        # wires in rag_inference.ask + HybridRetriever.retrieve, commits
+        # 57a5ad0 + 2a939e6). When BEST_CONFIG_LOADER_ENABLED=1 AND the
+        # primary selector wire above is OFF (or errored → _strategy is
+        # None), seed a minimal strategy from BestConfig.chunking_strategy.
+        # This is a SECONDARY hint, not a primary override:
+        #   - selector enabled + ok → its strat wins
+        #   - selector disabled / errored → fall back to best_config name
+        #   - both disabled → chunker's constructor defaults (legacy)
+        # Per §47 fail-safe: loader errors NEVER raise; chunker just gets
+        # _strategy=None which restores legacy behavior.
+        # Per §49: composes with best_config_loader docstring's Stage-2
+        # contract so this 4th consumer (ingestion saga) joins the chain
+        # alongside ask() and retrieve().
+        if (
+            _strategy is None
+            and _os_chunk.getenv("BEST_CONFIG_LOADER_ENABLED", "").strip() == "1"
+        ):
+            try:
+                import sys as _sys_bc  # noqa: PLC0415
+                _sys_bc.path.insert(0, "/mnt/deepa/rag/scripts")
+                from best_config_loader import (  # noqa: PLC0415
+                    is_available as _bc_avail,
+                    load_best_config as _bc_load,
+                )
+                if _bc_avail():
+                    _bc_cfg = _bc_load()
+                    if _bc_cfg is not None and _bc_cfg.chunking_strategy:
+                        # Minimal strategy dict — chunker accepts the
+                        # name + uses constructor defaults for sizing
+                        # because BestConfig only carries the strategy
+                        # name, not the chunk_size_tokens / overlap.
+                        _strategy = {
+                            "strategy_name": _bc_cfg.chunking_strategy,
+                            "_source": "best_config_loader",
+                        }
+            except Exception:
+                # Fail-safe: any loader error → keep _strategy=None
+                _strategy = None
+
         raw_chunks = await asyncio.to_thread(
             self._chunker.chunk, self._parsed_doc, strategy=_strategy,
         )
