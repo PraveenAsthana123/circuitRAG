@@ -47,7 +47,15 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-BEST_CONFIG_LOADER_ENABLED = os.getenv("BEST_CONFIG_LOADER_ENABLED", "").strip() == "1"
+# Stage-3 default-flip (2026-05-05): default-on after Stage-3-earned
+# verdict landed live with 19 promotions × 2 distinct configs × 1.00
+# success ratio (per docs/runbooks/empirical-loop-stage3-promotion.md
+# + ADR-024 superseding ADR-023). Operators can opt-OUT explicitly
+# by setting BEST_CONFIG_LOADER_ENABLED=0; per §47 fail-safe, file
+# missing/malformed still falls back to legacy un-tuned defaults
+# (min_score=0.0, top_k=10, rerank=False).
+_BEST_CONFIG_LOADER_RAW = os.getenv("BEST_CONFIG_LOADER_ENABLED", "1").strip()
+BEST_CONFIG_LOADER_ENABLED = _BEST_CONFIG_LOADER_RAW != "0"
 BEST_CONFIG_PATH = os.getenv("BEST_CONFIG_PATH", ".loop/best_config.json")
 BEST_CONFIG_TTL_S = float(os.getenv("BEST_CONFIG_TTL_S", "300"))  # 5min cache
 

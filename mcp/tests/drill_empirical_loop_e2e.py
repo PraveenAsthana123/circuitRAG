@@ -151,10 +151,11 @@ def main() -> int:
             return 1
     print("  ok: promotion → write → loader read; cross-component handoff intact")
 
-    print("-- 4. NEGATIVE: chain SURVIVES disabled loader (legacy fallback) --")
-    # When the loader is disabled, the gate's write still produces
-    # a file BUT the loader getters return legacy defaults. Drill
-    # enforces the legacy-fallback path one more time at the e2e seam.
+    print("-- 4. NEGATIVE: chain SURVIVES explicitly-disabled loader (legacy fallback) --")
+    # Per Stage-3 default-flip (2026-05-05): env-unset is now ENABLED.
+    # The "disabled" state is now reached via explicit
+    # BEST_CONFIG_LOADER_ENABLED=0. Drill validates that the OPT-OUT
+    # path still produces legacy defaults regardless of file content.
     with TemporaryDirectory() as tmp:
         tmp_p = Path(tmp)
         best_path = tmp_p / "best.json"
@@ -168,7 +169,7 @@ def main() -> int:
             "pass_rate": 1.0,
         }))
         os.environ["BEST_CONFIG_PATH"] = str(best_path)
-        os.environ.pop("BEST_CONFIG_LOADER_ENABLED", None)
+        os.environ["BEST_CONFIG_LOADER_ENABLED"] = "0"  # explicit opt-out
         loader = _fresh_import("best_config_loader")
         # Disabled → loader returns LEGACY defaults (0.0, 10, False)
         if loader.get_default_min_score() != 0.0:

@@ -65,17 +65,28 @@ def main() -> int:
             return 1
     print("  ok: 8 contract surfaces exported")
 
-    print("-- 4. NEGATIVE: default-deny — load_best_config() returns None when env unset --")
+    print("-- 4. NEGATIVE: post-Stage-3 default-on — env=0 disables, env unset enables --")
+    # Per Stage-3 default-flip (2026-05-05; commit shipping with this
+    # drill update): env-unset is now ENABLED (default-on after
+    # earned-verdict landed live with 19 promotions × 2 distinct
+    # configs). Explicit opt-OUT via BEST_CONFIG_LOADER_ENABLED=0.
+    # See ADR-024 superseding ADR-023.
     os.environ.pop("BEST_CONFIG_LOADER_ENABLED", None)
     spec.loader.exec_module(mod)
+    if not mod.is_available():
+        print("x post-Stage-3: is_available() must be True when env unset (default-on)")
+        return 1
+    # Explicit opt-out
+    os.environ["BEST_CONFIG_LOADER_ENABLED"] = "0"
+    spec.loader.exec_module(mod)
     if mod.is_available():
-        print("x is_available() must be False when env unset")
+        print("x explicit BEST_CONFIG_LOADER_ENABLED=0 must disable")
         return 1
     cfg = mod.load_best_config()
     if cfg is not None:
-        print(f"x load_best_config() must return None when disabled; got {cfg}")
+        print(f"x load_best_config() must return None when explicitly disabled; got {cfg}")
         return 1
-    print("  ok: default-deny preserved")
+    print("  ok: post-Stage-3 default-on; explicit env=0 opts out")
 
     print("-- 5. NEGATIVE: missing file → getters fall back to legacy defaults (§47 fail-safe) --")
     os.environ["BEST_CONFIG_LOADER_ENABLED"] = "1"
