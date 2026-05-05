@@ -343,10 +343,32 @@ def search_config_space(
 
 
 if __name__ == "__main__":
+    import argparse
     import json
     import sys
-    print("scripts/autorag_optimizer.py — Stage-1 AutoRAG empirical search")
-    print(f"Stage-1 opt-in via AUTORAG_OPTIMIZER_ENABLED=1")
-    print()
-    print(json.dumps(status(), indent=2))
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "AutoRAG empirical search engine (Stage-1). Iterates a "
+            "configuration grid over an eval set and ranks configs by "
+            "pass-rate. Library module — typical use is `from "
+            "autorag_optimizer import search_config_space` from "
+            "scripts/run_autorag_empirical.py. CLI prints status() "
+            "and exits."
+        ),
+    )
+    parser.add_argument(
+        "--json", action="store_true",
+        help="Emit status() as JSON only (no header)",
+    )
+    args = parser.parse_args()
+
+    s = status()
+    if args.json:
+        print(json.dumps(s, indent=2))
+    else:
+        print("scripts/autorag_optimizer.py — Stage-1 AutoRAG empirical search")
+        print(f"Stage-1 opt-in via AUTORAG_OPTIMIZER_ENABLED=1")
+        print()
+        print(json.dumps(s, indent=2))
     sys.exit(0)
