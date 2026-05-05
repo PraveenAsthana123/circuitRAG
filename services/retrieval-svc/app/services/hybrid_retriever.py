@@ -163,21 +163,48 @@ class HybridRetriever:
         fused = fused[: request.top_k]
         chunks = [RetrievedChunk(**h) for h in fused]
 
+        # Stage-2 best_config_loader wire (per scripts/best_config_loader.py
+        # + CLAUDE.md §47 + §56). When BEST_CONFIG_LOADER_ENABLED=1 AND the
+        # caller did NOT explicitly set min_score, fall back to the
+        # empirically-best min_score from .loop/best_config.json. Pydantic's
+        # model_fields_set distinguishes "caller omitted" from "caller passed
+        # default" — only the former triggers the override (intent wins).
+        # Per §47 fail-safe: loader errors NEVER block the request path.
+        effective_min_score = request.min_score
+        try:
+            import os as _os_bc  # noqa: PLC0415
+            if _os_bc.getenv("BEST_CONFIG_LOADER_ENABLED", "").strip() == "1":
+                import sys as _sys_bc  # noqa: PLC0415
+                _sys_bc.path.insert(0, "/mnt/deepa/rag/scripts")
+                from best_config_loader import (  # noqa: PLC0415
+                    get_default_min_score as _bc_min,
+                    is_available as _bc_avail,
+                )
+                if _bc_avail() and "min_score" not in request.model_fields_set:
+                    effective_min_score = _bc_min()
+                    log.info(
+                        "best_config_min_score_override request=%.3f effective=%.3f",
+                        request.min_score, effective_min_score,
+                    )
+        except Exception as _bc_exc:
+            # Fail-safe: keep request.min_score on any loader error
+            log.debug("best_config_loader skipped: %s", _bc_exc)
+
         # Per docs/architecture/rag-deep-test-2026-05-04.md — empirical
         # RAG test surfaced that retrieval returns top-K even with
         # zero-match corpus (Q1 "Half-Life 2" returned 5 unrelated
         # chunks). Hard floor on similarity score: chunks below
-        # request.min_score are rejected. Default 0.0 preserves
+        # effective_min_score are rejected. Default 0.0 preserves
         # legacy behavior; callers explicitly pass min_score>0 to
         # enforce quality.
-        if request.min_score > 0.0:
+        if effective_min_score > 0.0:
             n_before = len(chunks)
-            chunks = [c for c in chunks if c.score >= request.min_score]
+            chunks = [c for c in chunks if c.score >= effective_min_score]
             n_after = len(chunks)
             if n_after < n_before:
                 log.info(
                     "min_score_filter dropped=%d kept=%d threshold=%.3f",
-                    n_before - n_after, n_after, request.min_score,
+                    n_before - n_after, n_after, effective_min_score,
                 )
 
         # Stage-2 HyDE wire (per scripts/hyde_adapter.py +
