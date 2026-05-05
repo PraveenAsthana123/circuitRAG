@@ -92,9 +92,12 @@ def main() -> int:
 
     print("-- 6. NEGATIVE: snapshot writes a file; compare-to reads it back --")
     # Use a fresh subdirectory under .loop/outcome_snapshots/ for the drill.
+    # Timeout 300s: snapshot computation walks the full council audit
+    # log + all `git log` history; observed ~4min on contended dev box
+    # 2026-05-05. Bump from 120 → 300 (2.5x worst-case observed live).
     proc = subprocess.run(
         [sys.executable, str(SCRIPT), "snapshot", "--label", "drill-snap"],
-        cwd=REPO, capture_output=True, text=True, timeout=120,
+        cwd=REPO, capture_output=True, text=True, timeout=300,
     )
     if proc.returncode != 0:
         print(f"x step 6: snapshot exited {proc.returncode}: {proc.stderr[:200]}")
