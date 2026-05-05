@@ -52,12 +52,206 @@ def load_eval_set(path: str) -> list[dict]:
     return rows
 
 
+def _stage3_compile(args, eval_set: list[dict]) -> int:
+    """Stage-3 — invoke dspy.GEPA().compile() against the Gemma council.
+
+    Per ADR-024-style transition for the GEPA chain. Composes:
+      scripts/dspy_optimizer.get_council_program() — wraps the council
+      scripts/dspy_optimizer.make_simple_metric()  — substring scorer
+      dspy.teleprompt.GEPA(metric=..., auto=...)   — reflective evolution
+      .compile(program, trainset=examples)         — produces optimized program
+
+    Persists the compiled program's prompt instructions to args.out.
+    Stage-4 (deferred) wires the persisted prompts back into
+    services/inference-svc/app/services/prompt_repo.py.
+
+    EXPENSIVE: depends on --auto budget.
+      light  : ~10-30 min, ~2-3 LLM calls per example
+      medium : ~30-60 min, ~5-10 calls per example
+      heavy  : ~60-120 min, ~15-30 calls per example
+
+    §47 fail-safe: any error during compile writes a status report
+    instead of raising; Stage-2 preflight remains a working fallback.
+    """
+    log.info("=== Stage-3 GEPA compile (mode=%s, auto=%s) ===",
+             args.mode, args.auto)
+    t0 = time.monotonic()
+
+    # Lazy imports — these are heavy (dspy + dspy.GEPA); we don't want
+    # to pay the cold-import on the preflight path.
+    try:
+        import dspy
+        from dspy.teleprompt import GEPA
+    except ImportError as exc:
+        log.error("dspy or dspy.teleprompt.GEPA not importable: %s", exc)
+        report = {
+            "ran_at_ts": time.time(),
+            "status": "stage_3_failed_import",
+            "reason": str(exc),
+            "next_steps": ["pip install -U dspy"],
+        }
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+        return 1
+
+    try:
+        from dspy_optimizer import (
+            get_council_program,
+            make_simple_metric,
+            status as dspy_status,
+        )
+    except Exception as exc:
+        log.error("dspy_optimizer not importable: %s", exc)
+        return 1
+
+    # Configure DSPy LM. dspy_optimizer.status() reports the model.
+    s = dspy_status()
+    lm_model = s.get("lm_model", "ollama_chat/gemma2:9b")
+    ollama_host = s.get("ollama_host", "http://localhost:11434")
+    log.info("configuring DSPy LM: model=%s host=%s", lm_model, ollama_host)
+    try:
+        lm = dspy.LM(model=lm_model, api_base=ollama_host)
+        dspy.configure(lm=lm)
+    except Exception as exc:
+        log.error("dspy LM config failed: %s", exc)
+        return 1
+
+    # Build trainset from eval_set rows. Each row has question +
+    # ground_truth. DSPy expects dspy.Example with .with_inputs().
+    trainset = []
+    for row in eval_set:
+        q = row.get("question", "")
+        gt = row.get("ground_truth", "") or row.get("answer", "")
+        if not q or not gt:
+            continue
+        ex = dspy.Example(question=q, expected=gt).with_inputs("question")
+        trainset.append(ex)
+    log.info("built trainset: %d examples", len(trainset))
+    if not trainset:
+        log.error("trainset empty — eval_set rows missing question/ground_truth")
+        return 1
+
+    # Build the program + metric.
+    try:
+        program = get_council_program()
+        metric = make_simple_metric()
+    except Exception as exc:
+        log.error("get_council_program / make_simple_metric failed: %s", exc)
+        return 1
+
+    # Wrap metric to match GEPA's expected feedback shape.
+    # GEPA's metric receives (gold, pred, trace, pred_name, pred_trace)
+    # and can return either a float OR a dspy.Prediction with .score
+    # + .feedback. Simplest path: return float; GEPA handles the rest.
+    def gepa_metric(gold, pred, trace=None, pred_name=None, pred_trace=None):
+        try:
+            return metric(gold, pred, trace=trace)
+        except Exception:
+            return 0.0
+
+    log.info("invoking GEPA(auto=%s).compile(...)", args.auto)
+    try:
+        teleprompter = GEPA(
+            metric=gepa_metric,
+            auto=args.auto,
+            seed=42,
+            track_stats=True,
+        )
+        compiled = teleprompter.compile(program, trainset=trainset)
+    except Exception as exc:
+        elapsed = time.monotonic() - t0
+        log.error("GEPA compile failed after %.1fs: %s", elapsed, exc)
+        report = {
+            "ran_at_ts": time.time(),
+            "status": "stage_3_compile_failed",
+            "reason": str(exc),
+            "elapsed_s": elapsed,
+            "auto": args.auto,
+            "trainset_size": len(trainset),
+            "next_steps": [
+                "Check Ollama is running and gemma2:9b is pulled",
+                "Try --auto=light first for quick failure feedback",
+                "Inspect dspy.LM compatibility with your Ollama version",
+            ],
+        }
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+        return 1
+
+    elapsed = time.monotonic() - t0
+
+    # Extract optimized prompts from compiled program. The compiled
+    # program is a dspy.Module; its predictors carry the tuned signature
+    # instructions. We persist the instruction string per predictor.
+    optimized_prompts: dict = {}
+    try:
+        for name, pred in compiled.named_predictors():
+            sig = getattr(pred, "signature", None)
+            if sig is not None:
+                optimized_prompts[name] = {
+                    "instructions": getattr(sig, "instructions", ""),
+                    "fields": list(getattr(sig, "fields", {}).keys()) if hasattr(sig, "fields") else [],
+                }
+    except Exception as exc:
+        log.warning("could not extract named_predictors: %s", exc)
+
+    report = {
+        "ran_at_ts": time.time(),
+        "status": "stage_3_compiled",
+        "eval_set_size": len(eval_set),
+        "trainset_size": len(trainset),
+        "auto": args.auto,
+        "elapsed_s": elapsed,
+        "lm_model": lm_model,
+        "optimized_prompts": optimized_prompts,
+        "next_stage": (
+            "Stage-4 — wire optimized_prompts back into "
+            "services/inference-svc/app/services/prompt_repo.py; "
+            "drill the version bump; A/B against baseline council prompts"
+        ),
+        "summary": (
+            f"GEPA compiled in {elapsed:.1f}s with auto={args.auto}; "
+            f"{len(optimized_prompts)} predictor(s) tuned"
+        ),
+    }
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    with open(args.out, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    log.info("wrote Stage-3 compile report → %s", args.out)
+    print(f"\n=== GEPA Stage-3 compile complete ===")
+    print(f"  elapsed: {elapsed:.1f}s (auto={args.auto})")
+    print(f"  trainset: {len(trainset)} examples")
+    print(f"  predictors tuned: {len(optimized_prompts)}")
+    print(f"\nReport saved to {args.out}")
+    return 0
+
+
 def main() -> int:
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--eval-set", default=".loop/eval_set.jsonl")
     parser.add_argument("--out", default=".loop/gepa_optimized_prompts.json")
     parser.add_argument("--max-iters", type=int, default=3)
+    parser.add_argument(
+        "--mode",
+        choices=["preflight", "compile"],
+        default="preflight",
+        help=(
+            "preflight (default): Stage-2 placeholder — measures baseline "
+            "and writes shape report; cheap (<1s), no LLM cost. "
+            "compile: Stage-3 — invokes dspy.GEPA().compile() against the "
+            "Gemma council program. EXPENSIVE: ~30-90 min wall-clock + "
+            "Ollama compute. Persists optimized prompts to --out."
+        ),
+    )
+    parser.add_argument(
+        "--auto",
+        choices=["light", "medium", "heavy"],
+        default="light",
+        help="GEPA compute budget. light=quick, heavy=thorough.",
+    )
     args = parser.parse_args()
 
     if not os.environ.get("DSPY_OPTIMIZER_ENABLED"):
@@ -103,10 +297,12 @@ def main() -> int:
         log.info("wrote placeholder report → %s", args.out)
         return 0
 
-    # GEPA compile path — full empirical run requires Ollama up + LM
-    # configured + dspy.GEPA available. For Stage-2 we shape the
-    # report and document Stage-3 promotion steps.
-    log.info("=== Stage-2 GEPA run (preflight only — full compile is Stage-3) ===")
+    # Stage-3 compile path: actually invoke dspy.GEPA().compile().
+    if args.mode == "compile":
+        return _stage3_compile(args, eval_set)
+
+    # Stage-2 preflight path (default): no LLM cost, just shape report.
+    log.info("=== Stage-2 GEPA preflight (use --mode=compile for Stage-3) ===")
     t0 = time.monotonic()
 
     # Substring metric — fast, cheap, real signal
