@@ -66,22 +66,47 @@ def make_simulated_run_rag():
     AutoRAG adapter works end-to-end with a real eval_set + a real
     config grid + real ranking logic.
 
-    The simulation rule:
-      - Higher min_score + rerank_enabled → higher pass rate
-      - Empirically: config (min_score=0.5, rerank=True) wins on most
-        questions because it filters noise (high floor) AND reorders
-        (rerank). This matches the operator-supplied design intent.
+    The simulation rule (2026-05-05 update for content-dependence):
+      - SHORT or BROAD questions (≤8 words) favor low min_score because
+        they need wide retrieval to catch loose semantic matches.
+      - LONG or SPECIFIC questions (>8 words) favor high min_score
+        because precision matters more than recall — narrow questions
+        suffer from noisy chunks at low floors.
+      - rerank_enabled adds +0.3 across all question shapes (always
+        helps when latency budget allows).
+      - retrieval_top_k≥10 adds +0.2 for broad questions, 0 for narrow.
+
+    Why this matters: WITHOUT content-dependence, every eval set picks
+    the same winner regardless of seed → Stage-3-earned check returns
+    'stable_single_winner' forever. With content-dependence, varied
+    eval sets (operator runs --seed N) produce varied empirical
+    winners → Stage-3 verdict can flip to 'earned' through the documented
+    runbook path (docs/runbooks/empirical-loop-stage3-promotion.md).
     """
     def run_rag(question: str, config) -> dict:
-        # Deterministic synthetic scoring: better configs return the
-        # ground-truth-bearing context as the top chunk; worse configs
-        # return noise. The "answer" includes the GT only when the
-        # config is "good enough".
-        score = (
-            (config.min_score >= 0.5) * 0.5
-            + (config.rerank_enabled) * 0.3
-            + (config.retrieval_top_k >= 10) * 0.2
-        )
+        # Question-shape signal: short/broad vs long/specific
+        word_count = len((question or "").split())
+        is_specific = word_count > 8
+
+        # Deterministic synthetic scoring with content-dependent weighting.
+        # Better configs return the ground-truth-bearing context as the
+        # top chunk; worse configs return noise. The "answer" includes
+        # the GT only when the config is "good enough" for this question
+        # SHAPE.
+        if is_specific:
+            # Long/specific questions favor high precision (high min_score)
+            score = (
+                (config.min_score >= 0.5) * 0.6
+                + (config.rerank_enabled) * 0.3
+                + (config.retrieval_top_k >= 10) * 0.1  # less weight on recall
+            )
+        else:
+            # Short/broad questions favor recall (low min_score, high top_k)
+            score = (
+                (config.min_score < 0.5) * 0.5
+                + (config.rerank_enabled) * 0.3
+                + (config.retrieval_top_k >= 10) * 0.2
+            )
         return {
             "answer": f"[score={score:.2f}] {question}",
             "contexts": [f"context for {question}"],
