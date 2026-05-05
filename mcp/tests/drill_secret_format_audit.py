@@ -55,6 +55,8 @@ REPO = Path(__file__).resolve().parents[2]
 
 EXCLUDE_DIRS = {
     ".git", "node_modules", ".next", ".next-prod", ".venv", "venv",
+    ".venv-tts",  # 2026-05-05: TTS-specific venv at /mnt/deepa/rag/.venv-tts
+                  # contains litellm test fixtures with sk-* shaped keys
     "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache",
     "data", ".loop", ".runtime", ".playwright-mcp", "htmlcov",
     ".turbo", ".vite", "dist", "build", ".eslintcache",
