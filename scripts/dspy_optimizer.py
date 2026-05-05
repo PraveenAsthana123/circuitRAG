@@ -202,3 +202,31 @@ def make_simple_metric():
         return 1.0 if expected and expected in answer else 0.0
 
     return metric
+
+
+if __name__ == "__main__":
+    import argparse
+    import json as _json
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "DSPy + GEPA prompt-optimizer adapter (Stage-1). Wraps "
+            "scripts/gemma_agent_council.run_council as a dspy.Module so "
+            "GEPA can reflectively evolve the council's prompts. Library "
+            "module — typical use is `from dspy_optimizer import ...` from "
+            "scripts/run_gepa_empirical.py. CLI prints status() and exits."
+        ),
+    )
+    parser.add_argument(
+        "--json", action="store_true",
+        help="Emit status() as JSON instead of pretty-print",
+    )
+    args = parser.parse_args()
+    s = status()
+    if args.json:
+        print(_json.dumps(s, indent=2))
+    else:
+        print(f"scripts/dspy_optimizer.py — Stage-1 DSPy + GEPA adapter")
+        print(f"Stage-1 opt-in via DSPY_OPTIMIZER_ENABLED=1")
+        print()
+        print(_json.dumps(s, indent=2))

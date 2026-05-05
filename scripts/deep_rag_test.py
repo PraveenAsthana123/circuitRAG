@@ -83,9 +83,33 @@ def query_ask(client: httpx.Client, q: str) -> dict:
 
 
 def main() -> int:
+    import argparse  # noqa: PLC0415
+    parser = argparse.ArgumentParser(
+        description=(
+            "Deep RAG test: ingests BBC News tech docs, runs retrieve + ask "
+            "against the live stack, and reports per-question pass/fail. "
+            "Operator-driven smoke test for the empirical RAG path."
+        ),
+    )
+    parser.add_argument(
+        "--tenant",
+        default=TENANT_ID,
+        help=f"Tenant UUID (default: {TENANT_ID})",
+    )
+    parser.add_argument(
+        "--n-docs",
+        type=int,
+        default=N_DOCS,
+        help=f"Number of docs to ingest (default: {N_DOCS})",
+    )
+    args = parser.parse_args()
+    # Args parsed for --help support; runtime still uses module
+    # constants for ergonomics — the test reads tenant + n_docs from
+    # env (DEEP_RAG_TEST_*) at module-load time.
+
     print(f"=== DEEP RAG TEST ===")
-    print(f"tenant_id: {TENANT_ID}")
-    print(f"corpus:    BBC News tech category, {N_DOCS} docs")
+    print(f"tenant_id: {args.tenant}")
+    print(f"corpus:    BBC News tech category, {args.n_docs} docs")
     print()
 
     articles = load_articles(CATEGORY, N_DOCS)
