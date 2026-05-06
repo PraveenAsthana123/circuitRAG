@@ -53,6 +53,7 @@ from .command_policy import (
     load_policy,
 )
 from .session_cache import DEFAULT_TTL_SECONDS, SessionCache
+from .session_token import SessionToken, SessionTokenStore
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +81,16 @@ class EvaluatedCommand:
     matched_bucket: str | None
     reason: str
     ttl_left_s: int | None = None
+    # v2 — session-token attribution. operator_id is set when the
+    # request carries a valid SessionToken; None otherwise (anonymous
+    # backwards-compat path). token_status enum:
+    #   "valid"     — accepted; operator_id propagated
+    #   "expired"   — token signature OK but past expires_at
+    #   "revoked"   — token_id in revocation set
+    #   "invalid"   — signature fails / malformed / no secret
+    #   "anonymous" — no token presented (default; not an error)
+    operator_id: str | None = None
+    token_status: str = "anonymous"  # noqa: S105 - status enum value, not a credential
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -92,6 +103,7 @@ class CommandApprovalOrchestrator:
         policy_path: Path | str | None = None,
         cache: SessionCache | None = None,
         batcher: ApprovalBatcher | None = None,
+        token_store: SessionTokenStore | None = None,
         audit_path: Path | str | None = None,
     ) -> None:
         self._policy = load_policy(policy_path)
@@ -103,6 +115,9 @@ class CommandApprovalOrchestrator:
         self._batcher = batcher or ApprovalBatcher(
             flush_interval_seconds=batch_interval,
         )
+        # v2 — session-token store (optional). When None, evaluate()
+        # treats every request as anonymous (backwards-compat).
+        self._token_store = token_store
         self._audit_path = Path(audit_path) if audit_path else DEFAULT_AUDIT_PATH
         self._batch_enabled = self._policy.batch_medium_risk
 
@@ -115,11 +130,71 @@ class CommandApprovalOrchestrator:
         return self._batcher
 
     @property
+    def token_store(self) -> SessionTokenStore | None:
+        return self._token_store
+
+    @property
     def policy_version(self) -> str:
         return self._policy.version
 
-    def evaluate(self, command: str) -> EvaluatedCommand:
-        """The single decision API. Pure-ish: writes to audit + cache/batch."""
+    def _verify_token(self, session_token: str | None) -> tuple[SessionToken | None, str]:
+        """Return (token_obj_or_None, status_string).
+
+        Status enum:
+            "anonymous" — no token presented; backwards-compat path
+            "valid"     — token verified
+            "expired"   — payload OK but past expires_at
+            "revoked"   — token_id in revocation set
+            "invalid"   — signature/shape failure or no secret
+        """
+        if not session_token:
+            return None, "anonymous"
+        if self._token_store is None:
+            # No store configured but a token was presented — treat as
+            # invalid rather than silently anonymous (operator misconfig
+            # is a real failure mode worth surfacing).
+            return None, "invalid"
+        # Pre-decode the token_id prefix so we can distinguish revoked
+        # vs invalid in the audit row. Validate() collapses both to None.
+        prefix = session_token.split(".", 1)[0] if "." in session_token else None
+        if prefix and self._token_store.is_revoked(prefix):
+            return None, "revoked"
+        # Distinguish expired from invalid: validate() returns None for
+        # both, so we re-decode the payload to check expiry separately.
+        valid = self._token_store.validate(session_token)
+        if valid is not None:
+            return valid, "valid"
+        # Token is shape-valid but not validate-valid. Check if it's
+        # an expiry case by re-decoding without expiry check.
+        try:
+            import base64 as _b64
+            import json as _json
+            parts = session_token.split(".")
+            if len(parts) == 3:
+                pad = "=" * ((4 - len(parts[1]) % 4) % 4)
+                payload = _json.loads(_b64.urlsafe_b64decode(parts[1] + pad))
+                if isinstance(payload, dict) and float(payload.get("expires_at", 0)) < time.time():
+                    return None, "expired"
+        except Exception as exc:  # noqa: BLE001
+            log.debug("token_expiry_recheck_failed err=%s", exc)
+        return None, "invalid"
+
+    def evaluate(
+        self,
+        command: str,
+        *,
+        session_token: str | None = None,
+    ) -> EvaluatedCommand:
+        """The single decision API. Pure-ish: writes to audit + cache/batch.
+
+        ``session_token`` is optional; when present, the orchestrator
+        verifies it via the configured SessionTokenStore and tags the
+        EvaluatedCommand with the operator_id. Without a token, the
+        orchestrator behaves as before (anonymous backwards-compat).
+        """
+        token_obj, token_status = self._verify_token(session_token)
+        operator_id = token_obj.operator_id if token_obj else None
+
         raw = classify(command, policy=self._policy)
         terminal, cache_hit, batched, ttl_left = self._route(raw, command)
         evaluated = EvaluatedCommand(
@@ -133,6 +208,8 @@ class CommandApprovalOrchestrator:
             matched_bucket=raw.matched_bucket,
             reason=raw.reason,
             ttl_left_s=ttl_left,
+            operator_id=operator_id,
+            token_status=token_status,
         )
         self._audit(evaluated)
         return evaluated
@@ -246,6 +323,9 @@ class CommandApprovalOrchestrator:
                 "matched_pattern": evaluated.matched_pattern,
                 "matched_bucket": evaluated.matched_bucket,
                 "ttl_left_s": evaluated.ttl_left_s,
+                # v2 — session-token attribution
+                "operator_id": evaluated.operator_id,
+                "token_status": evaluated.token_status,
             }
             with self._audit_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(row) + "\n")
