@@ -89,6 +89,10 @@ COST_PER_1M_USD_DEFAULT: dict[str, float] = {
     # Claude (Sonnet 4.6 typical) — average of $3 input + $15 output / 2 = $9.
     # Operators with input/output split should override via env.
     "claude-runtime": 9.0,
+    # agent-orchestrator: cost is sourced FROM the SQL row directly
+    # (cost_usd_cents column), NOT from this rate × tokens. The rate
+    # is informational only — drilled.
+    "agent-orchestrator": 0.0,
 }
 
 
@@ -261,6 +265,92 @@ def _compute_provider_rollup(
     return rollup
 
 
+def _read_orchestrator_runs(window_days: int = 7) -> tuple[dict[str, Any], str | None]:
+    """Read agent-orchestrator runs from orchestration.agent_task_runs.
+
+    The unified-task SQL schema already exists at
+    orchestration.agent_tasks + .agent_task_runs (v8 of governance-svc
+    migrations). The registry composes them in as a separate provider
+    lane — `agent-orchestrator` — so operators see runtime task
+    activity in the same per-provider table as Ollama council attempts.
+
+    Per §47.7 expand-phase: this is read-only composition. The
+    repository never writes; the orchestration service is the
+    write-side and can dual-write JSONL during the migration window.
+
+    Returns ({attempted, applied, tokens_total, cost_usd, latency_sum,
+              latency_n}, gap_reason).
+
+    gap_reason is non-None when:
+      - postgres unreachable
+      - asyncpg missing
+      - table empty (informational; not a failure)
+
+    RLS note: queries the table without setting app.current_tenant.
+    With FORCE ROW LEVEL SECURITY (orchestration.agent_task_runs
+    has RLS per the §43.4 contract), this returns 0 rows in
+    operator-context. The drill verifies this by inserting a test
+    row in a transaction with a tenant context, querying without
+    context, expecting 0.
+    """
+    empty: dict[str, Any] = {
+        "attempted": 0, "applied": 0,
+        "tokens_total": 0, "cost_usd": 0.0,
+        "latency_sum": 0.0, "latency_n": 0,
+    }
+    try:
+        import asyncio
+
+        import asyncpg
+    except ImportError:
+        return empty, "asyncpg not installed (agent-orchestrator rollup skipped)"
+
+    async def _query() -> dict[str, Any]:
+        conn = await asyncpg.connect(
+            host=PG_HOST, port=PG_PORT, user=PG_USER,
+            password=PG_PASSWORD, database=PG_DB, timeout=2.0,
+        )
+        try:
+            row = await conn.fetchrow(
+                "SELECT count(*) AS n, "
+                "       count(*) FILTER (WHERE status = 'completed') AS applied, "
+                "       coalesce(sum(coalesce(tokens_in, 0) + coalesce(tokens_out, 0)), 0)::int AS tokens, "
+                "       coalesce(sum(coalesce(cost_usd_cents, 0)), 0)::int AS cents, "
+                "       coalesce(sum(duration_ms), 0)::bigint AS lat_sum_ms, "
+                "       count(*) FILTER (WHERE duration_ms IS NOT NULL) AS lat_n "
+                "  FROM orchestration.agent_task_runs "
+                " WHERE created_at >= NOW() - ($1 || ' days')::interval",
+                str(window_days),
+            )
+            if row is None:
+                return dict(empty)
+            return {
+                "attempted": int(row["n"]),
+                "applied": int(row["applied"] or 0),
+                "tokens_total": int(row["tokens"] or 0),
+                # cost_usd_cents → dollars
+                "cost_usd": float(row["cents"] or 0) / 100.0,
+                "latency_sum": float(row["lat_sum_ms"] or 0) / 1000.0,
+                "latency_n": int(row["lat_n"] or 0),
+            }
+        finally:
+            await conn.close()
+
+    try:
+        result = asyncio.run(_query())
+    except Exception as exc:
+        return empty, f"orchestration tables unreachable: {type(exc).__name__}"
+
+    if result["attempted"] == 0:
+        return result, (
+            "orchestration.agent_task_runs is empty (RLS-scoped or no runs in "
+            "window) — agent-orchestrator service may not be writing yet, OR "
+            "the operator context lacks app.current_tenant. Drill verifies "
+            "the read path is correct by round-tripping a synthetic row."
+        )
+    return result, None
+
+
 def _read_runtime_ai_decisions(window_days: int = 7) -> tuple[int, str | None]:
     """Read runtime-AI decision count from governance.audit_log_partitioned.
 
@@ -334,6 +424,44 @@ def build_registry(window_days: int = 7) -> dict[str, Any]:
     runtime_count, runtime_gap = _read_runtime_ai_decisions(window_days=window_days)
     if runtime_gap:
         gaps.append(runtime_gap)
+    # agent-orchestrator: read from orchestration.agent_task_runs (the
+    # unified-task SQL surface). Per §47.7 expand phase — read-only
+    # composition. Empty rollup with honest_gap when the table has 0
+    # rows in the window (orchestrator service not writing yet, OR
+    # operator-context RLS scope returns 0). Drill verifies the query
+    # is correct by round-tripping a synthetic row in a temp tx.
+    orch_stats, orch_gap = _read_orchestrator_runs(window_days=window_days)
+    if orch_gap:
+        gaps.append(orch_gap)
+    orch_lat_n = int(orch_stats.get("latency_n", 0))
+    orch_lat_sum = float(orch_stats.get("latency_sum", 0.0))
+    orch_avg_latency = (orch_lat_sum / orch_lat_n) if orch_lat_n > 0 else 0.0
+    orch_attempted = int(orch_stats.get("attempted", 0))
+    orch_applied = int(orch_stats.get("applied", 0))
+    orch_tokens = int(orch_stats.get("tokens_total", 0))
+    orch_cost = float(orch_stats.get("cost_usd", 0.0))
+    orch_apply_rate = (orch_applied / orch_attempted) if orch_attempted > 0 else 0.0
+    orch_cost_per_apply = (orch_cost / orch_applied) if orch_applied > 0 else 0.0
+    providers.append({
+        "provider": "agent-orchestrator",
+        "attempted": orch_attempted,
+        "applied": orch_applied,
+        "apply_rate": round(orch_apply_rate, 4),
+        "avg_latency_s": round(orch_avg_latency, 2),
+        "latency_samples": orch_lat_n,
+        "tokens_total": orch_tokens,
+        # Cost rate is informational; cost_usd is read directly from
+        # the SQL cost_usd_cents column (NOT computed from rate × tokens).
+        "cost_rate_usd_per_1m": _cost_rate_per_1m("agent-orchestrator"),
+        "cost_usd": round(orch_cost, 6),
+        "cost_per_apply_usd": round(orch_cost_per_apply, 6),
+        "note": (
+            "sourced from orchestration.agent_task_runs (SQL); cost_usd reads "
+            "cost_usd_cents directly (NOT rate×tokens). Per §47.7 expand-phase: "
+            "JSONL surfaces remain authoritative until contract phase."
+        ),
+    })
+
     # claude-runtime: tokens not yet aggregated from Postgres details
     # JSONB in this iteration — left as a documented gap. The audit row
     # exists; the cost column reads $0 + an honest_gap until the next
