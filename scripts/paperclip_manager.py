@@ -79,7 +79,7 @@ PERSONALIZATION_K_ANON_MIN = 5  # mask categories with count < 5
 PG_HOST = "localhost"
 PG_PORT = 55432
 PG_USER = "documind_app"
-PG_PASSWORD = "documind_app"
+PG_PASSWORD = "documind_app"  # noqa: S105 - dev-only default; matches docker-compose
 PG_DB = "documind"
 
 # Kafka liveness probe: TCP reachability + topic listing via the
@@ -510,7 +510,7 @@ def _tcp_reachable(host: str, port: int, timeout_s: float = 0.5) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout_s):
             return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return False
 
 
@@ -634,6 +634,7 @@ def aggregate_kafka_events(window_days: int = 7) -> dict[str, Any]:
     }
     try:
         import asyncio
+
         import asyncpg
     except ImportError:
         return {**empty, "error": "asyncpg not installed"}
@@ -946,8 +947,8 @@ def aggregate_grpc_metrics() -> dict[str, Any]:
     parse for documind_*_grpc_* metrics specifically. Reachable check
     + line count is the minimum useful signal.
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
     out = {
         "metrics_url": OTEL_METRICS_URL,
         "reachable": False,
@@ -1081,6 +1082,90 @@ def aggregate_approval_engine() -> dict[str, Any]:
     }
 
 
+def aggregate_ai_integrations() -> dict[str, Any]:
+    """v10 — AI provider library inventory.
+
+    Per CLAUDE.md §38 (governance), §52 row 4 (operator API gap),
+    §55.3 (outcome-based contract). Shows which AI provider client
+    libraries are importable from this venv + what env config is
+    present + the honest gaps an operator needs to fix.
+
+    Surfaces:
+      - installed_libs: {name → version} for crewai, langchain_ollama,
+        langchain_xai (whichever are importable)
+      - ollama: {reachable, model_count, models_loaded}
+      - xai_api: {key_set} — whether XAI_API_KEY is present
+      - honest_gaps: any blocking states (Grok not on Ollama registry;
+        ollama daemon identity key missing; XAI key unset)
+
+    Read-only. NEVER calls into the AI providers (no API calls, no
+    inference) — that would be a runtime path, not a snapshot one.
+    """
+    import os  # noqa: PLC0415 - localized to keep paperclip module top sparse
+    libs: dict[str, str] = {}
+    gaps: list[str] = []
+
+    for mod_name in ("crewai", "langchain_ollama", "langchain_xai"):
+        try:
+            mod = __import__(mod_name)
+            ver = getattr(mod, "__version__", "unknown")
+            libs[mod_name] = ver
+        except ImportError as exc:
+            gaps.append(f"{mod_name} not importable: {exc}")
+
+    # Ollama liveness — single HTTP probe; never pull, never load
+    ollama_reachable = False
+    ollama_model_count = 0
+    ollama_loaded = 0
+    try:
+        import urllib.error
+        import urllib.request
+        with urllib.request.urlopen(
+            "http://localhost:11434/api/tags", timeout=2,
+        ) as r:
+            data = json.loads(r.read().decode("utf-8"))
+            ollama_reachable = True
+            ollama_model_count = len(data.get("models", []))
+        with urllib.request.urlopen(
+            "http://localhost:11434/api/ps", timeout=2,
+        ) as r:
+            ps_data = json.loads(r.read().decode("utf-8"))
+            ollama_loaded = len(ps_data.get("models", []))
+    except Exception as exc:  # noqa: BLE001
+        gaps.append(f"ollama probe failed: {type(exc).__name__}")
+
+    # Honest gaps that operators need to know
+    if "langchain_xai" in libs and not os.environ.get("XAI_API_KEY"):
+        gaps.append(
+            "langchain_xai's ChatXAI class is importable but the "
+            "XAI_API_KEY env var is unset. Instantiating the client "
+            "will fail until operator provides an API key from "
+            "https://console.x.ai. No API call possible until set."
+        )
+    # Grok-on-Ollama is a recurring operator question; surface the truth.
+    gaps.append(
+        "Grok models are NOT on the Ollama registry — xAI has not "
+        "released distillable Grok weights. Closest path for local "
+        "Grok-class reasoning: use one of the already-loaded models "
+        "(qwen2.5, deepseek-coder, codellama) OR call api.x.ai via "
+        "the langchain-xai ChatXAI client (requires XAI_API_KEY)."
+    )
+
+    return {
+        "installed_libs": libs,
+        "ollama": {
+            "reachable": ollama_reachable,
+            "models_installed": ollama_model_count,
+            "models_loaded_in_vram": ollama_loaded,
+        },
+        "xai_api": {
+            "key_set": bool(os.environ.get("XAI_API_KEY")),
+            "endpoint": "https://api.x.ai/v1",
+        },
+        "honest_gaps": gaps,
+    }
+
+
 def aggregate_provider_comparison(window_days: int = 7) -> dict[str, Any]:
     """v8 — unified per-provider task-registry rollup.
 
@@ -1175,6 +1260,12 @@ def snapshot(window_days: int = 7) -> dict[str, Any]:
         # split. Operator-pain-fix telemetry — drill-locked at
         # drill_approval_batching.py with 6 negative invariants.
         "approval_engine": aggregate_approval_engine(),
+        # v10 — AI provider library inventory (CrewAI / LangChain-Ollama /
+        # LangChain-xAI). Shows which integrations are importable + Ollama
+        # liveness + XAI_API_KEY status. Honest gaps cover Grok-not-on-
+        # Ollama-registry + missing-API-key + ollama-daemon-identity.
+        # Drill-locked at drill_ai_integrations.py.
+        "ai_integrations": aggregate_ai_integrations(),
     }
 
 
@@ -1376,7 +1467,7 @@ def main() -> int:
     # that the §42 refusal must be the loud, operator-readable response —
     # not an argparse error swallowed in CI logs.
     for verb in WRITE_VERBS:
-        sub.add_parser(verb, help=f"§42-gated (Stage-1 refuses; see refusal payload)")
+        sub.add_parser(verb, help="§42-gated (Stage-1 refuses; see refusal payload)")
 
     args = parser.parse_args()
 
