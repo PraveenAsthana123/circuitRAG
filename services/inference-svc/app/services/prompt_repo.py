@@ -254,3 +254,73 @@ class DbBackedPromptBuilder:
         return PromptBuilder({name: tmpl for name, tmpl in self._cache.items()}).build(
             template_name=template_name, query=query, chunks=chunks
         )
+
+    def select_canary_version(
+        self,
+        *,
+        template_name: str,
+        tenant_id: str | None,
+    ) -> str:
+        """Stage-7 GEPA canary helper (tenant-sticky hash routing).
+
+        Returns either `template_name` (baseline) or `<template_name>_gepa-<ts>`
+        (the GEPA-tuned alias registered by the Stage-5 overlay + Path B).
+
+        Default-deny: when GEPA_CANARY_ENABLED is unset OR GEPA_CANARY_PERCENT
+        is 0 OR no gepa-aliased version exists in cache, returns the
+        baseline name unchanged. Existing callers (`build(template_name=...)`)
+        see no behavior change unless the operator opts in.
+
+        Routing semantics:
+          * tenant-sticky: hash(tenant_id) % 100 < GEPA_CANARY_PERCENT → gepa version
+          * Same tenant always gets the same version (A/B observability)
+          * Tenant=None → never canary (un-attributable traffic stays baseline)
+
+        WIRING (deferred): operators wire this into rag_inference.ask
+        when ready by replacing `template_name=self._default_prompt`
+        with `template_name=self._prompts.select_canary_version(
+            template_name=self._default_prompt, tenant_id=tenant_id)`.
+        Wiring is a separate commit because it changes the runtime
+        prompt-lookup path — operator decision territory.
+
+        Per §47 fail-safe: hash errors / parsing errors / cache lookups
+        all fall back to the baseline name. NEVER raises.
+
+        Composes with:
+          scripts/promote_gepa_prompts.py — produces the artifact + alias
+          docs/architecture/gepa-chain-status-and-stage6-blocker.md
+          §43 drill — drill_gepa_canary_routing_stage7
+        """
+        import os
+        if os.environ.get("GEPA_CANARY_ENABLED", "").strip() != "1":
+            return template_name
+        try:
+            percent = int(os.environ.get("GEPA_CANARY_PERCENT", "0").strip())
+        except ValueError:
+            return template_name
+        if percent <= 0:
+            return template_name
+        if percent > 100:
+            percent = 100
+        # Find the gepa-aliased version for this template_name. Cache
+        # keys are like `<template>_gepa-<ts>`; pick the most recent.
+        gepa_keys = [
+            k for k in self._cache.keys()
+            if k.startswith(f"{template_name}_gepa-")
+        ]
+        if not gepa_keys:
+            return template_name
+        # Most recent by tag (lexicographic on int suffix)
+        gepa_keys.sort()
+        latest_gepa = gepa_keys[-1]
+        # Tenant-sticky hash routing. Tenant=None never canaries.
+        if not tenant_id:
+            return template_name
+        try:
+            # Stable per-tenant percentage in [0, 99]
+            bucket = abs(hash(str(tenant_id))) % 100
+        except Exception:
+            return template_name
+        if bucket < percent:
+            return latest_gepa
+        return template_name
