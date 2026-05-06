@@ -237,6 +237,9 @@ empirical-gepa-debug: ## GEPA Stage-3 metric debug (few live calls, diagnostic)
 	    --out .loop/gepa_metric_debug.json \
 	    --mode=debug-metric --debug-samples=$${GEPA_DEBUG_SAMPLES:-3}
 
+empirical-gepa-status: ## Show GEPA chain state across all 7 stages (read-only)
+	$(PY) scripts/show_gepa_status.py
+
 empirical-gepa-compile: ## GEPA Stage-3 compile against council (30-120 min Ollama)
 	DSPY_OPTIMIZER_ENABLED=1 GEMMA_AGENT_COUNCIL_ENABLED=1 \
 	  OLLAMA_HOST=$${OLLAMA_HOST:-http://localhost:11435} \
