@@ -13,6 +13,29 @@ type AuditRow = {
   latency_s?: number;
   chain?: Record<string, { model: string; tokens: number; latency_s: number }>;
 };
+type ProviderRow = {
+  provider: string;
+  attempted: number;
+  applied: number;
+  apply_rate: number;
+  avg_latency_s: number;
+  latency_samples?: number;
+  note?: string;
+};
+type ProviderComparison = {
+  version: string;
+  generated_at: number;
+  window_days: number;
+  providers: ProviderRow[];
+  totals: { attempted: number; applied: number; apply_rate: number };
+  honest_gaps: string[];
+  bottleneck_signal: {
+    signal_active: boolean;
+    reason: string;
+    suggested_action?: string;
+    policy_ref?: string;
+  };
+};
 type Snapshot = {
   data: {
     installed: ModelInfo[];
@@ -22,6 +45,7 @@ type Snapshot = {
     recent_audit: AuditRow[];
     checklist_summary: { total: number; by_difficulty: Record<string, number>; by_assignee: Record<string, number> };
     council_batch_summary: unknown;
+    provider_comparison: ProviderComparison;
     ollama_base: string;
   };
   correlation_id: string;
@@ -92,6 +116,123 @@ export default function LocalModelsPage() {
           Auto-refresh
         </label>
       </div>
+
+      {d.provider_comparison && (
+        <div
+          className="card"
+          style={{
+            marginTop: 16,
+            borderLeft: d.provider_comparison.bottleneck_signal.signal_active
+              ? '4px solid #c33'
+              : '4px solid #393',
+          }}
+        >
+          <strong>
+            Provider comparison — apply-rate by provider (last{' '}
+            {d.provider_comparison.window_days}d)
+          </strong>
+          <p style={{ marginTop: 4, fontSize: 12, color: '#666' }}>
+            Per CLAUDE.md §55.3 outcome contract: this is the brutal-honesty
+            signal that shows which provider lane is actually closing issues
+            vs running theatrical loops. Source:{' '}
+            <code>scripts/agent_task_registry.py</code>.
+          </p>
+          <table style={{ width: '100%', marginTop: 8, fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th align="left">Provider</th>
+                <th align="right">Attempted</th>
+                <th align="right">Applied</th>
+                <th align="right">Apply rate</th>
+                <th align="right">Avg latency</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.provider_comparison.providers.map((p) => (
+                <tr key={p.provider}>
+                  <td>
+                    <code>{p.provider}</code>
+                    {p.note && (
+                      <div style={{ fontSize: 11, color: '#888' }}>{p.note}</div>
+                    )}
+                  </td>
+                  <td align="right">{p.attempted}</td>
+                  <td align="right">{p.applied}</td>
+                  <td
+                    align="right"
+                    style={{
+                      color:
+                        p.attempted >= 10 && p.apply_rate < 0.1
+                          ? '#c33'
+                          : p.apply_rate >= 0.5
+                            ? '#393'
+                            : 'inherit',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {(p.apply_rate * 100).toFixed(2)}%
+                  </td>
+                  <td align="right">
+                    {p.latency_samples && p.latency_samples > 0
+                      ? `${p.avg_latency_s.toFixed(1)}s (n=${p.latency_samples})`
+                      : '—'}
+                  </td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: '1px solid #ccc', fontWeight: 600 }}>
+                <td>TOTAL</td>
+                <td align="right">{d.provider_comparison.totals.attempted}</td>
+                <td align="right">{d.provider_comparison.totals.applied}</td>
+                <td align="right">
+                  {(d.provider_comparison.totals.apply_rate * 100).toFixed(2)}%
+                </td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+          <div
+            style={{
+              marginTop: 12,
+              padding: 8,
+              background: d.provider_comparison.bottleneck_signal.signal_active
+                ? '#fee'
+                : '#efe',
+              borderRadius: 4,
+              fontSize: 12,
+            }}
+          >
+            <strong>
+              Bottleneck signal:{' '}
+              {d.provider_comparison.bottleneck_signal.signal_active
+                ? 'ACTIVE'
+                : 'inactive'}
+            </strong>
+            <div>{d.provider_comparison.bottleneck_signal.reason}</div>
+            {d.provider_comparison.bottleneck_signal.suggested_action && (
+              <div style={{ marginTop: 4 }}>
+                <strong>Action:</strong>{' '}
+                {d.provider_comparison.bottleneck_signal.suggested_action}
+              </div>
+            )}
+            {d.provider_comparison.bottleneck_signal.policy_ref && (
+              <div style={{ marginTop: 2, color: '#666' }}>
+                Reference:{' '}
+                <code>{d.provider_comparison.bottleneck_signal.policy_ref}</code>
+              </div>
+            )}
+          </div>
+          {d.provider_comparison.honest_gaps.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 11, color: '#888' }}>
+              <strong>Honest gaps:</strong>
+              <ul style={{ margin: '4px 0 0 16px' }}>
+                {d.provider_comparison.honest_gaps.map((gap, i) => (
+                  <li key={i}>{gap}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card" style={{ marginTop: 16 }}>
         <strong>Models in VRAM right now ({d.loaded_count})</strong>
