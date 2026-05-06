@@ -269,6 +269,97 @@ def _compute_provider_rollup(
     return rollup
 
 
+def _read_tools_registry() -> tuple[dict[str, Any], str | None]:
+    """Read tool catalog state from governance.tools + .tool_permissions.
+
+    Per §47.7 expand-phase composition: governance.tools is the SQL
+    catalog created by migration 011_tools_registry.sql. Empty until
+    a future iteration wires MCP server startup to sync the Python
+    TOOLS lists into the table. This function surfaces the count
+    independently of the per-call audit (which is governance.tool_executions).
+
+    Window-independent — the registry is a CATALOG, not a time-series.
+
+    Returns ({total_tools, enabled_tools, by_risk{}, by_server{},
+              approval_required_count, total_permissions, by_actor_pattern{}},
+              gap_reason).
+    """
+    empty: dict[str, Any] = {
+        "total_tools": 0,
+        "enabled_tools": 0,
+        "by_risk": {},
+        "by_server": {},
+        "approval_required_count": 0,
+        "total_permissions": 0,
+        "by_actor_pattern": {},
+    }
+    try:
+        import asyncio
+
+        import asyncpg
+    except ImportError:
+        return empty, "asyncpg not installed (tools-registry rollup skipped)"
+
+    async def _query() -> dict[str, Any]:
+        conn = await asyncpg.connect(
+            host=PG_HOST, port=PG_PORT, user=PG_USER,
+            password=PG_PASSWORD, database=PG_DB, timeout=2.0,
+        )
+        try:
+            tools_row = await conn.fetchrow(
+                "SELECT count(*) AS total, "
+                "       count(*) FILTER (WHERE enabled) AS enabled, "
+                "       count(*) FILTER (WHERE approval_required) AS approval_req "
+                "  FROM governance.tools"
+            )
+            by_risk = await conn.fetch(
+                "SELECT risk_level, count(*) AS n "
+                "  FROM governance.tools WHERE enabled "
+                " GROUP BY risk_level"
+            )
+            by_server = await conn.fetch(
+                "SELECT server, count(*) AS n "
+                "  FROM governance.tools WHERE enabled "
+                " GROUP BY server ORDER BY server"
+            )
+            perms_row = await conn.fetchrow(
+                "SELECT count(*) AS total FROM governance.tool_permissions"
+            )
+            by_actor = await conn.fetch(
+                "SELECT actor_pattern, count(*) AS n "
+                "  FROM governance.tool_permissions "
+                " GROUP BY actor_pattern ORDER BY actor_pattern"
+            )
+            return {
+                "total_tools": int(tools_row["total"] or 0),
+                "enabled_tools": int(tools_row["enabled"] or 0),
+                "approval_required_count": int(tools_row["approval_req"] or 0),
+                "by_risk": {r["risk_level"]: int(r["n"]) for r in by_risk},
+                "by_server": {r["server"]: int(r["n"]) for r in by_server},
+                "total_permissions": int(perms_row["total"] or 0),
+                "by_actor_pattern": {
+                    r["actor_pattern"]: int(r["n"]) for r in by_actor
+                },
+            }
+        finally:
+            await conn.close()
+
+    try:
+        result = asyncio.run(_query())
+    except Exception as exc:
+        return empty, f"governance.tools unreachable: {type(exc).__name__}"
+
+    if result["total_tools"] == 0:
+        return result, (
+            "governance.tools is empty — SQL catalog created by migration 011 "
+            "but MCP servers still source tools from Python TOOLS lists "
+            "(mcp/server_*.py). Per §47.7 expand-phase: server-startup sync "
+            "ships in a future iteration; until then the SQL catalog is the "
+            "queryable surface but not the authoritative one."
+        )
+    return result, None
+
+
 def _read_tool_executions(window_days: int = 7) -> tuple[dict[str, Any], str | None]:
     """Read MCP tool-execution counts from governance.tool_executions.
 
@@ -607,6 +698,14 @@ def build_registry(window_days: int = 7) -> dict[str, Any]:
         total_applied / total_attempted if total_attempted > 0 else 0.0
     )
 
+    # v3 — tools registry catalog (governance.tools + .tool_permissions)
+    # Per §47.7 expand-phase: SQL catalog independent of provider rollup;
+    # window-independent (catalog, not time-series). Operators query "how
+    # many high-risk tools are registered?" without parsing Python files.
+    tools_catalog, tools_gap = _read_tools_registry()
+    if tools_gap:
+        gaps.append(tools_gap)
+
     return {
         "version": REGISTRY_VERSION,
         "generated_at": time.time(),
@@ -620,6 +719,8 @@ def build_registry(window_days: int = 7) -> dict[str, Any]:
             "tokens_total": total_tokens,
             "cost_usd": round(total_cost_usd, 6),
         },
+        # v3 — system catalog dimension (separate from per-provider rollup)
+        "tools_catalog": tools_catalog,
         "honest_gaps": gaps,
         # Bottleneck signal — the headline number §55 wants visible.
         # When ollama-council apply_rate < 0.10 over a non-trivial
