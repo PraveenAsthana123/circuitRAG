@@ -275,9 +275,45 @@ class RagInferenceService:
                 # Fail-safe: PII error must not block the request.
                 log.warning("pii_redact_inference skipped: %s", _exc)
 
-        # 2. Prompt
+        # 2. Prompt — Stage-7 GEPA canary routing + build
+        # Per docs/architecture/gepa-chain-status-and-stage6-blocker.md
+        # + commit 4f7289e (select_canary_version helper). When
+        # GEPA_CANARY_ENABLED=1 AND GEPA_CANARY_PERCENT > 0 AND a
+        # gepa-aliased version exists for self._default_prompt, route
+        # this tenant's request to the GEPA-tuned version based on
+        # tenant-sticky hash. Default-deny: env unset → returns
+        # self._default_prompt unchanged → behavior-preserving for
+        # all existing callers.
+        # Per §47 fail-safe + §48 explainability: trace step records
+        # which version actually fired so operators can attribute
+        # canary metrics post-hoc.
+        with trace.step("prompt_canary_routing") as st:
+            st.input(f"baseline={self._default_prompt} tenant={tenant_id[:12]}…")
+            try:
+                if hasattr(self._prompts, "select_canary_version"):
+                    effective_template = self._prompts.select_canary_version(
+                        template_name=self._default_prompt,
+                        tenant_id=tenant_id,
+                    )
+                else:
+                    # Builder lacks the helper (e.g. legacy in-code builder
+                    # with no canary surface). Fall back to baseline.
+                    effective_template = self._default_prompt
+            except Exception as _exc:
+                # §47 fail-safe: any error in the canary helper falls
+                # back to baseline. NEVER blocks the request path.
+                effective_template = self._default_prompt
+                st.meta(canary_error=str(_exc)[:200])
+            cohort = (
+                "gepa" if effective_template != self._default_prompt
+                else "baseline"
+            )
+            st.output(f"effective={effective_template} cohort={cohort}")
+            st.meta(cohort=cohort, baseline=self._default_prompt,
+                    effective=effective_template)
+
         system, user, citation_map = self._prompts.build(
-            template_name=self._default_prompt,
+            template_name=effective_template,
             query=request.query,
             chunks=chunks,
         )
