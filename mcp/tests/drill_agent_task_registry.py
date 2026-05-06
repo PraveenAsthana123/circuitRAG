@@ -279,8 +279,14 @@ def main() -> int:
     # ===================================================================
     step("9. paperclip snapshot v8 carries 'provider_comparison' key")
     pc = paperclip_manager.snapshot(window_days=7)
-    if pc.get("version") != "paperclip-readonly-v8":
-        fail(f"paperclip version must be v8, got: {pc.get('version')}")
+    # Forward-compatible version check: v8+ all carry provider_comparison
+    raw_version = str(pc.get("version", ""))
+    try:
+        version_int = int(raw_version.rsplit("v", 1)[-1])
+    except ValueError:
+        fail(f"paperclip version unparseable: {raw_version}")
+    if version_int < 8:
+        fail(f"paperclip version must be v8 or higher, got: {raw_version}")
     if "provider_comparison" not in pc:
         fail("paperclip v8 missing 'provider_comparison' top-level key")
     pcomp = pc["provider_comparison"]

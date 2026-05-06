@@ -1,0 +1,128 @@
+# Approval policy — command-pattern allowlist / askonce / always-ask / block.
+#
+# Per CLAUDE.md §42 (operational autonomy) + §38 (governance gates).
+# This file is the SOURCE OF TRUTH for shell-command approval routing.
+# The Python loader (approval_agent/command_policy.py) treats it as
+# read-only; rule changes happen by editing this file + re-loading.
+#
+# Decision precedence (most-restrictive wins):
+#   1. block          → BLOCK   (never run, no approval can override)
+#   2. always_ask     → ALWAYS_ASK   (human prompt every time)
+#   3. ask_once       → ASK_ONCE   (human prompt; cache for session_ttl_minutes)
+#   4. auto_approve   → AUTO_APPROVE  (run silently)
+#   5. (default)      → applies `default` field below
+#
+# Drill-locked: drill_approval_batching.py asserts the precedence order
+# AND the cache invariant that BLOCK / ALWAYS_ASK NEVER cache-hit.
+
+version: "v1"
+default: ASK_ONCE                         # safe default — when unsure, ask once
+session_ttl_minutes: 30                   # session cache TTL for ASK_ONCE hits
+batch_medium_risk: true                   # collect medium-risk approvals
+batch_interval_minutes: 15                # flush queue every 15 minutes
+
+# ────────────────────────────────────────────────────────────────────
+# AUTO_APPROVE — read-only diagnostics. Operator never sees prompt.
+# Patterns are anchored regexes. Stay surgical: prefer the explicit
+# command form over loose substring matches.
+# ────────────────────────────────────────────────────────────────────
+auto_approve:
+  - "^pwd$"
+  - "^ls(\\s|$)"
+  - "^cat\\s"
+  - "^head\\s"
+  - "^tail\\s"
+  - "^grep\\s"
+  - "^find\\s"
+  - "^echo\\s"
+  - "^git status$"
+  - "^git log(\\s|$)"
+  - "^git diff(\\s|$)"
+  - "^git branch(\\s|$)"
+  - "^docker compose ps(\\s|$)"
+  - "^docker ps(\\s|$)"
+  - "^docker logs(\\s|$)"
+  - "^docker inspect(\\s|$)"
+  - "^ss\\s-tlnp"
+  - "^ss\\s-tnlp"
+  - "^netstat -tlnp"
+  - "^curl -m [0-9]+ -s http://localhost(:[0-9]+)?(/|$)"
+  - "^curl -sf http://localhost(:[0-9]+)?(/|$)"
+  - "^kubectl get(\\s|$)"
+  - "^kubectl describe(\\s|$)"
+  - "^kubectl logs(\\s|$)"
+  - "^pytest(\\s|$)"
+  - "^npm test(\\s|$)"
+  - "^npm run lint(\\s|$)"
+  - "^./scripts/check_"
+  - "^bash scripts/verify-stack.sh"
+  - "^python3? -c "
+  - "^journalctl\\s"
+
+# ────────────────────────────────────────────────────────────────────
+# ASK_ONCE — common medium-risk commands. Prompt once, cache for
+# session_ttl_minutes, then auto-approve same pattern. Safe because
+# the operator made an informed decision once.
+# ────────────────────────────────────────────────────────────────────
+ask_once:
+  - "^docker compose restart(\\s|$)"
+  - "^docker compose up(\\s|$)"
+  - "^docker compose down(\\s|$)"          # without -v
+  - "^docker compose build(\\s|$)"
+  - "^pip install(\\s|$)"
+  - "^npm install(\\s|$)"
+  - "^npm run build(\\s|$)"
+  - "^make\\s"
+  - "^git commit(\\s|$)"
+  - "^git checkout(\\s|$)"
+  - "^git stash(\\s|$)"
+  - "^git pull(\\s|$)"
+
+# ────────────────────────────────────────────────────────────────────
+# ALWAYS_ASK — destructive / privileged / sensitive. Human approval
+# every single time, NO cache. Per the §42 brutal rule, these are the
+# operations where "I approved this 5 minutes ago" is not a sufficient
+# safety justification.
+# ────────────────────────────────────────────────────────────────────
+always_ask:
+  - "^sudo\\s"
+  - "^rm\\s"
+  - "^rm -rf(\\s|$)"
+  - "^chmod\\s"
+  - "^chown\\s"
+  - "^kubectl apply(\\s|$)"
+  - "^kubectl delete(\\s|$)"
+  - "^terraform apply(\\s|$)"
+  - "^terraform destroy(\\s|$)"
+  - "^git push(\\s|$)"
+  - "^git push --force"
+  - "^docker compose down -v"
+  - "^docker volume rm"
+  - "^helm uninstall"
+  - "secret"
+  - "password"
+  - "(?<!\\bauth_)token(?!_count)"          # token but not "auth_token_count" etc.
+  - "\\bprod\\b"
+  - "\\bproduction\\b"
+  - "drop table"
+  - "truncate table"
+  - "alter table"
+  - "grant\\s"
+  - "revoke\\s"
+
+# ────────────────────────────────────────────────────────────────────
+# BLOCK — non-overridable. Never run, no approval can unblock.
+# Per §42 / §52 row 1 (will-break-prod): these patterns are the
+# unrecoverable destructives. Cache CANNOT promote a block to approve.
+# ────────────────────────────────────────────────────────────────────
+block:
+  - "^rm -rf /(\\s|$)"
+  - "^rm -rf /\\*"
+  - "^rm -rf ~"
+  - "curl .*\\|\\s*sh"
+  - "curl .*\\|\\s*bash"
+  - "wget .*\\|\\s*sh"
+  - "wget .*\\|\\s*bash"
+  - ":\\(\\)\\s*\\{\\s*:\\s*\\|\\s*:&\\s*\\};:" # fork bomb
+  - "dd if=/dev/zero of=/dev"
+  - "mkfs(\\.\\w+)?\\s+/dev/[sh]d[a-z]"

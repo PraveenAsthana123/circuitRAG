@@ -1005,6 +1005,82 @@ def aggregate_grpc() -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
+def aggregate_approval_engine() -> dict[str, Any]:
+    """v9 — command-approval orchestrator state.
+
+    Surfaces the operator-pain-fix telemetry per §55.3:
+      - policy version + bucket pattern counts
+      - active session-cache entries with hit_count + TTL remaining
+      - batch queue depth + next-flush ETA + by-pattern breakdown
+      - audit-trail row counts (last 7 days) + auto/ask/batch/block split
+
+    Read-only — never approves, never flushes, never invalidates. The
+    operator orchestrator owns those verbs. Drill-locked: paperclip
+    NEVER mutates the cache or queue files.
+
+    Returns an empty/zero shape with `error` field when the orchestrator
+    isn't importable (development-only repo, missing PyYAML, etc.).
+    """
+    empty: dict[str, Any] = {
+        "policy_version": None,
+        "patterns": {"auto_approve": 0, "ask_once": 0, "always_ask": 0, "block": 0},
+        "cache": {"active_count": 0, "total_hits": 0, "ttl_seconds": 0, "patterns": []},
+        "batch": {"queue_depth": 0, "next_flush_in_s": 0, "is_due": False,
+                  "by_pattern": {}, "flush_interval_seconds": 0},
+        "audit": {"total": 0, "by_terminal": {}},
+    }
+    try:
+        # Avoid creating a real orchestrator (which would create cache +
+        # batcher files). Read the policy + audit JSONL directly.
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from approval_agent.batcher import ApprovalBatcher
+        from approval_agent.command_policy import load_policy
+        from approval_agent.session_cache import SessionCache
+    except ImportError as exc:
+        return {**empty, "error": f"approval_agent unavailable: {exc}"}
+
+    try:
+        policy = load_policy()
+    except Exception as exc:  # noqa: BLE001
+        return {**empty, "error": f"policy_load_failed: {type(exc).__name__}"}
+
+    # Build read-only views of cache + batcher pointing at production
+    # paths but NEVER calling store/enqueue. SessionCache + ApprovalBatcher
+    # constructors lazily load existing files; if missing, empty start.
+    try:
+        cache = SessionCache(ttl_seconds=policy.session_ttl_minutes * 60)
+        batcher = ApprovalBatcher(
+            flush_interval_seconds=policy.batch_interval_minutes * 60,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {**empty, "error": f"cache_or_batcher_init_failed: {type(exc).__name__}"}
+
+    # Audit summary — last 1000 rows, group by terminal
+    audit_path = REPO / ".loop" / "command_approval_audit.jsonl"
+    audit_rows = _read_jsonl(audit_path, limit=1000)
+    by_terminal: Counter[str] = Counter(
+        str(r.get("terminal", "?")) for r in audit_rows
+    )
+
+    return {
+        "policy_version": policy.version,
+        "policy_path": str(policy.raw_path),
+        "policy_default": policy.default,
+        "patterns": {
+            "auto_approve": len(policy.auto_approve_patterns),
+            "ask_once": len(policy.ask_once_patterns),
+            "always_ask": len(policy.always_ask_patterns),
+            "block": len(policy.block_patterns),
+        },
+        "cache": cache.stats(),
+        "batch": batcher.stats(),
+        "audit": {
+            "total": len(audit_rows),
+            "by_terminal": dict(by_terminal),
+        },
+    }
+
+
 def aggregate_provider_comparison(window_days: int = 7) -> dict[str, Any]:
     """v8 — unified per-provider task-registry rollup.
 
@@ -1059,7 +1135,7 @@ def snapshot(window_days: int = 7) -> dict[str, Any]:
     """
     return {
         "stage": 1,
-        "version": "paperclip-readonly-v8",
+        "version": "paperclip-readonly-v9",
         "generated_at": time.time(),
         # v1 surfaces (unchanged)
         "council_batch": aggregate_council_batch(),
@@ -1093,6 +1169,12 @@ def snapshot(window_days: int = 7) -> dict[str, Any]:
         # cited Tier-1 next action. NEVER mutates — read-only contract
         # locked by drill_agent_task_registry.py.
         "provider_comparison": aggregate_provider_comparison(window_days=window_days),
+        # v9 — command-approval orchestrator (per §42 + §52 row 4).
+        # Surfaces YAML policy bucket counts, session-cache state with
+        # hit_count + TTL, batch queue depth + ETA, audit-row terminal
+        # split. Operator-pain-fix telemetry — drill-locked at
+        # drill_approval_batching.py with 6 negative invariants.
+        "approval_engine": aggregate_approval_engine(),
     }
 
 
