@@ -229,8 +229,17 @@ empirical-gepa-preflight: ## GEPA Stage-2 preflight (cheap, no LLM)
 	    --eval-set .loop/eval_set.jsonl \
 	    --out .loop/gepa_optimized_prompts.json
 
-empirical-gepa-compile: ## GEPA Stage-3 compile against council (10-120 min Ollama)
-	DSPY_OPTIMIZER_ENABLED=1 OLLAMA_HOST=$${OLLAMA_HOST:-http://localhost:11434} \
+empirical-gepa-debug: ## GEPA Stage-3 metric debug (few live calls, diagnostic)
+	DSPY_OPTIMIZER_ENABLED=1 GEMMA_AGENT_COUNCIL_ENABLED=1 \
+	  OLLAMA_HOST=$${OLLAMA_HOST:-http://localhost:11435} \
+	  $(PY) scripts/run_gepa_empirical.py \
+	    --eval-set .loop/eval_set.jsonl \
+	    --out .loop/gepa_metric_debug.json \
+	    --mode=debug-metric --debug-samples=$${GEPA_DEBUG_SAMPLES:-3}
+
+empirical-gepa-compile: ## GEPA Stage-3 compile against council (30-120 min Ollama)
+	DSPY_OPTIMIZER_ENABLED=1 GEMMA_AGENT_COUNCIL_ENABLED=1 \
+	  OLLAMA_HOST=$${OLLAMA_HOST:-http://localhost:11435} \
 	  $(PY) scripts/run_gepa_empirical.py \
 	    --eval-set .loop/eval_set.jsonl \
 	    --out .loop/gepa_optimized_prompts.json \
