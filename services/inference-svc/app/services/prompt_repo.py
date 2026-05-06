@@ -185,6 +185,15 @@ class DbBackedPromptBuilder:
         promoted_at = data.get("promoted_at_ts", 0)
         version_tag = f"gepa-{int(promoted_at)}" if promoted_at else "gepa-active"
         optimized = data.get("optimized_prompts") or {}
+        # Path-B alignment hint (per docs/architecture/
+        # gepa-chain-status-and-stage6-blocker.md). When the gate's
+        # artifact carries `gepa_target_prompt`, the overlay ALSO
+        # registers the tuned prompt under that runtime name so a
+        # rag_inference lookup of `<target>_gepa-<ts>` resolves
+        # correctly. Without this hint, GEPA-tagged versions sit in
+        # cache under predictor namespace (e.g. predict.predict_gepa-...)
+        # which doesn't match the runtime self._default_prompt lookup.
+        gepa_target = (data.get("gepa_target_prompt") or "").strip() or None
 
         count = 0
         for predictor_name, payload in optimized.items():
@@ -196,15 +205,33 @@ class DbBackedPromptBuilder:
             # a stable cache key. We register under "<predictor>_<version>"
             # so callers asking for the gepa-tuned version pick it
             # explicitly. Stage-6 (deferred) does the traffic-split.
-            key = f"{predictor_name}_{version_tag}"
-            cache[key] = PromptTemplate(
+            tmpl = PromptTemplate(
                 name=predictor_name,
                 version=version_tag,
                 system=instructions,
                 user_template="{query}",  # GEPA tunes the system message
                 max_context_tokens=4000,
             )
+            primary_key = f"{predictor_name}_{version_tag}"
+            cache[primary_key] = tmpl
             count += 1
+            # Path-B alias: ALSO register under the operator-declared
+            # runtime target name so canary lookup resolves. Only fires
+            # for the FIRST predictor (typical: predict.predict in a
+            # single-stage CouncilProgram); multi-predictor GEPA outputs
+            # need Path A's per-predictor mapping which is out of scope.
+            if gepa_target and not any(
+                k.startswith(f"{gepa_target}_gepa-")
+                for k in cache.keys()
+            ):
+                alias_key = f"{gepa_target}_{version_tag}"
+                cache[alias_key] = PromptTemplate(
+                    name=gepa_target,
+                    version=version_tag,
+                    system=instructions,
+                    user_template="{query}",
+                    max_context_tokens=4000,
+                )
         return count
 
     def get(self, name: str) -> PromptTemplate:

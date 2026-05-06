@@ -116,6 +116,7 @@ def promote(
     active_path: str | None = None,
     history_path: str | None = None,
     dry_run: bool = False,
+    target_prompt_name: str | None = None,
 ) -> PromotionDecision:
     """Apply gates; persist active prompts artifact if all pass.
 
@@ -211,11 +212,27 @@ def promote(
             try:
                 active_p = Path(ap)
                 active_p.parent.mkdir(parents=True, exist_ok=True)
+                # Path-B alignment hint (per docs/architecture/
+                # gepa-chain-status-and-stage6-blocker.md). When the
+                # operator sets GEPA_TARGET_PROMPT_NAME (or passes
+                # target_prompt_name=), the artifact carries that name
+                # so prompt_repo Stage-5 overlay can ALSO register the
+                # tuned prompt under <target>_gepa-<ts> — making the
+                # gepa-tagged version reachable from the runtime
+                # rag_inference lookup. Path A (refactor CouncilProgram
+                # to wrap the runtime template directly) remains the
+                # long-term right answer; this is the escape valve so
+                # operators can test end-to-end NOW.
+                resolved_target = (
+                    target_prompt_name
+                    or os.environ.get("GEPA_TARGET_PROMPT_NAME", "")
+                ).strip() or None
                 payload = {
                     "promoted_at_ts": decided_at,
                     "source_report": rp,
                     "report_status": decision.report_status,
                     "predictors_count": decision.predictors_count,
+                    "gepa_target_prompt": resolved_target,
                     "optimized_prompts": optimized,
                     "lm_model": report.get("lm_model"),
                     "auto": report.get("auto"),
