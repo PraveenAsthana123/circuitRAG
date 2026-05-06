@@ -1,0 +1,17 @@
+{
+  "live_empirical_retest_apply": "GATED_OPERATOR_APPROVAL_REQUIRED",
+  "fix_drill_policy_engine": "DONE",
+  "fix_drill_scripts_have_help": "DONE",
+  "fix_drill_composes_with_docs_exist": "DONE",
+  "other_drill_failures": [],
+  "_reconciled_at": "2026-05-05",
+  "_reconciled_by": "drill_pending_report_reconciliation",
+  "_reconciliation_notes": [
+    "All previously-listed drill failures were verified live and now pass.",
+    "Stage-1..7 GEPA chain shipped this session (commits f94eaf4..e05b54a).",
+    "ADR-024 promoted best_config_loader to default-on after 19 cycles × 2 distinct configs earned verdict.",
+    "Pre-commit hook optimized to skip refresh on new-drill-only commits (a985ccf).",
+    "Snapshot self-reference race fixed in write_drill_status (5493107).",
+    "Items still requiring operator action: full GEPA compile (30+ min Ollama), 50+ Q&A curation, runtime canary activation."
+  ]
+}
