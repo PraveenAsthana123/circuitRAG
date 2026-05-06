@@ -93,6 +93,10 @@ COST_PER_1M_USD_DEFAULT: dict[str, float] = {
     # (cost_usd_cents column), NOT from this rate × tokens. The rate
     # is informational only — drilled.
     "agent-orchestrator": 0.0,
+    # mcp-tool-executions: tool calls themselves don't consume tokens
+    # (LLM upstream pays). Tracking is purely for latency + denied-rate
+    # observability. Cost rate stays $0 — drilled.
+    "mcp-tool-executions": 0.0,
 }
 
 
@@ -265,6 +269,77 @@ def _compute_provider_rollup(
     return rollup
 
 
+def _read_tool_executions(window_days: int = 7) -> tuple[dict[str, Any], str | None]:
+    """Read MCP tool-execution counts from governance.tool_executions.
+
+    Per §47.7 expand-phase composition: the SQL audit table was created
+    by migration 010_tool_executions.sql but the JSONL writer in
+    scripts/mcp_gateway.py is still authoritative. This function reads
+    the SQL table and surfaces it as a registry provider lane.
+
+    Returns ({attempted, allowed, denied, latency_sum, latency_n}, gap).
+
+    Empty table → empty dict + honest_gap explaining the table-not-yet-
+    written-to state. Matches the §38 governance contract: operators
+    can DISTINGUISH "no data because empty" from "no data because broken."
+    """
+    empty: dict[str, Any] = {
+        "attempted": 0, "allowed": 0, "denied": 0,
+        "tokens_total": 0, "cost_usd": 0.0,
+        "latency_sum": 0.0, "latency_n": 0,
+    }
+    try:
+        import asyncio
+
+        import asyncpg
+    except ImportError:
+        return empty, "asyncpg not installed (tool-executions rollup skipped)"
+
+    async def _query() -> dict[str, Any]:
+        conn = await asyncpg.connect(
+            host=PG_HOST, port=PG_PORT, user=PG_USER,
+            password=PG_PASSWORD, database=PG_DB, timeout=2.0,
+        )
+        try:
+            row = await conn.fetchrow(
+                "SELECT count(*) AS n, "
+                "       count(*) FILTER (WHERE allow IS TRUE) AS allowed, "
+                "       count(*) FILTER (WHERE allow IS FALSE) AS denied, "
+                "       coalesce(sum(latency_ms), 0)::bigint AS lat_sum_ms, "
+                "       count(*) FILTER (WHERE latency_ms IS NOT NULL) AS lat_n "
+                "  FROM governance.tool_executions "
+                " WHERE created_at >= NOW() - ($1 || ' days')::interval",
+                str(window_days),
+            )
+            if row is None:
+                return dict(empty)
+            return {
+                "attempted": int(row["n"]),
+                "allowed": int(row["allowed"] or 0),
+                "denied": int(row["denied"] or 0),
+                "tokens_total": 0,  # tool calls don't track tokens (LLM is upstream)
+                "cost_usd": 0.0,    # tool calls themselves are free; LLM cost upstream
+                "latency_sum": float(row["lat_sum_ms"] or 0) / 1000.0,
+                "latency_n": int(row["lat_n"] or 0),
+            }
+        finally:
+            await conn.close()
+
+    try:
+        result = asyncio.run(_query())
+    except Exception as exc:
+        return empty, f"governance.tool_executions unreachable: {type(exc).__name__}"
+
+    if result["attempted"] == 0:
+        return result, (
+            "governance.tool_executions is empty — SQL surface created by "
+            "migration 010 but MCP gateway still writes JSONL only. Per "
+            "§47.7 expand-phase: dual-write ships in a future iteration; "
+            "this row will auto-populate once gateway writes both surfaces."
+        )
+    return result, None
+
+
 def _read_orchestrator_runs(window_days: int = 7) -> tuple[dict[str, Any], str | None]:
     """Read agent-orchestrator runs from orchestration.agent_task_runs.
 
@@ -424,6 +499,41 @@ def build_registry(window_days: int = 7) -> dict[str, Any]:
     runtime_count, runtime_gap = _read_runtime_ai_decisions(window_days=window_days)
     if runtime_gap:
         gaps.append(runtime_gap)
+    # mcp-tool-executions: read from governance.tool_executions (the
+    # SQL audit surface). Per §47.7 expand-phase: SQL table created
+    # but JSONL still authoritative. Empty rollup + honest_gap until
+    # gateway dual-writes. apply_rate semantics map differently here:
+    # "applied" = "allowed" (gateway permitted). High deny rate is
+    # the operator-pain signal (security policy too tight or actor
+    # mis-scoped).
+    tool_stats, tool_gap = _read_tool_executions(window_days=window_days)
+    if tool_gap:
+        gaps.append(tool_gap)
+    tool_lat_n = int(tool_stats.get("latency_n", 0))
+    tool_lat_sum = float(tool_stats.get("latency_sum", 0.0))
+    tool_avg_latency = (tool_lat_sum / tool_lat_n) if tool_lat_n > 0 else 0.0
+    tool_attempted = int(tool_stats.get("attempted", 0))
+    tool_allowed = int(tool_stats.get("allowed", 0))
+    tool_apply_rate = (tool_allowed / tool_attempted) if tool_attempted > 0 else 0.0
+    providers.append({
+        "provider": "mcp-tool-executions",
+        "attempted": tool_attempted,
+        "applied": tool_allowed,
+        "apply_rate": round(tool_apply_rate, 4),
+        "avg_latency_s": round(tool_avg_latency, 2),
+        "latency_samples": tool_lat_n,
+        "tokens_total": 0,
+        "cost_rate_usd_per_1m": _cost_rate_per_1m("mcp-tool-executions"),
+        "cost_usd": 0.0,
+        "cost_per_apply_usd": 0.0,
+        "denied": int(tool_stats.get("denied", 0)),
+        "note": (
+            "sourced from governance.tool_executions (SQL); 'applied'='allowed' "
+            "(gateway permitted call). Empty until gateway dual-writes; per "
+            "§47.7 expand-phase: JSONL surface remains authoritative."
+        ),
+    })
+
     # agent-orchestrator: read from orchestration.agent_task_runs (the
     # unified-task SQL surface). Per §47.7 expand phase — read-only
     # composition. Empty rollup with honest_gap when the table has 0
