@@ -1082,6 +1082,146 @@ def aggregate_approval_engine() -> dict[str, Any]:
     }
 
 
+def aggregate_migrate_phase_status() -> dict[str, Any]:
+    """v11 — §47.7 migrate-phase opt-in status.
+
+    Per CLAUDE.md §47.7 (expand→migrate→contract), §38 (governance),
+    §52 row 4 (operator API gap). Iters 11-13 shipped 3 SQL dual-
+    writes gated by env flags. This surface tells the operator
+    AT-A-GLANCE which migrate paths are active + whether SQL counts
+    correlate with JSONL/JSON activity (parity signal).
+
+    Surfaces (all read-only):
+      flags: { name → { enabled: bool, env_var: str, since_iter: int } }
+      surfaces: per-flag {legacy_size, sql_count, parity_signal}
+      honest_gaps: explicit when flag=1 but SQL count = 0
+                   (likely "writer set up but no traffic since flag flip")
+
+    Drill: drill_migrate_phase_status.py.
+    """
+    import os  # noqa: PLC0415
+
+    def _flag(name: str) -> bool:
+        return os.environ.get(name, "").strip() == "1"
+
+    flags = {
+        "mcp_gateway_sql_audit": {
+            "env_var": "MCP_GATEWAY_SQL_AUDIT_ENABLED",
+            "enabled": _flag("MCP_GATEWAY_SQL_AUDIT_ENABLED"),
+            "since_iter": 11,
+            "legacy_path": ".loop/mcp_gateway_audit.jsonl",
+            "sql_table": "governance.tool_executions",
+        },
+        "ops_worker_sql": {
+            "env_var": "OPS_WORKER_SQL_ENABLED",
+            "enabled": _flag("OPS_WORKER_SQL_ENABLED"),
+            "since_iter": 12,
+            "legacy_path": "ops_worker/tasks.json",
+            "sql_table": "orchestration.agent_tasks",
+        },
+        "mcp_tools_sync": {
+            "env_var": "MCP_TOOLS_SYNC_ENABLED",
+            "enabled": _flag("MCP_TOOLS_SYNC_ENABLED"),
+            "since_iter": 13,
+            "legacy_path": "mcp/server_*.py:TOOLS",
+            "sql_table": "governance.tools",
+        },
+    }
+
+    # Pull SQL row counts (read-only, per-flag)
+    surfaces: dict[str, dict[str, Any]] = {}
+    gaps: list[str] = []
+
+    try:
+        import asyncio
+
+        import asyncpg
+    except ImportError:
+        return {
+            "flags": flags,
+            "surfaces": {},
+            "honest_gaps": ["asyncpg not installed — SQL row counts skipped"],
+            "summary": {
+                "active_count": sum(1 for v in flags.values() if v["enabled"]),
+                "total": len(flags),
+            },
+        }
+
+    async def _counts() -> dict[str, int]:
+        out: dict[str, int] = {}
+        try:
+            conn = await asyncpg.connect(
+                host=PG_HOST, port=PG_PORT, user=PG_USER,
+                password=PG_PASSWORD, database=PG_DB, timeout=2.0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"_error": f"pg_unreachable: {type(exc).__name__}"}
+        try:
+            for table in (
+                "governance.tool_executions",
+                "orchestration.agent_tasks",
+                "governance.tools",
+            ):
+                try:
+                    row = await conn.fetchrow(f"SELECT count(*) AS n FROM {table}")
+                    out[table] = int(row["n"]) if row else 0
+                except Exception:  # noqa: BLE001, S110 - per-table tolerance; counts default to -1
+                    out[table] = -1
+        finally:
+            await conn.close()
+        return out
+
+    try:
+        counts = asyncio.run(_counts())
+    except Exception as exc:  # noqa: BLE001
+        gaps.append(f"sql_count_failed: {type(exc).__name__}")
+        counts = {}
+
+    if "_error" in counts:
+        gaps.append(counts["_error"])
+
+    for flag_name, flag in flags.items():
+        legacy_path = REPO / flag["legacy_path"].split(":")[0]
+        legacy_size = (
+            legacy_path.stat().st_size
+            if legacy_path.exists() and legacy_path.is_file()
+            else 0
+        )
+        sql_count = counts.get(flag["sql_table"], -1)
+        # Parity signal: enabled + non-trivial legacy + zero SQL = no traffic since flip
+        parity = "n/a"
+        if flag["enabled"]:
+            if sql_count > 0:
+                parity = "active"
+            elif legacy_size > 200:  # legacy has content; SQL has 0 → no flips since
+                parity = "no_traffic_since_flip"
+                gaps.append(
+                    f"{flag_name}: flag=1 but {flag['sql_table']} has 0 rows. "
+                    f"Either the writer hasn't run since opt-in OR a write failed."
+                )
+            else:
+                parity = "both_empty"
+        surfaces[flag_name] = {
+            "legacy_size_bytes": legacy_size,
+            "sql_count": sql_count,
+            "parity": parity,
+        }
+
+    return {
+        "flags": flags,
+        "surfaces": surfaces,
+        "honest_gaps": gaps,
+        "summary": {
+            "active_count": sum(1 for v in flags.values() if v["enabled"]),
+            "total": len(flags),
+            "sql_total_rows": sum(
+                int(v["sql_count"]) for v in surfaces.values()
+                if isinstance(v["sql_count"], int) and v["sql_count"] > 0
+            ),
+        },
+    }
+
+
 def aggregate_ai_integrations() -> dict[str, Any]:
     """v10 — AI provider library inventory.
 
@@ -1266,6 +1406,12 @@ def snapshot(window_days: int = 7) -> dict[str, Any]:
         # Ollama-registry + missing-API-key + ollama-daemon-identity.
         # Drill-locked at drill_ai_integrations.py.
         "ai_integrations": aggregate_ai_integrations(),
+        # v11 — §47.7 migrate-phase opt-in status (per iter 14).
+        # Shows which dual-write flags are active + parity signal between
+        # legacy file and SQL row count. Honest gaps name flags that are
+        # enabled but show no traffic (config likely incomplete).
+        # Drill-locked at drill_migrate_phase_status.py.
+        "migrate_phase_status": aggregate_migrate_phase_status(),
     }
 
 
