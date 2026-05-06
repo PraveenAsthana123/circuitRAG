@@ -95,7 +95,17 @@ type PaperclipSnapshot = {
       applied: number;
       apply_rate: number;
       avg_latency_s: number;
+      tokens_total?: number;
+      cost_usd?: number;
+      cost_per_apply_usd?: number;
     }>;
+    totals?: {
+      attempted: number;
+      applied: number;
+      apply_rate: number;
+      tokens_total?: number;
+      cost_usd?: number;
+    };
     bottleneck_signal?: {
       signal_active: boolean;
       reason: string;
@@ -206,8 +216,19 @@ function buildSummary(snap: PaperclipSnapshot): {
     gaps.push('approval_engine missing — Paperclip likely older than v9');
   }
 
-  // Provider rollup pass-through
+  // Provider rollup pass-through (includes cost columns from registry-v2)
   const providers = pc?.providers || [];
+
+  // v10 — cost rollup. Sum tokens + cost across all providers for the
+  // executive summary card. Per §55.3 outcome-based contract, this is
+  // the FinOps signal: how much $ does the bottleneck-fixing iteration
+  // actually cost the operator?
+  const cost_summary = {
+    tokens_total: Number(pc?.totals?.tokens_total ?? 0),
+    cost_usd: Number(pc?.totals?.cost_usd ?? 0.0),
+    paid_providers: providers.filter((p) => Number(p.cost_usd ?? 0) > 0).length,
+    free_providers: providers.filter((p) => Number(p.cost_usd ?? 0) === 0).length,
+  };
 
   // Ops queue
   const opsByStatus = snap.ops_worker?.by_status || {};
@@ -226,13 +247,14 @@ function buildSummary(snap: PaperclipSnapshot): {
 
   return {
     summary: {
-      version: 'summary-v1',
+      version: 'summary-v2',
       paperclip_version: snap.version,
       generated_at: Math.floor(Date.now() / 1000),
       system_health,
       council_signal,
       approval_engine,
       providers,
+      cost_summary,
       ops_queue,
       links: {
         paperclip: '/api/v1/paperclip',

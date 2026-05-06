@@ -19,6 +19,10 @@ type ProviderRow = {
   apply_rate: number;
   avg_latency_s: number;
   latency_samples?: number;
+  // v2 — cost columns (registry-v2 + summary-v2)
+  tokens_total?: number;
+  cost_usd?: number;
+  cost_per_apply_usd?: number;
   note?: string;
 };
 
@@ -53,6 +57,12 @@ type Summary = {
     spam_reduction_pct: number;
   };
   providers: ProviderRow[];
+  cost_summary?: {
+    tokens_total: number;
+    cost_usd: number;
+    paid_providers: number;
+    free_providers: number;
+  };
   ops_queue: {
     tasks_total: number;
     tasks_completed: number;
@@ -131,6 +141,7 @@ export default function DashboardPage() {
   const oq = d.ops_queue ?? { tasks_total: 0, tasks_completed: 0, tasks_pending: 0, hitl_pending: 0, pending_issues_total: 0 };
   const providers = d.providers ?? [];
   const honest_gaps = d.honest_gaps ?? [];
+  const cost = d.cost_summary ?? { tokens_total: 0, cost_usd: 0, paid_providers: 0, free_providers: providers.length };
 
   return (
     <div style={{ padding: 20 }}>
@@ -277,7 +288,47 @@ export default function DashboardPage() {
         </table>
       </div>
 
-      {/* Provider rollup — from v8 registry */}
+      {/* FinOps — cost summary across all providers (registry-v2) */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <strong>FinOps — token + cost rollup</strong>
+        <p style={{ marginTop: 4, fontSize: 12, color: '#666' }}>
+          Per CLAUDE.md §41 (FinOps standards). Ollama lanes report $0 (local
+          inference; energy cost not in $). Claude / external lanes priced via
+          <code> DOCUMIND_COST_RATE_*</code> env. <strong>Honest gap:</strong>{' '}
+          $0 across all Ollama UNDERSTATES real cost (GPU power + operator time).
+        </p>
+        <table style={{ width: '100%', marginTop: 8, fontSize: 13 }}>
+          <tbody>
+            <tr>
+              <td>Tokens (window)</td>
+              <td align="right">
+                <strong>{cost.tokens_total.toLocaleString()}</strong>
+              </td>
+              <td>Cost (USD)</td>
+              <td
+                align="right"
+                style={{
+                  color: cost.cost_usd > 1.0 ? '#c33' : cost.cost_usd > 0 ? '#c80' : '#393',
+                }}
+              >
+                <strong>${cost.cost_usd.toFixed(4)}</strong>
+              </td>
+            </tr>
+            <tr>
+              <td>Paid providers</td>
+              <td align="right">
+                <code>{cost.paid_providers}</code>
+              </td>
+              <td>Free (local) providers</td>
+              <td align="right">
+                <code>{cost.free_providers}</code>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Provider rollup — from v8 registry, v2 columns */}
       {providers.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <strong>Provider apply-rate rollup</strong>
@@ -289,6 +340,8 @@ export default function DashboardPage() {
                 <th align="right">Applied</th>
                 <th align="right">Apply rate</th>
                 <th align="right">Avg latency</th>
+                <th align="right">Tokens</th>
+                <th align="right">Cost (USD)</th>
               </tr>
             </thead>
             <tbody>
@@ -315,6 +368,17 @@ export default function DashboardPage() {
                   </td>
                   <td align="right">
                     {p.avg_latency_s > 0 ? `${p.avg_latency_s.toFixed(1)}s` : '—'}
+                  </td>
+                  <td align="right">
+                    {(p.tokens_total ?? 0).toLocaleString()}
+                  </td>
+                  <td
+                    align="right"
+                    style={{
+                      color: (p.cost_usd ?? 0) > 1.0 ? '#c33' : (p.cost_usd ?? 0) > 0 ? '#c80' : '#888',
+                    }}
+                  >
+                    ${(p.cost_usd ?? 0).toFixed(4)}
                   </td>
                 </tr>
               ))}

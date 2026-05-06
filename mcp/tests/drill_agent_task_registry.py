@@ -108,9 +108,17 @@ def main() -> int:
     step("1. agent_task_registry exposes build_registry + version constant")
     if not callable(getattr(registry, "build_registry", None)):
         fail("build_registry function missing from agent_task_registry")
-    if registry.REGISTRY_VERSION != "registry-v1":
-        fail(f"unexpected version: {registry.REGISTRY_VERSION}")
-    ok("public surface present (build_registry, REGISTRY_VERSION='registry-v1')")
+    # Forward-compatible: accept v1, v2, or any v\d+ ≥ 2
+    raw_version = registry.REGISTRY_VERSION
+    if not raw_version.startswith("registry-v"):
+        fail(f"unexpected version format: {raw_version}")
+    try:
+        version_int = int(raw_version.rsplit("v", 1)[-1])
+    except ValueError:
+        fail(f"version not parseable as integer: {raw_version}")
+    if version_int < 1:
+        fail(f"version too old: {raw_version}")
+    ok(f"public surface present (build_registry, REGISTRY_VERSION='{raw_version}')")
 
     # ===================================================================
     # Step 2 — registry shape contract
@@ -290,15 +298,119 @@ def main() -> int:
     if "provider_comparison" not in pc:
         fail("paperclip v8 missing 'provider_comparison' top-level key")
     pcomp = pc["provider_comparison"]
-    if pcomp.get("version") != "registry-v1":
-        fail(f"provider_comparison must carry registry version, got: {pcomp.get('version')}")
+    pcomp_version = str(pcomp.get("version", ""))
+    if not pcomp_version.startswith("registry-v"):
+        fail(f"provider_comparison must carry registry-vN version, got: {pcomp_version}")
     if not isinstance(pcomp.get("providers"), list):
         fail("provider_comparison.providers must be a list")
     ok(f"paperclip v8 → provider_comparison version={pcomp['version']}, "
        f"{len(pcomp['providers'])} providers, "
        f"bottleneck={'ACTIVE' if pcomp.get('bottleneck_signal', {}).get('signal_active') else 'inactive'}")
 
-    print(f"\n{GREEN}{BOLD}ALL 9 STEPS PASSED{NC}")
+    # ===================================================================
+    # Step 10 — v2 cost rollup: tokens summed correctly (top-level + chain)
+    # ===================================================================
+    step("10. v2 cost rollup — tokens summed across top-level + nested chain")
+    # Synthetic: 1 council with 3-model chain, 1 single-model row, 1
+    # deterministic row (no tokens). Expected token sums:
+    #   council: 300 + 60 + 140 = 500
+    #   single:  76
+    #   deterministic: 0
+    cost_attempts = [
+        {
+            "lane": "council",
+            "outcome": "council_complete",
+            "chain": {
+                "author":   {"model": "deepseek", "tokens": 300, "latency_s": 47.0},
+                "reviewer": {"model": "codegemma", "tokens": 60, "latency_s": 12.0},
+                "advisor":  {"model": "codellama", "tokens": 140, "latency_s": 8.0},
+            },
+        },
+        {"lane": "deepseek-coder:6.7b-instruct", "tokens": 76, "latency_s": 36.0},
+        {"lane": "ruff:autofix", "attempted": 5},  # no tokens → contributes 0
+    ]
+    with _TempLoopDir(attempts=cost_attempts, applies=[]):
+        cs = registry.build_registry(window_days=7)
+    council = next((p for p in cs["providers"] if p["provider"] == "ollama-council"), None)
+    single = next((p for p in cs["providers"] if p["provider"] == "ollama-single"), None)
+    det = next((p for p in cs["providers"] if p["provider"] == "ollama-deterministic"), None)
+    if council is None or single is None or det is None:
+        fail(f"missing provider rows: council={council} single={single} det={det}")
+    if council["tokens_total"] != 500:
+        fail(f"council tokens: expected 500, got {council['tokens_total']}")
+    if single["tokens_total"] != 76:
+        fail(f"single tokens: expected 76, got {single['tokens_total']}")
+    if det["tokens_total"] != 0:
+        fail(f"deterministic tokens: expected 0, got {det['tokens_total']}")
+    ok("council=500 (300+60+140 chain sum), single=76, deterministic=0 — token math correct")
+
+    # ===================================================================
+    # Step 11 — NEGATIVE: Ollama lanes ALL report cost_usd=0.0 (free floor)
+    # ===================================================================
+    step("11. NEGATIVE: Ollama lanes report cost_usd=0.0 (local inference floor)")
+    # Even with massive token counts, Ollama provider cost MUST be $0
+    # by default. Drill-locks the local-inference floor — a future
+    # operator-misconfiguration accidentally setting an Ollama cost
+    # rate would be caught here.
+    big_attempts = [{"lane": "council", "chain": {
+        "author": {"tokens": 1_000_000, "latency_s": 1.0},
+    }}]
+    with _TempLoopDir(attempts=big_attempts, applies=[]):
+        big = registry.build_registry(window_days=7)
+    council_big = next((p for p in big["providers"] if p["provider"] == "ollama-council"), None)
+    if council_big["tokens_total"] != 1_000_000:
+        fail(f"big tokens: expected 1M, got {council_big['tokens_total']}")
+    if council_big["cost_usd"] != 0.0:
+        fail(f"Ollama cost MUST be 0.0 by default, got {council_big['cost_usd']}")
+    if council_big["cost_rate_usd_per_1m"] != 0.0:
+        fail(f"Ollama cost rate MUST be 0.0/1M, got {council_big['cost_rate_usd_per_1m']}")
+    ok("1M-token Ollama council still cost_usd=0.0 — local-inference floor holds")
+
+    # ===================================================================
+    # Step 12 — NEGATIVE: env override changes Ollama cost (not hardcoded)
+    # ===================================================================
+    step("12. NEGATIVE: env override DOCUMIND_COST_RATE_OLLAMA_COUNCIL works")
+    # Verifies the env-override path: an operator who really wants to
+    # account for Ollama GPU cost can set the env var. Without this
+    # path, the cost numbers are uneditable folklore.
+    import os
+    orig_env = os.environ.get("DOCUMIND_COST_RATE_OLLAMA_COUNCIL")
+    try:
+        os.environ["DOCUMIND_COST_RATE_OLLAMA_COUNCIL"] = "5.0"
+        # Reload module to pick up env change in _cost_rate_per_1m which
+        # reads env on every call (no caching) — so no reload needed.
+        with _TempLoopDir(attempts=big_attempts, applies=[]):
+            ev = registry.build_registry(window_days=7)
+        ev_council = next((p for p in ev["providers"] if p["provider"] == "ollama-council"), None)
+        # Cost = 1M tokens × $5/M = $5
+        if abs(ev_council["cost_usd"] - 5.0) > 0.001:
+            fail(f"env override didn't apply: expected $5.0, got {ev_council['cost_usd']}")
+        if ev_council["cost_rate_usd_per_1m"] != 5.0:
+            fail(f"cost_rate didn't reflect env override: {ev_council['cost_rate_usd_per_1m']}")
+    finally:
+        if orig_env is None:
+            os.environ.pop("DOCUMIND_COST_RATE_OLLAMA_COUNCIL", None)
+        else:
+            os.environ["DOCUMIND_COST_RATE_OLLAMA_COUNCIL"] = orig_env
+    ok("env override $5/M × 1M tokens = $5.00 — operator can opt into GPU-cost accounting")
+
+    # ===================================================================
+    # Step 13 — totals.cost_usd surfaces the cross-provider sum
+    # ===================================================================
+    step("13. totals.cost_usd surfaces cross-provider cost aggregate")
+    snap_v2 = registry.build_registry(window_days=7)
+    totals = snap_v2["totals"]
+    if "cost_usd" not in totals:
+        fail("totals missing cost_usd field — registry-v2 contract broken")
+    if "tokens_total" not in totals:
+        fail("totals missing tokens_total field — registry-v2 contract broken")
+    # Cross-check: sum of provider cost_usd should equal totals.cost_usd
+    sum_cost = sum(float(p.get("cost_usd", 0.0)) for p in snap_v2["providers"])
+    if abs(sum_cost - float(totals["cost_usd"])) > 0.0001:
+        fail(f"totals.cost_usd ({totals['cost_usd']}) != provider sum ({sum_cost})")
+    ok(f"totals.cost_usd=${totals['cost_usd']:.4f} matches per-provider sum")
+
+    print(f"\n{GREEN}{BOLD}ALL 13 STEPS PASSED{NC}")
     return 0
 
 

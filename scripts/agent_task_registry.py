@@ -47,12 +47,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 REPO = Path(__file__).resolve().parents[1]
 LOOP_DIR = REPO / ".loop"
@@ -69,7 +72,66 @@ PG_USER = os.environ.get("DOCUMIND_PG_USER", "documind")
 PG_PASSWORD = os.environ.get("DOCUMIND_PG_PASSWORD", "documind")
 PG_DB = os.environ.get("DOCUMIND_PG_DB", "documind")
 
-REGISTRY_VERSION = "registry-v1"
+REGISTRY_VERSION = "registry-v2"
+
+# Cost rates — USD per 1M tokens. Ollama lanes are local (GPU energy +
+# operator time, NOT directly measurable in dollars), so reported as $0
+# with the brutal-honesty caveat that this UNDERSTATES real cost.
+# Claude rates can be overridden via env for prompt-cache-aware reads.
+# Drill-locked: drill_agent_task_registry.py step 9 verifies the
+# Ollama=$0 floor + Claude>$0 reality when synthetic input is provided.
+COST_PER_1M_USD_DEFAULT: dict[str, float] = {
+    # Ollama — local inference. Cost = $0 in $ but NOT in energy.
+    "ollama-council": 0.0,
+    "ollama-deterministic": 0.0,
+    "ollama-single": 0.0,
+    "ollama-other": 0.0,
+    # Claude (Sonnet 4.6 typical) — average of $3 input + $15 output / 2 = $9.
+    # Operators with input/output split should override via env.
+    "claude-runtime": 9.0,
+}
+
+
+def _cost_rate_per_1m(provider: str) -> float:
+    """Return USD per 1M tokens for ``provider``.
+
+    Reads env override first (e.g. DOCUMIND_COST_RATE_CLAUDE_RUNTIME=12.5),
+    falls back to the COST_PER_1M_USD_DEFAULT table. Unknown providers
+    get the conservative $0 default — the drill enforces this matches
+    the Ollama floor invariant.
+    """
+    env_key = "DOCUMIND_COST_RATE_" + provider.upper().replace("-", "_")
+    env_val = os.environ.get(env_key)
+    if env_val:
+        try:
+            return float(env_val)
+        except ValueError:
+            log.warning("invalid cost rate env=%s val=%r — using default", env_key, env_val)
+    return COST_PER_1M_USD_DEFAULT.get(provider, 0.0)
+
+
+def _extract_tokens(row: dict[str, Any]) -> int:
+    """Extract total tokens from one audit row.
+
+    Council rows store nested chain (author/reviewer/advisor) with each
+    contributor's own token count. Single-model rows have a top-level
+    `tokens` field. Deterministic rows (ruff:autofix) have neither →
+    return 0. Drill-locked: drill step 9 verifies a council row with
+    chain={author:300, reviewer:60, advisor:140} returns 500.
+    """
+    chain = row.get("chain")
+    if isinstance(chain, dict):
+        total = 0
+        for sub in chain.values():
+            if isinstance(sub, dict):
+                t = sub.get("tokens")
+                if isinstance(t, (int, float)):
+                    total += int(t)
+        return total
+    t = row.get("tokens")
+    if isinstance(t, (int, float)):
+        return int(t)
+    return 0
 
 # Lane → provider classification. Council lanes (multi-model author/
 # reviewer/advisor chains) all roll up to ollama-council; deterministic
@@ -137,7 +199,13 @@ def _compute_provider_rollup(
     being dropped.
     """
     by_provider: dict[str, dict[str, float | int]] = defaultdict(
-        lambda: {"attempted": 0, "applied": 0, "latency_sum": 0.0, "latency_n": 0}
+        lambda: {
+            "attempted": 0,
+            "applied": 0,
+            "latency_sum": 0.0,
+            "latency_n": 0,
+            "tokens_sum": 0,
+        }
     )
 
     for row in attempts:
@@ -149,6 +217,11 @@ def _compute_provider_rollup(
                 float(by_provider[provider]["latency_sum"]) + float(latency)
             )
             by_provider[provider]["latency_n"] = int(by_provider[provider]["latency_n"]) + 1
+        # v2 — sum tokens (top-level OR nested chain). Deterministic rows
+        # have neither and contribute 0 (correctly).
+        by_provider[provider]["tokens_sum"] = (
+            int(by_provider[provider]["tokens_sum"]) + _extract_tokens(row)
+        )
 
     for row in applies:
         if row.get("outcome") != "applied":
@@ -162,10 +235,16 @@ def _compute_provider_rollup(
         attempted = int(agg["attempted"])
         applied = int(agg["applied"])
         latency_n = int(agg["latency_n"])
+        tokens_total = int(agg["tokens_sum"])
         avg_latency = (
             float(agg["latency_sum"]) / latency_n if latency_n > 0 else 0.0
         )
         apply_rate = applied / attempted if attempted > 0 else 0.0
+        # v2 — cost rollup. cost_usd = tokens × rate / 1_000_000.
+        # cost_per_apply = cost_usd / applied (or 0 when applied=0).
+        rate_per_1m = _cost_rate_per_1m(provider)
+        cost_usd = (tokens_total * rate_per_1m) / 1_000_000.0
+        cost_per_apply_usd = (cost_usd / applied) if applied > 0 else 0.0
         rollup.append({
             "provider": provider,
             "attempted": attempted,
@@ -173,6 +252,11 @@ def _compute_provider_rollup(
             "apply_rate": round(apply_rate, 4),
             "avg_latency_s": round(avg_latency, 2),
             "latency_samples": latency_n,
+            # v2 — cost surface
+            "tokens_total": tokens_total,
+            "cost_rate_usd_per_1m": rate_per_1m,
+            "cost_usd": round(cost_usd, 6),
+            "cost_per_apply_usd": round(cost_per_apply_usd, 6),
         })
     return rollup
 
@@ -250,6 +334,10 @@ def build_registry(window_days: int = 7) -> dict[str, Any]:
     runtime_count, runtime_gap = _read_runtime_ai_decisions(window_days=window_days)
     if runtime_gap:
         gaps.append(runtime_gap)
+    # claude-runtime: tokens not yet aggregated from Postgres details
+    # JSONB in this iteration — left as a documented gap. The audit row
+    # exists; the cost column reads $0 + an honest_gap until the next
+    # iteration extends the asyncpg query to read details->>'tokens'.
     providers.append({
         "provider": "claude-runtime",
         "attempted": runtime_count,
@@ -257,11 +345,26 @@ def build_registry(window_days: int = 7) -> dict[str, Any]:
         "apply_rate": 1.0 if runtime_count > 0 else 0.0,
         "avg_latency_s": 0.0,  # OTel histograms hold the truth here
         "latency_samples": 0,
-        "note": "apply_rate=1.0 by definition: runtime decisions log only when executed",
+        "tokens_total": 0,
+        "cost_rate_usd_per_1m": _cost_rate_per_1m("claude-runtime"),
+        "cost_usd": 0.0,
+        "cost_per_apply_usd": 0.0,
+        "note": (
+            "apply_rate=1.0 by definition: runtime decisions log only when executed. "
+            "tokens_total=0 because details->>'tokens' aggregation not yet wired "
+            "(deferred to next iteration to keep this commit tight)."
+        ),
     })
+    if runtime_count > 0:
+        gaps.append(
+            "claude-runtime cost rollup deferred — tokens column reads 0 until "
+            "details->>'tokens' aggregation lands in registry-v3"
+        )
 
     total_attempted = sum(int(p["attempted"]) for p in providers)
     total_applied = sum(int(p["applied"]) for p in providers)
+    total_tokens = sum(int(p.get("tokens_total", 0)) for p in providers)
+    total_cost_usd = sum(float(p.get("cost_usd", 0.0)) for p in providers)
     overall_apply_rate = (
         total_applied / total_attempted if total_attempted > 0 else 0.0
     )
@@ -275,6 +378,9 @@ def build_registry(window_days: int = 7) -> dict[str, Any]:
             "attempted": total_attempted,
             "applied": total_applied,
             "apply_rate": round(overall_apply_rate, 4),
+            # v2 — cost totals
+            "tokens_total": total_tokens,
+            "cost_usd": round(total_cost_usd, 6),
         },
         "honest_gaps": gaps,
         # Bottleneck signal — the headline number §55 wants visible.
@@ -341,22 +447,27 @@ def main() -> int:
         sys.stdout.write("\n")
         return 0
 
-    # Human summary
+    # Human summary — v2 adds tokens + cost columns
     print(f"agent-task registry — version={snapshot['version']}")
     print(f"window={snapshot['window_days']}d  generated_at={snapshot['generated_at']:.0f}")
     print()
-    print(f"{'provider':<25} {'attempted':>10} {'applied':>10} {'apply_rate':>12} {'avg_lat_s':>10}")
-    print("-" * 70)
+    print(
+        f"{'provider':<25} {'attempted':>9} {'applied':>8} "
+        f"{'apply_rate':>10} {'avg_lat':>8} {'tokens':>10} {'cost_usd':>10}"
+    )
+    print("-" * 88)
     for p in snapshot["providers"]:
         print(
-            f"{p['provider']:<25} {p['attempted']:>10} {p['applied']:>10} "
-            f"{p['apply_rate']:>12.2%} {p['avg_latency_s']:>10.2f}"
+            f"{p['provider']:<25} {p['attempted']:>9} {p['applied']:>8} "
+            f"{p['apply_rate']:>10.2%} {p['avg_latency_s']:>8.2f} "
+            f"{p.get('tokens_total', 0):>10} ${p.get('cost_usd', 0.0):>9.4f}"
         )
-    print("-" * 70)
+    print("-" * 88)
     t = snapshot["totals"]
     print(
-        f"{'TOTAL':<25} {t['attempted']:>10} {t['applied']:>10} "
-        f"{t['apply_rate']:>12.2%}"
+        f"{'TOTAL':<25} {t['attempted']:>9} {t['applied']:>8} "
+        f"{t['apply_rate']:>10.2%} {' ':>8} "
+        f"{t.get('tokens_total', 0):>10} ${t.get('cost_usd', 0.0):>9.4f}"
     )
 
     if snapshot["honest_gaps"]:

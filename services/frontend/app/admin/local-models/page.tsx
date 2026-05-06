@@ -20,6 +20,12 @@ type ProviderRow = {
   apply_rate: number;
   avg_latency_s: number;
   latency_samples?: number;
+  // v2 — cost surface (registry-v2). Optional so older Paperclip
+  // snapshots (pre-v8 cost extension) still render without crashing.
+  tokens_total?: number;
+  cost_rate_usd_per_1m?: number;
+  cost_usd?: number;
+  cost_per_apply_usd?: number;
   note?: string;
 };
 type ProviderComparison = {
@@ -27,7 +33,14 @@ type ProviderComparison = {
   generated_at: number;
   window_days: number;
   providers: ProviderRow[];
-  totals: { attempted: number; applied: number; apply_rate: number };
+  totals: {
+    attempted: number;
+    applied: number;
+    apply_rate: number;
+    // v2 — cost totals (optional for pre-v2 snapshots)
+    tokens_total?: number;
+    cost_usd?: number;
+  };
   honest_gaps: string[];
   bottleneck_signal: {
     signal_active: boolean;
@@ -145,6 +158,8 @@ export default function LocalModelsPage() {
                 <th align="right">Applied</th>
                 <th align="right">Apply rate</th>
                 <th align="right">Avg latency</th>
+                <th align="right">Tokens</th>
+                <th align="right">Cost (USD)</th>
               </tr>
             </thead>
             <tbody>
@@ -177,6 +192,27 @@ export default function LocalModelsPage() {
                       ? `${p.avg_latency_s.toFixed(1)}s (n=${p.latency_samples})`
                       : '—'}
                   </td>
+                  <td align="right" title={`rate=$${(p.cost_rate_usd_per_1m ?? 0).toFixed(2)}/M tokens`}>
+                    {p.tokens_total !== undefined ? p.tokens_total.toLocaleString() : '—'}
+                  </td>
+                  <td
+                    align="right"
+                    style={{
+                      color:
+                        (p.cost_usd ?? 0) > 0
+                          ? (p.cost_usd ?? 0) > 1.0
+                            ? '#c33'
+                            : '#c80'
+                          : '#888',
+                    }}
+                  >
+                    {p.cost_usd !== undefined ? `$${p.cost_usd.toFixed(4)}` : '—'}
+                    {p.applied > 0 && (p.cost_per_apply_usd ?? 0) > 0 && (
+                      <div style={{ fontSize: 10, color: '#888' }}>
+                        ${(p.cost_per_apply_usd ?? 0).toFixed(4)}/apply
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
               <tr style={{ borderTop: '1px solid #ccc', fontWeight: 600 }}>
@@ -187,6 +223,12 @@ export default function LocalModelsPage() {
                   {(d.provider_comparison.totals.apply_rate * 100).toFixed(2)}%
                 </td>
                 <td>—</td>
+                <td align="right">
+                  {(d.provider_comparison.totals.tokens_total ?? 0).toLocaleString()}
+                </td>
+                <td align="right">
+                  ${(d.provider_comparison.totals.cost_usd ?? 0).toFixed(4)}
+                </td>
               </tr>
             </tbody>
           </table>
