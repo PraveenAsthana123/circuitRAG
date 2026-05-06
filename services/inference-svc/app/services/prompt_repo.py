@@ -125,9 +125,87 @@ class DbBackedPromptBuilder:
                 user_template=user.strip(),
                 max_context_tokens=int(row.get("max_tokens") or 4000),
             )
+
+        # Stage-5 GEPA-active overlay (per ADR-024-style chain + commit
+        # 67df048's promote_gepa_prompts gate). When
+        # GEPA_PROMPT_LOADER_ENABLED=1 AND .loop/gepa_active_prompts.json
+        # exists (only present when the Stage-4 promotion gate has
+        # passed), overlay the optimized prompts as separate version
+        # keys (e.g. "rag.qa_v1_gepa") so callers can A/B by version.
+        # Baseline DB rows remain untouched — Stage-6 (deferred) wires
+        # the canary traffic-split that picks gepa version for X%.
+        # Per §47 fail-safe: any error reading the artifact → skip
+        # overlay; baseline cache unchanged.
+        gepa_count = self._overlay_gepa_active(new_cache)
+
         async with self._lock:
             self._cache = new_cache
-        log.info("prompt_cache_reloaded count=%d", len(new_cache))
+        log.info(
+            "prompt_cache_reloaded count=%d gepa_overlay=%d",
+            len(new_cache), gepa_count,
+        )
+
+    def _overlay_gepa_active(self, cache: dict[str, PromptTemplate]) -> int:
+        """Stage-5 GEPA overlay: read .loop/gepa_active_prompts.json and
+        merge into cache as `name_gepa-{ts}` version keys.
+
+        Returns the number of GEPA prompts overlaid. Default-deny:
+        GEPA_PROMPT_LOADER_ENABLED=1 required to activate. Per §47
+        fail-safe: any read/parse error → return 0, baseline cache
+        intact.
+
+        Composes with:
+          scripts/promote_gepa_prompts.py — produces the artifact
+          docs/architecture/empirical-rag-config-loop.md — chain
+          §43 drill — drill_prompt_repo_gepa_overlay_stage5
+          §47 fail-safe — error never breaks baseline reload
+        """
+        import os
+        import json as _json
+        from pathlib import Path
+
+        if os.environ.get("GEPA_PROMPT_LOADER_ENABLED", "").strip() != "1":
+            return 0
+
+        # Path is fixed at the artifact's canonical location; operators
+        # who relocate the .loop dir can override via env.
+        path = os.environ.get(
+            "GEPA_ACTIVE_PROMPTS_PATH",
+            ".loop/gepa_active_prompts.json",
+        )
+        p = Path(path)
+        if not p.exists():
+            return 0
+        try:
+            data = _json.loads(p.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("gepa_overlay_parse_failed path=%s err=%s", path, exc)
+            return 0
+
+        promoted_at = data.get("promoted_at_ts", 0)
+        version_tag = f"gepa-{int(promoted_at)}" if promoted_at else "gepa-active"
+        optimized = data.get("optimized_prompts") or {}
+
+        count = 0
+        for predictor_name, payload in optimized.items():
+            instructions = (payload.get("instructions") or "").strip()
+            if not instructions:
+                # Defensive: gate should have rejected, but double-check
+                continue
+            # GEPA's predictor names are like "predict.predict" — map to
+            # a stable cache key. We register under "<predictor>_<version>"
+            # so callers asking for the gepa-tuned version pick it
+            # explicitly. Stage-6 (deferred) does the traffic-split.
+            key = f"{predictor_name}_{version_tag}"
+            cache[key] = PromptTemplate(
+                name=predictor_name,
+                version=version_tag,
+                system=instructions,
+                user_template="{query}",  # GEPA tunes the system message
+                max_context_tokens=4000,
+            )
+            count += 1
+        return count
 
     def get(self, name: str) -> PromptTemplate:
         try:
