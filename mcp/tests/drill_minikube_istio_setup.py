@@ -17,7 +17,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 UP = REPO / "scripts" / "istio-up.sh"
 DOWN = REPO / "scripts" / "istio-down.sh"
@@ -132,7 +131,67 @@ def main() -> int:
     require(down, "nothing to delete", "graceful no-op message")
     print("  ok: down script no-ops cleanly when minikube absent")
 
-    print("\nALL 11 STEPS PASSED")
+    print("-- 12. POSITIVE: kiali.yaml has required signing_key (v1.86 contract) --")
+    kiali_yaml = (KIALI_DIR / "kiali.yaml").read_text(encoding="utf-8")
+    require(kiali_yaml, "login_token:", "login_token block in kiali.yaml")
+    require(kiali_yaml, "signing_key:", "signing_key field in kiali.yaml")
+    # Extract the signing_key value and verify it's 16/24/32 bytes
+    import re
+    m = re.search(r'signing_key:\s*"?([a-fA-F0-9]+)"?', kiali_yaml)
+    if not m:
+        raise AssertionError("signing_key value not extractable from kiali.yaml")
+    key_len = len(m.group(1))
+    # hex chars / 2 = bytes; v1.86 requires 16, 24, or 32 BYTES
+    key_bytes = key_len // 2 if all(c in "0123456789abcdefABCDEF" for c in m.group(1)) else key_len
+    if key_bytes not in (16, 24, 32):
+        raise AssertionError(
+            f"signing_key length {key_bytes} bytes; "
+            f"Kiali v1.86 requires exactly 16, 24, or 32 bytes"
+        )
+    print(f"  ok: signing_key present, length={key_bytes} bytes (v1.86-compliant)")
+
+    print("-- 13. POSITIVE: kiali docker-compose entry gated by 'mesh' profile --")
+    compose_yaml = (REPO / "docker-compose.yml").read_text(encoding="utf-8")
+    # Find the kiali service block
+    m = re.search(
+        r'^  kiali:.*?^  [a-z][a-z0-9_-]*:',
+        compose_yaml,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not m:
+        raise AssertionError("kiali service block not found in docker-compose.yml")
+    kiali_block = m.group(0)
+    if 'profiles:' not in kiali_block or '"mesh"' not in kiali_block:
+        raise AssertionError(
+            "kiali docker-compose entry must have profiles: [\"mesh\"]; "
+            "without it, `docker compose up` would auto-start a Kiali "
+            "that hard-blocks on a K8s cache sync that cannot complete"
+        )
+    print("  ok: kiali gated by --profile mesh (compose-mode K8s incompatibility)")
+
+    print("-- 14. NEGATIVE: kiali.yaml MUST NOT claim 'non-mesh metrics work' --")
+    # The original comment claimed Kiali in compose-mode would still serve
+    # Prom + Jaeger panels — empirically false in v1.86 (cache sync blocks
+    # HTTP server). Drill enforces the comment is updated to reflect reality.
+    if "non-mesh metrics + traces for quick visual debugging" in kiali_yaml:
+        raise AssertionError(
+            "kiali.yaml still has the misleading 'non-mesh metrics' claim — "
+            "Kiali v1.86 does NOT serve HTTP without K8s. Update the comment "
+            "to reflect the istio-up.sh requirement."
+        )
+    if "scripts/istio-up.sh" not in kiali_yaml:
+        raise AssertionError(
+            "kiali.yaml comment must reference scripts/istio-up.sh as the "
+            "operator entry point for getting Kiali fully functional"
+        )
+    print("  ok: kiali.yaml comment reflects reality; references istio-up.sh")
+
+    print("-- 15. POSITIVE: runbook documents kiali-via-profile-mesh workflow --")
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+    require(runbook, "--profile mesh", "kiali profile-mesh instruction in runbook")
+    print("  ok: runbook documents `docker compose --profile mesh up kiali`")
+
+    print("\nALL 15 STEPS PASSED")
     return 0
 
 

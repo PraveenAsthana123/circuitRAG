@@ -1,9 +1,16 @@
 ---
 # Kiali configuration — points at the same Prometheus + Jaeger the rest of
-# the stack uses. When DocuMind is deployed to Kind + Istio, Kiali reads
-# mesh topology from the Istio control plane directly and produces a live
-# service-graph. In the docker-compose dev setup, it still shows the
-# non-mesh metrics + traces for quick visual debugging.
+# the stack uses. When DocuMind is deployed to minikube + Istio (via
+# `bash scripts/istio-up.sh`), Kiali reads mesh topology from the Istio
+# control plane and produces a live service-graph.
+#
+# DOCKER-COMPOSE LIMITATION: Kiali v1.86 hard-blocks startup on a K8s
+# cache sync that cannot complete without a real K8s API. The kiali
+# service is therefore gated behind `--profile mesh` in docker-compose.yml
+# so `docker compose up` skips it. Operators opt in via:
+#   bash scripts/istio-up.sh                    # bring up minikube + Istio
+#   docker compose --profile mesh up kiali      # then start Kiali
+# See docs/runbooks/istio-local-deploy.md for the full workflow.
 
 server:
   port: 20001
@@ -12,11 +19,31 @@ server:
 auth:
   strategy: anonymous
 
+# Kiali v1.86+ requires a signing key for session cookies even when
+# auth.strategy=anonymous (the binary still initializes the session
+# subsystem on startup). Must be exactly 16, 24, or 32 bytes — using
+# 32 hex chars (16 bytes). This is a DEV-ONLY default; production
+# stacks override via env var or k8s Secret. Drilled by
+# drill_minikube_istio_setup.py step 12.
+login_token:
+  signing_key: "aed516789d7e2dd69b2edd366c1aa2c3"
+
 deployment:
   accessible_namespaces: ["**"]
+  cluster_wide_access: false
   logger:
     log_format: json
     log_level: info
+
+# In docker-compose dev mode there's NO K8s cluster — bypass the
+# cluster cache that otherwise blocks Kiali's HTTP server until it
+# finishes a sync that can never complete. Drilled by step 12 of
+# drill_minikube_istio_setup.py: when cache_enabled=false AND
+# in_cluster_url is set, Kiali serves /kiali/healthz under degraded
+# mesh-graph mode (Prom + Jaeger panels remain functional).
+kubernetes_config:
+  cache_enabled: false
+  cluster_name: "compose-dev"
 
 external_services:
   istio:

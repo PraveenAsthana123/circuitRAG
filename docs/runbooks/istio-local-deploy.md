@@ -134,3 +134,57 @@ minikube + Istio when:
 > only when you need to exercise the mesh's actual enforcement —
 > otherwise NGINX + api-gateway + circuit-breakers cover ~80% of
 > Istio's value at ~5% of the operational cost.
+
+## Kiali in compose-mode (post-2026-05-06)
+
+Kiali v1.86 hard-blocks startup on a K8s cache sync that cannot
+complete in docker-compose mode (no real K8s API server is reachable).
+Symptom: `documind-kiali` enters `Up (health: starting)` indefinitely
+and never serves HTTP at `:20001/kiali/`. Logs show
+`[Kiali Cache] Waiting for cluster-scoped cache to sync` followed by
+endless K8s API connection-refused warnings.
+
+The fix is **NOT** to start Kiali in docker-compose. Kiali is gated
+behind `--profile mesh` so default `docker compose up` skips it.
+
+### The two operator paths
+
+**Path A — Full mesh (Kiali fully functional):**
+
+```bash
+bash scripts/istio-up.sh                    # bring up minikube + Istio
+istioctl analyze -n documind                # smoke check
+docker compose --profile mesh up kiali      # NOW Kiali can sync K8s cache
+                                            # → http://localhost:20001/kiali/
+```
+
+**Path B — Compose-only dev (Kiali off):**
+
+```bash
+docker compose up -d                        # default; Kiali skipped
+                                            # mesh-graph unavailable
+                                            # Prometheus + Grafana still
+                                            # cover service metrics on :3001
+```
+
+Drilled by `mcp/tests/drill_minikube_istio_setup.py` steps 12-15:
+profile gate locked, signing-key length verified, kiali.yaml comment
+required to reference `scripts/istio-up.sh`, runbook required to
+document `--profile mesh` instruction.
+
+### Why not just use a fake K8s API in compose
+
+Tried (2026-05-06):
+
+- Dummy kubeconfig pointing at 127.0.0.1:1 — Kiali still requires
+  `KUBERNETES_SERVICE_HOST` env vars + service-account token files.
+- Faked all of those — Kiali starts the binary cleanly but blocks
+  forever on `[Kiali Cache] Waiting for cluster-scoped cache to sync`.
+- Set `kubernetes_config.cache_enabled: false` + `cluster_wide_access:
+  false` — flags ignored or insufficient; cache wait persists.
+
+Conclusion: Kiali v1.86 requires a *responsive* K8s API; there is no
+documented compose-mode escape. Older Kiali versions (≤ 1.50) had an
+"external_services_only" mode but were dropped. The honest path is to
+acknowledge the architecture mismatch and document the two operator
+flows above.
