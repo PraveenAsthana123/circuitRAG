@@ -63,6 +63,26 @@ type Summary = {
     paid_providers: number;
     free_providers: number;
   };
+  migrate_phase?: {
+    flags?: Record<string, {
+      env_var: string;
+      enabled: boolean;
+      since_iter: number;
+      legacy_path: string;
+      sql_table: string;
+    }>;
+    surfaces?: Record<string, {
+      legacy_size_bytes: number;
+      sql_count: number;
+      parity: string;
+    }>;
+    honest_gaps?: string[];
+    summary?: {
+      active_count: number;
+      total: number;
+      sql_total_rows: number;
+    };
+  };
   ops_queue: {
     tasks_total: number;
     tasks_completed: number;
@@ -142,6 +162,11 @@ export default function DashboardPage() {
   const providers = d.providers ?? [];
   const honest_gaps = d.honest_gaps ?? [];
   const cost = d.cost_summary ?? { tokens_total: 0, cost_usd: 0, paid_providers: 0, free_providers: providers.length };
+  const migrate = d.migrate_phase ?? { flags: {}, surfaces: {}, honest_gaps: [], summary: { active_count: 0, total: 0, sql_total_rows: 0 } };
+  const migrateFlags = migrate.flags ?? {};
+  const migrateSurfaces = migrate.surfaces ?? {};
+  const migrateGaps = migrate.honest_gaps ?? [];
+  const migrateSum = migrate.summary ?? { active_count: 0, total: 0, sql_total_rows: 0 };
 
   return (
     <div style={{ padding: 20 }}>
@@ -384,6 +409,110 @@ export default function DashboardPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Migrate-phase status — iter 14: §47.7 expand→migrate→contract */}
+      {migrateSum.total > 0 && (
+        <div
+          className="card"
+          style={{
+            marginTop: 16,
+            borderLeft:
+              migrateGaps.length > 0
+                ? '4px solid #c80'
+                : migrateSum.active_count > 0
+                  ? '4px solid #393'
+                  : '4px solid #888',
+          }}
+        >
+          <strong>
+            Migrate-phase status — {migrateSum.active_count}/{migrateSum.total} flags active
+          </strong>
+          <p style={{ marginTop: 4, fontSize: 12, color: '#666' }}>
+            Per CLAUDE.md §47.7. Each flag enables a SQL dual-write alongside an
+            authoritative JSONL/JSON source. Operator opts in via env var. Until
+            opt-in, behavior is unchanged. Parity signal compares legacy file
+            size with SQL row count to flag misconfiguration.
+          </p>
+          <table style={{ width: '100%', marginTop: 8, fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th align="left">Flag</th>
+                <th align="left">Env var</th>
+                <th align="center">State</th>
+                <th align="right">Legacy</th>
+                <th align="right">SQL rows</th>
+                <th align="left">Parity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(migrateFlags).map(([name, flag]) => {
+                const surface = migrateSurfaces[name] ?? {
+                  legacy_size_bytes: 0,
+                  sql_count: 0,
+                  parity: 'n/a',
+                };
+                return (
+                  <tr key={name}>
+                    <td>
+                      <code>{name}</code>
+                      <div style={{ fontSize: 10, color: '#888' }}>
+                        iter {flag.since_iter} → <code>{flag.sql_table}</code>
+                      </div>
+                    </td>
+                    <td>
+                      <code style={{ fontSize: 11 }}>{flag.env_var}</code>
+                    </td>
+                    <td
+                      align="center"
+                      style={{
+                        color: flag.enabled ? '#393' : '#888',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {flag.enabled ? 'ON' : 'off'}
+                    </td>
+                    <td align="right">
+                      {(surface.legacy_size_bytes / 1024).toFixed(1)} KB
+                    </td>
+                    <td align="right">{surface.sql_count}</td>
+                    <td
+                      align="left"
+                      style={{
+                        color:
+                          surface.parity === 'active'
+                            ? '#393'
+                            : surface.parity === 'no_traffic_since_flip'
+                              ? '#c33'
+                              : '#888',
+                      }}
+                    >
+                      <code style={{ fontSize: 11 }}>{surface.parity}</code>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {migrateGaps.length > 0 && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 8,
+                background: '#fee8d8',
+                borderRadius: 4,
+                fontSize: 12,
+              }}
+            >
+              <strong>Migrate gaps:</strong>
+              <ul style={{ margin: '4px 0 0 16px' }}>
+                {migrateGaps.map((g, i) => (
+                  <li key={i}>{g}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

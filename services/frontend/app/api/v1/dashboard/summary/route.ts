@@ -113,6 +113,26 @@ type PaperclipSnapshot = {
     };
     honest_gaps?: string[];
   };
+  migrate_phase_status?: {
+    flags?: Record<string, {
+      env_var: string;
+      enabled: boolean;
+      since_iter: number;
+      legacy_path: string;
+      sql_table: string;
+    }>;
+    surfaces?: Record<string, {
+      legacy_size_bytes: number;
+      sql_count: number;
+      parity: string;
+    }>;
+    honest_gaps?: string[];
+    summary?: {
+      active_count: number;
+      total: number;
+      sql_total_rows: number;
+    };
+  };
   approval_engine?: {
     policy_version?: string;
     patterns?: { auto_approve?: number; ask_once?: number; always_ask?: number; block?: number };
@@ -245,15 +265,19 @@ function buildSummary(snap: PaperclipSnapshot): {
     pending_issues_total: Number(snap.pending_issues?.total_pending ?? 0),
   };
 
+  // v3 — migrate-phase status pass-through (iter 14 surface)
+  const migrate_phase = snap.migrate_phase_status || {};
+
   return {
     summary: {
-      version: 'summary-v2',
+      version: 'summary-v3',
       paperclip_version: snap.version,
       generated_at: Math.floor(Date.now() / 1000),
       system_health,
       council_signal,
       approval_engine,
       providers,
+      migrate_phase: migrate_phase,
       cost_summary,
       ops_queue,
       links: {

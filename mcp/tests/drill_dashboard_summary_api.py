@@ -131,10 +131,11 @@ def main() -> int:
     # ===================================================================
     # Step 5 — output shape contains the documented top-level fields
     # ===================================================================
-    step("5. output shape includes all 9 documented top-level keys")
+    step("5. output shape includes all 10 documented top-level keys (incl. migrate_phase)")
     expected_keys = (
         "version", "generated_at", "system_health", "council_signal",
         "approval_engine", "providers", "ops_queue", "links", "honest_gaps",
+        "migrate_phase",
     )
     missing = [
         k for k in expected_keys
