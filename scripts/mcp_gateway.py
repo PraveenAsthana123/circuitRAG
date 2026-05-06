@@ -60,7 +60,12 @@ MCP_GATEWAY_STRICT = os.getenv("MCP_GATEWAY_STRICT", "").strip() == "1"
 
 @dataclass
 class GatewayDecision:
-    """Outcome of a gateway check. Same shape as PolicyDecision per §38/§48.4."""
+    """Outcome of a gateway check. Same shape as PolicyDecision per §38/§48.4.
+
+    ``latency_ms`` was added 2026-05-06 to feed the Paperclip Stage-1 v6
+    p50/p95/p99 aggregator. Older audit rows lack the field; the
+    aggregator handles missing field gracefully.
+    """
     allow: bool
     reason: str
     actor: str
@@ -71,6 +76,7 @@ class GatewayDecision:
     rule_matched: str = ""
     timestamp: float = 0.0
     request_id: str = ""
+    latency_ms: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -178,6 +184,7 @@ def check(
     """
     import uuid as _uuid
     request_id = str(_uuid.uuid4())
+    started = time.time()  # paperclip v6 latency tracking
 
     if not is_available():
         raise MCPGatewayDisabled(
@@ -207,6 +214,7 @@ def check(
             request_id=request_id,
         )
         if persist_audit:
+            decision.latency_ms = round((time.time() - started) * 1000.0, 3)
             _append_audit(decision)
         return decision
 
@@ -228,6 +236,7 @@ def check(
             request_id=request_id,
         )
         if persist_audit:
+            decision.latency_ms = round((time.time() - started) * 1000.0, 3)
             _append_audit(decision)
         return decision
 
@@ -253,6 +262,7 @@ def check(
             request_id=request_id,
         )
         if persist_audit:
+            decision.latency_ms = round((time.time() - started) * 1000.0, 3)
             _append_audit(decision)
         return decision
 
@@ -275,6 +285,7 @@ def check(
             request_id=request_id,
         )
         if persist_audit:
+            decision.latency_ms = round((time.time() - started) * 1000.0, 3)
             _append_audit(decision)
         return decision
 
@@ -293,6 +304,7 @@ def check(
             request_id=request_id,
         )
         if persist_audit:
+            decision.latency_ms = round((time.time() - started) * 1000.0, 3)
             _append_audit(decision)
         return decision
 
@@ -318,18 +330,101 @@ def check(
         request_id=request_id,
     )
     if persist_audit:
+        decision.latency_ms = round((time.time() - started) * 1000.0, 3)
         _append_audit(decision)
     return decision
 
 
 def _append_audit(decision: GatewayDecision) -> None:
-    """Best-effort append to .loop/mcp_gateway_audit.jsonl."""
+    """Best-effort append to .loop/mcp_gateway_audit.jsonl.
+
+    Per §47.7 migrate-phase: when MCP_GATEWAY_SQL_AUDIT_ENABLED=1,
+    ALSO writes the decision to governance.tool_executions. JSONL
+    remains authoritative; SQL is the queryable surface. Either
+    write failing does NOT block the other (best-effort dual-write).
+    Drill drill_mcp_gateway_dual_write.py locks the parity contract.
+    """
+    # JSONL write — authoritative surface, NEVER skipped.
     try:
         AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
         with AUDIT_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(decision.to_dict(), default=str) + "\n")
     except OSError:
         pass
+
+    # SQL write — opt-in via env. Failure NEVER blocks the JSONL path.
+    if os.getenv("MCP_GATEWAY_SQL_AUDIT_ENABLED", "").strip() == "1":
+        _persist_sql_audit(decision)
+
+
+def _persist_sql_audit(decision: GatewayDecision) -> None:
+    """Best-effort write to governance.tool_executions.
+
+    Per §47.7 migrate-phase. The SQL surface complements (not replaces)
+    the JSONL audit. Insert failure is logged but NEVER raised — the
+    gateway's response path stays unblocked.
+
+    tenant_id is NULL because the MCP gateway is cross-tenant (a
+    request_id is the correlation key, not a tenant). The RLS policy
+    for tool_executions explicitly allows NULL-tenant rows as
+    service-account audit floor (per migration 010 comment).
+
+    Uses asyncpg wrapped in asyncio.run() to keep this writer sync.
+    """
+    try:
+        import asyncio
+        import uuid as _uuid
+
+        import asyncpg
+    except ImportError:
+        return
+
+    # Validate / coerce request_id to UUID (column type is UUID NOT NULL)
+    rid = decision.request_id
+    try:
+        rid_uuid = _uuid.UUID(rid) if rid else _uuid.uuid4()
+    except (ValueError, AttributeError):
+        rid_uuid = _uuid.uuid4()
+
+    pg_host = os.getenv("DOCUMIND_PG_HOST", "localhost")
+    pg_port = int(os.getenv("DOCUMIND_PG_PORT", "55432"))
+    pg_user = os.getenv("DOCUMIND_PG_USER", "documind_app")
+    pg_password = os.getenv("DOCUMIND_PG_PASSWORD", "documind_app")
+    pg_db = os.getenv("DOCUMIND_PG_DB", "documind")
+
+    async def _insert() -> None:
+        conn = await asyncpg.connect(
+            host=pg_host, port=pg_port, user=pg_user,
+            password=pg_password, database=pg_db, timeout=2.0,
+        )
+        try:
+            await conn.execute(
+                "INSERT INTO governance.tool_executions "
+                "(request_id, tenant_id, actor, server, tool, "
+                " allow, decision_reason, risk, rule_matched, "
+                " latency_ms) "
+                "VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)",
+                rid_uuid,
+                decision.actor,
+                decision.server,
+                decision.tool,
+                decision.allow,
+                decision.reason,
+                decision.risk,
+                decision.rule_matched,
+                int(decision.latency_ms) if decision.latency_ms else None,
+            )
+        finally:
+            await conn.close()
+
+    try:
+        asyncio.run(_insert())
+    except Exception as exc:  # noqa: BLE001
+        # Per §47.7 migrate-phase: SQL is best-effort; JSONL is
+        # authoritative. Log and move on.
+        log = logging.getLogger(__name__)
+        log.warning("mcp_gateway_sql_audit_failed err=%s",
+                    type(exc).__name__)
 
 
 def status() -> dict[str, Any]:
