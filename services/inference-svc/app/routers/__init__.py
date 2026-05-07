@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 from documind_core.auth import require_roles, required_role_for_tool
 from documind_core.exceptions import ValidationError
 from documind_core.schemas import HealthResponse
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+
+log = logging.getLogger(__name__)
 
 from app.schemas import (
     AgentAskRequest,
@@ -955,9 +960,9 @@ async def health_best_config() -> HealthBestConfigResponse:
                     promoted_at_ts=cfg.promoted_at_ts,
                     eval_set_size=cfg.eval_set_size,
                 )
-    except Exception:  # noqa: BLE001 — visibility must never crash
+    except Exception:  # noqa: BLE001,S110 — visibility must never crash
         # §47 fail-safe: surface as "(unavailable)" rather than 500
-        pass
+        pass  # noqa: S110 — fail-safe (already explained above)
 
     return HealthBestConfigResponse(
         service="inference-svc",
@@ -1044,8 +1049,8 @@ async def health_best_config_history(
             latest_decision = summary.latest_decision
             earliest_ts = summary.earliest_ts
             latest_ts = summary.latest_ts
-    except Exception:  # noqa: BLE001 — visibility never crashes
-        pass
+    except Exception:  # noqa: BLE001,S110 — visibility never crashes
+        pass  # noqa: S110 — intentional fail-safe (see comment above)
 
     return HealthBestConfigHistoryResponse(
         service="inference-svc",
@@ -1291,12 +1296,53 @@ async def ask(
     correlation_id = getattr(request.state, "correlation_id", "") or ""
     if not tenant_id:
         raise ValidationError("X-Tenant-ID header is required")
-    return await svc.ask(
+    response = await svc.ask(
         tenant_id=tenant_id,
         correlation_id=correlation_id,
         request=body,
         include_debug=debug,
     )
+    # Per CLAUDE.md §47.7 (expand-phase: lifespan ships first, route-level
+    # publish points wire on opt-in basis) + §40 (decision system: every
+    # query is a business event downstream services subscribe to).
+    # iter-50 wired the lifespan (app.state.event_producer); iter-51
+    # is the FIRST application of that contract. Publish a
+    # query.generated.v1 CloudEvent on every successful ask. Schema:
+    # schemas/events/query.lifecycle.v1.json.
+    #
+    # Fail-safe: if Kafka is unreachable OR the publish itself fails,
+    # log + continue. The user got their answer; we don't 5xx because
+    # the event bus blinked. (Saga compensation for events that MUST
+    # land lives in ingestion-svc's outbox pattern; query.lifecycle is
+    # observability-grade signal, not state-of-record.)
+    producer = getattr(request.app.state, "event_producer", None)
+    if producer is not None:
+        try:
+            await producer.publish(
+                topic="query.lifecycle",
+                type="query.generated.v1",
+                tenant_id=tenant_id,
+                correlation_id=correlation_id,
+                key=tenant_id,  # per-tenant ordering
+                data={
+                    "query": (body.query or "")[:500],
+                    "retrieved_chunks": len(getattr(response, "citations", []) or []),
+                    "prompt_version": getattr(response, "prompt_version", "")
+                    or getattr(svc, "_default_prompt", ""),
+                    "model": getattr(svc, "_ollama", None).__class__.__name__
+                    if getattr(svc, "_ollama", None)
+                    else "",
+                    "tokens_prompt": int(getattr(response, "tokens_prompt", 0) or 0),
+                    "tokens_completion": int(
+                        getattr(response, "tokens_completion", 0) or 0,
+                    ),
+                    "confidence": float(getattr(response, "confidence", 0.0) or 0.0),
+                    "latency_ms": int(getattr(response, "latency_ms", 0) or 0),
+                },
+            )
+        except Exception as _exc:  # noqa: BLE001 — observability fail-safe
+            log.warning("query_lifecycle_publish_failed err=%s", _exc)
+    return response
 
 
 def _agent_service(request: Request) -> AgentService:

@@ -1,9 +1,12 @@
 """Agent orchestrator FastAPI service."""
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from documind_core.body_limit import BodyLimitMiddleware
 from documind_core.config import get_settings
@@ -90,6 +93,12 @@ def create_app() -> FastAPI:
         idempotency_store: PostgresIdempotencyStore | InMemoryIdempotencyStore
         try:
             await db_breaker.connect_with_breaker(db)
+            # §53 #38 schema-evolution: apply any unapplied migrations
+            # before the first request reaches a tenant-scoped table.
+            # Booting green with missing tables is a silent-degradation
+            # gap that turns into a 500 on first write — fail loud here.
+            from .migrations import run_migrations
+            await run_migrations(db)
             store = PostgresTaskStore(db, breaker=db_breaker)
             app.state.db = db
             idempotency_store = PostgresIdempotencyStore(db)
@@ -154,7 +163,44 @@ def create_app() -> FastAPI:
             pipeline_v2_enabled=settings.pipeline_v2_enabled,
         )
         app.state.mcp_clients = mcp_clients
+
+        # Event Bus (aiokafka producer) — opt-in via DOCUMIND_KAFKA_BOOTSTRAP.
+        # Per CLAUDE.md §47.7 (expand-phase): agent-orchestrator-svc lifespan
+        # ships now; per-route publish points (e.g. agent.task.completed.v1
+        # with tool-call sequence + plan trace + reflections) wire on opt-in
+        # basis in subsequent commits. Default-safe: env-var unset OR Kafka
+        # unreachable at boot → app.state.event_producer = None.
+        import os  # noqa: PLC0415
+
+        app.state.event_producer = None
+        kafka_bootstrap = os.getenv("DOCUMIND_KAFKA_BOOTSTRAP", "").strip()
+        if kafka_bootstrap:
+            try:
+                from documind_core.kafka_client import EventProducer
+                producer = EventProducer(
+                    bootstrap_servers=kafka_bootstrap,
+                    client_id=f"agent-orchestrator-svc-{settings.env}",
+                    source="agent-orchestrator-svc",
+                )
+                await producer.start()
+                app.state.event_producer = producer
+                log.info(
+                    "orchestrator_kafka_producer_ready bootstrap=%s",
+                    kafka_bootstrap,
+                )
+            except Exception as exc:  # noqa: BLE001 — Kafka optional
+                log.warning(
+                    "orchestrator_kafka_producer_start_failed reason=%s — "
+                    "publish points will skip silently until restart",
+                    exc,
+                )
+
         yield
+        if app.state.event_producer is not None:
+            try:
+                await app.state.event_producer.stop()
+            except Exception:  # noqa: BLE001 — shutdown best-effort
+                log.exception("orchestrator_kafka_producer_stop_failed")
         await app.state.service.aclose()
         for client in mcp_clients.values():
             await client.close()

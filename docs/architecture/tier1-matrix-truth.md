@@ -49,7 +49,7 @@ operator-territory (§42-gated) actions documented at the end.
 | RAG / Vectorless option | Graph-only retrieval | ✅ shipped (iter-36) | `python3 mcp/tests/drill_rag_vectorless_flag.py` (6/6) |
 | Cache | Redis 7.4 | ✅ shipped | `docker-compose ps redis` |
 | Event Bus | Kafka 7.6 + Zookeeper | ✅ shipped | `docker-compose ps kafka zookeeper` |
-| Event Bus | aiokafka producer/consumer wiring | 🟡 INFRA-READY | Library `libs/py/documind_core/kafka_client.py` (EventProducer + IdempotentConsumer) ready; `services/ingestion-svc` actively publishes; remaining services use the library on opt-in basis (not a regression — the aiokafka wiring contract is per-service, expand-phase per §47.7) |
+| Event Bus | aiokafka producer/consumer wiring | ✅ shipped (iter-50/51) | Library `libs/py/documind_core/kafka_client.py` (EventProducer + IdempotentConsumer); `services/ingestion-svc` publishes document.lifecycle events; `services/inference-svc` publishes query.generated.v1 events on every successful /api/v1/ask (lifespan iter-50; publish-point iter-51, both drilled). `python3 mcp/tests/drill_inference_svc_kafka_lifespan.py` (7/7) + `python3 mcp/tests/drill_inference_svc_kafka_publish_point.py` (8/8). Operator opt-in via DOCUMIND_KAFKA_BOOTSTRAP. |
 | Search | Elasticsearch 8.15 | ✅ shipped | `curl http://localhost:9200/_cat/indices` |
 | Search | Kibana 8.15 | ✅ shipped | `docker-compose ps kibana` |
 | Search | Filebeat → ES | ✅ shipped | `docker-compose ps filebeat` |

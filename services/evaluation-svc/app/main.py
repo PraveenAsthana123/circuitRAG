@@ -118,8 +118,43 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        log.info("evaluation_service_ready")
-        yield
+        import os  # noqa: PLC0415
+
+        # Event Bus (aiokafka producer) — opt-in via DOCUMIND_KAFKA_BOOTSTRAP.
+        # Per CLAUDE.md §47.7 (expand-phase): evaluation-svc lifespan ships
+        # now; per-route publish points (e.g. eval.completed.v1 with metric
+        # scores + drift signals) wire on opt-in basis in subsequent commits.
+        # Default-safe: when env-var unset OR Kafka unreachable at boot,
+        # app.state.event_producer = None.
+        app.state.event_producer = None
+        kafka_bootstrap = os.getenv("DOCUMIND_KAFKA_BOOTSTRAP", "").strip()
+        if kafka_bootstrap:
+            try:
+                from documind_core.kafka_client import EventProducer
+                producer = EventProducer(
+                    bootstrap_servers=kafka_bootstrap,
+                    client_id=f"evaluation-svc-{settings.env}",
+                    source="evaluation-svc",
+                )
+                await producer.start()
+                app.state.event_producer = producer
+                log.info("evaluation_kafka_producer_ready bootstrap=%s", kafka_bootstrap)
+            except Exception as exc:  # noqa: BLE001 — Kafka optional
+                log.warning(
+                    "evaluation_kafka_producer_start_failed reason=%s — "
+                    "publish points will skip silently until restart",
+                    exc,
+                )
+        log.info("evaluation_service_ready kafka=%s",
+                 "on" if app.state.event_producer is not None else "off")
+        try:
+            yield
+        finally:
+            if app.state.event_producer is not None:
+                try:
+                    await app.state.event_producer.stop()
+                except Exception:  # noqa: BLE001 — shutdown best-effort
+                    log.exception("evaluation_kafka_producer_stop_failed")
 
     app = FastAPI(title="DocuMind - Evaluation Service", version="0.1.0", lifespan=lifespan)
     # BaggageContextMiddleware first = innermost; runs after TenantContext
