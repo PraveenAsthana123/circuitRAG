@@ -83,6 +83,12 @@ function grepFiles(files, regex, options) {
   const hits = [];
   const skipPatterns = opts.skipPatterns || [];
   for (const f of files) {
+    const relPath = path.relative(ROOT, f);
+    // Skip the entire file if any skip pattern matches the path.
+    // Patterns like /\/tests\// or /\.env\.template/ are file-path
+    // patterns; they never appear in line content. Patterns like
+    // /example/i or /placeholder/i intentionally match either.
+    if (skipPatterns.some((sp) => sp.test(relPath))) continue;
     let content;
     try {
       content = fs.readFileSync(f, 'utf8');
@@ -93,7 +99,7 @@ function grepFiles(files, regex, options) {
     for (let i = 0; i < lines.length; i++) {
       if (skipPatterns.some((sp) => sp.test(lines[i]))) continue;
       if (regex.test(lines[i])) {
-        hits.push({ file: path.relative(ROOT, f), line: i + 1, text: lines[i].trim() });
+        hits.push({ file: relPath, line: i + 1, text: lines[i].trim() });
       }
     }
   }
