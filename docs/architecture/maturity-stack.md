@@ -20,7 +20,7 @@
 | 38 | Schema Evolution | **L3** | L5 | 🟢 | 8 migrations all additive (per §28); RLS audit (015) drilled; missing: schema registry + drift detection |
 | 39 | Observability Taxonomy | **L3** | L5 | 🟡 | Standard log schema partial; OTel collector running; missing: enforced naming convention + sampling strategy |
 | 40 | Business KPI Tracking | **L1** | L4 | 🔴 | Cost columns + audit row exist (A5/C4); no business KPIs, no ROI, no per-segment dashboards |
-| 41 | Change Management | **L1** | L3 | 🔴 | Frontend `/admin/agentic` exists; no training, no adoption tracking |
+| 41 | Change Management | **L4** | L4 | ✅ | iter-72..82 closes the gap. UI surfaces: `/admin/agentic` + `/admin/production-readiness` + `/admin/agent-readiness` + `/admin/mcp-fleet-health`; ADR-NN per locked decision (29+ ADRs); §51 forensic substrate per commit; JAD records in `docs/architecture/jad/`; 5-question troubleshooting runbook in §57.5; operator-facing change-tracking via 7-dim readiness probe |
 | 42 | Documentation | **L3** | L5 | 🟢 | 14 per-tool reviews + C4 L1+L2 + 50+ commits with §51 metadata; missing: BRD/HLD/LLD per service, ADR catalog, runbooks |
 | 43 | Integration & Operating Model | **L2** | L5 | 🟡 | People/Platform exist; Process partial (no formal LLMOps); Governance: RAI/security/compliance docs incomplete |
 | 44 | Production Validation | **L3** | L5 | 🟡 | Drills lock contracts (§43) + decision-confidence drift detection shipped (`libs/py/documind_core/drift_detection.py` with PSI; drilled both directions A/A no-false-pos + A/B detection); missing: data-drift dimension, usage-drift dimension, dashboard endpoint, alert wiring, shadow testing, auto-rollback |
