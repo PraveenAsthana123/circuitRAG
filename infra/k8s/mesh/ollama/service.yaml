@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-ollama
+  namespace: documind
+  labels:
+    app: mcp-ollama
+    documind.tool/namespace: ollama
+spec:
+  selector:
+    app: mcp-ollama
+  ports:
+    - port: 8098
+      targetPort: 8098
+      name: http
+      protocol: TCP

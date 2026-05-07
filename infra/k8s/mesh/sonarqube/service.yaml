@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-sonarqube
+  namespace: documind
+  labels:
+    app: mcp-sonarqube
+    documind.tool/namespace: sonarqube
+spec:
+  selector:
+    app: mcp-sonarqube
+  ports:
+    - port: 8121
+      targetPort: 8121
+      name: http
+      protocol: TCP

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-deploy
+  namespace: documind
+  labels:
+    app: mcp-deploy
+    documind.tool/namespace: deploy
+spec:
+  selector:
+    app: mcp-deploy
+  ports:
+    - port: 8134
+      targetPort: 8134
+      name: http
+      protocol: TCP

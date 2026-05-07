@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-slack
+  namespace: documind
+  labels:
+    app: mcp-slack
+    documind.tool/namespace: slack
+spec:
+  selector:
+    app: mcp-slack
+  ports:
+    - port: 8096
+      targetPort: 8096
+      name: http
+      protocol: TCP

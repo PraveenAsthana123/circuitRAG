@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-sentry
+  namespace: documind
+  labels:
+    app: mcp-sentry
+    documind.tool/namespace: sentry
+spec:
+  selector:
+    app: mcp-sentry
+  ports:
+    - port: 8124
+      targetPort: 8124
+      name: http
+      protocol: TCP

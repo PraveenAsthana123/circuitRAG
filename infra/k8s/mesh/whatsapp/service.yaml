@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-whatsapp
+  namespace: documind
+  labels:
+    app: mcp-whatsapp
+    documind.tool/namespace: whatsapp
+spec:
+  selector:
+    app: mcp-whatsapp
+  ports:
+    - port: 8133
+      targetPort: 8133
+      name: http
+      protocol: TCP

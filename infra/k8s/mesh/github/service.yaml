@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-github
+  namespace: documind
+  labels:
+    app: mcp-github
+    documind.tool/namespace: github
+spec:
+  selector:
+    app: mcp-github
+  ports:
+    - port: 8093
+      targetPort: 8093
+      name: http
+      protocol: TCP

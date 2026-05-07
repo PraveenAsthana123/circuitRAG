@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-aws
+  namespace: documind
+  labels:
+    app: mcp-aws
+    documind.tool/namespace: aws
+spec:
+  selector:
+    app: mcp-aws
+  ports:
+    - port: 8126
+      targetPort: 8126
+      name: http
+      protocol: TCP

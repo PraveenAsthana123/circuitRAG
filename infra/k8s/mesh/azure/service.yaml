@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-azure
+  namespace: documind
+  labels:
+    app: mcp-azure
+    documind.tool/namespace: azure
+spec:
+  selector:
+    app: mcp-azure
+  ports:
+    - port: 8128
+      targetPort: 8128
+      name: http
+      protocol: TCP

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-csv-ingest
+  namespace: documind
+  labels:
+    app: mcp-csv-ingest
+    documind.tool/namespace: csv_ingest
+spec:
+  selector:
+    app: mcp-csv-ingest
+  ports:
+    - port: 8095
+      targetPort: 8095
+      name: http
+      protocol: TCP

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-servicenow
+  namespace: documind
+  labels:
+    app: mcp-servicenow
+    documind.tool/namespace: servicenow
+spec:
+  selector:
+    app: mcp-servicenow
+  ports:
+    - port: 8131
+      targetPort: 8131
+      name: http
+      protocol: TCP

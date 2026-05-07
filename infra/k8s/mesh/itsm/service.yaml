@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-itsm
+  namespace: documind
+  labels:
+    app: mcp-itsm
+    documind.tool/namespace: itsm
+spec:
+  selector:
+    app: mcp-itsm
+  ports:
+    - port: 8091
+      targetPort: 8091
+      name: http
+      protocol: TCP

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-hr
+  namespace: documind
+  labels:
+    app: mcp-hr
+    documind.tool/namespace: hr
+spec:
+  selector:
+    app: mcp-hr
+  ports:
+    - port: 8090
+      targetPort: 8090
+      name: http
+      protocol: TCP

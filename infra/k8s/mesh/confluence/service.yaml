@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-confluence
+  namespace: documind
+  labels:
+    app: mcp-confluence
+    documind.tool/namespace: confluence
+spec:
+  selector:
+    app: mcp-confluence
+  ports:
+    - port: 8129
+      targetPort: 8129
+      name: http
+      protocol: TCP

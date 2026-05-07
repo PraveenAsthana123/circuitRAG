@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-teams
+  namespace: documind
+  labels:
+    app: mcp-teams
+    documind.tool/namespace: teams
+spec:
+  selector:
+    app: mcp-teams
+  ports:
+    - port: 8132
+      targetPort: 8132
+      name: http
+      protocol: TCP

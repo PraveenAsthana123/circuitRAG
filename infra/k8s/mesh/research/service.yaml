@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-research
+  namespace: documind
+  labels:
+    app: mcp-research
+    documind.tool/namespace: research
+spec:
+  selector:
+    app: mcp-research
+  ports:
+    - port: 8136
+      targetPort: 8136
+      name: http
+      protocol: TCP

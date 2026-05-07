@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-gdrive
+  namespace: documind
+  labels:
+    app: mcp-gdrive
+    documind.tool/namespace: gdrive
+spec:
+  selector:
+    app: mcp-gdrive
+  ports:
+    - port: 8130
+      targetPort: 8130
+      name: http
+      protocol: TCP

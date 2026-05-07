@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-sonarqube
+  namespace: documind
+  labels:
+    app: mcp-sonarqube
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: documind
+    documind.tool/namespace: sonarqube
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-sonarqube
+  template:
+    metadata:
+      labels:
+        app: mcp-sonarqube
+        app.kubernetes.io/component: mcp-server
+        documind.tool/namespace: sonarqube
+      annotations:
+        sidecar.istio.io/inject: "true"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8121"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: server
+          image: python:3.11-slim
+          command: ["sh", "-c"]
+          args:
+            - |
+              pip install --quiet fastapi uvicorn httpx pydantic prometheus_client opentelemetry-api opentelemetry-sdk opentelemetry-instrumentation-fastapi opentelemetry-exporter-otlp-proto-grpc &&
+              cd /app && PYTHONPATH=/app/libs/py:/app python -m mcp.server_sonarqube
+          ports:
+            - containerPort: 8121
+              name: http
+              protocol: TCP
+          env:
+            - name: MCP_SONARQUBE_PORT
+              value: "8121"
+            - name: DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger-collector.istio-system.svc.cluster.local:4317"
+          volumeMounts:
+            - name: source
+              mountPath: /app
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health/live
+              port: 8121
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8121
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: source
+          hostPath:
+            path: /mnt/deepa/rag
+            type: Directory

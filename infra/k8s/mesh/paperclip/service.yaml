@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-paperclip
+  namespace: documind
+  labels:
+    app: mcp-paperclip
+    documind.tool/namespace: paperclip
+spec:
+  selector:
+    app: mcp-paperclip
+  ports:
+    - port: 8138
+      targetPort: 8138
+      name: http
+      protocol: TCP

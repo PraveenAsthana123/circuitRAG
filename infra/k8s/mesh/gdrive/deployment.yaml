@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gdrive
+  namespace: documind
+  labels:
+    app: mcp-gdrive
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: documind
+    documind.tool/namespace: gdrive
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-gdrive
+  template:
+    metadata:
+      labels:
+        app: mcp-gdrive
+        app.kubernetes.io/component: mcp-server
+        documind.tool/namespace: gdrive
+      annotations:
+        sidecar.istio.io/inject: "true"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8130"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: server
+          image: python:3.11-slim
+          command: ["sh", "-c"]
+          args:
+            - |
+              pip install --quiet fastapi uvicorn httpx pydantic prometheus_client opentelemetry-api opentelemetry-sdk opentelemetry-instrumentation-fastapi opentelemetry-exporter-otlp-proto-grpc &&
+              cd /app && PYTHONPATH=/app/libs/py:/app python -m mcp.server_gdrive
+          ports:
+            - containerPort: 8130
+              name: http
+              protocol: TCP
+          env:
+            - name: MCP_GDRIVE_PORT
+              value: "8130"
+            - name: DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger-collector.istio-system.svc.cluster.local:4317"
+          volumeMounts:
+            - name: source
+              mountPath: /app
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health/live
+              port: 8130
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8130
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: source
+          hostPath:
+            path: /mnt/deepa/rag
+            type: Directory

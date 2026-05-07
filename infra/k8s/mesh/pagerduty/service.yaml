@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-pagerduty
+  namespace: documind
+  labels:
+    app: mcp-pagerduty
+    documind.tool/namespace: pagerduty
+spec:
+  selector:
+    app: mcp-pagerduty
+  ports:
+    - port: 8125
+      targetPort: 8125
+      name: http
+      protocol: TCP
