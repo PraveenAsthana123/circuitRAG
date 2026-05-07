@@ -125,10 +125,13 @@ def create_app() -> FastAPI:
         # 'documents' (iter-61): CSV/PDF/Word/DB SELECT — read-only data
         # extraction surface. Activates when DOCUMIND_MCP_DOCUMENTS_URL is
         # set; otherwise stays inert (default-safe per §47.7 expand-phase).
+        # 'csv_ingest' (iter-65): ADR-028 approval-gated CSV-to-DB write
+        # surface. Activates only when DOCUMIND_MCP_CSV_INGEST_URL is set.
         mcp_spec = [
             ("hr", os.getenv("DOCUMIND_MCP_HR_URL", "")),
             ("itsm", os.getenv("DOCUMIND_MCP_ITSM_URL", "")),
             ("documents", os.getenv("DOCUMIND_MCP_DOCUMENTS_URL", "")),
+            ("csv_ingest", os.getenv("DOCUMIND_MCP_CSV_INGEST_URL", "")),
         ]
         clients: dict[str, MCPClient] = {}
         for namespace, url in mcp_spec:

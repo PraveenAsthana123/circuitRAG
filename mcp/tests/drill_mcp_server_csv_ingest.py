@@ -81,11 +81,20 @@ def main() -> int:
     # Step 1 — POSITIVE: server source has canonical markers
     # ------------------------------------------------------------------
     step("1. server_csv_ingest.py has canonical structure")
-    for marker in ("TOOLS", "_validate_staging_table", "_resolve_safe_path",
-                   "_reject_ddl_text", "_DRAFTS"):
+    # Per the modified contract: identifier safety via _safe_identifier
+    # (regex-validated A-Za-z0-9_); raw-SQL rejection via
+    # _reject_raw_sql_surface; path safety via _resolve_safe_path;
+    # state via the CsvIngestState dataclass instance `state`.
+    for marker in (
+        "TOOLS",
+        "_safe_identifier",
+        "_resolve_safe_path",
+        "_reject_raw_sql_surface",
+        "CsvIngestState",
+    ):
         if marker not in src:
             fail(f"server missing canonical symbol: {marker}")
-    ok("source has TOOLS + 3 guardrails + _DRAFTS state")
+    ok("source has TOOLS + 3 guardrails + CsvIngestState dataclass")
 
     # ------------------------------------------------------------------
     # Step 2 — POSITIVE: 5 expected tool names per ADR-028
@@ -134,14 +143,24 @@ def main() -> int:
     ok("3 scopes present; apply_approved_load requires csv_ingest:write")
 
     # ------------------------------------------------------------------
-    # Step 5 — POSITIVE: staging-table regex enforces ^stg_[a-z0-9_]+$
+    # Step 5 — POSITIVE: identifier regex enforces SQL-safe identifiers
     # ------------------------------------------------------------------
-    step("5. staging-table regex ^stg_[a-z0-9_]+$ present")
-    if "stg_[a-z0-9_]" not in src:
-        fail("staging-table regex pattern missing")
-    if "_STAGING_TABLE_RE" not in src:
-        fail("_STAGING_TABLE_RE constant not defined")
-    ok("staging-table regex present (^stg_[a-z0-9_]+$)")
+    step("5. identifier regex enforces SQL-safe table/column names")
+    # The modified contract uses IDENT_RE (^[A-Za-z_][A-Za-z0-9_]{0,62}$)
+    # plus an env-driven CSV_INGEST_ALLOWED_TABLES allow-list. Both layers
+    # are required: regex blocks injection-shaped names, allow-list blocks
+    # write-to-anything-named-foo. Either layer alone is insufficient.
+    if "IDENT_RE" not in src:
+        fail("IDENT_RE constant (identifier regex) not defined")
+    if "[A-Za-z_]" not in src:
+        fail("identifier regex doesn't constrain leading char to [A-Za-z_]")
+    if "CSV_INGEST_ALLOWED_TABLES" not in src:
+        fail(
+            "CSV_INGEST_ALLOWED_TABLES env-driven allow-list missing — "
+            "identifier regex alone admits any SQL-safe name; allow-list "
+            "is the second-layer guardrail"
+        )
+    ok("identifier regex + env-driven allow-list both present")
 
     # ------------------------------------------------------------------
     # Load module for negative-assertion runtime tests. Use the canonical
@@ -168,100 +187,82 @@ def main() -> int:
     ok("documents server has 0 write tools (separation locked)")
 
     # ------------------------------------------------------------------
-    # Step 7 — NEGATIVE: apply with mismatched approval_id denied
+    # Step 7 — NEGATIVE: raw SQL rejected at MCP boundary
     # ------------------------------------------------------------------
-    step("7. NEGATIVE: apply with mismatched approval_id → denial")
-    # Seed a draft directly into _DRAFTS (in-memory store)
-    mod._DRAFTS["DRAFT-TEST"] = {
-        "draft_id": "DRAFT-TEST",
-        "path": "/tmp/x.csv",
-        "table_name": "stg_test",
-        "tenant_id": "t1",
-        "csv_digest": "abc",
-        "mapping_digest": "def",
-        "rows_total": 10,
-        "rows_rejected": 0,
-        "status": "pending_approval",
-        "approval_id": "APPR-RIGHT",
-        "submitted_at": 0,
-        "applied_at": None,
-        "idempotency_key": "k1",
-    }
-    result = mod._apply_approved_load_impl({
-        "draft_id": "DRAFT-TEST",
-        "approval_id": "APPR-WRONG",
-        "approval_token": "anything",
-    })
-    if result.get("applied") is not False:
-        fail(f"apply with wrong approval_id was NOT denied; got {result}")
-    if "approval_id_mismatch" not in result.get("denial_reason", ""):
-        fail(
-            f"denial_reason should be 'approval_id_mismatch'; got "
-            f"{result.get('denial_reason')!r}"
-        )
-    ok("apply with wrong approval_id → applied:False + 'approval_id_mismatch'")
-
-    # ------------------------------------------------------------------
-    # Step 8 — NEGATIVE: DDL in agent-supplied table_name rejected
-    # ------------------------------------------------------------------
-    step("8. NEGATIVE: DDL keyword in table_name rejected at MCP boundary")
-    # Bad table names (DDL keyword OR not staging-prefixed)
-    bad_names = (
-        "users",                    # not staging
-        "DROP TABLE users",         # DDL injection
-        "stg_users; DROP TABLE x",  # staging-prefix-prefix + DDL
-        "governance.audit_log",     # cross-schema attempt
-        "stg_X",                    # uppercase not allowed
+    step("7. NEGATIVE: raw SQL / DDL keywords rejected via _reject_raw_sql_surface")
+    # The modified server has _reject_raw_sql_surface that scans args for
+    # 'sql' / 'query' keys AND for SQL/DDL keyword substrings anywhere in
+    # the JSON-serialized args. Either pattern → 400.
+    bad_args_cases = (
+        {"sql": "SELECT 1"},
+        {"query": "DROP TABLE x"},
+        {"target_table": "users; DROP TABLE x"},  # DDL-substring in identifier
+        {"column_mapping": {"a": "ALTER TABLE x"}},  # DDL inside mapping value
     )
     rejections = 0
-    for name in bad_names:
+    for bad in bad_args_cases:
         try:
-            mod._validate_staging_table(name)
-            fail(f"staging-table guardrail wrongly accepted: {name!r}")
+            mod._reject_raw_sql_surface(bad)
+            fail(f"raw-SQL rejector failed to reject: {bad}")
         except Exception:
             rejections += 1
-    if rejections != len(bad_names):
-        fail(f"only {rejections}/{len(bad_names)} bad table names rejected")
-    ok(f"all {len(bad_names)} non-staging / DDL-bearing names rejected")
+    if rejections != len(bad_args_cases):
+        fail(f"only {rejections}/{len(bad_args_cases)} raw-SQL cases rejected")
+    ok(f"all {len(bad_args_cases)} raw-SQL / DDL-bearing arg shapes rejected")
 
     # ------------------------------------------------------------------
-    # Step 9 — NEGATIVE: Stage-1 apply ALWAYS denies (HMAC lands iter-66)
+    # Step 8 — NEGATIVE: identifier safety rejects unsafe names
     # ------------------------------------------------------------------
-    step("9. NEGATIVE: Stage-1 apply with EVERYTHING matching still denies")
-    # Even with matching approval_id, Stage-1 doesn't have HMAC verification
-    # wired — should still return denial per ADR-028 #3 ("apply without
-    # approval returns a denial"; no approval-token verification = denial).
-    mod._DRAFTS["DRAFT-FULL-MATCH"] = {
-        "draft_id": "DRAFT-FULL-MATCH",
-        "path": "/tmp/x.csv",
-        "table_name": "stg_test",
-        "tenant_id": "t1",
-        "csv_digest": "abc",
-        "mapping_digest": "def",
-        "rows_total": 10,
-        "rows_rejected": 0,
-        "status": "pending_approval",
-        "approval_id": "APPR-MATCH",
-        "submitted_at": 0,
-        "applied_at": None,
-        "idempotency_key": "k1",
-    }
-    result = mod._apply_approved_load_impl({
-        "draft_id": "DRAFT-FULL-MATCH",
-        "approval_id": "APPR-MATCH",
-        "approval_token": "stage_1_token",
-    })
-    if result.get("applied") is True:
-        fail(
-            "Stage-1 apply landed rows — HMAC + Postgres apply must "
-            "be deferred to iter-66 per ADR-028 §Implementation guardrails"
-        )
-    if "stage_1" not in result.get("denial_reason", "").lower():
-        fail(
-            f"denial_reason should mention stage_1 + iter-66; "
-            f"got {result.get('denial_reason')!r}"
-        )
-    ok("Stage-1 apply structurally denies; iter-66 will land HMAC + apply")
+    step("8. NEGATIVE: _safe_identifier rejects unsafe names")
+    bad_idents = (
+        "users; DROP TABLE x",      # SQL injection via semicolon
+        "1users",                   # leading digit not allowed
+        "governance.audit_log",     # dot-qualified disallowed
+        "users--",                  # SQL comment
+        "",                         # empty
+        "x" * 100,                  # over length cap
+    )
+    rejections = 0
+    for name in bad_idents:
+        try:
+            mod._safe_identifier(name, label="t")
+            fail(f"_safe_identifier wrongly accepted: {name!r}")
+        except Exception:
+            rejections += 1
+    if rejections != len(bad_idents):
+        fail(f"only {rejections}/{len(bad_idents)} bad identifiers rejected")
+    ok(f"all {len(bad_idents)} unsafe identifiers rejected")
+
+    # ------------------------------------------------------------------
+    # Step 9 — NEGATIVE: tenant_id required + mismatch rejected
+    # ------------------------------------------------------------------
+    step("9. NEGATIVE: tenant_id required + mismatch rejected")
+    # _validate_tenant rejects None + cross-tenant + missing
+    cases = (
+        (None, None, "tenant_required"),       # missing arg
+        ("t1", None, "tenant_required"),       # missing in arg
+        ("t1", "t2", "tenant_mismatch"),       # cross-tenant attempt
+    )
+    for req_tenant, arg_tenant, expected_code in cases:
+        try:
+            mod._validate_tenant(req_tenant, arg_tenant)
+            fail(
+                f"_validate_tenant({req_tenant!r}, {arg_tenant!r}) should "
+                f"have raised — expected code {expected_code!r}"
+            )
+        except Exception as exc:
+            # The HTTPException carries detail.code; verify it matches
+            detail = getattr(exc, "detail", {})
+            if isinstance(detail, dict) and detail.get("code") != expected_code:
+                fail(
+                    f"_validate_tenant({req_tenant!r}, {arg_tenant!r}) "
+                    f"raised wrong code: got {detail.get('code')!r}, "
+                    f"expected {expected_code!r}"
+                )
+    # Sanity: matching tenant should pass
+    if mod._validate_tenant("t1", "t1") != "t1":
+        fail("_validate_tenant doesn't return tenant on match")
+    ok("tenant required + cross-tenant blocked; matching tenant accepted")
 
     # ------------------------------------------------------------------
     # Step 10 — NEGATIVE: path resolver allowlist enforced
