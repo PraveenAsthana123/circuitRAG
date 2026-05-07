@@ -30,6 +30,7 @@ ALLOWED_STATUSES = frozenset({"shipped", "partial", "planned", "not_applicable"}
 RECOGNIZED_OSS_LICENSES = frozenset({
     "Apache-2.0", "MIT", "BSD-3-Clause", "BSD-2-Clause", "MPL-2.0",
     "AGPL-3.0", "GPL-2.0", "GPL-3.0", "LGPL-2.1", "LGPL-3.0",
+    "EPL-1.0", "EPL-2.0",  # Eclipse Public License — OSI-approved
     "ELv2-OSS",  # Elastic License 2.0 — accepted per user list
     "BSL-1.1",   # Business Source License — flagged as not-strict-OSS but allowed
 })

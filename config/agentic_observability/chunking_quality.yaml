@@ -1,0 +1,319 @@
+# Chunking Quality Catalog (iter-99)
+#
+# Per CLAUDE.md §44 (iter-99), §47 (architecture as data),
+# §57.4 (self-healing as data not code).
+# User blueprint: "Chunking Monitoring + Quality + Thresholds + Score +
+# Quality Gates" — 20 metrics + 15 quality gates + scenarios.
+#
+# This catalog gives the operator (and the future Adaptive Chunking
+# Engine) one source of truth for:
+#   - WHICH metrics to compute per chunk + per ingestion run
+#   - WHICH thresholds gate the run as ACCEPT / REVIEW / REJECT
+#   - WHICH OSS tool computes each metric
+
+version: 1
+schema_version: 1
+generated_at: "2026-05-07"
+references:
+  - oss_tooling_catalog: "config/agentic_observability/oss_tooling_catalog.yaml"
+  - scenarios: "config/agentic_observability/scenarios.yaml"
+  - rag_platform_patterns: "~/.claude/policies/rag-platform-patterns.md"
+
+# ============================================================================
+# 20 chunking metrics — each has compute_via + emit_to + threshold_default
+# ============================================================================
+metrics:
+  - id: M01
+    name: chunk_size_tokens
+    why: "context efficiency — tokens-per-chunk affects retrieval + LLM context"
+    compute_via: "tiktoken count() per chunk"
+    emit_to: prometheus
+    threshold_default: "256–1024 tokens (P50–P95 band)"
+    metric_name: "rag_chunk_size_tokens"
+
+  - id: M02
+    name: chunk_token_count_p95
+    why: "model context-window safety"
+    compute_via: "Prometheus histogram p95"
+    emit_to: prometheus
+    threshold_default: "< 1024"
+
+  - id: M03
+    name: chunk_overlap_pct
+    why: "continuity between adjacent chunks"
+    compute_via: "(overlap_tokens / chunk_tokens) per pair"
+    emit_to: prometheus
+    threshold_default: "10–20% (per §39.3 RAG design rule)"
+
+  - id: M04
+    name: semantic_coherence_score
+    why: "retrieval accuracy — fragmented chunks are unhelpful"
+    compute_via: "sentence-transformers within-chunk cosine"
+    emit_to: prometheus + ragas
+    threshold_default: "> 0.75"
+
+  - id: M05
+    name: retrieval_hit_rate
+    why: "did retrieval surface a useful chunk for the query"
+    compute_via: "Ragas context_recall metric"
+    emit_to: ragas + langfuse
+    threshold_default: "> 0.90"
+
+  - id: M06
+    name: duplicate_chunk_ratio
+    why: "storage waste + retrieval bias"
+    compute_via: "near-duplicate hashing (datasketch / SimHash)"
+    emit_to: prometheus
+    threshold_default: "< 10%"
+
+  - id: M07
+    name: empty_chunk_ratio
+    why: "parser failure detection"
+    compute_via: "len(chunk.text.strip()) == 0"
+    emit_to: prometheus + great_expectations
+    threshold_default: "< 1%"
+
+  - id: M08
+    name: orphan_chunk_ratio
+    why: "missing hierarchy / parent-doc loss"
+    compute_via: "chunk lacks parent_id metadata"
+    emit_to: openlineage
+    threshold_default: "< 5%"
+
+  - id: M09
+    name: chunk_to_answer_relevance
+    why: "grounding quality — did the chunk actually help answer?"
+    compute_via: "Ragas answer_relevancy"
+    emit_to: ragas + phoenix
+    threshold_default: "> 0.85"
+
+  - id: M10
+    name: chunk_ingest_latency_ms
+    why: "ingestion pipeline performance"
+    compute_via: "wall-clock per chunk in ingestion-svc"
+    emit_to: prometheus
+    threshold_default: "p95 < 100ms"
+
+  - id: M11
+    name: chunk_embedding_latency_ms
+    why: "embedding pipeline cost"
+    compute_via: "ollama /api/embed wall-clock per chunk"
+    emit_to: prometheus + langfuse
+    threshold_default: "p95 < 500ms"
+
+  - id: M12
+    name: chunk_retrieval_latency_ms
+    why: "query speed — Qdrant search"
+    compute_via: "Qdrant /points/search timing"
+    emit_to: prometheus + jaeger
+    threshold_default: "p95 < 200ms"
+
+  - id: M13
+    name: top_k_relevance_score
+    why: "ranking quality at top of retrieval list"
+    compute_via: "DeepEval contextual_relevancy + top-1 score"
+    emit_to: deepeval + phoenix
+    threshold_default: "> 0.80"
+
+  - id: M14
+    name: context_precision
+    why: "ratio of useful retrieved context"
+    compute_via: "Ragas context_precision"
+    emit_to: ragas
+    threshold_default: "> 0.85"
+
+  - id: M15
+    name: context_recall
+    why: "did we miss any required context"
+    compute_via: "Ragas context_recall"
+    emit_to: ragas
+    threshold_default: "> 0.90"
+
+  - id: M16
+    name: hallucination_rate
+    why: "weak chunking = hallucination"
+    compute_via: "DeepEval HallucinationMetric"
+    emit_to: deepeval + langfuse
+    threshold_default: "< 5%"
+
+  - id: M17
+    name: citation_accuracy
+    why: "source alignment — uncited claims"
+    compute_via: "Ragas faithfulness + custom citation matcher"
+    emit_to: ragas + phoenix
+    threshold_default: "> 0.95"
+
+  - id: M18
+    name: chunk_compression_ratio
+    why: "efficiency — semantic content per token"
+    compute_via: "(unique_tokens / total_tokens) per chunk"
+    emit_to: prometheus
+    threshold_default: "> 0.40"
+
+  - id: M19
+    name: metadata_completeness
+    why: "governance — every chunk needs source/tenant/version"
+    compute_via: "Great Expectations expectation suite"
+    emit_to: great_expectations + grafana
+    threshold_default: "100% required (source_doc_id + tenant_id + chunk_strategy_version)"
+
+  - id: M20
+    name: chunk_drift
+    why: "outdated chunks vs current source doc"
+    compute_via: "Evidently embedding-drift on top-k retrieved set"
+    emit_to: evidently_ai + prometheus
+    threshold_default: "PSI < 0.2 weekly"
+
+# ============================================================================
+# 15 quality gates — each has stage (ingest|retrieve|generate|post) + action
+# ============================================================================
+quality_gates:
+  - id: G01
+    name: max_token_limit
+    stage: ingest
+    threshold: "tokens < 1024"
+    action_on_fail: "split chunk further; emit rag_chunk_split_total counter"
+    blocks_pipeline: false
+    enforced_by: ingestion-svc
+
+  - id: G02
+    name: minimum_semantic_similarity
+    stage: ingest
+    threshold: "within-chunk coherence > 0.75"
+    action_on_fail: "REVIEW queue (operator inspects splits)"
+    blocks_pipeline: false
+    enforced_by: ragas
+
+  - id: G03
+    name: max_overlap_duplication
+    stage: ingest
+    threshold: "overlap < 20%"
+    action_on_fail: "regenerate with reduced overlap window"
+    blocks_pipeline: false
+    enforced_by: ingestion-svc
+
+  - id: G04
+    name: hallucination_threshold
+    stage: post
+    threshold: "hallucination_rate < 5%"
+    action_on_fail: "REGENERATE with different chunking strategy"
+    blocks_pipeline: true
+    enforced_by: deepeval + ragas
+
+  - id: G05
+    name: empty_chunk_threshold
+    stage: ingest
+    threshold: "empty_ratio < 1%"
+    action_on_fail: "PARSER FAILURE; route to human-review queue"
+    blocks_pipeline: true
+    enforced_by: great_expectations
+
+  - id: G06
+    name: retrieval_recall
+    stage: retrieve
+    threshold: "context_recall > 0.90"
+    action_on_fail: "fallback to BM25 hybrid retrieval"
+    blocks_pipeline: false
+    enforced_by: ragas
+
+  - id: G07
+    name: citation_correctness
+    stage: post
+    threshold: "citation_accuracy > 0.95"
+    action_on_fail: "REJECT response; surface as hallucination event"
+    blocks_pipeline: true
+    enforced_by: ragas + custom citation matcher
+
+  - id: G08
+    name: chunk_latency_p95
+    stage: ingest
+    threshold: "p95 < 100ms"
+    action_on_fail: "scale ingestion-svc; emit alert"
+    blocks_pipeline: false
+    enforced_by: prometheus + alertmanager
+
+  - id: G09
+    name: embedding_failure_rate
+    stage: ingest
+    threshold: "failure_rate < 0.5%"
+    action_on_fail: "circuit-break Ollama; switch model"
+    blocks_pipeline: true
+    enforced_by: prometheus + resilience4j
+
+  - id: G10
+    name: context_precision
+    stage: retrieve
+    threshold: "context_precision > 0.85"
+    action_on_fail: "rerank with cross-encoder; widen top_k"
+    blocks_pipeline: false
+    enforced_by: ragas
+
+  - id: G11
+    name: top_k_relevance
+    stage: retrieve
+    threshold: "top-1 score > 0.80"
+    action_on_fail: "expand to top-10 + rerank"
+    blocks_pipeline: false
+    enforced_by: deepeval
+
+  - id: G12
+    name: metadata_completeness
+    stage: ingest
+    threshold: "100% required fields"
+    action_on_fail: "REJECT chunk; require source_doc_id + tenant_id + chunk_strategy_version"
+    blocks_pipeline: true
+    enforced_by: great_expectations
+
+  - id: G13
+    name: ocr_confidence
+    stage: ingest
+    threshold: "OCR confidence > 0.92"
+    action_on_fail: "route to human-review queue (low-conf OCR)"
+    blocks_pipeline: true
+    enforced_by: great_expectations + ocr_service
+
+  - id: G14
+    name: parser_success_rate
+    stage: ingest
+    threshold: "success_rate > 0.99"
+    action_on_fail: "alert + halt batch; investigate parser regression"
+    blocks_pipeline: true
+    enforced_by: prometheus + alertmanager
+
+  - id: G15
+    name: duplicate_chunk_ratio
+    stage: ingest
+    threshold: "duplicate_ratio < 10%"
+    action_on_fail: "deduplicate before embedding"
+    blocks_pipeline: false
+    enforced_by: datasketch + ingestion-svc
+
+# ============================================================================
+# Adaptive Chunking Quality Engine — the goal-state per the user blueprint
+# ============================================================================
+adaptive_engine:
+  goal_loop:
+    - "monitor — emit M01..M20 to Prometheus + Langfuse + Phoenix"
+    - "score — Ragas + DeepEval evaluate retrieval quality"
+    - "detect — alertmanager fires when any G01..G15 breaches"
+    - "auto-adjust — ingestion-svc swaps chunk_strategy (size/overlap/splitter)"
+    - "re-index — re-chunk + re-embed affected docs"
+    - "benchmark — Promptfoo regression suite against held-out queries"
+    - "learn — record strategy_change → quality_delta in lineage (OpenLineage)"
+  status: planned  # closed-loop adaptation requires Temporal + Evidently + Promptfoo wired
+  references:
+    - "scripts/run_drills.py for re-benchmark hook"
+    - "ingestion-svc chunk_strategy_version field for forensic lineage"
+
+# ============================================================================
+# Status today (empirical, drilled)
+# ============================================================================
+status_summary:
+  metrics_total: 20
+  gates_total: 15
+  metrics_emitted_today: 0  # need iter-100+ wiring to actually flow
+  gates_enforced_today: 0   # need ingestion-svc instrumentation
+  next_steps:
+    - "iter-100: wire M01/M02/M03 (token + overlap) via tiktoken in ingestion-svc"
+    - "iter-101: wire G01/G05/G14 (token-limit + empty + parser-success) via Great Expectations"
+    - "iter-102: wire G07 citation-correctness via Ragas in evaluation-svc"

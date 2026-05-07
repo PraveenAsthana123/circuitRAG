@@ -40,6 +40,8 @@ categories:
   data_quality_lineage: "Schema drift / null detection / source→answer lineage"
   workflow_orchestration: "Durable / state-machine workflow engines"
   visualization: "Dashboards / graph viz / lineage viz"
+  bi_reporting: "BI dashboards, paginated reports, executive analytics (added iter-99)"
+  infra_monitoring: "Infrastructure availability + uptime monitoring"
 
 # ============================================================================
 # Tools — strictly OSS (Apache-2.0 / MIT / BSD / MPL / AGPL / GPL)
@@ -592,20 +594,7 @@ tools:
     priority: P2
     status: partial
     evidence: "documind-neo4j healthy; Bloom UI not deployed"
-  - name: apache_superset
-    category: visualization
-    purpose: "BI / SQL-based dashboards"
-    license: Apache-2.0
-    priority: P3
-    status: planned
-    install_path: "docker compose up superset"
-  - name: metabase
-    category: visualization
-    purpose: "Lightweight analytics dashboards"
-    license: AGPL-3.0
-    priority: P3
-    status: planned
-    install_path: "docker compose up metabase"
+  # apache_superset + metabase moved to bi_reporting category below (iter-99)
   - name: mermaid_js
     category: visualization
     purpose: "Sequence / flow diagrams"
@@ -668,6 +657,89 @@ tools:
     priority: P1
     status: planned
     install_path: "kubectl apply -f openbao manifests"
+
+  # ───────── BI / Reporting (iter-99 addendum) ─────────
+  - name: apache_superset
+    category: bi_reporting
+    purpose: "Enterprise BI dashboards + executive analytics + KPI tracking"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "docker compose up superset (heavy: needs Postgres + Redis + Celery)"
+    integrates_with: [postgres, redis, prometheus, langfuse]
+  - name: metabase
+    category: bi_reporting
+    purpose: "Self-service reporting + simple UI for business users"
+    license: AGPL-3.0
+    priority: P2
+    status: planned
+    install_path: "docker run metabase/metabase"
+  - name: redash
+    category: bi_reporting
+    purpose: "Lightweight SQL reporting"
+    license: BSD-2-Clause
+    priority: P3
+    status: planned
+    install_path: "docker compose up redash"
+  - name: lightdash
+    category: bi_reporting
+    purpose: "dbt-native semantic reporting"
+    license: MIT
+    priority: P3
+    status: planned
+    install_path: "docker run lightdash/lightdash"
+  - name: birt
+    category: bi_reporting
+    purpose: "Java embedded reports / paginated PDF reports"
+    license: EPL-1.0
+    priority: P3
+    status: planned
+    install_path: "Eclipse BIRT runtime"
+  - name: jaspersoft_community
+    category: bi_reporting
+    purpose: "Enterprise PDF reports + scheduled reporting"
+    license: AGPL-3.0
+    priority: P3
+    status: planned
+    install_path: "docker run bitnami/jasperreports"
+  - name: pentaho_community
+    category: bi_reporting
+    purpose: "ETL + BI reporting"
+    license: GPL-2.0
+    priority: P3
+    status: planned
+    install_path: "docker compose up pentaho-ce"
+  - name: knime
+    category: bi_reporting
+    purpose: "Visual analytics workflows"
+    license: GPL-3.0
+    priority: P3
+    status: planned
+    install_path: "knime app download"
+
+  # ───────── Infrastructure monitoring (uptime / availability) ─────────
+  - name: zabbix
+    category: infra_monitoring
+    purpose: "Infrastructure availability + uptime monitoring"
+    license: AGPL-3.0
+    priority: P3
+    status: planned
+    install_path: "docker compose up zabbix-server"
+  - name: nagios_core
+    category: infra_monitoring
+    purpose: "Classic availability monitoring"
+    license: GPL-2.0
+    priority: P3
+    status: planned
+    install_path: "apt install nagios4"
+  - name: opensearch_dashboards
+    category: infra_monitoring
+    purpose: "Search + reports (Kibana alternative for OpenSearch path)"
+    license: Apache-2.0
+    priority: P2
+    status: shipped
+    evidence: "documind-opensearch container; Dashboards available alongside (iter-92 used Kibana for ES path)"
+    install_path: "docker compose up opensearch-dashboards"
 
 # ============================================================================
 # Commercial tools EXCLUDED from this catalog (per user "only opensource" filter)
