@@ -247,3 +247,67 @@ empirical-gepa-compile: ## GEPA Stage-3 compile against council (30-120 min Olla
 	    --eval-set .loop/eval_set.jsonl \
 	    --out .loop/gepa_optimized_prompts.json \
 	    --mode=compile --auto=$${GEPA_AUTO:-light}
+
+
+# ============================================================================
+# iter-100 — canonical bootstrap + audit targets (deepa-drive only)
+# ============================================================================
+
+.PHONY: setup setup-check setup-tools setup-venv setup-infra setup-istio setup-verify
+setup: ## Full bootstrap (dirs + tools + venv) on /mnt/deepa
+	bash scripts/setup.sh
+
+setup-check: ## Check setup state (no install)
+	bash scripts/setup.sh --check
+
+setup-tools: ## Install CLI tools (kubectl/minikube/istioctl/trivy/gitleaks/promptfoo) to .tools/bin
+	bash scripts/setup.sh --tools
+
+setup-venv: ## Create venv + install Python deps (cached on deepa)
+	bash scripts/setup.sh --venv
+
+setup-infra: ## docker-compose up infra layer (postgres/kafka/ES/jaeger/grafana/...)
+	bash scripts/setup.sh --infra
+
+setup-istio: ## Bring up minikube + Istio + Kiali on documind-mesh cluster
+	bash scripts/setup.sh --istio
+
+setup-verify: ## Run the full audit suite (fleet + ollama + readiness + scorecard + 11 scenarios)
+	bash scripts/setup.sh --verify
+
+# ── Individual audit targets ───────────────────────────────────────────────
+
+.PHONY: audit-fleet audit-readiness audit-scorecard audit-oss audit-chunking audit-scenarios audit-all e2e
+audit-fleet: ## MCP fleet health (4 inventories)
+	$(PY) scripts/mcp_fleet_health.py --probe-timeout 1.0 --full
+
+audit-readiness: ## 7-dim agent readiness probe
+	$(PY) scripts/agent_readiness_check.py --write
+
+audit-scorecard: ## 5-dim production readiness scorecard
+	$(PY) scripts/production_readiness_scorecard.py --write
+
+audit-oss: ## 91-tool OSS catalog audit
+	$(PY) scripts/oss_tooling_audit.py
+
+audit-chunking: ## 20 metrics + 15 quality gates audit
+	$(PY) scripts/chunking_quality_audit.py
+
+audit-scenarios: ## 35-scenario agentic observability audit
+	$(PY) scripts/agentic_observability_audit.py
+
+audit-all: audit-fleet audit-readiness audit-scorecard audit-oss audit-chunking audit-scenarios ## All audits in sequence
+
+e2e: ## 11-scenario E2E run (batch + inference + graph + vector + ES + OPA + telemetry + paperclip + openclaw + langgraph + vectorless)
+	$(PY) scripts/scenario_batch_and_inference.py
+
+# ── Drill suites ────────────────────────────────────────────────────────────
+
+.PHONY: drills-catalogs
+drills-catalogs: ## Run all catalog-schema drills (tool / OSS / chunking / agentic)
+	$(PY) mcp/tests/drill_tool_catalog_schema.py
+	$(PY) mcp/tests/drill_oss_tooling_catalog.py
+	$(PY) mcp/tests/drill_chunking_quality_catalog.py
+	$(PY) mcp/tests/drill_agentic_observability_catalog.py
+	$(PY) mcp/tests/drill_production_readiness_ui.py
+
