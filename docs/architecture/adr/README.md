@@ -37,6 +37,7 @@ and switched to Y because Z" is the load-bearing artefact.
 | [011](./011-drill-pattern-real-stack-no-mocks.md) | Drills exercise real services; mocks belong in pytest | Accepted | (CLAUDE.md §43, every `drill_*.py`) | self-referential |
 | [012](./012-orchestration-layer-local-first.md) | Orchestration stays local; defer external frameworks (Paperclip, AutoGen, LangGraph) | Accepted | (this commit) | n/a — design decision |
 | [013](./013-audit-redaction-policy.md) | Audit `details` redaction is opt-in per call; default preserves forensics | Proposed | — (deferred from `09458ef`) | n/a until implementing commit lands |
+| [028](./028-csv-to-db-ingest-write-surface-contract.md) | CSV-to-DB ingest is a separate approval-gated MCP write surface | Proposed | — (contract only) | future implementation drill set |
 
 ## Planned ADRs (not yet authored)
 

@@ -78,6 +78,7 @@ DOMAIN_ADR_NUMBERS = frozenset({
     25,                                            # ADR-025 feature-flag-gated dual-write (§47.7) (2026-05-06)
     26,                                            # ADR-026 MLflow deliberate-not-now (Langfuse covers LLM obs) (2026-05-06)
     27,                                            # ADR-027 agent framework: LangGraph + custom council; CrewAI/Agno/PraisonAI rejected (2026-05-07)
+    28,                                            # ADR-028 CSV-to-DB ingest write-surface contract (2026-05-07)
 })
 
 MIN_ADRS = 15
