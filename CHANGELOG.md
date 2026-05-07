@@ -2,6 +2,111 @@
 
 All notable changes use [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [Unreleased] — 2026-05-06/07 §52-row-4 closure + §47.7 migrate trio
+
+An 18-iteration / 17-commit autonomous-loop session closing the §52
+row-4 (operator API gap) matrix end-to-end. Composes with §38 / §43
+/ §47.7 / §51 / §54 / §55 in `~/.claude/CLAUDE.md`.
+
+### Added — Operator API surface (§52 row 4)
+
+- **Provider-comparison registry** (`917d776`): Ollama council vs
+  ollama-deterministic vs claude-runtime apply-rate visible. Surfaces
+  the §55.1 brutal-honesty signal: 0/72 = 0.00% council apply rate.
+  Drilled by `drill_agent_task_registry.py` (13 steps, 6 negative).
+- **Approval-batching engine** (`f492fc6`): YAML pattern policy +
+  session TTL cache + medium-risk batcher. 95% prompt reduction on
+  100-command operator session simulation. Drilled by
+  `drill_approval_batching.py` (11 steps, 6 negative).
+- **Kiali --profile mesh gate** (`899b43d`): brutal-honesty fix —
+  Kiali v1.86 hard-blocks on K8s cache sync, not feasible in compose.
+  Drilled by `drill_minikube_istio_setup.py` (15 steps, 5 negative).
+- **Dashboard summary executive pane** (`77f2b01`): consolidates 24
+  Paperclip surface keys into 9-panel single read at `/admin/dashboard`.
+  10s auto-refresh. Drilled by `drill_dashboard_summary_api.py`.
+- **Registry-v2 cost tracking** (`1b664ab`): tokens + cost rollup per
+  provider. Ollama=$0 floor drilled. 37,242 tokens visible at commit time.
+- **Session-token approval** (`70ebc58`): HMAC-SHA256 signed tokens
+  for operator-id attribution on every approval row. 7 attack surfaces
+  drilled (signature tamper, payload tamper, expired, revoked,
+  no-secret-fallback, no-store-misconfig, timing-attack).
+
+### Added — §47.7 expand→migrate→contract trio
+
+Three SQL surfaces shipped expand phase + 3 dual-write writers
+shipped migrate phase + 1 surface for state visibility:
+
+- **`orchestration.agent_task_runs` provider lane** (`05d4813`,
+  iter 7 expand): registry composition for the existing unified
+  schema.
+- **`governance.tool_executions` audit table** (`da95525`, iter 8
+  expand): 17-column schema with 6 indexes + RLS forced + grants.
+  Mirrors `.loop/mcp_gateway_audit.jsonl`.
+- **`governance.tools` + `governance.tool_permissions`** (`5189b2e`,
+  iter 9 expand): SQL catalog for MCP server TOOLS literals.
+  CHECK constraints on risk_level + side_effects.
+- **MCP gateway dual-write** (`7c404e1`, iter 11 migrate):
+  `MCP_GATEWAY_SQL_AUDIT_ENABLED=1` opt-in. Best-effort SQL alongside
+  authoritative JSONL. 7 drill steps including connection-fail resilience.
+- **ops_worker dual-write** (`1fc1b0b`, iter 12 migrate):
+  `OPS_WORKER_SQL_ENABLED=1` opt-in. UPSERT semantics + status
+  normalization (uppercase → lowercase). Drill caught the SET LOCAL
+  transaction gotcha (asyncpg autocommit drops the tenant GUC).
+- **TOOLS catalog sync** (`c23d142`, iter 13 migrate):
+  `MCP_TOOLS_SYNC_ENABLED=1` opt-in. 18 tools across 8 servers
+  populated. Drill caught a cleanup-pattern bug that would have
+  leaked production data deletion.
+- **migrate_phase_status surface** (iter 14, in `c23d142`): Paperclip
+  v11 surface key showing per-flag enabled state + parity signal
+  (legacy_size vs sql_count) + honest_gap when flag=on but no traffic.
+
+### Added — AI integrations + visibility + governance
+
+- **CrewAI / langchain-ollama / langchain-xai installed** (`fa7358d`,
+  iter 10): pip-installed into .venv. Honest gap: Grok not on Ollama
+  registry; ChatXAI requires `XAI_API_KEY`. Paperclip v10
+  `ai_integrations` surface drilled.
+- **verify-stack +12 drills** (`365c4c8`, iter 15): regression rotation
+  expanded 35 → 47 checks. Every iter-1-14 drill now in the smoke pass.
+- **/admin/dashboard migrate-phase panel** (`ee99bf9`, iter 16):
+  surfaces all 3 dual-write flags + parity coloring (green=active,
+  red=no_traffic_since_flip).
+- **ADR-025 dual-write pattern** (`ea66c69`, iter 17): immutable
+  decision record per §47.3. 4 alternatives considered.
+  Drill-locked: no default=1 leak; §47.7 reference required;
+  operator-side activation steps mandatory.
+- **README snapshot refresh** (`9672d5b`, iter 18): metrics table
+  drill-locked; staleness floor at 30 days. Drills 326 → 417;
+  ADRs 23 → 25; runbooks 17 → 18.
+
+### Architecture surfaces touched
+
+- Paperclip `snapshot()` v9 → v11 (added `ai_integrations` +
+  `migrate_phase_status` keys; total surface keys 24 → 26)
+- Dashboard summary `summary-v1` → `summary-v3` (added cost +
+  migrate_phase pass-throughs)
+- Registry `registry-v1` → `registry-v2` (cost columns)
+
+### Operator-side activation (post-this-changelog)
+
+Set the migrate-phase flags per environment after dev parity validated:
+
+```bash
+# Activate dual-writes (each independent; flip dev → staging → prod):
+export MCP_GATEWAY_SQL_AUDIT_ENABLED=1   # iter 11 dual-write
+export OPS_WORKER_SQL_ENABLED=1          # iter 12 dual-write
+export MCP_TOOLS_SYNC_ENABLED=1          # iter 13 sync
+
+# Operator credentials (no auto-set):
+export XAI_API_KEY=<from https://console.x.ai>
+export DOCUMIND_SESSION_TOKEN_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')
+```
+
+Per [`ADR-025`](docs/architecture/adr/025-feature-flag-gated-dual-write.md):
+default is OFF for all 3 migrate flags; enabling is operator territory.
+
+---
+
 ## [Unreleased] — 2026-04-27/28 baggage + forensics + CI push
 
 A coordinated 26-commit push spanning four arcs: deep-dive page
