@@ -255,10 +255,46 @@ def create_app() -> FastAPI:
                     "draft_replay_worker_disabled reason=no_tenants — set DOCUMIND_REPLAY_WORKER_TENANTS",
                 )
 
-        log.info("inference_service_ready model=%s", ollama.model)
+        # Event Bus (aiokafka producer) — opt-in via DOCUMIND_KAFKA_BOOTSTRAP.
+        # Default-safe: when the env var is unset OR Kafka is unreachable
+        # at boot, the producer stays None and routers must check before
+        # publishing. Per CLAUDE.md §47.7 (expand-phase): inference-svc
+        # ships the lifespan wiring; per-route publish points wire in
+        # subsequent iterations on opt-in basis. Per §47 (architecture:
+        # observability + decision audit) — query.lifecycle events are
+        # how the eval-svc + governance-svc subscribe to the inference
+        # path without coupling at HTTP-call level.
+        app.state.event_producer = None
+        kafka_bootstrap = os.getenv("DOCUMIND_KAFKA_BOOTSTRAP", "").strip()
+        if kafka_bootstrap:
+            try:
+                from documind_core.kafka_client import EventProducer
+                producer = EventProducer(
+                    bootstrap_servers=kafka_bootstrap,
+                    client_id=f"inference-svc-{settings.env}",
+                    source="inference-svc",
+                )
+                await producer.start()
+                app.state.event_producer = producer
+                log.info("inference_kafka_producer_ready bootstrap=%s", kafka_bootstrap)
+            except Exception as exc:  # noqa: BLE001 — Kafka optional
+                log.warning(
+                    "inference_kafka_producer_start_failed reason=%s — "
+                    "publish points will skip silently until restart",
+                    exc,
+                )
+
+        log.info("inference_service_ready model=%s kafka=%s",
+                 ollama.model,
+                 "on" if app.state.event_producer is not None else "off")
         try:
             yield
         finally:
+            if app.state.event_producer is not None:
+                try:
+                    await app.state.event_producer.stop()
+                except Exception:  # noqa: BLE001 — shutdown best-effort
+                    log.exception("inference_kafka_producer_stop_failed")
             if app.state.draft_replay_worker is not None:
                 await app.state.draft_replay_worker.stop()
             if app.state.breaker_metrics_exporter is not None:
