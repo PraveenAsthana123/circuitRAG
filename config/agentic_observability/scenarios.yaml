@@ -1,0 +1,304 @@
+# Agentic AI Operation Tracking — 35-scenario catalog (iter-96)
+#
+# Per CLAUDE.md §44 (iter-96), §47 (architecture), §57.4 (self-healing as
+# data not code), §57.6 (canonical log fields).
+#
+# Source: user blueprint (paperclip / openclaw / kiali integration brief).
+# Each scenario is captured as data so the audit script + drill + UI can
+# tell the operator EXACTLY which scenarios are wired today and which
+# are gaps.
+#
+# Required fields per scenario:
+#   id              — stable ID (1..35)
+#   scenario        — what's happening
+#   operation       — the canonical operation/span name
+#   primary_tool    — best tracking tool (Langfuse / Kiali / OPA / ...)
+#   span_name       — OTel span name (mcp.<ns>.<op> convention)
+#   required_fields — fields MUST be on every audit row
+#   status          — wired | partial | gap (empirical, drilled)
+#   evidence_path   — where to find proof of wiring (drill / log / dashboard)
+
+version: 1
+total_scenarios: 35
+
+scenarios:
+  - id: 1
+    scenario: "User request received"
+    operation: "API gateway accepts request, mints request_id"
+    primary_tool: "API Gateway logs"
+    span_name: "api.request.received"
+    required_fields: [request_id, user_id, tenant_id]
+    status: wired
+    evidence_path: "services/api-gateway/ + libs/py/documind_core/middleware.py CorrelationIdMiddleware"
+  - id: 2
+    scenario: "Intent classification"
+    operation: "Agent router detects intent + confidence"
+    primary_tool: "LangGraph + Langfuse"
+    span_name: "agent.router.classify"
+    required_fields: [request_id, intent, confidence]
+    status: partial
+    evidence_path: "scripts/agent_router.py (Stage-1 heuristic; Langfuse hookup pending)"
+  - id: 3
+    scenario: "Risk classification"
+    operation: "OPA / PolisAI evaluates risk tier"
+    primary_tool: "OPA / PolisAI"
+    span_name: "policy.risk.classify"
+    required_fields: [request_id, risk_score, risk_tier]
+    status: partial
+    evidence_path: "config/policies/agent_dispatch.rego (default-deny); risk_score not yet emitted"
+  - id: 4
+    scenario: "Agent router decision"
+    operation: "Selects agent path / lane (council_full | small_direct | tier_b | human)"
+    primary_tool: "LangGraph"
+    span_name: "agent.router.decide"
+    required_fields: [request_id, route, model, estimated_cost_cents]
+    status: wired
+    evidence_path: "scripts/agent_lead.py decide_route() + emit() to .loop/agent_router_audit.jsonl"
+  - id: 5
+    scenario: "Planner agent starts"
+    operation: "Council planner breaks goal into tasks"
+    primary_tool: "LangGraph state"
+    span_name: "council.planner.start"
+    required_fields: [request_id, plan_id, agent_id]
+    status: partial
+    evidence_path: "scripts/local_council.py role=planner; LangGraph state-machine in agent-orchestrator-svc/app/langgraph_flow.py"
+  - id: 6
+    scenario: "Planner creates plan"
+    operation: "Plan steps + dependency order persisted"
+    primary_tool: "PostgreSQL audit DB"
+    span_name: "council.planner.plan_create"
+    required_fields: [request_id, plan_id, plan_version, steps, dependencies]
+    status: gap
+    evidence_path: "no PG audit table for plans yet; .loop/agent_task_board_apply.jsonl is filesystem-only"
+  - id: 7
+    scenario: "Council review starts"
+    operation: "Multi-role review begins"
+    primary_tool: "Council log"
+    span_name: "council.review.start"
+    required_fields: [council_id, agents_joined, plan_id]
+    status: wired
+    evidence_path: ".loop/council_runs.log + .loop/council_stats_daily.jsonl"
+  - id: 8
+    scenario: "Researcher agent review"
+    operation: "Evidence quality scoring"
+    primary_tool: "Langfuse"
+    span_name: "council.researcher.review"
+    required_fields: [council_id, agent_id, evidence_quality]
+    status: gap
+    evidence_path: "Langfuse container shipped; Researcher agent does not yet emit a quality score"
+  - id: 9
+    scenario: "Retriever agent review"
+    operation: "Source relevance check"
+    primary_tool: "Ragas"
+    span_name: "council.retriever.review"
+    required_fields: [council_id, agent_id, sources, relevance_score]
+    status: gap
+    evidence_path: "Ragas scaffold present; per-source relevance not yet logged"
+  - id: 10
+    scenario: "Risk agent review"
+    operation: "Policy violation check"
+    primary_tool: "OPA"
+    span_name: "council.risk.review"
+    required_fields: [council_id, agent_id, policy_decision, rule_id]
+    status: partial
+    evidence_path: "OPA Rego shipped; per-tool eval at call time = Stage-3 pending"
+  - id: 11
+    scenario: "Evaluator agent review"
+    operation: "Score, confidence"
+    primary_tool: "DeepEval / Ragas"
+    span_name: "council.evaluator.review"
+    required_fields: [council_id, agent_id, score, confidence]
+    status: partial
+    evidence_path: "evaluation-svc/app/eval_harness.py scaffold; threshold gating pending"
+  - id: 12
+    scenario: "Writer agent response"
+    operation: "Final output version emitted"
+    primary_tool: "Langfuse"
+    span_name: "council.writer.response"
+    required_fields: [council_id, response_version, prompt_version, model]
+    status: gap
+    evidence_path: "Langfuse container present; writer-emitted prompt_version not wired"
+  - id: 13
+    scenario: "Agent disagreement"
+    operation: "Vote conflict surfaced"
+    primary_tool: "Council audit table"
+    span_name: "council.vote.conflict"
+    required_fields: [council_id, votes, conflict_count]
+    status: gap
+    evidence_path: "no audit table; openclaw_audit.jsonl is per-dispatch not per-vote"
+  - id: 14
+    scenario: "Tie-breaking decision"
+    operation: "Override actor logged"
+    primary_tool: "Governance log"
+    span_name: "council.vote.tie_break"
+    required_fields: [council_id, override_by, override_reason]
+    status: gap
+    evidence_path: "no tie-break logic in scripts/local_council.py advisor role yet"
+  - id: 15
+    scenario: "Human approval required"
+    operation: "HITL queue + status"
+    primary_tool: "LangGraph HITL"
+    span_name: "hitl.approval.request"
+    required_fields: [request_id, approver, status]
+    status: partial
+    evidence_path: ".loop/human_review_queue.md (49 entries today); LangGraph state-machine HITL gate pending"
+  - id: 16
+    scenario: "Tool selected"
+    operation: "Agent picks MCP tool by name"
+    primary_tool: "MCP registry log"
+    span_name: "mcp.tool.select"
+    required_fields: [request_id, tool_name, reason, model]
+    status: wired
+    evidence_path: "scripts/issue_dispatcher.py + mcp/server_*.py /tools/list"
+  - id: 17
+    scenario: "Tool permission check"
+    operation: "OPA allow/deny on (actor, tool)"
+    primary_tool: "OPA"
+    span_name: "policy.tool.check"
+    required_fields: [request_id, actor, tool, decision, rule_id]
+    status: partial
+    evidence_path: "policy_check.py inline eval; opa eval at call time = Stage-3 pending"
+  - id: 18
+    scenario: "Tool execution starts"
+    operation: "MCP tool invoked"
+    primary_tool: "OpenTelemetry"
+    span_name: "mcp.tool.execute.start"
+    required_fields: [trace_id, tool_id, input_hash]
+    status: wired
+    evidence_path: "mcp/server_common.py setup_server_otel; per-tool spans in catalog YAML"
+  - id: 19
+    scenario: "Tool execution completes"
+    operation: "Output + duration captured"
+    primary_tool: "Jaeger"
+    span_name: "mcp.tool.execute.end"
+    required_fields: [trace_id, tool_id, output_size, duration_ms]
+    status: wired
+    evidence_path: "Jaeger container; OTel collector → Jaeger; per-tool span_name in catalog"
+  - id: 20
+    scenario: "Tool fails"
+    operation: "Error + retry count"
+    primary_tool: "ELK / Kibana"
+    span_name: "mcp.tool.execute.error"
+    required_fields: [trace_id, tool_id, error_class, retry_count]
+    status: wired
+    evidence_path: "iter-92: Filebeat → Elasticsearch (90 app indices, 201k docs); Kibana queryable"
+  - id: 21
+    scenario: "RAG retrieval starts"
+    operation: "Query + filters"
+    primary_tool: "Langfuse"
+    span_name: "rag.retrieve.start"
+    required_fields: [request_id, query_hash, filters]
+    status: partial
+    evidence_path: "retrieval-svc has spans; Langfuse SDK not yet emitting"
+  - id: 22
+    scenario: "Vector DB call"
+    operation: "Qdrant search"
+    primary_tool: "Qdrant metrics"
+    span_name: "vector.qdrant.search"
+    required_fields: [namespace, query_dim, top_k, latency_ms]
+    status: wired
+    evidence_path: "documind-qdrant container; tenant-isolated namespaces; OTel httpx instrumentation"
+  - id: 23
+    scenario: "Graph DB call"
+    operation: "Neo4j Cypher traversal"
+    primary_tool: "Neo4j logs"
+    span_name: "graph.neo4j.cypher"
+    required_fields: [tenant_id, cypher_hash, traversal_depth]
+    status: partial
+    evidence_path: "documind-neo4j healthy; Cypher span emission pending"
+  - id: 24
+    scenario: "BM25 search call"
+    operation: "Lexical/keyword fallback"
+    primary_tool: "Elasticsearch"
+    span_name: "search.bm25.query"
+    required_fields: [request_id, terms, ranking_top_k]
+    status: partial
+    evidence_path: "rank_bm25 0.2.2 in libs; Elasticsearch shipped iter-92; BM25 → ES indexing not yet wired"
+  - id: 25
+    scenario: "Retrieved context used"
+    operation: "Document IDs in prompt"
+    primary_tool: "Langfuse"
+    span_name: "rag.context.assemble"
+    required_fields: [request_id, document_ids, context_token_count]
+    status: gap
+    evidence_path: "Langfuse trace per call missing; would close §48 explainability citation rule"
+  - id: 26
+    scenario: "Citation validation"
+    operation: "Source span attribution"
+    primary_tool: "Ragas"
+    span_name: "rag.citation.validate"
+    required_fields: [request_id, claim_id, source_doc_id, match_score]
+    status: gap
+    evidence_path: "Ragas requirements scaffold; per-claim attribution loop not wired"
+  - id: 27
+    scenario: "LLM call starts"
+    operation: "Model + prompt version"
+    primary_tool: "Langfuse"
+    span_name: "llm.call.start"
+    required_fields: [request_id, model, prompt_version]
+    status: wired
+    evidence_path: "iter-75: ollama smoke 15/15; LLM call traces visible in Jaeger via httpx instrumentation"
+  - id: 28
+    scenario: "LLM call ends"
+    operation: "Tokens + cost + latency"
+    primary_tool: "Langfuse"
+    span_name: "llm.call.end"
+    required_fields: [request_id, prompt_tokens, completion_tokens, cost_usd, latency_ms]
+    status: partial
+    evidence_path: "ollama returns eval_count + total_duration; cost_usd computed by app code (Langfuse export pending)"
+  - id: 29
+    scenario: "Guardrail check"
+    operation: "Prompt-injection / jailbreak filter"
+    primary_tool: "Lakera / Rebuff"
+    span_name: "guardrail.check"
+    required_fields: [request_id, blocked, rule_id]
+    status: gap
+    evidence_path: "Lakera/Rebuff/Guardrails-AI scaffolds in evaluation-svc requirements; not yet wired into request path"
+  - id: 30
+    scenario: "Final answer evaluation"
+    operation: "Faithfulness score"
+    primary_tool: "Ragas / DeepEval"
+    span_name: "eval.final"
+    required_fields: [request_id, faithfulness, relevance, hallucination_flag]
+    status: partial
+    evidence_path: "evaluation-svc eval_harness.py; threshold gate + Ragas wiring pending"
+  - id: 31
+    scenario: "Response delivered"
+    operation: "Latency + status"
+    primary_tool: "API Gateway"
+    span_name: "api.response.deliver"
+    required_fields: [request_id, http_status, total_latency_ms]
+    status: wired
+    evidence_path: "api-gateway middleware; OTel span + access log via Filebeat"
+  - id: 32
+    scenario: "Feedback captured"
+    operation: "Thumbs up/down + comment"
+    primary_tool: "Langfuse"
+    span_name: "feedback.capture"
+    required_fields: [request_id, feedback_score, comment]
+    status: gap
+    evidence_path: "Langfuse container present; UI feedback widget not yet emitting"
+  - id: 33
+    scenario: "Memory write attempt"
+    operation: "Redis/Postgres audit row"
+    primary_tool: "Redis/Postgres audit"
+    span_name: "memory.write"
+    required_fields: [request_id, agent_id, memory_key, before_hash, after_hash]
+    status: partial
+    evidence_path: "documind-redis healthy; per-agent memory audit not yet wired"
+  - id: 34
+    scenario: "Autonomous action attempt"
+    operation: "Create/update/delete decided"
+    primary_tool: "OPA + audit DB"
+    span_name: "agent.autonomous_action"
+    required_fields: [request_id, agent_id, action, target, decision, rule_id]
+    status: partial
+    evidence_path: "csv_ingest write surface ADR-028; full agent autonomy gate scaffold"
+  - id: 35
+    scenario: "Rollback needed"
+    operation: "Restore previous state"
+    primary_tool: "Historical DB / MinIO"
+    span_name: "agent.rollback"
+    required_fields: [request_id, snapshot_id, restore_point, restored_by]
+    status: gap
+    evidence_path: "MinIO healthy; per-action rollback ID generation not yet emitted"

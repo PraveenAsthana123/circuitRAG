@@ -1,0 +1,172 @@
+# Missing observability / tooling backlog (iter-96)
+#
+# Per the user blueprint section "Missing Tool / Adds Value For / Why You
+# Need It". Each row is tracked as a backlog item with priority + the
+# specific gap it closes.
+
+version: 1
+
+priorities:
+  P1: "highest ROI — close before claiming enterprise-grade"
+  P2: "high value — close in next quarter"
+  P3: "nice to have — defer to specific use case"
+
+tools:
+  - name: "Argo CD"
+    purpose: "GitOps deployment tracking — sync status, drift detection, rollback"
+    priority: P1
+    status: planned
+    closes_gap: "deployment drift between Git desired state vs cluster live state"
+    install_path: "kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
+    integrates_with: [k8s_manifests, github_actions]
+
+  - name: "Argo Rollouts"
+    purpose: "Canary / blue-green release for safer rollout"
+    priority: P2
+    status: planned
+    closes_gap: "no canary mechanism for agent / RAG / gateway changes"
+    install_path: "kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml"
+    integrates_with: [istio, argo_cd]
+
+  - name: "OpenLineage + Marquez"
+    purpose: "Data lineage — source → chunk → embedding → answer"
+    priority: P1
+    status: planned
+    closes_gap: "scenario #25 + #45 — no provenance trace per claim"
+    install_path: "docker compose service for marquez; OpenLineage SDK in ingestion-svc"
+    integrates_with: [airflow, spark, postgresql]
+
+  - name: "Falco"
+    purpose: "Runtime threat detection on container/k8s activity"
+    priority: P1
+    status: planned
+    closes_gap: "scenario #36 + #67 — rogue autonomous behavior detection"
+    install_path: "helm install falco falcosecurity/falco -n falco"
+    integrates_with: [kubernetes, ELK]
+
+  - name: "Trivy"
+    purpose: "Container/IaC/dependency vulnerability scan"
+    priority: P1
+    status: planned
+    closes_gap: "scenario #75 + #77 — image vulnerability scanning"
+    install_path: "trivy image <name> + GitHub Action trivy-action"
+    integrates_with: [github_actions, snyk]
+
+  - name: "Kyverno"
+    purpose: "Kubernetes policy enforcement before deployment"
+    priority: P2
+    status: planned
+    closes_gap: "extends OPA (default-deny) to admission control"
+    install_path: "helm install kyverno kyverno/kyverno -n kyverno"
+    integrates_with: [opa, k8s]
+
+  - name: "HashiCorp Vault"
+    purpose: "Secret management — rotation + access audit"
+    priority: P1
+    status: planned
+    closes_gap: "scenario #40 — API key leakage detection"
+    install_path: "helm install vault hashicorp/vault -n vault"
+    integrates_with: [k8s, secrets, audit]
+
+  - name: "Backstage"
+    purpose: "Developer portal — service/API/owner catalog"
+    priority: P2
+    status: planned
+    closes_gap: "tribal knowledge of who-owns-what"
+    install_path: "npx @backstage/create-app"
+    integrates_with: [github, k8s, jaeger]
+
+  - name: "Temporal"
+    purpose: "Durable workflow engine for long-running agents"
+    priority: P1
+    status: planned
+    closes_gap: "scenario #56 — async workflow deadlock; LangGraph state corruption"
+    install_path: "helm install temporal temporal/temporal -n temporal"
+    integrates_with: [langgraph, opa, postgres]
+
+  - name: "Apache Airflow / Dagster"
+    purpose: "Data pipeline orchestration with retry + lineage"
+    priority: P2
+    status: planned
+    closes_gap: "scenario #23 — file ingestion observability"
+    install_path: "helm install airflow apache-airflow/airflow"
+    integrates_with: [openlineage, marquez]
+
+  - name: "Loki + Promtail"
+    purpose: "Lightweight Kubernetes logs (alternative to ELK/EFK)"
+    priority: P3
+    status: planned_alternative
+    closes_gap: "iter-92 already shipped Filebeat→ES; Loki = lighter alternative"
+    install_path: "helm install loki grafana/loki-stack"
+    integrates_with: [grafana, prometheus]
+
+  - name: "Wazuh"
+    purpose: "SIEM/security monitoring — host security + compliance"
+    priority: P2
+    status: planned
+    closes_gap: "scenario #33 — threat detection"
+    install_path: "docker compose up wazuh"
+    integrates_with: [elasticsearch, ELK]
+
+  - name: "Great Expectations"
+    purpose: "Data quality — schema drift, nulls, invalid values"
+    priority: P2
+    status: planned
+    closes_gap: "scenario #25 (schema drift) — ingestion data quality"
+    install_path: "pip install great_expectations"
+    integrates_with: [airflow, dagster]
+
+  - name: "Evidently AI"
+    purpose: "ML/data drift detection"
+    priority: P2
+    status: planned
+    closes_gap: "scenario #58 (model drift) + #59 (RAG eval drift)"
+    install_path: "pip install evidently"
+    integrates_with: [prometheus, grafana, mlflow]
+
+  - name: "Phoenix / Arize"
+    purpose: "LLM/RAG observability — trace retrieval + embeddings + evals"
+    priority: P1
+    status: planned
+    closes_gap: "fills the 'trace why this RAG answer' gap that Langfuse partially covers"
+    install_path: "pip install arize-phoenix"
+    integrates_with: [langfuse, ragas, deepeval]
+
+  - name: "Helm"
+    purpose: "k8s packaging (already has helm charts via kustomize iter-94)"
+    priority: P1
+    status: shipped_partial
+    closes_gap: "manifests in infra/k8s/mesh/ via kustomize; Helm chart not yet"
+    install_path: "kubectl install via helm"
+
+  - name: "Crossplane"
+    purpose: "Cloud control plane — provision via Kubernetes"
+    priority: P3
+    status: planned
+    closes_gap: "infrastructure-as-code through k8s reconciliation"
+    install_path: "helm install crossplane crossplane-stable/crossplane"
+
+  - name: "LitmusChaos"
+    purpose: "Chaos engineering — test failure recovery"
+    priority: P3
+    status: planned
+    closes_gap: "no chaos engineering today; circuit-breakers untested under real load"
+    install_path: "helm install litmus litmuschaos/litmus"
+
+  - name: "Kubecost / OpenCost"
+    purpose: "FinOps — Kubernetes cost by namespace/service"
+    priority: P2
+    status: planned
+    closes_gap: "scenario #29 + #43 — token/compute cost tracking"
+    install_path: "helm install kubecost kubecost/cost-analyzer"
+    integrates_with: [prometheus, langfuse]
+
+# Highest-ROI block (per user blueprint)
+top_priority_order:
+  - argo_cd               # GitOps drift control
+  - openlineage_marquez   # data lineage (closes #25, #45)
+  - temporal              # durable agent execution
+  - falco_trivy           # runtime + image security
+  - backstage             # service catalog
+  - kubecost              # cost governance
+  - phoenix_arize         # RAG/LLM trace quality
