@@ -57,6 +57,8 @@ ORCHESTRATOR_URL = os.getenv(
     "DOCUMIND_ORCHESTRATOR_URL",
     "http://localhost:8050",
 )
+# Fallback ports the orchestrator is sometimes started on (env-overrideable)
+ORCHESTRATOR_FALLBACK_PORTS = (8087, 8050, 8051)
 MCP_DRILLS_URL = os.getenv(
     "DOCUMIND_MCP_DRILLS_URL",
     "http://localhost:8092",
@@ -106,25 +108,37 @@ def probe_models() -> dict:
 
 
 def probe_orchestrator() -> dict:
-    """B. ORCHESTRATOR UP? — HTTP probe."""
-    code, body = _http_get(f"{ORCHESTRATOR_URL}/health", timeout=3.0)
-    if code == 200:
-        return {
-            "status": "YES",
-            "evidence": f"GET {ORCHESTRATOR_URL}/health → 200",
-            "notes": (body[:200].decode("utf-8", "replace") or "(empty body)"),
-        }
-    if code == 0:
-        return {
-            "status": "NO",
-            "evidence": f"{ORCHESTRATOR_URL} unreachable (connection refused / timeout)",
-            "notes": "agent-orchestrator-svc not running locally; "
-                     "work routing falls back to scripts/issue_dispatcher.py",
-        }
+    """B. ORCHESTRATOR UP? — HTTP probe with /health/live (§47.8 3-probe)."""
+    candidates = [ORCHESTRATOR_URL] + [
+        f"http://localhost:{p}" for p in ORCHESTRATOR_FALLBACK_PORTS
+        if f":{p}" not in ORCHESTRATOR_URL
+    ]
+    for url in candidates:
+        # Try /health/live first (§47.8 dumb liveness), then /health (legacy)
+        for path in ("/health/live", "/health"):
+            code, body = _http_get(f"{url}{path}", timeout=2.0)
+            if code == 200:
+                ready_code, ready_body = _http_get(f"{url}/health/ready", timeout=2.0)
+                ready_note = (
+                    ready_body[:200].decode("utf-8", "replace")
+                    if ready_code == 200
+                    else f"ready probe → {ready_code}"
+                )
+                return {
+                    "status": "YES",
+                    "evidence": f"GET {url}{path} → 200",
+                    "notes": ready_note or "(no ready body)",
+                }
     return {
-        "status": "MIXED",
-        "evidence": f"{ORCHESTRATOR_URL}/health → HTTP {code}",
-        "notes": "service responding but /health failed",
+        "status": "NO",
+        "evidence": (
+            f"all candidate URLs unreachable: "
+            f"{candidates}"
+        ),
+        "notes": (
+            "agent-orchestrator-svc not running on any known port; "
+            "work routing falls back to scripts/issue_dispatcher.py"
+        ),
     }
 
 
