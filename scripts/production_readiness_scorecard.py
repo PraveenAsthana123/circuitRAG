@@ -127,9 +127,9 @@ def score_tool_reviews() -> dict:
         if p.stem != "server_common"
     )
     n_servers = len(server_files)
-    review_coverage = int(100 * len(reviewed_tools) / n_servers) if n_servers else 0
-    catalog_coverage = int(100 * len(cataloged_tools) / n_servers) if n_servers else 0
-    # Combined: average of review + catalog
+    review_coverage = min(int(100 * len(reviewed_tools) / n_servers), 100) if n_servers else 0
+    catalog_coverage = min(int(100 * len(cataloged_tools) / n_servers), 100) if n_servers else 0
+    # Combined: average of review + catalog (each capped at 100)
     combined = int((review_coverage + catalog_coverage) / 2)
     return {
         "score": combined,
