@@ -69,7 +69,7 @@ tools:
     purpose: "Arize OSS — RAG retrieval + embedding visualization + traces"
     license: ELv2-OSS  # Elastic License 2.0; OSS-recognized per the user list
     priority: P1
-    status: planned
+    status: shipped
     evidence: "scenarios.yaml gaps #21/#25/#26 close once wired"
     install_path: "pip install arize-phoenix; px.launch_app()"
     integrates_with: [opentelemetry, langfuse]
@@ -95,7 +95,7 @@ tools:
     purpose: "Prompt regression + benchmark testing"
     license: MIT
     priority: P1
-    status: planned
+    status: shipped
     install_path: "npm install -g promptfoo"
   - name: openai_evals_oss
     category: benchmarking
@@ -428,7 +428,7 @@ tools:
     purpose: "Container + IaC + dependency vulnerability scanner"
     license: Apache-2.0
     priority: P1
-    status: planned
+    status: shipped
     install_path: "trivy image <image>; or trivy-action in CI"
   - name: grype
     category: vuln_code_security
@@ -442,7 +442,7 @@ tools:
     purpose: "Multi-language SAST"
     license: LGPL-2.1
     priority: P1
-    status: planned
+    status: shipped
     install_path: "pip install semgrep"
   - name: bandit
     category: vuln_code_security
@@ -463,7 +463,7 @@ tools:
     purpose: "Secret leak detection in git history"
     license: MIT
     priority: P1
-    status: planned
+    status: shipped
     install_path: "go install github.com/gitleaks/gitleaks/v8@latest"
   - name: dependency_track
     category: vuln_code_security
@@ -530,7 +530,7 @@ tools:
     purpose: "Schema drift / nulls / invariants validation"
     license: Apache-2.0
     priority: P1
-    status: planned
+    status: shipped
     install_path: "pip install great_expectations"
   - name: soda_core
     category: data_quality_lineage
