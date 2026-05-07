@@ -55,9 +55,18 @@ services:
   zookeeper:
     user: "0:0"
 
+  # Elasticsearch 8.x refuses to run as root + the bind-mounted ./data/elasticsearch
+  # gets root ownership which uid 1000 (the elasticsearch user) cannot write.
+  # Workaround: use a docker-managed named volume (override the bind mount).
+  # Filebeat + Kibana can run as root.
   elasticsearch:
-    user: "0:0"
+    user: "1000:0"
+    volumes: !override
+      - es_data:/usr/share/elasticsearch/data
   filebeat:
     user: "0:0"
   kibana:
     user: "0:0"
+
+volumes:
+  es_data:

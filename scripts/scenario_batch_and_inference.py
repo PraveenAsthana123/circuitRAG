@@ -48,6 +48,7 @@ OLLAMA_URL = "http://localhost:11434"
 QDRANT_URL = "http://localhost:6333"
 NEO4J_URL = "http://localhost:7474"
 OPENSEARCH_URL = "http://localhost:59200"
+ELASTICSEARCH_URL = "http://localhost:9200"  # iter-92: spun up via docker compose with named volume
 TEST_CSV_PATH = "/tmp/batch_scenario_test.csv"
 
 EMBED_MODEL = "nomic-embed-text:latest"
@@ -263,13 +264,11 @@ def scenario_vectorless_keyword() -> dict:
     }
 
 
-def scenario_elasticsearch() -> dict:
-    """F. Elasticsearch / OpenSearch scenario — index health + indices listing."""
-    started = datetime.now(UTC).isoformat()
-    # /_cluster/health is anonymous-safe
+def _probe_es_or_opensearch(url: str, name: str) -> dict:
+    """Common probe for either ES or OpenSearch endpoint."""
     started_probe = time.monotonic()
     try:
-        with urllib.request.urlopen(f"{OPENSEARCH_URL}/_cluster/health", timeout=5.0) as r:  # noqa: S310
+        with urllib.request.urlopen(f"{url}/_cluster/health", timeout=5.0) as r:  # noqa: S310
             body = r.read()
             code = r.status
     except Exception as e:  # noqa: BLE001
@@ -277,34 +276,66 @@ def scenario_elasticsearch() -> dict:
         code = 0
     latency = int((time.monotonic() - started_probe) * 1000)
     parsed = json.loads(body) if body and code == 200 else {}
-    cluster_status = parsed.get("status", "unknown")
-    n_nodes = parsed.get("number_of_nodes", 0)
-
-    # Count indices
     try:
-        with urllib.request.urlopen(f"{OPENSEARCH_URL}/_cat/indices?format=json", timeout=3.0) as r:  # noqa: S310
+        with urllib.request.urlopen(f"{url}/_cat/indices?format=json", timeout=3.0) as r:  # noqa: S310
             indices = json.loads(r.read())
     except Exception:  # noqa: BLE001
         indices = []
-    n_indices = len(indices)
-    n_app_indices = sum(
-        1 for idx in indices
-        if not idx.get("index", "").startswith(".")
+    # Application indices: anything tagged with documind / filebeat / app data
+    # streams (ES 8.x uses .ds-<name>-* for data-stream-backed indices, which
+    # ARE application data).
+    SYSTEM_PREFIXES = (".kibana", ".security", ".geoip", ".internal",
+                       ".monitoring", ".tasks", ".async-search",
+                       ".plugins-ml", ".opensearch-observability",
+                       ".triggered_watches", ".watches", ".slm",
+                       ".profiling", ".enrich")
+    app_indices = [
+        i for i in indices
+        if not any(i.get("index", "").startswith(p) for p in SYSTEM_PREFIXES)
+    ]
+    # Doc count across application indices (best-effort from cat output)
+    try:
+        n_docs = sum(int(i.get("docs.count", "0") or 0) for i in indices)
+    except (ValueError, TypeError):
+        n_docs = 0
+    return {
+        "name": name,
+        "url": url,
+        "http_status": code,
+        "latency_ms": latency,
+        "cluster_status": parsed.get("status", "unknown"),
+        "n_nodes": parsed.get("number_of_nodes", 0),
+        "n_indices_total": len(indices),
+        "n_application_indices": len(app_indices),
+        "n_docs_total": n_docs,
+    }
+
+
+def scenario_elasticsearch() -> dict:
+    """F. Elasticsearch + OpenSearch scenario — both backends + log pipeline."""
+    started = datetime.now(UTC).isoformat()
+    es = _probe_es_or_opensearch(ELASTICSEARCH_URL, "elasticsearch")
+    opensearch = _probe_es_or_opensearch(OPENSEARCH_URL, "opensearch")
+    # Log pipeline IS wired if EITHER backend has application indices
+    pipeline_wired = es["n_application_indices"] > 0 or opensearch["n_application_indices"] > 0
+    primary_healthy = (
+        es["http_status"] == 200 and es["cluster_status"] in ("green", "yellow")
+    ) or (
+        opensearch["http_status"] == 200
+        and opensearch["cluster_status"] in ("green", "yellow")
     )
-    healthy = code == 200 and cluster_status in ("green", "yellow")
     return {
         "scenario": "elasticsearch",
         "started_at": started,
-        "status": "PASS" if healthy else "FAIL",
-        "latency_ms": latency,
-        "cluster_status": cluster_status,
-        "n_nodes": n_nodes,
-        "n_indices_total": n_indices,
-        "n_application_indices": n_app_indices,
+        "status": "PASS" if primary_healthy else "FAIL",
+        "elasticsearch": es,
+        "opensearch": opensearch,
+        "log_pipeline_wired": pipeline_wired,
         "note": (
-            "OpenSearch reachable; "
-            + ("WARN: 0 application indices — log pipeline NOT WIRED"
-               if n_app_indices == 0 else f"{n_app_indices} app indices")
+            f"ES has {es['n_application_indices']} app indices ({es['n_docs_total']} docs); "
+            f"OpenSearch has {opensearch['n_application_indices']} app indices "
+            f"({opensearch['n_docs_total']} docs). "
+            f"Log pipeline {'WIRED ✓' if pipeline_wired else 'NOT WIRED ✗'}."
         ),
     }
 
