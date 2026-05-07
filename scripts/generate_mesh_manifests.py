@@ -58,9 +58,13 @@ metadata:
   namespace: documind
   labels:
     app: mcp-{ns.replace("_", "-")}
+    app.kubernetes.io/name: mcp-{ns.replace("_", "-")}
+    app.kubernetes.io/version: v1
     app.kubernetes.io/component: mcp-server
     app.kubernetes.io/part-of: documind
+    app.kubernetes.io/managed-by: kustomize
     documind.tool/namespace: {ns}
+    documind.tool/category: mcp
 spec:
   replicas: 1
   selector:
@@ -70,13 +74,19 @@ spec:
     metadata:
       labels:
         app: mcp-{ns.replace("_", "-")}
+        app.kubernetes.io/name: mcp-{ns.replace("_", "-")}
+        app.kubernetes.io/version: v1
         app.kubernetes.io/component: mcp-server
+        app.kubernetes.io/part-of: documind
         documind.tool/namespace: {ns}
+        documind.tool/category: mcp
+        version: v1
       annotations:
         sidecar.istio.io/inject: "true"
         prometheus.io/scrape: "true"
         prometheus.io/port: "{port}"
         prometheus.io/path: "/metrics"
+        kiali.io/runtimes: "fastapi,python"
     spec:
       containers:
         - name: server
@@ -127,15 +137,51 @@ metadata:
   namespace: documind
   labels:
     app: mcp-{ns.replace("_", "-")}
+    app.kubernetes.io/name: mcp-{ns.replace("_", "-")}
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: documind
     documind.tool/namespace: {ns}
+    documind.tool/category: mcp
 spec:
   selector:
     app: mcp-{ns.replace("_", "-")}
   ports:
     - port: {port}
       targetPort: {port}
+      # `name: http` + appProtocol HTTP teaches Istio + Kiali to render
+      # this as L7 traffic (not opaque TCP) → service-graph + RPS gauges.
       name: http
+      appProtocol: http
       protocol: TCP
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: mcp-{ns.replace("_", "-")}-tel
+  namespace: documind
+spec:
+  selector:
+    matchLabels:
+      app: mcp-{ns.replace("_", "-")}
+  metrics:
+    - providers:
+        - name: prometheus
+      overrides:
+        - match:
+            metric: REQUEST_COUNT
+            mode: CLIENT_AND_SERVER
+          tagOverrides:
+            documind_tool_namespace:
+              value: "'{ns}'"
+            documind_tool_category:
+              value: "'mcp'"
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 100
+  accessLogging:
+    - providers:
+        - name: envoy
 """
 
 

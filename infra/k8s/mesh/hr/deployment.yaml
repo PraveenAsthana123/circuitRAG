@@ -5,9 +5,13 @@ metadata:
   namespace: documind
   labels:
     app: mcp-hr
+    app.kubernetes.io/name: mcp-hr
+    app.kubernetes.io/version: v1
     app.kubernetes.io/component: mcp-server
     app.kubernetes.io/part-of: documind
+    app.kubernetes.io/managed-by: kustomize
     documind.tool/namespace: hr
+    documind.tool/category: mcp
 spec:
   replicas: 1
   selector:
@@ -17,13 +21,19 @@ spec:
     metadata:
       labels:
         app: mcp-hr
+        app.kubernetes.io/name: mcp-hr
+        app.kubernetes.io/version: v1
         app.kubernetes.io/component: mcp-server
+        app.kubernetes.io/part-of: documind
         documind.tool/namespace: hr
+        documind.tool/category: mcp
+        version: v1
       annotations:
         sidecar.istio.io/inject: "true"
         prometheus.io/scrape: "true"
         prometheus.io/port: "8090"
         prometheus.io/path: "/metrics"
+        kiali.io/runtimes: "fastapi,python"
     spec:
       containers:
         - name: server

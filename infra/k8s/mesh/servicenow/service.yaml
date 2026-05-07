@@ -5,12 +5,48 @@ metadata:
   namespace: documind
   labels:
     app: mcp-servicenow
+    app.kubernetes.io/name: mcp-servicenow
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: documind
     documind.tool/namespace: servicenow
+    documind.tool/category: mcp
 spec:
   selector:
     app: mcp-servicenow
   ports:
     - port: 8131
       targetPort: 8131
+      # `name: http` + appProtocol HTTP teaches Istio + Kiali to render
+      # this as L7 traffic (not opaque TCP) → service-graph + RPS gauges.
       name: http
+      appProtocol: http
       protocol: TCP
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: mcp-servicenow-tel
+  namespace: documind
+spec:
+  selector:
+    matchLabels:
+      app: mcp-servicenow
+  metrics:
+    - providers:
+        - name: prometheus
+      overrides:
+        - match:
+            metric: REQUEST_COUNT
+            mode: CLIENT_AND_SERVER
+          tagOverrides:
+            documind_tool_namespace:
+              value: "'servicenow'"
+            documind_tool_category:
+              value: "'mcp'"
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 100
+  accessLogging:
+    - providers:
+        - name: envoy

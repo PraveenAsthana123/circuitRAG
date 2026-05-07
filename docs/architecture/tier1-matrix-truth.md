@@ -54,8 +54,10 @@ operator-territory (§42-gated) actions documented at the end.
 | Search | Elasticsearch 8.15 | ✅ shipped | `curl http://localhost:9200/_cat/indices` |
 | Search | Kibana 8.15 | ✅ shipped | `docker-compose ps kibana` |
 | Search | Filebeat → ES | ✅ shipped | `docker-compose ps filebeat` |
-| Service Mesh | Istio | ✅ scaffolded — 🟡 cluster-provisioning OPERATOR | manifests + drill ready; cluster missing | `python3 mcp/tests/drill_minikube_istio_setup.py` (15/15) — manifests at `infra/istio/` (gateway/virtualservice/auth/peer-auth/destinationrule/telemetry) (operator action: same as Load Balancer row) |
-| Service Mesh | Kiali 1.86 (mesh viz) | ✅ shipped | `docker-compose ps kiali` |
+| Service Mesh | Istio 1.22.0 on minikube | ✅ shipped (iter-93) | cluster `documind-mesh`; istiod + ingress + STRICT mTLS + 7 AuthorizationPolicies + sidecar auto-injection verified | `bash scripts/istio-up.sh` + `python3 mcp/tests/drill_minikube_istio_setup.py` (15/15); runbook `docs/runbooks/istio-iter93-status.md` |
+| Service Mesh | k8s mesh manifests for 28 MCP tools + OPA | ✅ shipped (iter-94) | Deployment + Service + per-tool Telemetry CR (REQUEST_COUNT tagged `documind_tool_namespace`); 100% trace sample for Kiali graph | `python3 scripts/generate_mesh_manifests.py` + `kubectl apply -k infra/k8s/mesh/`; runbook `docs/runbooks/istio-iter94-mesh-integration.md` |
+| Service Mesh | Kiali 1.86 (k8s addon, primary) | ✅ shipped (iter-93) | running in `istio-system` ns alongside Prometheus + Jaeger addons; reads mesh from istiod | `kubectl port-forward -n istio-system svc/kiali 20001:20001` then http://localhost:20001/ |
+| Service Mesh | Kiali (docker-compose, secondary) | ✅ shipped | `docker compose --profile mesh up kiali` (legacy fallback path) |
 | Eval / Guardrails AI | Output filtering + jailbreak defense | ✅ shipped (iter-35) | `python3 mcp/tests/drill_eval_engines_stage2.py` (`GUARDRAILS_EVAL_ENABLED=1`) |
 | Eval / Ragas | RAG-specific eval (faithfulness, relevance) | ✅ shipped (iter-35) | `python3 mcp/tests/drill_eval_engines_stage2.py` (`RAGAS_EVAL_ENABLED=1`) |
 | Eval / Giskard | LLM red-team + bias scan | ✅ shipped (iter-37) | `python3 mcp/tests/drill_eval_lakera_giskard_scaffolds.py` (`GISKARD_SCAN_ENABLED=1`) |
