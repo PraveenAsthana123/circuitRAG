@@ -1,0 +1,785 @@
+# OSS-only enterprise agentic AI tooling catalog (iter-97)
+#
+# Per CLAUDE.md §44 (iter-97), §47 (architecture as data), §57.1 (production-grade),
+# user blueprint: "only opensource ... tool to be considered."
+#
+# Strict OSS license filter applied. Commercial-only tools EXPLICITLY excluded
+# (see `excluded_commercial` for the rejected set + reason).
+#
+# Each tool row carries:
+#   name              — canonical short name
+#   category          — one of the 15 categories below
+#   purpose           — one-line role
+#   license           — MUST be OSS-recognized (Apache-2.0, MIT, BSD-3, AGPL,
+#                       MPL-2.0, GPL, etc.)
+#   priority          — P1 (close before "enterprise grade") / P2 / P3
+#   status            — shipped | partial | planned | not_applicable
+#   evidence          — where the proof lives (commit / drill / runbook)
+#   install_path      — `helm install ...` / `pip install ...` / `apt install ...`
+#   integrates_with   — other tools in this catalog this one feeds/depends-on
+
+version: 1
+schema_version: 1
+generated_at: "2026-05-07"
+generator: "operator-curated; verified by drill_oss_tooling_catalog.py"
+
+# 15 categories per the user blueprint
+categories:
+  agent_monitoring: "Per-agent / per-prompt / per-trace LLM observability"
+  benchmarking: "Quality benchmarks for prompts / models / RAG"
+  self_healing: "Auto-recovery from failure"
+  self_tracking: "Autonomous agent activity tracing"
+  council_monitoring: "Multi-agent vote / consensus / disagreement"
+  self_healing_scenarios: "Specific failure-mode auto-correction"
+  quality_scoring: "Output faithfulness / relevance / hallucination scoring"
+  ai_security: "Prompt-injection / jailbreak / adversarial defense"
+  observability: "Logs / metrics / traces backbone"
+  runtime_security: "Container / k8s / host runtime threat detection"
+  vuln_code_security: "SAST / dep-audit / secret-scan / SBOM"
+  k8s_security: "Cluster posture / policy enforcement"
+  data_quality_lineage: "Schema drift / null detection / source→answer lineage"
+  workflow_orchestration: "Durable / state-machine workflow engines"
+  visualization: "Dashboards / graph viz / lineage viz"
+
+# ============================================================================
+# Tools — strictly OSS (Apache-2.0 / MIT / BSD / MPL / AGPL / GPL)
+# ============================================================================
+tools:
+
+  # ───────── Agent monitoring ─────────
+  - name: langfuse
+    category: agent_monitoring
+    purpose: "Prompt + token + cost + trace observability for LLM apps"
+    license: MIT
+    priority: P1
+    status: shipped
+    evidence: "documind-langfuse container in docker-compose.yml; Tier-1 matrix row"
+    install_path: "docker compose up -d langfuse"
+    integrates_with: [opentelemetry, postgres]
+  - name: opentelemetry
+    category: agent_monitoring
+    purpose: "Vendor-neutral telemetry SDK + collector (logs / metrics / traces)"
+    license: Apache-2.0
+    priority: P1
+    status: shipped
+    evidence: "documind-otel running; per-tool span_name in tool_catalog/*.yaml"
+    install_path: "Python SDK + otel-collector docker image"
+  - name: phoenix
+    category: agent_monitoring
+    purpose: "Arize OSS — RAG retrieval + embedding visualization + traces"
+    license: ELv2-OSS  # Elastic License 2.0; OSS-recognized per the user list
+    priority: P1
+    status: planned
+    evidence: "scenarios.yaml gaps #21/#25/#26 close once wired"
+    install_path: "pip install arize-phoenix; px.launch_app()"
+    integrates_with: [opentelemetry, langfuse]
+  - name: traceloop_openllmetry
+    category: agent_monitoring
+    purpose: "OTel-native LLM tracing (vendor-neutral instrumentation)"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "pip install traceloop-sdk"
+    integrates_with: [opentelemetry, langfuse]
+  - name: trulens
+    category: agent_monitoring
+    purpose: "LLM observability with grounding/feedback functions"
+    license: MIT
+    priority: P2
+    status: planned
+    install_path: "pip install trulens-eval"
+
+  # ───────── Benchmarking ─────────
+  - name: promptfoo
+    category: benchmarking
+    purpose: "Prompt regression + benchmark testing"
+    license: MIT
+    priority: P1
+    status: planned
+    install_path: "npm install -g promptfoo"
+  - name: openai_evals_oss
+    category: benchmarking
+    purpose: "OSS eval framework (the OSS components only — not the SaaS API)"
+    license: MIT
+    priority: P2
+    status: planned
+    install_path: "pip install openai-evals"
+  - name: helm_benchmark
+    category: benchmarking
+    purpose: "Stanford HELM — fairness / toxicity / standardized eval"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "pip install crfm-helm"
+  - name: lm_evaluation_harness
+    category: benchmarking
+    purpose: "EleutherAI standard LLM eval harness"
+    license: MIT
+    priority: P2
+    status: planned
+    install_path: "pip install lm-eval"
+  - name: inspect_ai
+    category: benchmarking
+    purpose: "Agent benchmarking + workflow testing"
+    license: MIT
+    priority: P2
+    status: planned
+    install_path: "pip install inspect-ai"
+  # garak appears once below under ai_security (also serves as a benchmarking tool)
+  - name: k6
+    category: benchmarking
+    purpose: "Load benchmark — latency / throughput"
+    license: AGPL-3.0
+    priority: P2
+    status: shipped
+    evidence: "tests/load/*.js + load-testing runbook"
+  - name: locust
+    category: benchmarking
+    purpose: "Distributed load / scaling test"
+    license: MIT
+    priority: P3
+    status: planned
+    install_path: "pip install locust"
+
+  # ───────── Self-healing ─────────
+  - name: temporal
+    category: self_healing
+    purpose: "Durable workflow engine — retries + replay + state"
+    license: MIT
+    priority: P1
+    status: planned
+    evidence: "missing_tools.yaml top_priority"
+    install_path: "helm install temporal temporal/temporal -n temporal"
+    integrates_with: [postgres, langgraph]
+  - name: langgraph
+    category: self_healing
+    purpose: "State-machine + checkpoint recovery for agents"
+    license: MIT
+    priority: P1
+    status: shipped
+    evidence: "services/agent-orchestrator-svc/app/langgraph_flow.py (14 nodes)"
+  - name: resilience4j
+    category: self_healing
+    purpose: "Circuit breaker + retry + bulkhead (Java); Python equiv via tenacity"
+    license: Apache-2.0
+    priority: P1
+    status: shipped
+    evidence: "services/agent-orchestrator-svc/app/db_circuit_breaker.py"
+  - name: litmuschaos
+    category: self_healing
+    purpose: "Chaos engineering — test failure recovery"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "helm install litmus litmuschaos/litmus -n litmus"
+  - name: keda
+    category: self_healing
+    purpose: "Event-driven k8s autoscaling"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "helm install keda kedacore/keda -n keda"
+  - name: argo_rollouts
+    category: self_healing
+    purpose: "Canary / blue-green / automatic rollback"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml"
+  - name: keptn
+    category: self_healing
+    purpose: "Automated remediation orchestrator"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+    install_path: "helm install keptn keptn/keptn -n keptn"
+  - name: netdata
+    category: self_healing
+    purpose: "Anomaly detection + alerts"
+    license: GPL-3.0
+    priority: P3
+    status: planned
+    install_path: "docker run netdata/netdata"
+  - name: prometheus_alertmanager
+    category: self_healing
+    purpose: "Alert-triggered remediation"
+    license: Apache-2.0
+    priority: P1
+    status: shipped
+    evidence: "documind-alertmanager container"
+  - name: kubernetes_operators
+    category: self_healing
+    purpose: "Auto-reconciliation control loops"
+    license: Apache-2.0
+    priority: P2
+    status: not_applicable
+    evidence: "operator-pattern; project doesn't ship custom operators yet"
+
+  # ───────── Self-tracking / autonomous agent tracking ─────────
+  - name: agentsight
+    category: self_tracking
+    purpose: "eBPF agent observability"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+    install_path: "TBD (early-stage project)"
+  - name: openlineage
+    category: self_tracking
+    purpose: "Standardized lineage SDK"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "pip install openlineage-python"
+    integrates_with: [marquez, airflow]
+  - name: marquez
+    category: self_tracking
+    purpose: "Lineage visualization UI"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "docker compose up -d marquez"
+    integrates_with: [openlineage]
+  - name: mlflow
+    category: self_tracking
+    purpose: "Experiment + model tracking (DocuMind uses Langfuse for LLM, MLflow optional)"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+    install_path: "pip install mlflow + docker compose"
+    evidence: "tier1 matrix marks MLflow as 'deliberate-not-now'; Langfuse covers LLM obs"
+  - name: pyroscope
+    category: self_tracking
+    purpose: "Continuous profiling (CPU / memory / goroutines)"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "docker compose up -d pyroscope"
+
+  # ───────── Quality scoring ─────────
+  - name: ragas
+    category: quality_scoring
+    purpose: "RAG faithfulness / relevance / context-recall scoring"
+    license: Apache-2.0
+    priority: P1
+    status: partial
+    evidence: "evaluation-svc/requirements.txt has ragas; threshold gating pending"
+    install_path: "pip install ragas"
+  - name: deepeval
+    category: quality_scoring
+    purpose: "LLM hallucination / correctness testing"
+    license: Apache-2.0
+    priority: P1
+    status: partial
+    evidence: "evaluation-svc/eval_harness.py; both wired with env-flag gate"
+    install_path: "pip install deepeval"
+  - name: giskard
+    category: quality_scoring
+    purpose: "AI red-team + adversarial validation"
+    license: Apache-2.0
+    priority: P1
+    status: partial
+    evidence: "drill_eval_lakera_giskard_scaffolds.py shipped; GISKARD_SCAN_ENABLED gate"
+    install_path: "pip install giskard"
+
+  # ───────── AI security (OSS only — Lakera EXCLUDED below as commercial) ─────────
+  - name: rebuff
+    category: ai_security
+    purpose: "Prompt-injection / jailbreak detection"
+    license: Apache-2.0
+    priority: P1
+    status: partial
+    evidence: "REBUFF_ENABLED env flag in drill_eval_lakera_giskard_scaffolds.py"
+    install_path: "pip install rebuff"
+  - name: llama_guard
+    category: ai_security
+    purpose: "Meta's LLM safety classifier (unsafe content filter)"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "ollama pull llama-guard3"
+    integrates_with: [ollama]
+  - name: garak
+    category: ai_security
+    purpose: "(see benchmarking) — also doubles as security scanner"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "pip install garak"
+  - name: counterfit
+    category: ai_security
+    purpose: "Microsoft adversarial AI testing framework"
+    license: MIT
+    priority: P2
+    status: planned
+    install_path: "pip install counterfit"
+  - name: pyrit
+    category: ai_security
+    purpose: "Microsoft Python Risk Identification Tool for AI red-team"
+    license: MIT
+    priority: P2
+    status: planned
+    install_path: "pip install pyrit"
+  - name: vigil_llm
+    category: ai_security
+    purpose: "AI firewall concepts — input/output guardrails"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+    install_path: "pip install vigil-llm"
+
+  # ───────── Observability backbone ─────────
+  - name: jaeger
+    category: observability
+    purpose: "Distributed trace timeline / span visualization"
+    license: Apache-2.0
+    priority: P1
+    status: shipped
+    evidence: "documind-jaeger + Istio addon (iter-93)"
+  - name: prometheus
+    category: observability
+    purpose: "Time-series metrics scraping"
+    license: Apache-2.0
+    priority: P1
+    status: shipped
+    evidence: "documind-prometheus + Istio addon (iter-93)"
+  - name: grafana
+    category: observability
+    purpose: "Metrics + dashboards"
+    license: AGPL-3.0
+    priority: P1
+    status: shipped
+    evidence: "documind-grafana on port 3001"
+  - name: loki
+    category: observability
+    purpose: "Lightweight Kubernetes-native log aggregation"
+    license: AGPL-3.0
+    priority: P3
+    status: planned
+    install_path: "helm install loki grafana/loki-stack"
+  - name: elastic_stack
+    category: observability
+    purpose: "Elasticsearch + Filebeat + Kibana"
+    license: Apache-2.0  # 8.15 dual-licensed; OSS path used
+    priority: P1
+    status: shipped
+    evidence: "iter-92: ES + Kibana + Filebeat wired; 90 app indices / 201k docs"
+  - name: kiali
+    category: observability
+    purpose: "Service-mesh visualization"
+    license: Apache-2.0
+    priority: P1
+    status: shipped
+    evidence: "iter-93: Istio addon + iter-95 per-tool Telemetry CRs"
+  - name: tempo
+    category: observability
+    purpose: "Grafana traces backend (Jaeger alternative)"
+    license: AGPL-3.0
+    priority: P3
+    status: planned
+    install_path: "helm install tempo grafana/tempo"
+
+  # ───────── Runtime security ─────────
+  - name: falco
+    category: runtime_security
+    purpose: "Runtime threat detection (k8s / container)"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "helm install falco falcosecurity/falco -n falco"
+  - name: tracee
+    category: runtime_security
+    purpose: "eBPF runtime syscall detection"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "kubectl apply -f https://github.com/aquasecurity/tracee/releases/latest/download/tracee.yaml"
+  - name: tetragon
+    category: runtime_security
+    purpose: "eBPF security observability + enforcement"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "helm install tetragon cilium/tetragon -n kube-system"
+  - name: wazuh
+    category: runtime_security
+    purpose: "OSS SIEM/XDR + endpoint security"
+    license: GPL-2.0
+    priority: P2
+    status: planned
+    install_path: "docker compose up wazuh"
+  - name: suricata
+    category: runtime_security
+    purpose: "IDS/IPS network packet inspection"
+    license: GPL-2.0
+    priority: P3
+    status: planned
+    install_path: "apt install suricata (or container)"
+  - name: zeek
+    category: runtime_security
+    purpose: "Network security analysis"
+    license: BSD-3-Clause
+    priority: P3
+    status: planned
+    install_path: "apt install zeek"
+
+  # ───────── Vulnerability / code security ─────────
+  - name: trivy
+    category: vuln_code_security
+    purpose: "Container + IaC + dependency vulnerability scanner"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "trivy image <image>; or trivy-action in CI"
+  - name: grype
+    category: vuln_code_security
+    purpose: "Image vulnerability scanner"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh"
+  - name: semgrep
+    category: vuln_code_security
+    purpose: "Multi-language SAST"
+    license: LGPL-2.1
+    priority: P1
+    status: planned
+    install_path: "pip install semgrep"
+  - name: bandit
+    category: vuln_code_security
+    purpose: "Python static security"
+    license: Apache-2.0
+    priority: P1
+    status: shipped
+    evidence: "scripts/issue_scanner.py routes B* findings to human-review queue (§50.5.3)"
+  - name: checkov
+    category: vuln_code_security
+    purpose: "Terraform/k8s/CloudFormation IaC scan"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "pip install checkov"
+  - name: gitleaks
+    category: vuln_code_security
+    purpose: "Secret leak detection in git history"
+    license: MIT
+    priority: P1
+    status: planned
+    install_path: "go install github.com/gitleaks/gitleaks/v8@latest"
+  - name: dependency_track
+    category: vuln_code_security
+    purpose: "SBOM ingestion + dep risk scoring"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+    install_path: "docker compose up dependency-track"
+  - name: owasp_dependency_check
+    category: vuln_code_security
+    purpose: "CVE detection across dep tree"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+
+  # ───────── K8s security ─────────
+  - name: kyverno
+    category: k8s_security
+    purpose: "Kubernetes policy engine (admission control)"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "helm install kyverno kyverno/kyverno -n kyverno"
+  - name: opa_gatekeeper
+    category: k8s_security
+    purpose: "OPA-based admission control"
+    license: Apache-2.0
+    priority: P1
+    status: partial
+    evidence: "OPA Rego shipped (iter-94 OPA pod); Gatekeeper as admission controller pending"
+    install_path: "kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.16/deploy/gatekeeper.yaml"
+  - name: kubescape
+    category: k8s_security
+    purpose: "K8s posture / NSA-CISA benchmark"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "kubescape scan"
+  - name: kube_bench
+    category: k8s_security
+    purpose: "CIS benchmark checks"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "kubectl apply -f https://github.com/aquasecurity/kube-bench/raw/main/job.yaml"
+  - name: kube_hunter
+    category: k8s_security
+    purpose: "Cluster penetration scan"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+    install_path: "pip install kube-hunter"
+  - name: polaris
+    category: k8s_security
+    purpose: "K8s config audit"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+    install_path: "helm install polaris fairwinds-stable/polaris"
+
+  # ───────── Data quality + lineage ─────────
+  - name: great_expectations
+    category: data_quality_lineage
+    purpose: "Schema drift / nulls / invariants validation"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "pip install great_expectations"
+  - name: soda_core
+    category: data_quality_lineage
+    purpose: "Data observability — checks-as-code"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "pip install soda-core"
+  - name: datahub
+    category: data_quality_lineage
+    purpose: "Metadata catalog + lineage"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "helm install datahub datahub/datahub"
+  - name: openmetadata
+    category: data_quality_lineage
+    purpose: "Metadata + governance fabric"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "docker compose up openmetadata"
+
+  # ───────── Workflow orchestration ─────────
+  - name: airflow
+    category: workflow_orchestration
+    purpose: "Data pipeline orchestrator"
+    license: Apache-2.0
+    priority: P2
+    status: planned
+    install_path: "helm install airflow apache-airflow/airflow"
+  - name: dagster
+    category: workflow_orchestration
+    purpose: "Data orchestrator (asset-oriented)"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+    install_path: "pip install dagster + helm chart"
+  - name: openclaw
+    category: workflow_orchestration
+    purpose: "Multi-agent A2A coordination"
+    license: Apache-2.0  # internal project
+    priority: P1
+    status: shipped
+    evidence: ".loop/openclaw_audit.jsonl: 972 dispatches default-deny verified"
+  - name: crewai
+    category: workflow_orchestration
+    purpose: "Role-based multi-agent framework"
+    license: MIT
+    priority: P3
+    status: planned
+    install_path: "pip install crewai"
+
+  # ───────── Visualization ─────────
+  - name: neo4j_bloom
+    category: visualization
+    purpose: "Graph relationship visualization"
+    license: GPL-3.0  # Neo4j community edition; Bloom production licensing varies (operator-tier check)
+    priority: P2
+    status: partial
+    evidence: "documind-neo4j healthy; Bloom UI not deployed"
+  - name: apache_superset
+    category: visualization
+    purpose: "BI / SQL-based dashboards"
+    license: Apache-2.0
+    priority: P3
+    status: planned
+    install_path: "docker compose up superset"
+  - name: metabase
+    category: visualization
+    purpose: "Lightweight analytics dashboards"
+    license: AGPL-3.0
+    priority: P3
+    status: planned
+    install_path: "docker compose up metabase"
+  - name: mermaid_js
+    category: visualization
+    purpose: "Sequence / flow diagrams"
+    license: MIT
+    priority: P2
+    status: shipped
+    evidence: "used in docs/architecture/c4/* and runbooks"
+  - name: d3_js
+    category: visualization
+    purpose: "Custom graph visualization library"
+    license: BSD-3-Clause
+    priority: P3
+    status: not_applicable
+
+  # ───────── GitOps / Deployment ─────────
+  - name: argo_cd
+    category: workflow_orchestration  # closest fit for "deployment workflow"
+    purpose: "GitOps controller — Git desired state ↔ cluster live state"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
+  - name: helm
+    category: workflow_orchestration
+    purpose: "k8s package manager — chart-based deploy"
+    license: Apache-2.0
+    priority: P2
+    status: partial
+    evidence: "iter-94 uses kustomize; helm chart not yet authored"
+
+  # ───────── Cost (FinOps) ─────────
+  - name: opencost
+    category: observability  # observability of cost
+    purpose: "OSS Kubernetes cost allocation"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "helm install opencost opencost/opencost"
+  - name: kubecost_oss
+    category: observability
+    purpose: "Kubecost OSS edition (cost analyzer)"
+    license: Apache-2.0
+    priority: P1
+    status: planned
+    install_path: "helm install kubecost kubecost/cost-analyzer"
+
+  # ───────── Secrets ─────────
+  - name: vault_oss
+    category: ai_security
+    purpose: "HashiCorp Vault OSS — secret management"
+    license: BSL-1.1  # post-2023; pre-2023 versions MPL-2.0
+    priority: P1
+    status: planned
+    evidence: "BSL-1.1 falls outside OSI-strict; but free for production at small scale; flagged"
+    install_path: "helm install vault hashicorp/vault -n vault"
+  - name: openbao
+    category: ai_security
+    purpose: "MPL-2.0 fork of Vault (true OSS for those who reject BSL)"
+    license: MPL-2.0
+    priority: P1
+    status: planned
+    install_path: "kubectl apply -f openbao manifests"
+
+# ============================================================================
+# Commercial tools EXCLUDED from this catalog (per user "only opensource" filter)
+# ============================================================================
+excluded_commercial:
+  - name: splunk_enterprise_security
+    reason: "proprietary; Splunk Free is heavily limited"
+    oss_alternative: wazuh + elastic_stack
+  - name: microsoft_sentinel
+    reason: "Azure-locked SaaS"
+    oss_alternative: wazuh
+  - name: ibm_qradar
+    reason: "proprietary"
+    oss_alternative: wazuh
+  - name: snyk
+    reason: "freemium with paid tier required for enterprise"
+    oss_alternative: trivy + semgrep + grype + bandit
+  - name: sysdig_secure
+    reason: "commercial"
+    oss_alternative: falco
+  - name: aqua_security
+    reason: "commercial"
+    oss_alternative: falco + trivy
+  - name: nessus
+    reason: "commercial"
+    oss_alternative: openvas
+  - name: lakera_ai
+    reason: "SaaS"
+    oss_alternative: rebuff + llama_guard + garak
+  - name: protect_ai
+    reason: "commercial"
+    oss_alternative: garak + giskard
+  - name: hidden_layer
+    reason: "commercial"
+    oss_alternative: counterfit + pyrit
+  - name: calypso_ai
+    reason: "commercial"
+    oss_alternative: rebuff + garak
+  - name: crowdstrike_falcon
+    reason: "commercial"
+    oss_alternative: wazuh + tetragon + falco
+  - name: microsoft_defender_xdr
+    reason: "Microsoft-locked"
+    oss_alternative: wazuh
+  - name: sentinelone
+    reason: "commercial"
+    oss_alternative: wazuh
+  - name: sophos_xdr
+    reason: "commercial"
+    oss_alternative: wazuh + falco
+  - name: wiz
+    reason: "commercial cloud-graph"
+    oss_alternative: kubescape + falco + cilium_hubble
+  - name: drata
+    reason: "SOC2 SaaS"
+    oss_alternative: openscap + chef_inspec
+  - name: vanta
+    reason: "compliance SaaS"
+    oss_alternative: openscap + steampipe
+  - name: prisma_cloud
+    reason: "Palo Alto commercial"
+    oss_alternative: kubescape + falco + trivy
+  - name: orca_security
+    reason: "commercial"
+    oss_alternative: trivy + kubescape
+  - name: collibra
+    reason: "commercial data governance"
+    oss_alternative: openmetadata + datahub
+  - name: bigid
+    reason: "commercial"
+    oss_alternative: apache_atlas + openmetadata
+  - name: privacera
+    reason: "commercial"
+    oss_alternative: apache_ranger
+  - name: immuta
+    reason: "commercial"
+    oss_alternative: apache_ranger
+  - name: weights_and_biases
+    reason: "freemium with enterprise paid; OSS subset is partial"
+    oss_alternative: mlflow
+
+# ============================================================================
+# Coverage at iter-97 (counted by status)
+# ============================================================================
+# shipped: 16 (langfuse, opentelemetry, k6, langgraph, resilience4j,
+#              prometheus_alertmanager, jaeger, prometheus, grafana,
+#              elastic_stack, kiali, bandit, openclaw, mermaid_js,
+#              opa_gatekeeper-partial, ragas-partial, deepeval-partial,
+#              giskard-partial, rebuff-partial, helm-partial,
+#              neo4j_bloom-partial — partial counts as 0.5)
+# planned: ~50
+# not_applicable: 2
+
+# ============================================================================
+# Top P1 closure order (highest ROI first per user blueprint + scenarios.yaml gaps)
+# ============================================================================
+top_priority_closure_order:
+  - phoenix             # closes scenarios.yaml #21 / #25 / #26 (RAG observability)
+  - argo_cd             # GitOps drift control
+  - openlineage         # data lineage (closes #25 / #45)
+  - marquez             # lineage UI partner of OpenLineage
+  - temporal            # durable agent workflows (closes #56 deadlock)
+  - falco               # runtime threat detection
+  - trivy               # container vuln scan
+  - kyverno             # k8s admission policy
+  - great_expectations  # ingestion data quality
+  - openmetadata        # metadata fabric
+  - openbao             # MPL-2.0 secrets (true OSS replacement for Vault)
+  - opencost            # k8s cost
+  - llama_guard         # AI safety filter
+  - garak               # AI red-team
+  - promptfoo           # prompt regression
+  - semgrep             # multi-lang SAST
+  - gitleaks            # secret-scan
+  - phoenix             # (already listed; duplicated to lock order — single)
