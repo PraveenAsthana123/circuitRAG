@@ -145,6 +145,11 @@ RULE_STRATEGIES: dict[str, RuleStrategy] = {
     "E711": RuleStrategy("mechanical_rewrite", 5, False, "small", "mechanical_rewrite"),
     "E712": RuleStrategy("mechanical_rewrite", 5, False, "small", "mechanical_rewrite"),
     "E501": RuleStrategy("mechanical_rewrite", 10, False, "default", "mechanical_rewrite"),  # line too long — sometimes needs reformat
+    # E402 — module-level import not at top. Often needs structural reasoning
+    # (where to move imports, whether the offending line belongs above/below
+    # imports, # noqa candidate). Empirical: 0/8 council apply rate on E402.
+    # Route to human-review queue; operator decides per-file.
+    "E402": RuleStrategy("investigation", 30, True, "human", "investigation"),
     # Import sort — full-block rewrite
     "I001": RuleStrategy("import_sort", 50, False, "default", "import_sort"),  # 50 because need full import block
     # Type fixes

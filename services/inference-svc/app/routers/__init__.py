@@ -10,8 +10,6 @@ from documind_core.exceptions import ValidationError
 from documind_core.schemas import HealthResponse
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-log = logging.getLogger(__name__)
-
 from app.schemas import (
     AgentAskRequest,
     AgentAskResponse,
@@ -45,6 +43,8 @@ from app.schemas import (
 )
 from app.services import RagInferenceService
 from app.services.agent import AgentService
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 

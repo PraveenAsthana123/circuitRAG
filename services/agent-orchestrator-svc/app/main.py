@@ -6,8 +6,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-log = logging.getLogger(__name__)
-
 from documind_core.body_limit import BodyLimitMiddleware
 from documind_core.config import get_settings
 from documind_core.db_client import DbClient
@@ -58,6 +56,8 @@ from .postgres_store import PostgresTaskStore
 from .rate_limit import RateLimitMiddleware
 from .service import AgentOrchestratorService
 from .store import InMemoryTaskStore
+
+log = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:

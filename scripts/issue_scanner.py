@@ -61,8 +61,12 @@ RULE_ROUTING: dict[str, tuple[str, str, str]] = {
     "W293": ("LOW", "easy", "ruff:autofix"),
     # Line length — local model can split
     "E501": ("LOW", "medium", "deepseek-coder:6.7b-instruct"),
-    # Module-level import not at top — local model can decide
-    "E402": ("MED", "medium", "deepseek-coder:6.7b-instruct"),
+    # E402 routes to human-review: empirically 0/8 council apply rate.
+    # Often a `# noqa: E402` candidate (intentional ordering with __future__
+    # imports + module-level guards). Operator decides per-file.
+    # See scripts/rule_fix_strategy.py RULE_STRATEGIES["E402"] for the
+    # matching agent_lead routing entry. Per §55 Tier-3 (rule-aware routing).
+    "E402": ("MED", "hard", "human-review"),
     # Comparison style — local model
     "E711": ("LOW", "medium", "deepseek-coder:6.7b-instruct"),
     "E712": ("LOW", "medium", "deepseek-coder:6.7b-instruct"),

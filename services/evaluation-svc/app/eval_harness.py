@@ -292,7 +292,6 @@ class DeepEvalEngine:
                 },
             }
         try:
-            de = self._deepeval
             # deepeval imports moved between minor versions; probe both
             # known module paths so the harness is version-tolerant.
             try:
