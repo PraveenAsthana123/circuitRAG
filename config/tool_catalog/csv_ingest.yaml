@@ -1,0 +1,113 @@
+namespace: csv_ingest
+status_target: WORKING
+owner: platform-data
+
+fallback:
+  on_unreachable: "halt new ingestion sessions; existing sessions stay in current state until reachable; alert P1 (write surface)"
+  on_failing: "circuit-break 60s; reject new sessions with 503; alert P1"
+  on_not_installed: "feature flag off; UI hides csv_ingest namespace; ingestion-svc uses inline ingest path"
+
+io:
+  - tool: csv_ingest.session_start
+    input_schema_ref: CsvIngestSessionStartInput
+    process: |
+      1. Validate tenant_id against tenant allow-list.
+      2. Generate session_id (UUID4).
+      3. Persist initial CsvIngestState{state=DRAFT, tenant_id, ...}.
+      4. Return {available, session_id, state}.
+    output_schema_ref: CsvIngestSessionStartOutput
+    side_effects: write
+    avg_latency_ms: 50
+    p95_latency_ms: 200
+    cost_per_call_usd: 0.0
+  - tool: csv_ingest.upload
+    input_schema_ref: CsvIngestUploadInput
+    process: |
+      1. Validate session_id exists + state == DRAFT.
+      2. Validate identifier safety (no SQL metachars in table_name).
+      3. Persist source CSV to staging table.
+      4. Transition state DRAFT → UPLOADED.
+    output_schema_ref: CsvIngestUploadOutput
+    side_effects: write
+    avg_latency_ms: 500
+    p95_latency_ms: 3000
+    cost_per_call_usd: 0.0
+  - tool: csv_ingest.preview
+    input_schema_ref: CsvIngestPreviewInput
+    process: |
+      1. Validate session_id + state in (UPLOADED, PREVIEWED).
+      2. Return first N rows + inferred schema.
+    output_schema_ref: CsvIngestPreviewOutput
+    side_effects: read
+    avg_latency_ms: 100
+    p95_latency_ms: 400
+    cost_per_call_usd: 0.0
+  - tool: csv_ingest.approve
+    input_schema_ref: CsvIngestApproveInput
+    process: |
+      1. Verify approver scope (csv_ingest:approve).
+      2. Validate session_id + state == PREVIEWED.
+      3. Promote staging → final table (CREATE TABLE IF NOT EXISTS + INSERT).
+      4. Transition state → APPROVED.
+      5. Emit Kafka event csv_ingest.approved.
+    output_schema_ref: CsvIngestApproveOutput
+    side_effects: write
+    avg_latency_ms: 1000
+    p95_latency_ms: 5000
+    cost_per_call_usd: 0.0
+  - tool: csv_ingest.cancel
+    input_schema_ref: CsvIngestCancelInput
+    process: |
+      1. Validate session_id.
+      2. Drop staging table; transition state → CANCELLED.
+    output_schema_ref: CsvIngestCancelOutput
+    side_effects: write
+    avg_latency_ms: 100
+    p95_latency_ms: 300
+    cost_per_call_usd: 0.0
+
+integration:
+  upstream: [ingestion-svc, doc-framework-svc]
+  downstream: [postgres]
+  contracts:
+    - { producer: ingestion-svc, consumer: csv_ingest, schema: McpToolCallRequest }
+    - { producer: csv_ingest, consumer: kafka, schema: csv_ingest.approved }
+
+testing:
+  drill: mcp/tests/drill_mcp_server_csv_ingest.py
+  smoke_cmd: "curl -s $DOCUMIND_MCP_CSV_INGEST_URL/health"
+  cadence: iter
+  scheduled_via: scripts/run_drills.py
+
+monitoring:
+  metrics:
+    - { name: mcp_csv_ingest_sessions_total, type: counter, alert_at: "informational" }
+    - { name: mcp_csv_ingest_session_duration_seconds, type: histogram, alert_at: "p95 > 30s for 10m" }
+    - { name: mcp_csv_ingest_circuit_open, type: gauge, alert_at: "value == 1 for 5m" }
+    - { name: mcp_csv_ingest_state_violations_total, type: counter, alert_at: "rate > 0.1/s for 5m" }
+  alerts:
+    - { name: CsvIngestCircuitOpen, severity: P1, route: "#oncall-platform-data" }
+    - { name: CsvIngestStateViolation, severity: P2, route: "#oncall-platform-data" }
+
+visualization:
+  ui_page: /admin/mcp-fleet-health
+  embed_in: [/admin/dashboard, /admin/mcp-fleet-health, /admin/data]
+  panels: [status, sessions_active, sessions_approved, latency_p95, state_violations]
+
+policy:
+  opa_bundle: config/policies/agent_dispatch.rego
+  rules: [csv-ingest-session-start, csv-ingest-upload, csv-ingest-approve]
+  default: deny
+
+observability:
+  otel:
+    span_name: mcp.csv_ingest.tools_call
+    attrs: [tenant_id, request_id, scopes_granted, tool_name, session_id, state]
+  jaeger:
+    query_template: "service=mcp-csv-ingest&operation=mcp.csv_ingest.tools_call"
+  kibana:
+    index: filebeat-mcp-*
+    query_template: "kubernetes.labels.app:mcp-csv-ingest AND session_id:{session_id}"
+  log_fields: [request_id, tenant_id, actor, tool, session_id, state, latency_ms, outcome]
+
+runbook: ops/runbook/csv_ingest.md

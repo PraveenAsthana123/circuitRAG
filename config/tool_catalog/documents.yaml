@@ -1,0 +1,103 @@
+namespace: documents
+status_target: WORKING
+owner: platform-data
+
+fallback:
+  on_unreachable: "RAG ingestion path falls back to inline parsing in ingestion-svc; degrade-but-continue"
+  on_failing: "circuit-break 60s; alert P2; halt new doc-framework runs"
+  on_not_installed: "feature flag off; ingestion-svc uses bundled parsers"
+
+io:
+  - tool: documents.csv_parse
+    input_schema_ref: CsvParseInput
+    process: |
+      1. Validate file_path with path-traversal guard (.resolve + tenant-root prefix).
+      2. Validate encoding allow-list (utf-8, latin-1, cp1252).
+      3. Parse with csv.DictReader; cap rows at MAX_ROWS_RETURNED.
+      4. Return {available, rows, row_count, columns}.
+    output_schema_ref: CsvParseOutput
+    side_effects: read
+    avg_latency_ms: 100
+    p95_latency_ms: 500
+    cost_per_call_usd: 0.0
+  - tool: documents.pdf_extract_text
+    input_schema_ref: PdfExtractInput
+    process: |
+      1. Path-traversal guard.
+      2. Open with pypdf.PdfReader.
+      3. For each page, extract text; concatenate.
+      4. Return {available, text, page_count}.
+    output_schema_ref: PdfExtractOutput
+    side_effects: read
+    avg_latency_ms: 800
+    p95_latency_ms: 3000
+    cost_per_call_usd: 0.0
+  - tool: documents.docx_extract_text
+    input_schema_ref: DocxExtractInput
+    process: |
+      1. Path-traversal guard.
+      2. Open with python-docx Document.
+      3. Concatenate paragraph text.
+      4. Return {available, text, paragraph_count}.
+    output_schema_ref: DocxExtractOutput
+    side_effects: read
+    avg_latency_ms: 300
+    p95_latency_ms: 1200
+    cost_per_call_usd: 0.0
+  - tool: documents.db_query_select
+    input_schema_ref: DbQueryInput
+    process: |
+      1. SQL allowlist — reject queries containing DROP/DELETE/INSERT/UPDATE/TRUNCATE/EXECUTE/UNION/CREATE/ALTER/REPLACE.
+      2. Validate db identifier against allow-list.
+      3. Run via repo's parameterized SELECT path.
+      4. Cap result rows at MAX_ROWS_RETURNED.
+    output_schema_ref: DbQueryOutput
+    side_effects: read
+    avg_latency_ms: 200
+    p95_latency_ms: 1000
+    cost_per_call_usd: 0.0
+
+integration:
+  upstream: [ingestion-svc, doc-framework-svc, agent-orchestrator-svc]
+  downstream: [postgres, filesystem]
+  contracts:
+    - { producer: ingestion-svc, consumer: documents, schema: McpToolCallRequest }
+
+testing:
+  drill: mcp/tests/drill_mcp_server_documents.py
+  smoke_cmd: "curl -s $DOCUMIND_MCP_DOCUMENTS_URL/health"
+  cadence: iter
+  scheduled_via: scripts/run_drills.py
+
+monitoring:
+  metrics:
+    - { name: mcp_documents_requests_total, type: counter, alert_at: "informational" }
+    - { name: mcp_documents_request_duration_seconds, type: histogram, alert_at: "p95 > 5s for 5m" }
+    - { name: mcp_documents_circuit_open, type: gauge, alert_at: "value == 1 for 5m" }
+    - { name: mcp_documents_sql_rejected_total, type: counter, alert_at: "rate > 1/s for 5m (anomaly)" }
+  alerts:
+    - { name: DocumentsCircuitOpen, severity: P2, route: "#oncall-platform-data" }
+    - { name: DocumentsSqlRejectedAnomaly, severity: P3, route: "#oncall-platform-data" }
+
+visualization:
+  ui_page: /admin/mcp-fleet-health
+  embed_in: [/admin/dashboard, /admin/mcp-fleet-health, /admin/data]
+  panels: [status, latency_p95, error_rate, sql_rejected_rate]
+
+policy:
+  opa_bundle: config/policies/agent_dispatch.rego
+  rules: [council-author-documents-read, council-reviewer-documents-read]
+  default: deny
+
+observability:
+  otel:
+    span_name: mcp.documents.tools_call
+    attrs: [tenant_id, request_id, scopes_granted, tool_name, file_type]
+  jaeger:
+    query_template: "service=mcp-documents&operation=mcp.documents.tools_call"
+  kibana:
+    index: filebeat-mcp-*
+    query_template: "kubernetes.labels.app:mcp-documents AND request_id:{request_id}"
+  log_fields: [request_id, tenant_id, actor, tool, file_type, latency_ms, outcome]
+
+runbook: ops/runbook/documents.md

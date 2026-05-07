@@ -1,0 +1,123 @@
+namespace: github
+status_target: WORKING
+owner: platform-sdlc
+
+fallback:
+  on_unreachable: "skip github lookups; agent uses cached PR/issue context if any; council notes 'github unavailable'"
+  on_failing: "circuit-break 60s after 3 consecutive failures; alert P2"
+  on_not_installed: "feature flag off (DOCUMIND_MCP_GITHUB_URL unset); UI hides github namespace; council reviewer falls back to local repo state"
+
+io:
+  - tool: github.repo_get_file
+    input_schema_ref: GhFileInput
+    process: |
+      1. Validate repo against GITHUB_ALLOWED_REPOS allow-list (default-deny).
+      2. _live_or_stub guard for GITHUB_TOKEN.
+      3. GET https://api.github.com/repos/{owner}/{repo}/contents/{path}
+      4. Decode base64 content; return {available, path, content, sha}.
+    output_schema_ref: GhFileOutput
+    side_effects: read
+    avg_latency_ms: 200
+    p95_latency_ms: 600
+    cost_per_call_usd: 0.0
+  - tool: github.pr_lookup
+    input_schema_ref: GhPrLookupInput
+    process: |
+      1. Validate pr_number (positive int).
+      2. _live_or_stub guard.
+      3. GET /repos/{owner}/{repo}/pulls/{pr_number}.
+      4. Return {available, number, title, state, body, head, base}.
+    output_schema_ref: GhPrLookupOutput
+    side_effects: read
+    avg_latency_ms: 250
+    p95_latency_ms: 700
+    cost_per_call_usd: 0.0
+  - tool: github.pr_search
+    input_schema_ref: GhPrSearchInput
+    process: |
+      1. Validate query length + forbidden-regex.
+      2. GET /search/issues?q=type:pr+{query}.
+      3. Return list of PRs with state filter.
+    output_schema_ref: GhPrSearchOutput
+    side_effects: read
+    avg_latency_ms: 400
+    p95_latency_ms: 1200
+    cost_per_call_usd: 0.0
+  - tool: github.issue_lookup
+    input_schema_ref: GhIssueLookupInput
+    process: |
+      1. Validate issue_number.
+      2. GET /repos/{owner}/{repo}/issues/{issue_number}.
+      3. Return {available, number, title, state, body, labels}.
+    output_schema_ref: GhIssueLookupOutput
+    side_effects: read
+    avg_latency_ms: 250
+    p95_latency_ms: 700
+    cost_per_call_usd: 0.0
+  - tool: github.issue_search
+    input_schema_ref: GhIssueSearchInput
+    process: |
+      1. Validate query.
+      2. GET /search/issues?q=type:issue+{query}.
+      3. Return list of issues.
+    output_schema_ref: GhIssueSearchOutput
+    side_effects: read
+    avg_latency_ms: 400
+    p95_latency_ms: 1200
+    cost_per_call_usd: 0.0
+  - tool: github.code_search
+    input_schema_ref: GhCodeSearchInput
+    process: |
+      1. Validate query length + repo allow-list.
+      2. GET /search/code?q={query}+repo:{repo}.
+      3. Return file matches with line numbers.
+    output_schema_ref: GhCodeSearchOutput
+    side_effects: read
+    avg_latency_ms: 500
+    p95_latency_ms: 1500
+    cost_per_call_usd: 0.0
+
+integration:
+  upstream: [inference-svc, council-author, council-reviewer]
+  downstream: []
+  contracts:
+    - { producer: inference-svc, consumer: github, schema: McpToolCallRequest }
+
+testing:
+  drill: mcp/tests/drill_mcp_github_server.py
+  smoke_cmd: "curl -s $DOCUMIND_MCP_GITHUB_URL/health"
+  cadence: iter
+  scheduled_via: scripts/run_drills.py
+
+monitoring:
+  metrics:
+    - { name: mcp_github_requests_total, type: counter, alert_at: "informational" }
+    - { name: mcp_github_request_duration_seconds, type: histogram, alert_at: "p95 > 2s for 5m" }
+    - { name: mcp_github_rate_limit_remaining, type: gauge, alert_at: "value < 100 for 5m" }
+    - { name: mcp_github_circuit_open, type: gauge, alert_at: "value == 1 for 5m" }
+  alerts:
+    - { name: GitHubRateLimitLow, severity: P2, route: "#oncall-platform-sdlc" }
+    - { name: GitHubCircuitOpen, severity: P2, route: "#oncall-platform-sdlc" }
+
+visualization:
+  ui_page: /admin/mcp-fleet-health
+  embed_in: [/admin/dashboard, /admin/mcp-fleet-health, /admin/cicd]
+  panels: [status, latency_p95, error_rate, rate_limit_remaining]
+
+policy:
+  opa_bundle: config/policies/agent_dispatch.rego
+  rules: [council-reviewer-github-read, council-author-github-read]
+  default: deny
+
+observability:
+  otel:
+    span_name: mcp.github.tools_call
+    attrs: [tenant_id, request_id, scopes_granted, tool_name, repo]
+  jaeger:
+    query_template: "service=mcp-github&operation=mcp.github.tools_call"
+  kibana:
+    index: filebeat-mcp-*
+    query_template: "kubernetes.labels.app:mcp-github AND request_id:{request_id}"
+  log_fields: [request_id, tenant_id, actor, tool, repo, latency_ms, outcome, rate_limit_remaining]
+
+runbook: ops/runbook/github.md
