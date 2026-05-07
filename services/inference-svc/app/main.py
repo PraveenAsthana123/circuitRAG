@@ -140,6 +140,8 @@ def create_app() -> FastAPI:
             ("whatsapp", os.getenv("DOCUMIND_MCP_WHATSAPP_URL", "")),
             ("gdrive", os.getenv("DOCUMIND_MCP_GDRIVE_URL", "")),
             ("servicenow", os.getenv("DOCUMIND_MCP_SERVICENOW_URL", "")),
+            # iter-68: GitHub MCP — most-critical SDLC tool (PR/issue/code-search/file-get)
+            ("github", os.getenv("DOCUMIND_MCP_GITHUB_URL", "")),
         ]
         clients: dict[str, MCPClient] = {}
         for namespace, url in mcp_spec:

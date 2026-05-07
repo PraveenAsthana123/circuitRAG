@@ -1,0 +1,317 @@
+# Document Framework Registry
+#
+# Per ADR-029 (Business-usecase → 20-doc generation framework).
+# 20 doc types defined here. Each entry is the contract for a doc.
+#
+# Iter-69 ships this registry + drill_doc_framework_registry.
+# Iter-70 ships per-doc skeleton + prompt templates referenced by
+# template_path / prompt_path.
+#
+# When adding a 21st doc type:
+#   1. Append entry to this YAML
+#   2. Add template + prompt files (iter-70 pattern)
+#   3. Drill verifies registry-vs-template consistency
+
+version: 1
+default_min_kpi: 1.0   # 100% (per user request); ratchetable per doc
+
+docs:
+  - doc_type: srs
+    display_name: "Software Requirements Specification"
+    owner_role: business_analyst
+    reviewer_roles: [product_manager, architect, qa_lead]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/srs/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/srs/prompt.md"
+    kpi_dimensions:
+      - completeness
+      - clarity
+      - testability
+      - traceability
+      - non_functional_coverage
+    min_kpi: 1.0
+
+  - doc_type: brd
+    display_name: "Business Requirements Document"
+    owner_role: business_analyst
+    reviewer_roles: [product_manager, sponsor]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/brd/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/brd/prompt.md"
+    kpi_dimensions:
+      - business_value
+      - scope_clarity
+      - stakeholder_coverage
+      - success_criteria
+      - constraints_documented
+    min_kpi: 1.0
+
+  - doc_type: hld
+    display_name: "High-Level Design"
+    owner_role: architect
+    reviewer_roles: [engineering_manager, tech_lead]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/hld/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/hld/prompt.md"
+    kpi_dimensions:
+      - completeness
+      - scalability
+      - security
+      - cost
+      - fault_tolerance
+    min_kpi: 1.0
+
+  - doc_type: lld
+    display_name: "Low-Level Design"
+    owner_role: tech_lead
+    reviewer_roles: [architect, senior_engineer]
+    interdept_required: false
+    template_path: "docs/templates/doc_framework/lld/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/lld/prompt.md"
+    kpi_dimensions:
+      - implementability
+      - api_contract_clarity
+      - data_model_coverage
+      - error_handling
+      - test_alignment
+    min_kpi: 1.0
+
+  - doc_type: sad
+    display_name: "System Architecture Document"
+    owner_role: architect
+    reviewer_roles: [engineering_manager, security_lead]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/sad/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/sad/prompt.md"
+    kpi_dimensions:
+      - c4_completeness
+      - cross_cutting_concerns
+      - adr_linkage
+      - tech_choice_justification
+      - migration_strategy
+    min_kpi: 1.0
+
+  - doc_type: tcd
+    display_name: "Test Case Document"
+    owner_role: qa_lead
+    reviewer_roles: [senior_engineer, product_manager]
+    interdept_required: false
+    template_path: "docs/templates/doc_framework/tcd/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/tcd/prompt.md"
+    kpi_dimensions:
+      - requirement_coverage
+      - edge_case_coverage
+      - test_data_completeness
+      - traceability
+      - acceptance_criteria
+    min_kpi: 1.0
+
+  - doc_type: infra
+    display_name: "Infrastructure Document"
+    owner_role: devops_lead
+    reviewer_roles: [sre, security_lead]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/infra/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/infra/prompt.md"
+    kpi_dimensions:
+      - capacity_planning
+      - high_availability
+      - disaster_recovery
+      - network_topology
+      - cost_estimate
+    min_kpi: 1.0
+
+  - doc_type: devops
+    display_name: "DevOps Documentation"
+    owner_role: devops_lead
+    reviewer_roles: [sre, senior_engineer]
+    interdept_required: false
+    template_path: "docs/templates/doc_framework/devops/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/devops/prompt.md"
+    kpi_dimensions:
+      - ci_cd_completeness
+      - rollback_strategy
+      - monitoring_hooks
+      - secrets_management
+      - runbook_quality
+    min_kpi: 1.0
+
+  - doc_type: sec
+    display_name: "Security Documentation"
+    owner_role: security_lead
+    reviewer_roles: [architect, compliance_officer]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/sec/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/sec/prompt.md"
+    kpi_dimensions:
+      - threat_model
+      - controls_coverage
+      - compliance_mapping
+      - incident_response
+      - audit_trail
+    min_kpi: 1.0
+
+  - doc_type: pp
+    display_name: "Project Plan"
+    owner_role: project_manager
+    reviewer_roles: [sponsor, tech_lead]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/pp/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/pp/prompt.md"
+    kpi_dimensions:
+      - milestone_clarity
+      - dependency_mapping
+      - critical_path
+      - communication_plan
+      - success_metrics
+    min_kpi: 1.0
+
+  - doc_type: dp
+    display_name: "Deployment Plan"
+    owner_role: devops_lead
+    reviewer_roles: [sre, project_manager]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/dp/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/dp/prompt.md"
+    kpi_dimensions:
+      - release_strategy
+      - rollback_plan
+      - validation_steps
+      - communication_plan
+      - downtime_budget
+    min_kpi: 1.0
+
+  - doc_type: cap
+    display_name: "Capacity Plan"
+    owner_role: sre
+    reviewer_roles: [devops_lead, architect]
+    interdept_required: false
+    template_path: "docs/templates/doc_framework/cap/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/cap/prompt.md"
+    kpi_dimensions:
+      - load_projection
+      - growth_assumptions
+      - bottleneck_analysis
+      - scaling_strategy
+      - cost_at_capacity
+    min_kpi: 1.0
+
+  - doc_type: est
+    display_name: "Estimation Plan"
+    owner_role: project_manager
+    reviewer_roles: [tech_lead, engineering_manager]
+    interdept_required: false
+    template_path: "docs/templates/doc_framework/est/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/est/prompt.md"
+    kpi_dimensions:
+      - work_breakdown
+      - effort_basis
+      - risk_buffer
+      - dependency_estimate
+      - methodology_documented
+    min_kpi: 1.0
+
+  - doc_type: rp
+    display_name: "Resource Plan"
+    owner_role: project_manager
+    reviewer_roles: [hr_lead, engineering_manager]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/rp/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/rp/prompt.md"
+    kpi_dimensions:
+      - skill_match
+      - availability_validated
+      - ramp_up_time
+      - backup_assignments
+      - utilization_target
+    min_kpi: 1.0
+
+  - doc_type: cp
+    display_name: "Cost Plan"
+    owner_role: project_manager
+    reviewer_roles: [finance_lead, sponsor]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/cp/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/cp/prompt.md"
+    kpi_dimensions:
+      - line_item_completeness
+      - tco_breakdown
+      - contingency_buffer
+      - cost_attribution
+      - benchmark_comparison
+    min_kpi: 1.0
+
+  - doc_type: risk
+    display_name: "Risk Plan"
+    owner_role: project_manager
+    reviewer_roles: [security_lead, compliance_officer]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/risk/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/risk/prompt.md"
+    kpi_dimensions:
+      - identification
+      - probability
+      - impact
+      - mitigation
+      - monitoring
+    min_kpi: 1.0
+
+  - doc_type: tap
+    display_name: "Task Assigning Plan"
+    owner_role: tech_lead
+    reviewer_roles: [engineering_manager]
+    interdept_required: false
+    template_path: "docs/templates/doc_framework/tap/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/tap/prompt.md"
+    kpi_dimensions:
+      - task_clarity
+      - assignee_match
+      - dependency_visibility
+      - effort_estimate
+      - acceptance_criteria
+    min_kpi: 1.0
+
+  - doc_type: team
+    display_name: "Team Plan"
+    owner_role: engineering_manager
+    reviewer_roles: [hr_lead, project_manager]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/team/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/team/prompt.md"
+    kpi_dimensions:
+      - role_definitions
+      - skill_coverage
+      - reporting_lines
+      - communication_pattern
+      - onboarding_plan
+    min_kpi: 1.0
+
+  - doc_type: qp
+    display_name: "Quality Plan"
+    owner_role: qa_lead
+    reviewer_roles: [senior_engineer, product_manager]
+    interdept_required: false
+    template_path: "docs/templates/doc_framework/qp/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/qp/prompt.md"
+    kpi_dimensions:
+      - quality_metrics
+      - test_strategy
+      - acceptance_gates
+      - tooling_choice
+      - feedback_loop
+    min_kpi: 1.0
+
+  - doc_type: vp
+    display_name: "Vendor Plan"
+    owner_role: project_manager
+    reviewer_roles: [procurement_lead, finance_lead]
+    interdept_required: true
+    template_path: "docs/templates/doc_framework/vp/skeleton.md"
+    prompt_path: "docs/templates/doc_framework/vp/prompt.md"
+    kpi_dimensions:
+      - vendor_evaluation
+      - sla_terms
+      - cost_breakdown
+      - risk_assessment
+      - exit_strategy
+    min_kpi: 1.0
