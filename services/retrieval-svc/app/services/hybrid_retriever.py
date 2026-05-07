@@ -120,9 +120,9 @@ class HybridRetriever:
                     min_score=str(req.min_score),
                 )
                 return Cache.tenant_key(tenant_id, "retr", fp.hash())
-            except Exception:
+            except Exception:  # noqa: S110 — intentional fail-safe
                 # Fail-safe: fall through to legacy key shape
-                pass
+                pass  # noqa: S110 — intentional fail-safe (see comment above)
         h = hashlib.sha256(f"{req.strategy}|{req.top_k}|{req.query}|{sorted(req.filters.items())}".encode()).hexdigest()
         return Cache.tenant_key(tenant_id, "retr", h)
 
@@ -140,9 +140,26 @@ class HybridRetriever:
                 cached=True,
             )
 
-        # Parallel fetch
+        # Parallel fetch.
+        #
+        # Strategy gating (matrix row: RAG / Vectorless option):
+        #   strategy='vector' → vector only (graph branch suppressed below)
+        #   strategy='graph'  → graph only  (vector branch suppressed here;
+        #                       the vectorless / graph-only retrieval path)
+        #   strategy='hybrid' (default) → both, fused by reranker
+        #
+        # Feature flag: DOCUMIND_VECTORLESS_DEFAULT=1 forces graph-only
+        # for tenants that have not explicitly opted into vector. Per
+        # CLAUDE.md §47 (architecture: feature flags reversible) — runtime
+        # toggle without redeploying.
+        import os as _os  # noqa: PLC0415
+        force_graph_only = _os.getenv("DOCUMIND_VECTORLESS_DEFAULT", "").strip() == "1"
         coros = []
-        if "vector" in request.include_sources:
+        if (
+            "vector" in request.include_sources
+            and request.strategy != "graph"
+            and not force_graph_only
+        ):
             coros.append(self._do_vector(tenant_id, request))
         if "graph" in request.include_sources and request.strategy != "vector":
             coros.append(self._do_graph(tenant_id, request))
@@ -178,6 +195,8 @@ class HybridRetriever:
                 _sys_bc.path.insert(0, "/mnt/deepa/rag/scripts")
                 from best_config_loader import (  # noqa: PLC0415
                     get_default_min_score as _bc_min,
+                )
+                from best_config_loader import (
                     is_available as _bc_avail,
                 )
                 if _bc_avail() and "min_score" not in request.model_fields_set:
@@ -265,8 +284,11 @@ class HybridRetriever:
         import os  # noqa: PLC0415
         if os.getenv("BGE_RERANKER_IN_HOT_PATH", "").strip() == "1":
             try:
+                from app.services.bge_reranker_protected import (
+                    is_available as _bge_avail,
+                )
                 from app.services.bge_reranker_protected import (  # noqa: PLC0415
-                    protected_rerank, is_available as _bge_avail,
+                    protected_rerank,
                 )
                 if _bge_avail() and chunks:
                     chunks_dicts = [c.model_dump() for c in chunks]

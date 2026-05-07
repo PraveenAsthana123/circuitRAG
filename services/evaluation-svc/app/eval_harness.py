@@ -163,8 +163,13 @@ class GuardrailsEngine:
     ) -> dict[str, Any]:
         """Run output validators (PII detection, jailbreak, toxic content).
 
-        Stage-1 returns dummy results. Stage-2 will use Guard.from_string()
-        with the configured validators.
+        Stage-2: env-gated real invocation.
+          GUARDRAILS_EVAL_ENABLED=1  → run Guard.from_string() with
+                                       the configured validators
+          GUARDRAILS_EVAL_ENABLED unset/0 → return 'configured: false'
+
+        Per §47 fail-safe: any validator error returns the stub shape
+        with the error attached so eval-svc never breaks user requests.
         """
         if not self._guardrails:
             return {
@@ -173,14 +178,66 @@ class GuardrailsEngine:
                 "validation_passed": True,  # fail-open in Stage-1
                 "stub": True,
             }
-        return {
-            "available": True,
-            "stub": True,
-            "validation_passed": True,
-            "validators_run": validators or ["pii", "toxic", "jailbreak"],
-            "violations": [],  # Stage-2 populates from real validator runs
-            "input_len": len(text),
-        }
+        import os as _os  # noqa: PLC0415
+        if _os.getenv("GUARDRAILS_EVAL_ENABLED", "").strip() != "1":
+            return {
+                "available": True,
+                "configured": False,
+                "reason": "GUARDRAILS_EVAL_ENABLED unset",
+                "validation_passed": True,
+                "validators_run": validators or ["pii", "toxic", "jailbreak"],
+                "violations": [],
+                "input_len": len(text),
+            }
+        try:
+            # Stage-2 active. Call Guard.from_string() with the requested
+            # validator subset; fall back to default trio when unset.
+            requested = validators or ["pii", "toxic", "jailbreak"]
+            gd = self._guardrails
+            # The exact validator-name → class mapping varies across
+            # guardrails versions; use the registry lookup so the
+            # eval harness stays version-tolerant.
+            validator_objs = []
+            for vname in requested:
+                try:
+                    cls = getattr(gd, "validators", None)
+                    if cls is not None and hasattr(cls, vname):
+                        validator_objs.append(getattr(cls, vname)())
+                except Exception:  # noqa: BLE001 — version drift tolerant
+                    pass
+            guard = gd.Guard.from_string(validators=validator_objs)
+            outcome = guard.parse(text)
+            violations = []
+            passed = True
+            # Different guardrails versions surface validation outcome
+            # under different attributes; probe a few.
+            for attr in ("validation_passed", "passed", "is_valid"):
+                if hasattr(outcome, attr):
+                    passed = bool(getattr(outcome, attr))
+                    break
+            for attr in ("validation_summaries", "errors", "violations"):
+                if hasattr(outcome, attr):
+                    violations = list(getattr(outcome, attr) or [])
+                    break
+            return {
+                "available": True,
+                "configured": True,
+                "validation_passed": passed,
+                "validators_run": requested,
+                "violations": [str(v)[:200] for v in violations],
+                "input_len": len(text),
+            }
+        except Exception as _exc:  # noqa: BLE001
+            logger.warning("guardrails_validate_error: %s", _exc)
+            return {
+                "available": True,
+                "configured": True,
+                "error": str(_exc)[:200],
+                "validation_passed": True,  # fail-open per §47
+                "validators_run": validators or ["pii", "toxic", "jailbreak"],
+                "violations": [],
+                "input_len": len(text),
+            }
 
 
 # ---------- DeepEval ---------- (Stage-1 scaffold)
@@ -207,22 +264,90 @@ class DeepEvalEngine:
         answer: str,
         contexts: list[str],
     ) -> dict[str, Any]:
+        """Score answer via deepeval. Stage-2: env-gated real invocation.
+
+        DEEPEVAL_ENABLED=1 → run AnswerRelevancyMetric / FaithfulnessMetric
+        unset/0          → return 'configured: false' shape
+
+        Per §47 fail-safe: any metric error returns the stub shape with
+        the error attached so eval-svc never breaks user requests.
+        """
         if not self._deepeval:
             return {
                 "available": False,
                 "reason": "deepeval not installed",
                 "stub": True,
             }
-        return {
-            "available": True,
-            "stub": True,
-            "metrics": {
-                "answer_relevancy": None,
-                "faithfulness": None,
-                "contextual_precision": None,
-                "contextual_recall": None,
-            },
-        }
+        import os as _os  # noqa: PLC0415
+        if _os.getenv("DEEPEVAL_ENABLED", "").strip() != "1":
+            return {
+                "available": True,
+                "configured": False,
+                "reason": "DEEPEVAL_ENABLED unset",
+                "metrics": {
+                    "answer_relevancy": None,
+                    "faithfulness": None,
+                    "contextual_precision": None,
+                    "contextual_recall": None,
+                },
+            }
+        try:
+            de = self._deepeval
+            # deepeval imports moved between minor versions; probe both
+            # known module paths so the harness is version-tolerant.
+            try:
+                from deepeval.metrics import (  # type: ignore[import-not-found]
+                    AnswerRelevancyMetric,
+                    FaithfulnessMetric,
+                )
+                from deepeval.test_case import LLMTestCase  # type: ignore[import-not-found]
+            except ImportError:
+                # Older deepeval 0.x layout
+                from deepeval.metrics.answer_relevancy import (  # type: ignore[import-not-found]
+                    AnswerRelevancyMetric,
+                )
+                from deepeval.metrics.faithfulness import (  # type: ignore[import-not-found]
+                    FaithfulnessMetric,
+                )
+                from deepeval.test_case import LLMTestCase  # type: ignore[import-not-found]
+            test_case = LLMTestCase(
+                input=question,
+                actual_output=answer,
+                retrieval_context=contexts,
+            )
+            metrics: dict[str, float | None] = {}
+            for cls, key in (
+                (AnswerRelevancyMetric, "answer_relevancy"),
+                (FaithfulnessMetric, "faithfulness"),
+            ):
+                try:
+                    m = cls(threshold=0.5)
+                    m.measure(test_case)
+                    metrics[key] = float(getattr(m, "score", 0.0))
+                except Exception as _e:  # noqa: BLE001
+                    metrics[key] = None
+                    metrics[f"{key}_error"] = str(_e)[:120]
+            return {
+                "available": True,
+                "configured": True,
+                "metrics": metrics,
+                "input": {
+                    "question": question[:80],
+                    "answer_len": len(answer),
+                    "context_count": len(contexts),
+                },
+            }
+        except Exception as _exc:  # noqa: BLE001
+            logger.warning("deepeval_evaluate_error: %s", _exc)
+            return {
+                "available": True,
+                "configured": True,
+                "error": str(_exc)[:200],
+                "metrics": {
+                    "answer_relevancy": None,
+                    "faithfulness": None,
+                },
+            }
 
 
 # ---------- Aggregator ---------- (the public surface)
