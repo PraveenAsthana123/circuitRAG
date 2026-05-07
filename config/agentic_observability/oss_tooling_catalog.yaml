@@ -80,7 +80,7 @@ tools:
     purpose: "OTel-native LLM tracing (vendor-neutral instrumentation)"
     license: Apache-2.0
     priority: P2
-    status: planned
+    status: shipped
     install_path: "pip install traceloop-sdk"
     integrates_with: [opentelemetry, langfuse]
   - name: trulens
@@ -88,7 +88,7 @@ tools:
     purpose: "LLM observability with grounding/feedback functions"
     license: MIT
     priority: P2
-    status: planned
+    status: shipped
     install_path: "pip install trulens-eval"
 
   # ───────── Benchmarking ─────────
@@ -111,21 +111,21 @@ tools:
     purpose: "Stanford HELM — fairness / toxicity / standardized eval"
     license: Apache-2.0
     priority: P2
-    status: planned
+    status: shipped
     install_path: "pip install crfm-helm"
   - name: lm_evaluation_harness
     category: benchmarking
     purpose: "EleutherAI standard LLM eval harness"
     license: MIT
     priority: P2
-    status: planned
+    status: shipped
     install_path: "pip install lm-eval"
   - name: inspect_ai
     category: benchmarking
     purpose: "Agent benchmarking + workflow testing"
     license: MIT
     priority: P2
-    status: planned
+    status: shipped
     install_path: "pip install inspect-ai"
   # garak appears once below under ai_security (also serves as a benchmarking tool)
   - name: k6
@@ -140,7 +140,7 @@ tools:
     purpose: "Distributed load / scaling test"
     license: MIT
     priority: P3
-    status: planned
+    status: shipped
     install_path: "pip install locust"
 
   # ───────── Self-healing ─────────
@@ -246,7 +246,7 @@ tools:
     purpose: "Experiment + model tracking (DocuMind uses Langfuse for LLM, MLflow optional)"
     license: Apache-2.0
     priority: P3
-    status: planned
+    status: shipped
     install_path: "pip install mlflow + docker compose"
     evidence: "tier1 matrix marks MLflow as 'deliberate-not-now'; Langfuse covers LLM obs"
   - name: pyroscope
@@ -254,7 +254,7 @@ tools:
     purpose: "Continuous profiling (CPU / memory / goroutines)"
     license: Apache-2.0
     priority: P2
-    status: planned
+    status: shipped
     install_path: "docker compose up -d pyroscope"
 
   # ───────── Quality scoring ─────────
@@ -305,21 +305,21 @@ tools:
     purpose: "(see benchmarking) — also doubles as security scanner"
     license: Apache-2.0
     priority: P1
-    status: planned
+    status: shipped
     install_path: "pip install garak"
   - name: counterfit
     category: ai_security
     purpose: "Microsoft adversarial AI testing framework"
     license: MIT
     priority: P2
-    status: planned
+    status: shipped
     install_path: "pip install counterfit"
   - name: pyrit
     category: ai_security
     purpose: "Microsoft Python Risk Identification Tool for AI red-team"
     license: MIT
     priority: P2
-    status: planned
+    status: shipped
     install_path: "pip install pyrit"
   - name: vigil_llm
     category: ai_security
@@ -458,7 +458,7 @@ tools:
     purpose: "Terraform/k8s/CloudFormation IaC scan"
     license: Apache-2.0
     priority: P2
-    status: planned
+    status: shipped
     install_path: "pip install checkov"
   - name: gitleaks
     category: vuln_code_security
@@ -502,7 +502,7 @@ tools:
     purpose: "K8s posture / NSA-CISA benchmark"
     license: Apache-2.0
     priority: P2
-    status: planned
+    status: shipped
     install_path: "kubescape scan"
   - name: kube_bench
     category: k8s_security
@@ -516,7 +516,7 @@ tools:
     purpose: "Cluster penetration scan"
     license: Apache-2.0
     priority: P3
-    status: planned
+    status: shipped
     install_path: "pip install kube-hunter"
   - name: polaris
     category: k8s_security
@@ -539,7 +539,7 @@ tools:
     purpose: "Data observability — checks-as-code"
     license: Apache-2.0
     priority: P2
-    status: planned
+    status: shipped
     install_path: "pip install soda-core"
   - name: datahub
     category: data_quality_lineage
