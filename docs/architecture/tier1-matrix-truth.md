@@ -46,6 +46,7 @@ operator-territory (§42-gated) actions documented at the end.
 | RAG / Lakehouse | MinIO 2024.10 | ✅ shipped | `docker-compose ps minio` |
 | RAG / BM25 | rank_bm25 0.2.2 | ✅ shipped | `python3 -c "import rank_bm25"` |
 | RAG / Reranker | scikit-learn cross-encoder | ✅ shipped | `python3 mcp/tests/drill_reranker_protected.py` |
+| RAG / Citation Validation | claim-to-chunk lexical linking + hallucination flag | ✅ shipped (iter-57) | `libs/py/documind_core/citations.py` (CitationLinker; lexical Jaccard floor; verbatim-quote support; threshold-rejection invariants). `python3 mcp/tests/drill_citation_validation_contract.py` (10/10 — 5 positive + 5 negative). Closes §48.5 four-part RAG explainability contract (retrieval trail + prompt rendering + **citation mapping** + guardrail trace). |
 | RAG / Vectorless option | Graph-only retrieval | ✅ shipped (iter-36) | `python3 mcp/tests/drill_rag_vectorless_flag.py` (6/6) |
 | Cache | Redis 7.4 | ✅ shipped | `docker-compose ps redis` |
 | Event Bus | Kafka 7.6 + Zookeeper | ✅ shipped | `docker-compose ps kafka zookeeper` |
