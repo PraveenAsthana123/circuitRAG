@@ -132,3 +132,8 @@ services/frontend/.next-prod/
 # Phase 7HH: Next.js dev-server artifact dir (parallel-tool's dev
 # workflow); leaked _events.json in commit 0e7f864 caught here.
 services/frontend/.next-dev/
+
+# personalization data — redacted but still per-user, never commit
+personalization/data/
+ops_worker/audit.jsonl
+.tools/
