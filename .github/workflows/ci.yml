@@ -40,8 +40,11 @@ jobs:
         run: mypy --ignore-missing-imports libs/py/documind_core
       - name: Bandit (security)
         run: bandit -r libs/py services/ingestion-svc/app services/retrieval-svc/app services/inference-svc/app services/evaluation-svc/app -ll
-      - name: pip-audit (deps CVEs, non-blocking)
-        run: pip-audit --strict -r services/ingestion-svc/requirements.txt -r services/retrieval-svc/requirements.txt -r services/inference-svc/requirements.txt -r services/evaluation-svc/requirements.txt || true
+      - name: pip-audit (deps CVEs, blocking — §16 + drill_pip_audit_in_ci)
+        # Per CLAUDE.md §16 (deps mgmt: vulnerability scanning) + §43.
+        # Blocking; if a CVE lands, fix the dep. The 4 service
+        # requirements files cover the full transitive set.
+        run: pip-audit --strict -r services/ingestion-svc/requirements.txt -r services/retrieval-svc/requirements.txt -r services/inference-svc/requirements.txt -r services/evaluation-svc/requirements.txt
       - name: Pytest (unit)
         run: pytest -q libs/py/tests --cov=libs/py/documind_core --cov-report=term-missing
 

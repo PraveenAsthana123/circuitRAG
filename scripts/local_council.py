@@ -98,6 +98,53 @@ COUNCIL_ROLES: dict[str, dict[str, str]] = {
     },
 }
 
+# 5-role aliasing layer (matrix row: Agent Council / 5-role rename).
+# The underlying 4-role council runs unchanged; this map gives
+# downstream consumers (drills, dashboards, MCP clients) a stable
+# 5-role vocabulary without forking the council code path.
+#
+# Aliases route to the existing COUNCIL_ROLES entries:
+#   Planner   → author    (proposes the structural plan/diff)
+#   Retriever → researcher (gathers context + grep refs)
+#   Risk      → reviewer   (critiques correctness + risks)
+#   Evaluator → advisor    (synthesizes; CONCUR or alternative)
+#   Writer    → author     (produces the final structured proposal —
+#                           same model lane as Planner; the split
+#                           exists at the *role-label* layer so a
+#                           future iteration can swap Writer to a
+#                           dedicated model without rewiring callers)
+#
+# Per CLAUDE.md §47 (architecture: explicit aliases stay reversible)
+# + §43 (drill_council_5_role_aliasing locks the contract).
+COUNCIL_ROLE_ALIASES: dict[str, str] = {
+    "Planner": "author",
+    "Retriever": "researcher",
+    "Risk": "reviewer",
+    "Evaluator": "advisor",
+    "Writer": "author",
+}
+
+
+def resolve_role(name: str) -> str:
+    """Translate a 5-role label to the underlying 4-role canonical key.
+
+    Accepts either nomenclature (case-insensitive); returns the
+    canonical 4-role key suitable for COUNCIL_ROLES lookup. Raises
+    KeyError on unknown labels — silent fallback would mask typos.
+    """
+    if name in COUNCIL_ROLES:
+        return name
+    # 5-role aliases (case-insensitive on the alias side)
+    for alias, canonical in COUNCIL_ROLE_ALIASES.items():
+        if alias.lower() == name.lower():
+            return canonical
+    raise KeyError(
+        f"unknown council role: {name!r}; valid 4-role: "
+        f"{sorted(COUNCIL_ROLES)}; valid 5-role aliases: "
+        f"{sorted(COUNCIL_ROLE_ALIASES)}"
+    )
+
+
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
 # PolisAI integration scopes — emitted by the local council host to
