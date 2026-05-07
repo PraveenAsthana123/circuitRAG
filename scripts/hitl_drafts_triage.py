@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""HITL drafts triage report — read-only operator-decision input.
+
+Per CLAUDE.md §38 (governance gates) + §47.7 (operational autonomy
+boundary). The 577+ pending rows in governance.action_drafts are
+operator-decision territory: bulk-rejecting or bulk-replaying them
+without explicit operator review violates §38 (governance) + §42
+(operational autonomy).
+
+This script is the autonomous-doable slice: produce a read-only
+markdown report classifying drafts by age + server + failure reason.
+The OPERATOR uses the report to make triage decisions; the script
+NEVER mutates governance.action_drafts state.
+
+Usage:
+    python3 scripts/hitl_drafts_triage.py
+    python3 scripts/hitl_drafts_triage.py --output docs/reports/hitl-$(date +%Y%m%d).md
+
+Read-only invariant drilled at mcp/tests/drill_hitl_drafts_triage.py.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import Any
+
+REPO = Path(__file__).resolve().parents[1]
+
+PG_HOST = os.environ.get("DOCUMIND_PG_HOST", "localhost")
+PG_PORT = int(os.environ.get("DOCUMIND_PG_PORT", "55432"))
+PG_USER = os.environ.get("DOCUMIND_PG_USER", "documind")
+PG_PASSWORD = os.environ.get("DOCUMIND_PG_PASSWORD", "documind")
+PG_DB = os.environ.get("DOCUMIND_PG_DB", "documind")
+
+
+def fetch_drafts() -> tuple[list[dict[str, Any]], str | None]:
+    """Read pending drafts. Returns (rows, gap_reason).
+
+    NEVER writes; admin connection (documind) for full visibility.
+    Per §38: triage REPORTING is read-only; triage DECISIONS are
+    operator territory.
+    """
+    try:
+        import asyncio
+
+        import asyncpg
+    except ImportError:
+        return [], "asyncpg not installed"
+
+    async def _query() -> list[dict[str, Any]]:
+        conn = await asyncpg.connect(
+            host=PG_HOST, port=PG_PORT, user=PG_USER,
+            password=PG_PASSWORD, database=PG_DB, timeout=3.0,
+        )
+        try:
+            rows = await conn.fetch(
+                "SELECT draft_id, tool, reason, status, created_at, "
+                "       (NOW() - created_at) AS age "
+                "  FROM governance.action_drafts "
+                " WHERE status = 'pending' "
+                " ORDER BY created_at ASC"
+            )
+            return [dict(r) for r in rows]
+        finally:
+            await conn.close()
+
+    try:
+        return asyncio.run(_query()), None
+    except Exception as exc:  # noqa: BLE001
+        return [], f"postgres unreachable: {type(exc).__name__}: {exc}"
+
+
+def classify_age(age_seconds: int) -> str:
+    """Bucket age into operator-readable ranges."""
+    if age_seconds < 86400:
+        return "< 1 day"
+    if age_seconds < 7 * 86400:
+        return "< 7 days"
+    if age_seconds < 30 * 86400:
+        return "< 30 days"
+    return ">= 30 days (STALE)"
+
+
+def server_from_tool(tool: str) -> str:
+    """Tool names are 'server.name' format; extract the server prefix."""
+    return tool.split(".", 1)[0] if "." in tool else "?"
+
+
+def classify_reason(reason: str) -> str:
+    """Bucket failure reason into known categories."""
+    r = (reason or "").lower()
+    if "cb_open" in r or "circuit" in r:
+        return "circuit_breaker_open"
+    if "connect" in r or "connection" in r:
+        return "connection_error"
+    if "timeout" in r:
+        return "timeout"
+    if "5" in reason and "0" in reason:
+        return f"http_5xx ({reason[:30]})"
+    if "4" in reason and "0" in reason:
+        return f"http_4xx ({reason[:30]})"
+    return reason[:40] if reason else "unknown"
+
+
+def build_report(drafts: list[dict[str, Any]], gap: str | None) -> str:
+    """Generate the markdown triage report."""
+    if gap:
+        return (
+            "# HITL Drafts Triage Report\n\n"
+            "## Status: UNAVAILABLE\n\n"
+            f"Reason: `{gap}`\n\n"
+            "Cannot generate triage without DB access. Verify "
+            "Postgres reachable + `documind` role credentials valid.\n"
+        )
+
+    if not drafts:
+        return (
+            "# HITL Drafts Triage Report\n\n"
+            "## Status: ALL CLEAR\n\n"
+            "No pending drafts in `governance.action_drafts`. No "
+            "operator triage required.\n"
+        )
+
+    # Compute buckets
+    by_age: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_server: dict[str, int] = defaultdict(int)
+    by_reason: dict[str, int] = defaultdict(int)
+    stale_drafts: list[dict[str, Any]] = []
+
+    for d in drafts:
+        age_s = int(d["age"].total_seconds())
+        bucket = classify_age(age_s)
+        by_age[bucket].append(d)
+        by_server[server_from_tool(d["tool"])] += 1
+        by_reason[classify_reason(d["reason"])] += 1
+        if age_s >= 30 * 86400:
+            stale_drafts.append(d)
+
+    total = len(drafts)
+    lines: list[str] = []
+    lines.append("# HITL Drafts Triage Report")
+    lines.append("")
+    lines.append(
+        "> Read-only operator-decision input. Generated by "
+        "`scripts/hitl_drafts_triage.py`. Drilled by "
+        "`drill_hitl_drafts_triage.py`. Per §38 governance: "
+        "REPORTING is autonomous; triage DECISIONS are operator "
+        "territory."
+    )
+    lines.append("")
+    lines.append(f"## Summary: {total} pending drafts")
+    lines.append("")
+    lines.append("| Age bucket | Count |")
+    lines.append("| --- | ---: |")
+    for bucket in ("< 1 day", "< 7 days", "< 30 days", ">= 30 days (STALE)"):
+        lines.append(f"| {bucket} | {len(by_age.get(bucket, []))} |")
+    lines.append("")
+
+    lines.append("## By originating server")
+    lines.append("")
+    lines.append("| Server | Pending count |")
+    lines.append("| --- | ---: |")
+    for srv, n in sorted(by_server.items(), key=lambda x: -x[1]):
+        lines.append(f"| `{srv}` | {n} |")
+    lines.append("")
+
+    lines.append("## By failure reason")
+    lines.append("")
+    lines.append("| Reason | Count |")
+    lines.append("| --- | ---: |")
+    for reason, n in sorted(by_reason.items(), key=lambda x: -x[1]):
+        lines.append(f"| {reason} | {n} |")
+    lines.append("")
+
+    lines.append("## Stale drafts (≥ 30 days old)")
+    lines.append("")
+    if not stale_drafts:
+        lines.append(
+            "_None. No drafts older than 30 days; no stale-candidate "
+            "bulk-rejection needed._"
+        )
+    else:
+        lines.append(
+            f"**{len(stale_drafts)} drafts** are ≥30 days old. "
+            "Operator may bulk-reject these per the §47.7 operator-"
+            "autonomy boundary. Sample candidates (first 10):"
+        )
+        lines.append("")
+        lines.append("| draft_id | tool | reason | age (days) |")
+        lines.append("| --- | --- | --- | ---: |")
+        for d in stale_drafts[:10]:
+            age_d = int(d["age"].total_seconds() // 86400)
+            lines.append(
+                f"| `{d['draft_id']}` | `{d['tool']}` | "
+                f"{d['reason'][:30]} | {age_d} |"
+            )
+        if len(stale_drafts) > 10:
+            lines.append(
+                f"| _… {len(stale_drafts) - 10} more …_ |  |  |  |"
+            )
+    lines.append("")
+
+    lines.append("## Recommended operator actions")
+    lines.append("")
+    lines.append(
+        "Per `docs/runbooks/operator-activation-7-items.md` §Item 7, "
+        "review the buckets above and decide which subset to:"
+    )
+    lines.append("")
+    lines.append(
+        "1. **Bulk-reject stale (>= 30d)**: typically safe — the "
+        "originating tool calls have either been retried by other "
+        "paths or are no longer relevant."
+    )
+    lines.append(
+        "2. **Replay recent (< 7d)**: likely worth re-attempting "
+        "now that MCP servers are back up."
+    )
+    lines.append(
+        "3. **Manual review (server-specific)**: drill into the "
+        "by-server bucket showing the highest pending count; "
+        "those drafts may indicate a still-broken upstream."
+    )
+    lines.append("")
+    lines.append(
+        "Per §38 governance gates: this script does NOT execute any "
+        "of the above. Operator runs the SQL or replay scripts "
+        "explicitly after reviewing this report."
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output", "-o", type=str, default=None,
+        help="Output path (default: stdout)",
+    )
+    parser.add_argument(
+        "--json", action="store_true",
+        help="Emit JSON summary instead of markdown",
+    )
+    args = parser.parse_args()
+
+    drafts, gap = fetch_drafts()
+
+    if args.json:
+        out = {
+            "total_pending": len(drafts),
+            "gap": gap,
+            "by_age": {},
+            "by_server": {},
+            "stale_count": 0,
+        }
+        if drafts:
+            for d in drafts:
+                age_s = int(d["age"].total_seconds())
+                bucket = classify_age(age_s)
+                out["by_age"][bucket] = out["by_age"].get(bucket, 0) + 1
+                srv = server_from_tool(d["tool"])
+                out["by_server"][srv] = out["by_server"].get(srv, 0) + 1
+                if age_s >= 30 * 86400:
+                    out["stale_count"] += 1
+        print(json.dumps(out, indent=2))
+        return 0
+
+    report = build_report(drafts, gap)
+    if args.output:
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(report, encoding="utf-8")
+        print(f"wrote {out_path} ({len(report)} bytes)")
+    else:
+        print(report)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
