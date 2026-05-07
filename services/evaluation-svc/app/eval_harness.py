@@ -350,6 +350,179 @@ class DeepEvalEngine:
             }
 
 
+# ---------- Lakera + Rebuff ---------- (Stage-1 scaffold; prompt-injection defense)
+
+class LakeraRebuffEngine:
+    """Wraps Lakera Guard + Rebuff for prompt-injection defense.
+
+    Per CLAUDE.md §40 (decision system), §47.6 (security: A11 prompt
+    injection), §48 (AI explainability: guardrails_triggered audit row).
+
+    Stage-1: import-safe stub (libs may not be installed; never raises).
+    Stage-2: env-gated real invocation. Both Lakera and Rebuff offer
+    API-based + self-hosted detection paths; the scaffold supports both.
+        LAKERA_API_KEY    — opt-in Lakera Guard (https://lakera.ai)
+        REBUFF_ENABLED=1  — enable Rebuff (self-hosted/SDK)
+
+    fail-open: any detector error returns is_attack=False so a misconfigured
+    detector never blocks a legitimate request. The audit row carries the
+    error so ops can see + fix without losing traffic.
+    """
+
+    def __init__(self) -> None:
+        self._lakera: Any = None
+        self._rebuff: Any = None
+        try:
+            import lakera_guard as lk  # type: ignore[import-not-found]
+            self._lakera = lk
+            logger.info("lakera_guard available")
+        except ImportError:
+            logger.debug("lakera_guard not installed; detector stubbed")
+        try:
+            import rebuff as rb  # type: ignore[import-not-found]
+            self._rebuff = rb
+            logger.info("rebuff available")
+        except ImportError:
+            logger.debug("rebuff not installed; detector stubbed")
+
+    def is_available(self) -> bool:
+        return self._lakera is not None or self._rebuff is not None
+
+    def detect(self, *, prompt: str) -> dict[str, Any]:
+        """Run prompt-injection detection across the configured detectors.
+
+        Returns:
+          {detector_name: {is_attack: bool, score: float|None, reason: str}}
+          plus a top-level `is_attack` (any detector flagged).
+        """
+        import os as _os  # noqa: PLC0415
+        out: dict[str, Any] = {"detectors": {}, "is_attack": False, "input_len": len(prompt)}
+        if not self.is_available():
+            out["available"] = False
+            out["reason"] = "no detector library installed"
+            out["stub"] = True
+            return out
+        # Lakera Guard (API)
+        if self._lakera is not None and _os.getenv("LAKERA_API_KEY", "").strip():
+            try:
+                client = self._lakera.LakeraGuard(api_key=_os.environ["LAKERA_API_KEY"])
+                result = client.detect(prompt)
+                is_attack = bool(getattr(result, "flagged", False))
+                out["detectors"]["lakera"] = {
+                    "is_attack": is_attack,
+                    "score": getattr(result, "score", None),
+                    "categories": list(getattr(result, "categories", []) or [])[:5],
+                }
+                out["is_attack"] = out["is_attack"] or is_attack
+            except Exception as _e:  # noqa: BLE001 — fail-open per §47
+                out["detectors"]["lakera"] = {
+                    "is_attack": False, "score": None, "error": str(_e)[:120],
+                }
+        # Rebuff
+        if self._rebuff is not None and _os.getenv("REBUFF_ENABLED", "").strip() == "1":
+            try:
+                detector = self._rebuff.Rebuff()
+                result = detector.detect_injection(prompt)
+                is_attack = bool(getattr(result, "is_injection", False))
+                out["detectors"]["rebuff"] = {
+                    "is_attack": is_attack,
+                    "score": getattr(result, "max_score", None),
+                }
+                out["is_attack"] = out["is_attack"] or is_attack
+            except Exception as _e:  # noqa: BLE001
+                out["detectors"]["rebuff"] = {
+                    "is_attack": False, "score": None, "error": str(_e)[:120],
+                }
+        out["available"] = True
+        out["configured"] = bool(out["detectors"])
+        return out
+
+
+# ---------- Giskard ---------- (Stage-1 scaffold; LLM red-team + bias scan)
+
+class GiskardEngine:
+    """Wraps Giskard for LLM red-team + bias scanning.
+
+    Per CLAUDE.md §40 (analysis: fairness/bias), §48.8 (fairness as part
+    of explainability). Stage-1 stub; Stage-2 (env-gated) runs the
+    Giskard scan suite when GISKARD_SCAN_ENABLED=1.
+    """
+
+    def __init__(self) -> None:
+        self._giskard: Any = None
+        try:
+            import giskard  # type: ignore[import-not-found]
+            self._giskard = giskard
+            logger.info("giskard %s available", getattr(giskard, "__version__", "?"))
+        except ImportError:
+            logger.debug("giskard not installed; scanner stubbed")
+
+    def is_available(self) -> bool:
+        return self._giskard is not None
+
+    def scan(self, *, model_callable: Any | None = None) -> dict[str, Any]:
+        """Run Giskard's LLM scan. Stage-2: env-gated real invocation.
+
+        model_callable: any callable(prompt: str) -> str. When None and
+        GISKARD_SCAN_ENABLED is unset, returns stub. Per §47 fail-safe.
+        """
+        if not self.is_available():
+            return {
+                "available": False,
+                "reason": "giskard not installed",
+                "stub": True,
+            }
+        import os as _os  # noqa: PLC0415
+        if _os.getenv("GISKARD_SCAN_ENABLED", "").strip() != "1":
+            return {
+                "available": True,
+                "configured": False,
+                "reason": "GISKARD_SCAN_ENABLED unset",
+                "issues": [],
+            }
+        if model_callable is None:
+            return {
+                "available": True,
+                "configured": True,
+                "reason": "no model_callable provided",
+                "issues": [],
+            }
+        try:
+            # Giskard's LLM API surface is volatile across minor versions;
+            # the scaffold isolates the exact call so version drift
+            # only touches this block.
+            gk = self._giskard
+            # Use the high-level scan if available
+            scan_fn = getattr(gk, "scan", None)
+            if scan_fn is None:
+                return {
+                    "available": True,
+                    "configured": True,
+                    "error": "giskard.scan not in this version",
+                    "issues": [],
+                }
+            report = scan_fn(model=model_callable)
+            issues = []
+            for attr in ("issues", "problems", "results"):
+                if hasattr(report, attr):
+                    issues = list(getattr(report, attr) or [])[:50]
+                    break
+            return {
+                "available": True,
+                "configured": True,
+                "issues": [str(i)[:200] for i in issues],
+                "issue_count": len(issues),
+            }
+        except Exception as _exc:  # noqa: BLE001
+            logger.warning("giskard_scan_error: %s", _exc)
+            return {
+                "available": True,
+                "configured": True,
+                "error": str(_exc)[:200],
+                "issues": [],
+            }
+
+
 # ---------- Aggregator ---------- (the public surface)
 
 def eval_status() -> dict[str, Any]:
@@ -361,21 +534,29 @@ def eval_status() -> dict[str, Any]:
     ragas = RagasEngine()
     guardrails = GuardrailsEngine()
     deepeval = DeepEvalEngine()
+    lakera_rebuff = LakeraRebuffEngine()
+    giskard = GiskardEngine()
     return {
-        "stage": 1,
+        "stage": 2,
         "engines": {
             "ragas": {"available": ragas.is_available()},
             "guardrails": {"available": guardrails.is_available()},
             "deepeval": {"available": deepeval.is_available()},
+            "lakera_rebuff": {"available": lakera_rebuff.is_available()},
+            "giskard": {"available": giskard.is_available()},
         },
         "all_available": (
             ragas.is_available()
             and guardrails.is_available()
             and deepeval.is_available()
+            and lakera_rebuff.is_available()
+            and giskard.is_available()
         ),
         "note": (
-            "Stage-1 — engines stub their evaluate() method. Stage-2 "
-            "wires real library calls. Stage-3 runs Ragas as a "
-            "periodic eval job + Guardrails as an inline output filter."
+            "Stage-2 — eval engines wire real adapters behind env flags "
+            "(RAGAS_EVAL_ENABLED, GUARDRAILS_EVAL_ENABLED, DEEPEVAL_ENABLED, "
+            "LAKERA_API_KEY, REBUFF_ENABLED, GISKARD_SCAN_ENABLED). All paths "
+            "fail-safe: import error → stub; flag unset → configured:false; "
+            "adapter error → stub with error attached."
         ),
     }
