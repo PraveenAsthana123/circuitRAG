@@ -76,6 +76,7 @@ DOMAIN_ADR_NUMBERS = frozenset({
     23,                                            # ADR-023 empirical RAG-config loop (2026-05-05)
     24,                                            # ADR-024 Stage-3 default-flip (2026-05-05)
     25,                                            # ADR-025 feature-flag-gated dual-write (§47.7) (2026-05-06)
+    26,                                            # ADR-026 MLflow deliberate-not-now (Langfuse covers LLM obs) (2026-05-06)
 })
 
 MIN_ADRS = 15
