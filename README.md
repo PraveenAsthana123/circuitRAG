@@ -8,7 +8,7 @@ Upload documents → they get parsed, chunked, embedded, graphed, indexed → us
 
 ---
 
-## Snapshot (2026-05-07, UTC — praveen-dev-linux-x86_64)
+## Snapshot (2026-05-07, UTC / 2026-05-06 MDT — praveen-dev-linux-x86_64; Linux x86_64)
 
 **Latest session adds (17 iterations / 16 commits across 2026-05-06/07)**:
 
