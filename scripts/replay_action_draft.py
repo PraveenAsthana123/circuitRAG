@@ -114,17 +114,20 @@ def reject_draft(draft_id: str, reason: str) -> int:
             password=PG_PASSWORD, database=PG_DB, timeout=3.0,
         )
         try:
-            # Status flip; audit context written; NEVER DELETE
+            # Status flip; audit context written; NEVER DELETE.
+            # ::text cast on $2 because asyncpg can't infer parameter
+            # type when value is consumed inside jsonb_build_object
+            # (Postgres returns IndeterminateDatatypeError on prepare).
             result = await conn.execute(
                 "UPDATE governance.action_drafts "
                 "   SET status = 'rejected', "
                 "       replayed_at = NOW(), "
                 "       replay_result = jsonb_build_object("
-                "         'reason', $2, "
+                "         'reason', $2::text, "
                 "         'rejected_at', NOW()::text, "
                 "         'rejected_by', 'replay_action_draft.py --reject' "
                 "       ) "
-                " WHERE draft_id = $1 AND status = 'pending'",
+                " WHERE draft_id = $1::text AND status = 'pending'",
                 draft_id, reason,
             )
             try:
@@ -250,14 +253,17 @@ def bulk_action(
                 return ("no_match", 0)
 
             # Mutate. Status flip; audit context written.
+            # ::text casts everywhere because asyncpg can't infer types
+            # for parameters consumed inside jsonb_build_object — Postgres
+            # returns IndeterminateDatatypeError on prepare otherwise.
             if action == "replay":
                 update_sql = (
                     f"UPDATE governance.action_drafts "
                     f"   SET status='replayed', replayed_at=NOW(), "
                     f"       replay_result = jsonb_build_object("
                     f"         'note', 'iter-22 bulk-replay status flip', "
-                    f"         'server_filter', $%d, "
-                    f"         'reason_filter', $%d, "
+                    f"         'server_filter', $%d::text, "
+                    f"         'reason_filter', $%d::text, "
                     f"         'replayed_at', NOW()::text "
                     f"       ) "
                     f" WHERE {where}"
@@ -268,9 +274,9 @@ def bulk_action(
                     f"UPDATE governance.action_drafts "
                     f"   SET status='rejected', replayed_at=NOW(), "
                     f"       replay_result = jsonb_build_object("
-                    f"         'reason', $%d, "
-                    f"         'server_filter', $%d, "
-                    f"         'reason_filter', $%d, "
+                    f"         'reason', $%d::text, "
+                    f"         'server_filter', $%d::text, "
+                    f"         'reason_filter', $%d::text, "
                     f"         'rejected_at', NOW()::text "
                     f"       ) "
                     f" WHERE {where}"
