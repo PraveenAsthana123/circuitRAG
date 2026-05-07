@@ -305,9 +305,17 @@ def score_outcome() -> dict:
             f"score uses neutral 50 — re-run scorecard after live council attempts"
         )
     elif council_rate < 50:
+        # §55 Tier-1.1 schema + Tier-1.2 retry-with-feedback loop are both
+        # implemented (council_schemas.py + local_council.py:719-740).
+        # The remaining gap is empirical: AUTHOR model output quality on
+        # specific rule types in the checklist (currently E402 module-level
+        # imports — structurally hard for 7B-class local models).
         gaps.append(
             f"council apply rate {council_rate}% on {council_recent_n} recent attempts — "
-            f"§55 Tier-1.2 (verification loop) needed"
+            f"§55 Tier-1.1 schema + Tier-1.2 retry-loop SHIPPED at council_schemas.py + "
+            f"local_council.py:719-740; remaining gap is AUTHOR-model output quality on "
+            f"hard rule types (E402/B110); §55 Tier-3 fixes: rule-aware model selection, "
+            f"reviewer-feedback retry, paid-model escalation"
         )
     if drill_pass_rate < 90:
         gaps.append(
