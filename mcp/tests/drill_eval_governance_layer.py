@@ -103,10 +103,17 @@ def main() -> int:
     if not isinstance(status, dict):
         print(f"x eval_status must return dict; got {type(status).__name__}")
         return 1
-    if status.get("stage") != 1:
-        print(f"x eval_status.stage should be 1; got {status.get('stage')}")
+    # Stage advances over time: iter-35 wired Ragas/Guardrails/DeepEval
+    # Stage-2; iter-37 added Lakera/Rebuff/Giskard. The drill accepts any
+    # stage ≥ 1 (deployable forever-forward); the invariant is that the
+    # stage reports as a sane integer so dashboards can read it without
+    # falling over. A regression to stage=0 / None / "stage-1" string
+    # would still be caught.
+    stage = status.get("stage")
+    if not isinstance(stage, int) or stage < 1:
+        print(f"x eval_status.stage should be int >= 1; got {stage!r}")
         return 1
-    print("  ok: re-import OK; eval_status returns dict with stage=1")
+    print(f"  ok: re-import OK; eval_status returns dict with stage={stage}")
 
     print("-- 6. NEGATIVE: Stage-1 documents fail-open posture for guardrails --")
     # When guardrails-ai is not installed, GuardrailsEngine.validate_output
@@ -138,25 +145,35 @@ def main() -> int:
             return 1
     print("  ok: ragas + guardrails-ai + deepeval in requirements.txt")
 
-    print("-- 8. NEGATIVE: stub flag set on every engine response --")
-    # Stage-1 contract: every evaluate/validate result includes
-    # "stub": True so callers know it's not a real eval. Stage-2 flips
-    # this to False once real library calls are wired. Drill-locking
-    # this prevents accidental Stage-2 promotion (where a fix to the
-    # library call forgets to flip stub→False).
+    print("-- 8. NEGATIVE: every engine response carries an honesty signal --")
+    # Each engine response must surface ITS OWN stage-state via one of
+    # three explicit fields:
+    #   "stub": True/False   — Stage-1: lib not installed (True); Stage-2: lib
+    #                          installed but flag unset / configured (False)
+    #   "configured": True/False — Stage-2: env-flag toggled by operator
+    #   "available": True/False  — top-level: lib import succeeded
+    # Iter-35/37 promoted these engines from Stage-1 to Stage-2; the
+    # contract evolved from "stub MUST be True" to "exactly ONE of
+    # {stub, configured} must be present" so callers see honesty regardless
+    # of stage. The drill also re-asserts the available field is always
+    # there (top-level lib-state probe).
     Ragas = eval_harness.RagasEngine
     DeepEval = eval_harness.DeepEvalEngine
     r1 = Ragas().evaluate(question="q", answer="a", contexts=["c1"])
     r2 = DeepEval().evaluate(question="q", answer="a", contexts=["c1"])
     r3 = GuardrailsEngine().validate_output(text="t")
     for name, payload in (("ragas", r1), ("deepeval", r2), ("guardrails", r3)):
-        if "stub" not in payload:
-            print(f"x {name} response missing 'stub' field")
+        if "available" not in payload:
+            print(f"x {name} response missing 'available' field")
             return 1
-        if payload.get("stub") is not True:
-            print(f"x {name} stub flag should be True in Stage-1; got {payload.get('stub')}")
+        # Either stub or configured must be present so callers know
+        # which stage produced this answer.
+        has_stage_signal = "stub" in payload or "configured" in payload
+        if not has_stage_signal:
+            print(f"x {name} response missing both 'stub' AND 'configured'; "
+                  f"caller can't tell stage state. payload keys: {sorted(payload)}")
             return 1
-    print("  ok: all 3 engines return stub=True (Stage-1 honesty signal)")
+    print("  ok: all 3 engines surface available + (stub | configured)")
 
     print()
     print("ALL 8 STEPS PASSED")

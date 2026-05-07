@@ -113,7 +113,11 @@ ML-tracking vendors is the right ADR to file when the re-eval lands.
 ## References
 
 - `docs/architecture/adr/024-best-config-loader-default-on.md`
-- `docs/architecture/tier1-matrix-truth.md` (matrix reconciliation)
+- `docs/architecture/tier1-matrix-truth.md` (matrix reconciliation; landed `981b06c`)
+- ADR-024 best-config loader Stage-3 default-flip landed `4be8498`
+- GEPA-prompt promotion gate (sibling to promote_best_config) landed `67df048`
+- Provider-comparison registry baseline landed `917d776` (paperclip
+  aggregate that obviates MLflow's tracking value-add for LLM-track)
 - CLAUDE.md §40 (decision system) + §45.4 (no checkbox flips without code)
 - CLAUDE.md §38 (governance: every AI decision auditable) — covered
   today by `governance.audit_log` without MLflow
