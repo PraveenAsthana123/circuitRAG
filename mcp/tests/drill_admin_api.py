@@ -64,7 +64,7 @@ def _spawn_mcp() -> subprocess.Popen:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO)
     env["MCP_HR_PORT"] = str(MCP_PORT)
-    log = open("/tmp/documind-mcp-hr-admin-drill.log", "w")
+    log = open("/tmp/documind-mcp-hr-admin-drill.log", "w")  # noqa: SIM115 (subprocess.Popen takes FD ownership)
     return subprocess.Popen(
         [sys.executable, str(REPO / "mcp" / "server_hr.py")],
         env=env, stdout=log, stderr=subprocess.STDOUT,

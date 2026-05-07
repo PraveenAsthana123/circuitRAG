@@ -112,7 +112,7 @@ def _spawn_mcp() -> subprocess.Popen:
     env["MCP_HR_PORT"] = str(MCP_PORT)
     env["MCP_AUTH_REQUIRED"] = "true"
     env["MCP_JWT_PUBLIC_KEY_PATH"] = str(REPO / "scripts" / "dev-keys" / "jwt-public.pem")
-    log = open("/tmp/documind-mcp-reject-drill.log", "w")
+    log = open("/tmp/documind-mcp-reject-drill.log", "w")  # noqa: SIM115 (subprocess.Popen takes FD ownership)
     return subprocess.Popen(
         [sys.executable, str(REPO / "mcp" / "server_hr.py")],
         env=env, stdout=log, stderr=subprocess.STDOUT,

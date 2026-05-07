@@ -95,7 +95,7 @@ def _spawn_hr() -> subprocess.Popen:
     env["DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT"] = os.getenv(
         "DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317",
     )
-    log = open("/tmp/documind-mcp-hr-resolve-routing-drill.log", "w")
+    log = open("/tmp/documind-mcp-hr-resolve-routing-drill.log", "w")  # noqa: SIM115 (subprocess.Popen takes FD ownership)
     return subprocess.Popen(
         [sys.executable, str(REPO / "mcp" / "server_hr.py")],
         env=env, stdout=log, stderr=subprocess.STDOUT,
@@ -111,7 +111,7 @@ def _spawn_itsm() -> subprocess.Popen:
     env["DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT"] = os.getenv(
         "DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317",
     )
-    log = open("/tmp/documind-mcp-itsm-resolve-routing-drill.log", "w")
+    log = open("/tmp/documind-mcp-itsm-resolve-routing-drill.log", "w")  # noqa: SIM115 (subprocess.Popen takes FD ownership)
     return subprocess.Popen(
         [sys.executable, str(REPO / "mcp" / "server_itsm.py")],
         env=env, stdout=log, stderr=subprocess.STDOUT,

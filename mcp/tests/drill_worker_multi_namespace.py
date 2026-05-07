@@ -83,7 +83,7 @@ def _spawn(server: str, port: int) -> subprocess.Popen:
     env["DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT"] = os.getenv(
         "DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317",
     )
-    log = open(f"/tmp/documind-mcp-{server}-worker-multi-drill.log", "w")
+    log = open(f"/tmp/documind-mcp-{server}-worker-multi-drill.log", "w")  # noqa: SIM115 (subprocess.Popen takes FD ownership)
     return subprocess.Popen(
         [sys.executable, str(REPO / "mcp" / f"server_{server}.py")],
         env=env, stdout=log, stderr=subprocess.STDOUT,

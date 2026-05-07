@@ -51,7 +51,7 @@ def ok(msg: str) -> None:
 def main() -> None:
     # NEGATIVE: rating metadata columns must exist + round-trip; missing
     # either is silent state loss.
-    tmp = tempfile.NamedTemporaryFile(prefix="advisor-rating-meta-", suffix=".db", delete=False)
+    tmp = tempfile.NamedTemporaryFile(prefix="advisor-rating-meta-", suffix=".db", delete=False)  # noqa: SIM115 (closed on next line)
     tmp.close()
     mem = AdvisorMemory(tmp.name)
 

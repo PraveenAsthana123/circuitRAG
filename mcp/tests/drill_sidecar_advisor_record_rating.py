@@ -51,7 +51,7 @@ def step(title: str) -> None:
 
 
 def main() -> None:
-    tmp = tempfile.NamedTemporaryFile(prefix="advisor-rating-", suffix=".db", delete=False)
+    tmp = tempfile.NamedTemporaryFile(prefix="advisor-rating-", suffix=".db", delete=False)  # noqa: SIM115 (closed on next line)
     tmp.close()
     mem = AdvisorMemory(tmp.name)
     advisor = Advisor({"advisor_policy": {"routes": {}}}, memory=mem)
