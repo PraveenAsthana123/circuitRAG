@@ -6,7 +6,7 @@
 > Per CLAUDE.md §45.4: every claim maps to either a runnable drill OR
 > an explicit operator action OR a future-iter scope.
 
-## Coverage as of iter-68
+## Coverage as of iter-71
 
 | SDLC stage | Surface | MCP server | Status | Notes |
 |---|---|---|---|---|
@@ -15,38 +15,38 @@
 | Plan | Roadmap docs | `gdrive` / `confluence` | ✅ gdrive iter-67 / ❌ confluence | gdrive read-only |
 | **Source control** | PR / issue / code search | `github` | ✅ iter-68 read | 6 tools; allow-list-narrowed |
 | Source control | GitLab | `gitlab` | ❌ MISSING | scaffold-on-request |
-| **Build / CI** | GitHub Actions | `github_actions` | ❌ MISSING | workflow status; needs scaffold |
+| **Build / CI** | GitHub Actions | `github_actions` | ✅ iter-71 read | workflow_run_get + workflow_run_search |
 | Build / CI | Jenkins | `jenkins` | ❌ MISSING | scaffold-on-request |
 | **Review** | PR comments / approvals | `github (write)` | ❌ MISSING | needs ADR (write surface) |
 | Review | Code review checklists | `github` | ✅ iter-68 read | via PR/code search |
 | **Test** | Pytest / Jest / Ruff | `tests` | ✅ existing | run_pytest/run_jest/run_ruff |
 | Test | Drill regression | `drills` | ✅ existing | drill.list / drill.run |
-| Test | Static analysis (Sonar) | `sonarqube` | ❌ MISSING | scaffold-on-request |
+| Test | Static analysis (Sonar) | `sonarqube` | ✅ iter-71 read | issues_search + measures_get |
 | Test | Vulnerability scan (Snyk) | `snyk` | ⚠️ workflow only | iter-44 drill; no MCP tool |
 | **Deploy** | Docker compose | `deploy` | ✅ existing | compose_apply/rollback |
-| Deploy | k8s manifests | `kubectl` | ❌ MISSING | manifests at infra/k8s/ |
+| Deploy | k8s manifests | `kubectl` | ✅ iter-71 read | pod_describe + event_search |
 | Deploy | Argo CD / Flux | `argocd` | ❌ MISSING | scaffold-on-request |
 | **Observe** | Metrics (Prometheus) | `observe` | ✅ existing | prom_query/p95/alerts |
 | Observe | Logs (ES) | `elasticsearch` | ❌ MISSING | ES container exists; no MCP |
 | Observe | Tracing (Jaeger) | `jaeger` | ❌ MISSING | Jaeger container exists; no MCP |
 | Observe | LLM obs (Langfuse) | `langfuse` | ❌ MISSING | container exists; no MCP |
-| Observe | Datadog / New Relic | `datadog` | ❌ MISSING | scaffold-on-request |
+| Observe | Datadog / New Relic | `datadog` | ✅ iter-71 read | metric_query + log_search |
 | **Incident** | Generic ITSM | `itsm` | ✅ existing (mock) | incident_lookup/open |
 | Incident | ServiceNow | `servicenow` | ✅ iter-67 read | provider-specific |
-| Incident | PagerDuty | `pagerduty` | ❌ MISSING | scaffold-on-request |
-| Incident | Sentry (errors) | `sentry` | ❌ MISSING | scaffold-on-request |
+| Incident | PagerDuty | `pagerduty` | ✅ iter-71 read | incident_lookup + oncall_get |
+| Incident | Sentry (errors) | `sentry` | ✅ iter-71 read | issue_search + event_lookup |
 | **Communication** | Microsoft Teams | `teams` | ✅ iter-67 read | channel/msg search |
-| Communication | Slack | `slack` | ❌ MISSING | most-asked alt to Teams |
+| Communication | Slack | `slack` | ✅ iter-71 read | channel_list + message_search |
 | Communication | WhatsApp | `whatsapp` | ✅ iter-67 read | template lookup only |
 | **Knowledge** | Google Drive | `gdrive` | ✅ iter-67 read | file search + metadata |
-| Knowledge | Confluence | `confluence` | ❌ MISSING | scaffold-on-request |
+| Knowledge | Confluence | `confluence` | ✅ iter-71 read | page_search + page_get |
 | Knowledge | Notion | `notion` | ❌ MISSING | scaffold-on-request |
 | Knowledge | SharePoint | `sharepoint` | ❌ MISSING | scaffold-on-request |
 | **Data** | CSV/PDF/Word/DB read | `documents` | ✅ iter-61 read | 4 tools |
 | Data | DB write (CSV ingest) | `csv_ingest` | ✅ iter-65/66 | approval-gated |
-| **Cloud** | AWS console / CLI | `aws` | ❌ MISSING | scaffold-on-request |
-| Cloud | GCP | `gcp` | ❌ MISSING | scaffold-on-request |
-| Cloud | Azure | `azure` | ❌ MISSING | scaffold-on-request |
+| **Cloud** | AWS console / CLI | `aws` | ✅ iter-71 read | ec2_describe + s3_list_bucket |
+| Cloud | GCP | `gcp` | ✅ iter-71 read | gce_list_instances + gcs_list_bucket |
+| Cloud | Azure | `azure` | ✅ iter-71 read | vm_list + blob_list_container |
 | **AI ops** | LLM | `ollama` | ✅ existing | local model proxy |
 | AI ops | Research / web | `research` | ✅ existing | URL fetch + synth |
 | AI ops | Paperclip aggregator | `paperclip` | ✅ existing | snapshot/health |

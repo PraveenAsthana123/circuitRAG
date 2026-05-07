@@ -142,6 +142,18 @@ def create_app() -> FastAPI:
             ("servicenow", os.getenv("DOCUMIND_MCP_SERVICENOW_URL", "")),
             # iter-68: GitHub MCP — most-critical SDLC tool (PR/issue/code-search/file-get)
             ("github", os.getenv("DOCUMIND_MCP_GITHUB_URL", "")),
+            # iter-71: SDLC fleet expansion — P1+P2+P3 batch (11 servers)
+            ("slack", os.getenv("DOCUMIND_MCP_SLACK_URL", "")),
+            ("github_actions", os.getenv("DOCUMIND_MCP_GITHUB_ACTIONS_URL", "")),
+            ("sonarqube", os.getenv("DOCUMIND_MCP_SONARQUBE_URL", "")),
+            ("sentry", os.getenv("DOCUMIND_MCP_SENTRY_URL", "")),
+            ("pagerduty", os.getenv("DOCUMIND_MCP_PAGERDUTY_URL", "")),
+            ("kubectl", os.getenv("DOCUMIND_MCP_KUBECTL_URL", "")),
+            ("confluence", os.getenv("DOCUMIND_MCP_CONFLUENCE_URL", "")),
+            ("datadog", os.getenv("DOCUMIND_MCP_DATADOG_URL", "")),
+            ("aws", os.getenv("DOCUMIND_MCP_AWS_URL", "")),
+            ("gcp", os.getenv("DOCUMIND_MCP_GCP_URL", "")),
+            ("azure", os.getenv("DOCUMIND_MCP_AZURE_URL", "")),
         ]
         clients: dict[str, MCPClient] = {}
         for namespace, url in mcp_spec:
