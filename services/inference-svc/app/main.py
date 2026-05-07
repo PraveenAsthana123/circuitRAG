@@ -122,9 +122,13 @@ def create_app() -> FastAPI:
         # client, keyed by the namespace between "DOCUMIND_MCP_" and "_URL"
         # (lowercased). The hr client stays the legacy default; add itsm
         # (or future namespaces) simply by setting DOCUMIND_MCP_<NS>_URL.
+        # 'documents' (iter-61): CSV/PDF/Word/DB SELECT — read-only data
+        # extraction surface. Activates when DOCUMIND_MCP_DOCUMENTS_URL is
+        # set; otherwise stays inert (default-safe per §47.7 expand-phase).
         mcp_spec = [
             ("hr", os.getenv("DOCUMIND_MCP_HR_URL", "")),
             ("itsm", os.getenv("DOCUMIND_MCP_ITSM_URL", "")),
+            ("documents", os.getenv("DOCUMIND_MCP_DOCUMENTS_URL", "")),
         ]
         clients: dict[str, MCPClient] = {}
         for namespace, url in mcp_spec:
