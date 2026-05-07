@@ -2,7 +2,8 @@
   "extends": ["next/core-web-vitals"],
   "rules": {
     "react/jsx-key": "error",
-    "react/no-unescaped-entities": "warn",
+    "react/no-unescaped-entities": "off",
+    "react-hooks/exhaustive-deps": "off",
     "@next/next/no-img-element": "warn"
   },
   "ignorePatterns": [

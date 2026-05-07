@@ -14,16 +14,18 @@ export async function generateStaticParams() {
   return TOOLS.map((t) => ({ slug: t.slug }));
 }
 
-type Props = { params: { slug: string } };
+type Props = { params: Promise<{ slug: string }> };
 
-export function generateMetadata({ params }: Props) {
-  const tool = getToolBySlug(params.slug);
+export async function generateMetadata({ params }: Props) {
+  const { slug } = await params;
+  const tool = getToolBySlug(slug);
   if (!tool) return { title: 'Tool not found — DocuMind' };
   return { title: `${tool.name} — DocuMind` };
 }
 
-export default function ToolDetail({ params }: Props) {
-  const tool = getToolBySlug(params.slug);
+export default async function ToolDetail({ params }: Props) {
+  const { slug } = await params;
+  const tool = getToolBySlug(slug);
   if (!tool) notFound();
 
   const siblings = TOOLS.filter((t) => t.category === tool.category && t.slug !== tool.slug);

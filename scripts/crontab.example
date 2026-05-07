@@ -1,0 +1,72 @@
+# circuitRAG operator-script crontab — sample, NOT installed by default.
+#
+# Per CLAUDE.md §42: cron installs are gated operator decisions. Review
+# each entry, set REPO + VENV to your local paths, then install with:
+#
+#   crontab -l > /tmp/cron.bak                    # backup current
+#   cat scripts/crontab.example >> /tmp/cron.bak  # append (review first!)
+#   crontab /tmp/cron.bak                         # install
+#
+# To uninstall a single line:  crontab -e  → delete the line manually.
+# All scripts are read-only or operator-confirming except outbox_gc.py
+# (deletes published+expired rows only — never unpublished).
+#
+# ─────────────────────────────────────────────────────────────────────
+# REQUIRED env (set as cron prefix or per-line):
+REPO=/mnt/deepa/rag
+VENV=/tmp/documind-venv
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PYTHONPATH=/mnt/deepa/rag
+# ─────────────────────────────────────────────────────────────────────
+
+# Every 5 minutes — append today's drill outcome to history (idempotent;
+# no-op if already appended). Source data: .loop/last_drill_outcome.json
+# Surfaces in: paperclip snapshot drill_history.trend.
+*/5 * * * *   cd $REPO && $VENV/bin/python scripts/append_drill_history.py >> /var/log/circuitrag/drill_history.log 2>&1
+
+# Hourly — exercise MCP gateway with allow + deny mix so latency
+# percentiles stay populated. 12 calls per run; ~1s wall.
+0 * * * *     cd $REPO && MCP_GATEWAY_ENABLED=1 $VENV/bin/python scripts/mcp_gateway_warmup.py --calls 12 >> /var/log/circuitrag/mcp_warmup.log 2>&1
+
+# Every 10 minutes — one ops-worker pass. Ollama proposes, Claude
+# reviews when credentials are present, and the worker writes task
+# status back to ops_worker/tasks.json. This is non-auto-apply: source
+# files are not modified by the worker.
+*/10 * * * *  cd $REPO && OLLAMA_URL=http://localhost:11434/api/chat $VENV/bin/python ops_worker/worker.py --once >> /var/log/circuitrag/ops_worker.log 2>&1
+
+# Every 5 minutes — operator-readable task/issue status snapshot. Shows
+# what agents are working, what completed, and what is blocked.
+*/5 * * * *   cd $REPO && $VENV/bin/python ops_worker/worker.py --status --json > /var/log/circuitrag/ops_worker_status.json 2>&1
+
+# Every 5 minutes — outbox dispatcher doctor (diagnose only). Exit codes:
+#   0 = healthy/ok/idle  → noop
+#   1 = degraded         → log only
+#   2 = alarm            → page on-call (replace `notify` with your tool)
+#   3 = unknown          → log only (DB unreachable)
+*/5 * * * *   cd $REPO && $VENV/bin/python scripts/outbox_dispatcher_doctor.py --json > /var/log/circuitrag/outbox_doctor.json 2>&1; \
+              [ $? -eq 2 ] && echo "ALARM: outbox dispatcher" | logger -t circuitrag
+
+# Daily 02:30 UTC — outbox GC. Deletes ONLY published rows older than
+# 7 days. Caps at 10000 deletes/run to keep transactions short.
+30 2 * * *    cd $REPO && $VENV/bin/python scripts/outbox_gc.py --ttl-days 7 --max-delete 10000 >> /var/log/circuitrag/outbox_gc.log 2>&1
+
+# Daily 03:00 UTC — drain ANY backlog the in-process worker missed.
+# Almost always reports drained=0 (worker is real-time). Acts as a
+# belt-and-suspenders catch for cases the worker crashed silently
+# between readiness probes. Idempotent.
+0 3 * * *     cd $REPO && $VENV/bin/python scripts/drain_outbox.py >> /var/log/circuitrag/drain_outbox.log 2>&1
+
+# ─────────────────────────────────────────────────────────────────────
+# What about Paperclip itself?
+#   - paperclip_manager.snapshot() is read-only and is invoked on
+#     demand by the dashboard / dashboard scrape. No cron needed.
+#   - To pre-warm the snapshot for a UI cache:
+#       */1 * * * * cd $REPO && $VENV/bin/python -c \
+#         "from scripts.paperclip_manager import snapshot; \
+#          import json; print(json.dumps(snapshot(), default=str))" \
+#         > /tmp/paperclip-snapshot.json
+# ─────────────────────────────────────────────────────────────────────
+
+# Log directory: create once before installing the crontab:
+#   sudo mkdir -p /var/log/circuitrag
+#   sudo chown $USER /var/log/circuitrag

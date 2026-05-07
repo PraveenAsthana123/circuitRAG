@@ -3,8 +3,30 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 
-const REPO_ROOT = path.resolve(process.cwd(), '..', '..');
 const OLLAMA_BASE = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+
+function findRepoRoot(): string {
+  const candidates = [
+    process.env.DOCUMIND_REPO_ROOT,
+    process.cwd(),
+    path.resolve(process.cwd(), '..'),
+    path.resolve(process.cwd(), '..', '..'),
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    if (
+      existsSync(path.join(candidate, '.git')) &&
+      existsSync(path.join(candidate, 'ops_worker')) &&
+      existsSync(path.join(candidate, 'scripts'))
+    ) {
+      return candidate;
+    }
+  }
+
+  return path.resolve(process.cwd(), '..', '..');
+}
+
+const REPO_ROOT = findRepoRoot();
 
 type AuditRow = {
   ts?: string;

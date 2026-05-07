@@ -13,10 +13,11 @@ export async function generateStaticParams() {
   return DESIGN_AREAS.map((d) => ({ id: d.id }));
 }
 
-type Props = { params: { id: string } };
+type Props = { params: Promise<{ id: string }> };
 
-export function generateMetadata({ params }: Props) {
-  const da = DESIGN_AREAS.find((d) => d.id === params.id);
+export async function generateMetadata({ params }: Props) {
+  const { id } = await params;
+  const da = DESIGN_AREAS.find((d) => d.id === id);
   if (!da) return { title: 'Design area not found — DocuMind' };
   return { title: `${da.name} — Design Area ${da.id}` };
 }
@@ -30,8 +31,9 @@ export function generateMetadata({ params }: Props) {
  * an interview talking-point. Generic scaffolding is derived from the area's
  * status + group; area-specific content lives in lib/design-areas.ts.
  */
-export default function DesignAreaDetail({ params }: Props) {
-  const da = DESIGN_AREAS.find((d) => d.id === params.id);
+export default async function DesignAreaDetail({ params }: Props) {
+  const { id } = await params;
+  const da = DESIGN_AREAS.find((d) => d.id === id);
   if (!da) notFound();
 
   const meta = STATUS_META[da.status];

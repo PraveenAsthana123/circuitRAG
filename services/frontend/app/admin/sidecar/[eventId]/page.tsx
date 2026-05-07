@@ -4,9 +4,9 @@ import os from 'node:os';
 import { getSidecarEventById } from '@/lib/sidecar';
 
 type Props = {
-  params: {
+  params: Promise<{
     eventId: string;
-  };
+  }>;
 };
 
 function parseAdvisorOutput(raw: string | null): Record<string, unknown> | null {
@@ -20,7 +20,8 @@ function parseAdvisorOutput(raw: string | null): Record<string, unknown> | null 
 }
 
 export default async function SidecarEventDetailPage({ params }: Props) {
-  const eventId = Number(params.eventId);
+  const { eventId: rawEventId } = await params;
+  const eventId = Number(rawEventId);
   const event = Number.isInteger(eventId) && eventId > 0 ? await getSidecarEventById(eventId) : null;
 
   if (!event) {

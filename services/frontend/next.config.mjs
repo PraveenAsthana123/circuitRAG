@@ -11,9 +11,7 @@ const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   poweredByHeader: false,
-  experimental: {
-    typedRoutes: false,
-  },
+  typedRoutes: false,
   async rewrites() {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
     return [

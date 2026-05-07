@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rateSidecarEvent } from '../../../../../../../lib/sidecar';
 
 type RouteParams = {
-  params: {
+  params: Promise<{
     eventId: string;
-  };
+  }>;
 };
 
 function redirectWithStatus(req: NextRequest, state: 'saved' | 'missing' | 'invalid' | 'failed') {
@@ -16,7 +16,8 @@ function redirectWithStatus(req: NextRequest, state: 'saved' | 'missing' | 'inva
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  const eventId = Number(params.eventId);
+  const { eventId: rawEventId } = await params;
+  const eventId = Number(rawEventId);
   if (!Number.isInteger(eventId) || eventId <= 0) {
     return redirectWithStatus(req, 'invalid');
   }
@@ -25,7 +26,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
-  const eventId = Number(params.eventId);
+  const { eventId: rawEventId } = await params;
+  const eventId = Number(rawEventId);
   if (!Number.isInteger(eventId) || eventId <= 0) {
     return redirectWithStatus(req, 'invalid');
   }

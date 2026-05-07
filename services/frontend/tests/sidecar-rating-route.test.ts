@@ -102,7 +102,7 @@ describe('sidecar rating route', () => {
       body: form,
     });
 
-    const res = await POST(req, { params: { eventId: String(eventId) } });
+    const res = await POST(req, { params: Promise.resolve({ eventId: String(eventId) }) });
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/admin/sidecar?rating=saved#live-ratings');
 
@@ -124,7 +124,7 @@ describe('sidecar rating route', () => {
       body: form,
     });
 
-    const res = await POST(req, { params: { eventId: String(eventId) } });
+    const res = await POST(req, { params: Promise.resolve({ eventId: String(eventId) }) });
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/admin/sidecar?rating=invalid#live-ratings');
   });
@@ -142,7 +142,7 @@ describe('sidecar rating route', () => {
       body: form,
     });
 
-    const res = await POST(req, { params: { eventId: '999' } });
+    const res = await POST(req, { params: Promise.resolve({ eventId: '999' }) });
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/admin/sidecar?rating=missing#live-ratings');
   });
@@ -155,7 +155,7 @@ describe('sidecar rating route', () => {
       method: 'GET',
     });
 
-    const res = await GET(req, { params: { eventId: String(eventId) } });
+    const res = await GET(req, { params: Promise.resolve({ eventId: String(eventId) }) });
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain(`/admin/sidecar/${eventId}`);
   });
@@ -167,7 +167,7 @@ describe('sidecar rating route', () => {
       method: 'GET',
     });
 
-    const res = await GET(req, { params: { eventId: 'bad' } });
+    const res = await GET(req, { params: Promise.resolve({ eventId: 'bad' }) });
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/admin/sidecar?rating=invalid#live-ratings');
   });

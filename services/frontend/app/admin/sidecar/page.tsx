@@ -64,13 +64,13 @@ function ratingMessage(status: string | string[] | undefined): string | null {
 }
 
 type SidecarDashboardPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     rating?: string | string[];
     event_type?: string | string[];
     rating_state?: string | string[];
     q?: string | string[];
     page?: string | string[];
-  };
+  }>;
 };
 
 function firstQueryValue(value: string | string[] | undefined): string {
@@ -82,13 +82,14 @@ function firstQueryValue(value: string | string[] | undefined): string {
 
 export default async function SidecarDashboardPage({ searchParams }: SidecarDashboardPageProps) {
   const html = await readDashboardHtml();
-  const eventType = firstQueryValue(searchParams?.event_type);
-  const ratingStateRaw = firstQueryValue(searchParams?.rating_state);
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const eventType = firstQueryValue(resolvedSearchParams?.event_type);
+  const ratingStateRaw = firstQueryValue(resolvedSearchParams?.rating_state);
   const ratingState =
     ratingStateRaw === 'rated' || ratingStateRaw === 'unrated' ? ratingStateRaw : 'all';
-  const search = firstQueryValue(searchParams?.q);
+  const search = firstQueryValue(resolvedSearchParams?.q);
   const pageSize = 12;
-  const pageRaw = Number(firstQueryValue(searchParams?.page) || '1');
+  const pageRaw = Number(firstQueryValue(resolvedSearchParams?.page) || '1');
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
   const offset = (page - 1) * pageSize;
   const eventPage = await listSidecarEventPage({
@@ -99,7 +100,7 @@ export default async function SidecarDashboardPage({ searchParams }: SidecarDash
     search,
   });
   const events = eventPage.events;
-  const flash = ratingMessage(searchParams?.rating);
+  const flash = ratingMessage(resolvedSearchParams?.rating);
   const hasPrevious = page > 1;
   const hasNext = offset + events.length < eventPage.total;
   const queryForPage = (targetPage: number) => {
@@ -136,9 +137,9 @@ export default async function SidecarDashboardPage({ searchParams }: SidecarDash
               <code style={{ marginLeft: 4 }}>advisor.db</code>.
             </p>
           </div>
-          <a href="/admin/sidecar/deep" style={{ color: '#0b63ce', fontWeight: 600 }}>
+          <Link href="/admin/sidecar/deep" style={{ color: '#0b63ce', fontWeight: 600 }}>
             Deep dive
-          </a>
+          </Link>
         </div>
         {flash ? (
           <p

@@ -1,6 +1,7 @@
 'use client';
 
 import DeepDiveCrossRefs from '../../../../components/DeepDiveCrossRefs';
+import Link from 'next/link';
 
 /**
  * Sidecar Advisor — C4 + scenario data-flow deep-dive.
@@ -389,11 +390,11 @@ export default function SidecarDeepPage() {
         <h3>Composes with</h3>
         <ul>
           <li>
-            <a href="/admin/sidecar">/admin/sidecar</a> — the live
+            <Link href="/admin/sidecar">/admin/sidecar</Link> — the live
             dashboard rendered by render_dashboard.py
           </li>
           <li>
-            <a href="/admin/sidecar/telemetry">/admin/sidecar/telemetry</a>{" "}
+            <Link href="/admin/sidecar/telemetry">/admin/sidecar/telemetry</Link>{" "}
             — daily-snapshot table reading council_stats_daily.jsonl
           </li>
           <li>

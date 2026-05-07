@@ -27,6 +27,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import Link from 'next/link';
 
 /**
  * One row of `.loop/council_stats_daily.jsonl`. Mirrors the schema
@@ -229,11 +230,11 @@ export default async function CouncilTelemetryPage() {
         </div>
         <ul>
           <li>
-            <a href="/admin/sidecar/deep">Deep dive</a> — for the
+            <Link href="/admin/sidecar/deep">Deep dive</Link> — for the
             architecture.
           </li>
           <li>
-            <a href="/admin/sidecar">Live dashboard</a> — for real-time
+            <Link href="/admin/sidecar">Live dashboard</Link> — for real-time
             activity.
           </li>
         </ul>
