@@ -8,7 +8,27 @@ Upload documents → they get parsed, chunked, embedded, graphed, indexed → us
 
 ---
 
-## Snapshot (2026-05-04, MDT — Linux x86_64 dev host)
+## Snapshot (2026-05-07, UTC — praveen-dev-linux-x86_64)
+
+**Latest session adds (17 iterations / 16 commits across 2026-05-06/07)**:
+
+- **§52-row-4 operator API gap closure** — 9 ❌ rows in the catalog
+  matrix → 0 ❌. Provider-comparison registry (commit `917d776`) +
+  approval-batching engine (`f492fc6`) + Kiali profile-mesh gate
+  (`899b43d`) + dashboard summary pane (`77f2b01`) + cost tracking
+  (`1b664ab`) + session-token approval (`70ebc58`) close the
+  visibility/action/honesty/identity quadrants.
+- **§47.7 expand→migrate trio** — 3 SQL surfaces shipped expand
+  phase (`05d4813`, `da95525`, `5189b2e`) + 3 dual-write writers
+  shipped migrate phase (`7c404e1`, `1fc1b0b`, `c23d142`). Each
+  feature-flag gated; legacy authoritative; SQL queryable.
+  Documented in [`ADR-025`](docs/architecture/adr/025-feature-flag-gated-dual-write.md).
+- **AI integrations** — CrewAI 1.14.4 + langchain-ollama 1.1.0 +
+  langchain-xai installed (`fa7358d`). Honest gap surfaced: Grok
+  not on Ollama registry; ChatXAI requires `XAI_API_KEY`.
+- **Visibility + regression** — `/admin/dashboard` migrate-phase
+  panel (`ee99bf9`) + verify-stack rotation expanded 35→47 checks
+  (`365c4c8`) by adding 12 session drills.
 
 **This session adds (40+ commits across 2026-05-03/04)**:
 
@@ -41,11 +61,13 @@ Upload documents → they get parsed, chunked, embedded, graphed, indexed → us
 | Python LOC (services + libs) | **22,453** | `find services libs -name '*.py' \| xargs wc -l` |
 | TypeScript LOC (frontend) | **56,621** | `find services/frontend -name '*.ts' -o -name '*.tsx' \| xargs wc -l` |
 | Go LOC (api-gateway + identity-svc + others) | **1,527** | `find services -name '*.go' \| xargs wc -l` |
-| **Drills** (regression contracts) | **326** | `ls mcp/tests/drill_*.py \| wc -l` |
-| **ADRs** (architectural decisions) | **23** | `ls docs/architecture/adr/*.md \| wc -l` |
-| **Runbooks** (operator paths) | **17** | `ls docs/runbooks/*.md \| wc -l` |
+| **Drills** (regression contracts) | **417** | `ls mcp/tests/drill_*.py \| wc -l` |
+| **ADRs** (architectural decisions) | **25** | `ls docs/architecture/adr/0*.md \| wc -l` |
+| **Runbooks** (operator paths) | **18** | `ls docs/runbooks/*.md \| wc -l` |
 | **Deep-dive pages** (`/admin/*/deep`) | **45** | `find services/frontend/app/admin -name page.tsx -path '*/deep/*' \| wc -l` |
-| Commits this session (after `37a802c`) | **179** | `git log --oneline 37a802c..HEAD \| wc -l` |
+| **verify-stack checks** (Tier 1-6 trust signal) | **47** | `bash scripts/verify-stack.sh \| grep -c '\[PASS\|\[FAIL'` |
+| Commits this session (after `1a69cf4`) | **16** | `git log --oneline 1a69cf4..HEAD \| wc -l` |
+| Commits prior session (after `37a802c`) | **179** | `git log --oneline 37a802c..1a69cf4 \| wc -l` |
 
 ### Trust signals — run these to verify
 
