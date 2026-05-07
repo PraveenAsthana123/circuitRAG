@@ -164,10 +164,17 @@ ESLINT_ROUTING: dict[str, tuple[str, str, str]] = {
     "import/order": ("LOW", "easy", "eslint:autofix"),
     "no-extra-semi": ("LOW", "easy", "eslint:autofix"),
     "@typescript-eslint/no-unused-vars": ("LOW", "easy", "eslint:autofix"),
-    # Suggestion-only — model picks the right replacement
-    # (e.g. react/no-unescaped-entities offers &apos; / &lsquo; / &#39; /
-    # &rsquo; — ESLint won't auto-pick; semantic call goes to model)
-    "react/no-unescaped-entities": ("LOW", "medium", "deepseek-coder:6.7b-instruct"),
+    # react/no-unescaped-entities — REROUTED to human-review per iter-60
+    # (acting on iter-58 reflection-engine finding: 41 attempts × 0%
+    # apply rate over the council lane; the rule offers 4+ valid
+    # replacements (&apos; / &lsquo; / &#39; / &rsquo;) and the model
+    # can't reliably pick the right one without context the rule
+    # message doesn't carry. Per §50.5.3: high-failure rules go to
+    # human-review queue, not retry storm. A future iter can ship a
+    # deterministic Python replacer for the apostrophe case (~95% of
+    # occurrences) and return this routing to the model lane for the
+    # ambiguous rest.
+    "react/no-unescaped-entities": ("LOW", "medium", "human-review"),
     # Need judgment — local model (TS/React savvy)
     "react-hooks/exhaustive-deps": ("MED", "medium", "deepseek-coder:6.7b-instruct"),
     "@typescript-eslint/no-explicit-any": ("MED", "medium", "deepseek-coder:6.7b-instruct"),
