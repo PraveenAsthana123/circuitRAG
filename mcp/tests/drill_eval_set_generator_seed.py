@@ -12,8 +12,6 @@ Eight steps. Six negative. AST-only — no Ollama required.
 from __future__ import annotations
 
 import ast
-import csv
-import io
 import random
 import re
 from pathlib import Path

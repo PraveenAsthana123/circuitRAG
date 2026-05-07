@@ -75,7 +75,7 @@ def main() -> int:
             if key not in s:
                 print(f"x server {s.get('name', '?')} missing key: {key!r}")
                 return 1
-    print(f"  ok: 9 servers, default-deny, 4 risk tiers, all required fields")
+    print("  ok: 9 servers, default-deny, 4 risk tiers, all required fields")
 
     print("-- 3. NEGATIVE: default is_available() = False (MCP_GATEWAY_ENABLED unset) --")
     if mcp_gateway.is_available():
@@ -105,7 +105,7 @@ def main() -> int:
         persist_audit=False,
     )
     if decision.allow:
-        print(f"x unknown server should default-deny; got allow=True")
+        print("x unknown server should default-deny; got allow=True")
         return 1
     if decision.rule_matched != "default-deny":
         print(f"x rule_matched should be 'default-deny'; got {decision.rule_matched!r}")
@@ -118,7 +118,7 @@ def main() -> int:
         persist_audit=False,
     )
     if decision.allow:
-        print(f"x unauthorized actor should be denied; got allow=True")
+        print("x unauthorized actor should be denied; got allow=True")
         return 1
     if "approved_actors" not in decision.reason:
         print(f"x reason must cite approved_actors; got: {decision.reason!r}")
@@ -140,7 +140,7 @@ def main() -> int:
     if decision.risk != "medium":
         print(f"x risk should be 'medium' for research server; got {decision.risk!r}")
         return 1
-    print(f"  ok: approved actor + rate-OK → allow=True; risk=medium")
+    print("  ok: approved actor + rate-OK → allow=True; risk=medium")
 
     print("-- 8. POSITIVE: audit row persisted on every decision (allow + deny) --")
     pre_count = (
@@ -162,7 +162,7 @@ def main() -> int:
     if outcomes != [True, False]:
         print(f"x audit rows wrong outcomes: {outcomes}")
         return 1
-    print(f"  ok: 2 audit rows appended (1 allow + 1 deny)")
+    print("  ok: 2 audit rows appended (1 allow + 1 deny)")
 
     # Cleanup
     os.environ.pop("MCP_GATEWAY_ENABLED", None)

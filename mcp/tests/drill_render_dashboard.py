@@ -29,7 +29,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
-import sqlite3
 import sys
 import tempfile
 
@@ -193,7 +192,7 @@ def main():
             fail("useful card missing 2")
         if "<div class='v'>1</div>" not in html_out:
             fail("not_useful card missing 1")
-        ok(f"stats: total=4 useful=2 not_useful=1 rated_pct=75.0%")
+        ok("stats: total=4 useful=2 not_useful=1 rated_pct=75.0%")
 
     # Step 3: empty DB
     step("3. NEGATIVE: empty advisor.db -> HTML still renders")
@@ -218,7 +217,7 @@ def main():
             fail(f"empty DB should show 'No events yet': {html_out[-500:]}")
         if "<div class='v'>0</div>" not in html_out:
             fail("empty DB stats should show 0")
-        ok(f"empty DB renders cleanly with 'No events yet' marker")
+        ok("empty DB renders cleanly with 'No events yet' marker")
 
     # Step 4: missing watcher.log
     step("4. NEGATIVE: missing watcher.log -> 'No watcher.log entries' message")
@@ -236,7 +235,7 @@ def main():
             fail("missing watcher.log should show empty marker")
         if "Recent verdicts" not in html_out:
             fail("verdicts section header missing")
-        ok(f"missing watcher.log gracefully -> 'No watcher.log entries.'")
+        ok("missing watcher.log gracefully -> 'No watcher.log entries.'")
 
     # Step 5: corrupt JSON line in council_runs.log
     step("5. NEGATIVE: corrupt JSON line in council_runs.log -> graceful skip")
@@ -273,7 +272,7 @@ def main():
             fail("second valid log entry lost (corrupt line in middle blocked iteration?)")
         if "THIS IS NOT JSON" in html_out:
             fail("corrupt line leaked into HTML output")
-        ok(f"corrupt line skipped; both valid entries rendered")
+        ok("corrupt line skipped; both valid entries rendered")
 
     # Step 6: XSS escaping
     step("6. NEGATIVE: HTML escapes user content (XSS prevention)")
@@ -317,7 +316,7 @@ def main():
         # The escaped form should appear
         if "&lt;script&gt;" not in html_out:
             fail("XSS: escaped form missing; content might have been stripped")
-        ok(f"<script>alert(...)</script> properly escaped to &lt;script&gt;...")
+        ok("<script>alert(...)</script> properly escaped to &lt;script&gt;...")
 
     # Step 7: scalability with 100 events
     step("7. NEGATIVE: 100 events render without crash; output bounded")
@@ -354,7 +353,7 @@ def main():
         # Most recent 20 should be present, oldest 80 should not flood the HTML
         # Total events stat = 100
         if "<div class='v'>100</div>" not in html_out:
-            fail(f"total events stat should show 100")
+            fail("total events stat should show 100")
         ok(f"100 events: stats=100, table caps at last 20 ({len(html_out)} chars)")
 
     # Step 8: missing DB file entirely
@@ -374,7 +373,7 @@ def main():
         # All stats should be 0
         if "<div class='v'>0</div>" not in html_out:
             fail("missing DB should show 0 in stats cards")
-        ok(f"missing DB -> HTML renders with empty stats")
+        ok("missing DB -> HTML renders with empty stats")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 RENDER-DASHBOARD STEPS PASSED{NC}")

@@ -47,12 +47,10 @@ Eight steps. Six negative assertions.
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import sys
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
@@ -90,8 +88,8 @@ def main() -> int:
     print(f"  ok: 10 exports + 4 frameworks ({sorted(gos.COMPLIANCE_FRAMEWORKS)})")
 
     print("-- 2. POSITIVE: app.state.governance_os after lifespan --")
-    from fastapi.testclient import TestClient
     from app.main import app
+    from fastapi.testclient import TestClient
 
     with TestClient(app) as client:
         ogs = getattr(app.state, "governance_os", None)
@@ -129,7 +127,7 @@ def main() -> int:
             "goal": "drill: governance os review-path",
             "require_human_approval": True,
         }
-        r2 = client.post("/api/v1/agentic/tasks", json=review_payload)
+        client.post("/api/v1/agentic/tasks", json=review_payload)
         # Service may 200 (created with require_human_approval) — what matters is
         # the OS audit row, not the HTTP outcome
         after_review = ogs.audit.count()
@@ -169,7 +167,7 @@ def main() -> int:
         assert risk_clean.overall_severity == "ok", (
             f"clean drift should not escalate severity; got {risk_clean.overall_severity!r}"
         )
-        print(f"  ok: significant drift escalates risk; clean drift stays ok")
+        print("  ok: significant drift escalates risk; clean drift stays ok")
 
         print("-- 7. NEGATIVE: GovernanceDecision.to_dict() round-trips through JSON --")
         payload = latest.to_dict()
@@ -186,7 +184,7 @@ def main() -> int:
         # Compliance is a list of 4 attestation-dicts after asdict
         compls = deserialized["compliance_attestations"]
         assert len(compls) == 4, f"compliance_attestations should serialize 4; got {len(compls)}"
-        print(f"  ok: 7-field GovernanceDecision round-trips; 4 attestations preserved")
+        print("  ok: 7-field GovernanceDecision round-trips; 4 attestations preserved")
 
     print("-- 8. NEGATIVE: main.py imports + invokes GovernanceOS (regression guard) --")
     main_src = (SVC / "app" / "main.py").read_text(encoding="utf-8")

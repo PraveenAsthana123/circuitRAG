@@ -53,13 +53,13 @@ def main() -> int:
     if actual != expected:
         print(f"x step 2: COUNCIL_MODELS mismatch — expected {expected}, got {actual}")
         return 1
-    print(f"  ok: 4 models match the council roster")
+    print("  ok: 4 models match the council roster")
 
     print("-- 3. NEGATIVE: KEEP_ALIVE is set to 24h (not default 5min) --")
     if wp.KEEP_ALIVE != "24h":
         print(f"x step 3: KEEP_ALIVE expected '24h'; got {wp.KEEP_ALIVE!r}")
         return 1
-    print(f"  ok: KEEP_ALIVE='24h' overrides Ollama default 5m")
+    print("  ok: KEEP_ALIVE='24h' overrides Ollama default 5m")
 
     print("-- 4. NEGATIVE: warm_model payload includes keep_alive --")
     src = SCRIPT.read_text(encoding="utf-8")

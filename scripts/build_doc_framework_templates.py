@@ -27,7 +27,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 
 from doc_framework_registry import (  # noqa: E402
-    DocEntry, Registry, load_registry,
+    DocEntry,
+    load_registry,
 )
 
 # Skeleton template — Markdown structure each doc starts from.

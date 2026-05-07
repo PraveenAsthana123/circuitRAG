@@ -172,7 +172,7 @@ def main():
         # Hook should NOT crash; should default to all-green
         if entry["verdict"] != "APPROVE":
             fail(f"corrupt status should default to APPROVE, got {entry['verdict']}")
-        ok(f"corrupt JSON gracefully defaulted to APPROVE")
+        ok("corrupt JSON gracefully defaulted to APPROVE")
 
     # Step 5: NEGATIVE - log file APPENDED, not overwritten
     step("5. NEGATIVE: log file appended (3 entries from 3 invocations)")
@@ -197,7 +197,7 @@ def main():
         shas = [json.loads(ln)["commit_sha"] for ln in lines]
         if shas != ["sha_0", "sha_1", "sha_2"]:
             fail(f"sha order drift in log: {shas}")
-        ok(f"3 invocations -> 3 log lines (append, not overwrite)")
+        ok("3 invocations -> 3 log lines (append, not overwrite)")
 
     # Step 6: NEGATIVE - log dir auto-created
     step("6. NEGATIVE: parent directory of log_path auto-created")
@@ -219,7 +219,7 @@ def main():
             fail(f"deep log path not created: {deep_log}")
         if not deep_log.parent.exists():
             fail(f"parent dir not auto-created: {deep_log.parent}")
-        ok(f"parent dir auto-created at depth 3")
+        ok("parent dir auto-created at depth 3")
 
     # Step 7: NEGATIVE - CLI exits 0 always (advisory-only)
     step("7. NEGATIVE: CLI wrapper exits 0 even on internal errors")
@@ -236,7 +236,7 @@ def main():
             f"advisory-only contract requires exit 0 always. "
             f"stderr: {result.stderr[:300]}"
         )
-    ok(f"CLI exit code = 0 even from non-git dir (advisory contract held)")
+    ok("CLI exit code = 0 even from non-git dir (advisory contract held)")
 
     # Step 8: NEGATIVE - timestamp + sha format
     step("8. NEGATIVE: timestamp ISO-8601 + commit_sha truncated to 12 chars")

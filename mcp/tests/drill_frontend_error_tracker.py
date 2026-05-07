@@ -217,7 +217,7 @@ async def run() -> int:
         if not phantom_msgs:
             ok(f"step 7 (negative): phantom id '{phantom_id}' absent from domIssues — scan reads live DOM")
         else:
-            fail(f"step 7 (negative): phantom id leaked into domIssues — scan is fabricating")
+            fail("step 7 (negative): phantom id leaked into domIssues — scan is fabricating")
             failures += 1
 
         await browser.close()

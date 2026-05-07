@@ -16,9 +16,7 @@ verification commands; standards compliance table missing.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 PAGE = REPO / "services" / "frontend" / "app" / "admin" / "simulation" / "page.tsx"

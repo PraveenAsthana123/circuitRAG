@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE = REPO / "docker-compose.yml"
 ALERTMANAGER = REPO / "infra" / "observability" / "alertmanager.yml"

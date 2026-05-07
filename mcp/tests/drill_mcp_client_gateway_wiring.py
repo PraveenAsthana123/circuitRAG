@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -104,7 +103,7 @@ def main() -> int:
     os.environ.pop("MCP_GATEWAY_ENABLED", None)
     import importlib
 
-    from mcp.client import MCPClient, ToolResult  # noqa: E402
+    from mcp.client import MCPClient  # noqa: E402
     # Don't reload — that would require re-init the breaker etc.
     # Just construct a fresh client + mock the dependencies.
 
@@ -161,7 +160,7 @@ def main() -> int:
             actor="council:author",
         ))
     if result2.ok:
-        print(f"x gateway-deny should return ToolResult(ok=False)")
+        print("x gateway-deny should return ToolResult(ok=False)")
         return 1
     if "mcp gateway denied" not in (result2.error or ""):
         print(f"x error must cite gateway deny; got: {result2.error!r}")

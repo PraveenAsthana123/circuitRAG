@@ -31,7 +31,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 MIGRATION = SVC / "migrations" / "008_routing_costs.sql"

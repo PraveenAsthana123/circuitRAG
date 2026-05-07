@@ -217,7 +217,7 @@ if __name__ == "__main__":
     import json
     import sys
     print("scripts/pii_redactor.py — Stage-1 Presidio PII adapter")
-    print(f"Stage-1 opt-in via PII_REDACTOR_ENABLED=1")
+    print("Stage-1 opt-in via PII_REDACTOR_ENABLED=1")
     print(f"Detects {len(PII_ENTITIES)} entity types: {', '.join(PII_ENTITIES)}")
     print()
     print(json.dumps(status(), indent=2))

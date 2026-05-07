@@ -32,7 +32,6 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-
 REPO = Path(__file__).resolve().parents[2]
 SERVER = REPO / "mcp" / "server_research.py"
 
@@ -142,7 +141,7 @@ def main() -> int:
     assert any("file:///etc/passwd" in r["url"] for r in rejected), (
         f"file:// URL must appear in rejected_urls; got {rejected}"
     )
-    print(f"  ok: file:// rejected (recorded in rejected_urls)")
+    print("  ok: file:// rejected (recorded in rejected_urls)")
 
     print("-- 5. NEGATIVE: data: scheme rejected --")
     r = client.post(

@@ -217,7 +217,7 @@ async def _run_ruff(target: Path) -> dict[str, Any]:
 
     try:
         stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=60.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         await proc.wait()
         return {
@@ -290,7 +290,7 @@ async def _run_pytest_collect(target: Path) -> dict[str, Any]:
         return {"ok": False, "error": {"code": "pytest_exec_failed", "message": str(fnf)}}
     try:
         stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=60.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         await proc.wait()
         _ACTIVE_PROCS.discard(proc)
@@ -346,7 +346,7 @@ async def _run_mypy(target: Path) -> dict[str, Any]:
         return {"ok": False, "error": {"code": "mypy_exec_failed", "message": str(fnf)}}
     try:
         stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=120.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         await proc.wait()
         _ACTIVE_PROCS.discard(proc)

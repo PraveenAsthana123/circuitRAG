@@ -24,7 +24,6 @@ import sys
 import threading
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -64,7 +63,7 @@ def main() -> int:
     assert isinstance(cb._lock, type(threading.RLock())), (
         f"FIX #28 BROKEN: lock is not threading.RLock; got {type(cb._lock)}"
     )
-    print(f"  ok: _lock is threading.RLock (sync + async share)")
+    print("  ok: _lock is threading.RLock (sync + async share)")
 
     # -------------------------------------------------------------
     # FIX #28 NEGATIVE: concurrent sync + async ops are race-safe
@@ -89,7 +88,7 @@ def main() -> int:
     # State must be CLOSED (no failures recorded).
     assert cb.state is State.CLOSED, f"race corrupted state; got {cb.state}"
     assert cb.failures == 0
-    print(f"  ok: 200 concurrent ops on shared lock — state stayed CLOSED")
+    print("  ok: 200 concurrent ops on shared lock — state stayed CLOSED")
 
     # -------------------------------------------------------------
     # FIX #29: _UNKNOWN_CAUSE_LABEL constant exists; sentinel deprecated
@@ -105,7 +104,7 @@ def main() -> int:
         f"FIX #29: _BreakerCallFailed docstring should mention 'deprecated'; "
         f"got: {sentinel_doc!r}"
     )
-    print(f"  ok: _UNKNOWN_CAUSE_LABEL='unknown'; sentinel marked deprecated")
+    print("  ok: _UNKNOWN_CAUSE_LABEL='unknown'; sentinel marked deprecated")
 
     # -------------------------------------------------------------
     # FIX #30: expected_exception accepts a single class
@@ -128,7 +127,7 @@ def main() -> int:
     assert cb.state is State.OPEN, (
         f"FIX #30 BROKEN: single-class expected_exception not honored; got {cb.state}"
     )
-    print(f"  ok: expected_exception=ValueError (single class) trips after 2 failures")
+    print("  ok: expected_exception=ValueError (single class) trips after 2 failures")
 
     # -------------------------------------------------------------
     # FIX #30 NEGATIVE: a different exception type is NOT counted
@@ -152,7 +151,7 @@ def main() -> int:
         f"FIX #30 BROKEN: KeyError tripped breaker (only ValueError should); "
         f"state={cb.state}, failures={cb.failures}"
     )
-    print(f"  ok: KeyError did NOT trip (only ValueError in expected_exception)")
+    print("  ok: KeyError did NOT trip (only ValueError in expected_exception)")
 
     # -------------------------------------------------------------
     # FIX #30: still works with tuple
@@ -174,7 +173,7 @@ def main() -> int:
     assert cb.state is State.OPEN, (
         f"tuple expected_exception should trip; got {cb.state}"
     )
-    print(f"  ok: tuple of (ValueError, KeyError) → trips on either")
+    print("  ok: tuple of (ValueError, KeyError) → trips on either")
 
     # -------------------------------------------------------------
     # FIX #28 NEGATIVE: records under sync API show up in metrics
@@ -187,7 +186,7 @@ def main() -> int:
     after_sync = cb_mod._cb_successes.labels(name="metric-shared")._value.get()  # type: ignore[attr-defined]
     # Sync record_success calls _on_success which bumps the metric.
     assert after_sync > before, "sync record_success should bump _cb_successes counter"
-    print(f"  ok: sync record_success bumps the same counter as async call_async")
+    print("  ok: sync record_success bumps the same counter as async call_async")
 
     print()
     print("ALL 8 STEPS PASSED")

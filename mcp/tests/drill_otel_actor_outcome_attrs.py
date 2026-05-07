@@ -200,7 +200,7 @@ async def main() -> None:
                 f"logging an actor for a denied call would create "
                 f"a phantom audit trail."
             )
-        ok(f"no actor_identified for unauthenticated 401 (correct)")
+        ok("no actor_identified for unauthenticated 401 (correct)")
 
         step("3. insufficient-scope 403 → NO actor_identified line either")
         r = await _call(
@@ -221,7 +221,7 @@ async def main() -> None:
                 f"not appear in the actor-identified count, since that "
                 f"count is operators' proxy for 'real dispatches'."
             )
-        ok(f"no actor_identified for 403 INSUFFICIENT_SCOPE (correct)")
+        ok("no actor_identified for 403 INSUFFICIENT_SCOPE (correct)")
 
         step("4. successful cid_ok appears EXACTLY ONCE across full log")
         log = _read_log_tail(lines=1000)
@@ -232,7 +232,7 @@ async def main() -> None:
                 f"Duplication would mean enforce_scope ran twice — "
                 f"breaks 'one call, one identification' invariant."
             )
-        ok(f"cid_ok identified exactly once across full tail")
+        ok("cid_ok identified exactly once across full tail")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 4 OTEL-ACTOR-OUTCOME-ATTR STEPS PASSED{NC}")

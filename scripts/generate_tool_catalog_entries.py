@@ -38,7 +38,6 @@ CATALOG_DIR = REPO / "config" / "tool_catalog"
 sys.path.insert(0, str(REPO / "scripts"))
 import tool_catalog as tc  # type: ignore[import-not-found]
 
-
 # Manual classification — what each server's status_target + owner is.
 # Defaults applied for namespaces not listed.
 NS_PROFILES: dict[str, dict[str, Any]] = {

@@ -103,7 +103,7 @@ def main() -> int:
     if missing_subs:
         print(f"✗ step 4: Consequences missing sub-sections: {missing_subs}")
         return 1
-    print(f"✓ step 4: Consequences has Positive/Negative/Risks accepted")
+    print("✓ step 4: Consequences has Positive/Negative/Risks accepted")
 
     # ── Step 5: NEGATIVE — ≥3 Alternatives ──
     alt_match = re.search(
@@ -149,7 +149,7 @@ def main() -> int:
     if missing_cross:
         print(f"✗ step 7: missing architectural cross-refs: {missing_cross}")
         return 1
-    print(f"✓ step 7: composes-with refs ADR-014 + §43 + §44 (lineage preserved)")
+    print("✓ step 7: composes-with refs ADR-014 + §43 + §44 (lineage preserved)")
 
     # ── Step 8: NEGATIVE — Decision section names FIVE ratchet elements ──
     decision_match = re.search(
@@ -171,7 +171,7 @@ def main() -> int:
     if missing_elements:
         print(f"✗ step 8: Decision section missing rule elements: {missing_elements}")
         return 1
-    print(f"✓ step 8: Decision section names all 5 ratchet contract elements")
+    print("✓ step 8: Decision section names all 5 ratchet contract elements")
 
     print("\nALL 8 STEPS PASSED")
     return 0

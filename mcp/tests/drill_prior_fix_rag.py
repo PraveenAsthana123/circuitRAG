@@ -63,7 +63,7 @@ def main() -> int:
 
     print("-- 3. POSITIVE: render_few_shot returns '' for empty list --")
     if rag.render_few_shot([]) != "":
-        print(f"x step 3: render_few_shot([]) should be ''")
+        print("x step 3: render_few_shot([]) should be ''")
         return 1
     print("  ok: empty list → '' (no prompt bloat)")
 
@@ -90,7 +90,7 @@ def main() -> int:
         result = rag.query_similar_fixes(query="UP035 deprecated typing", rule_code="UP035", min_score=0.0)
         notes = [r.note for r in result]
         if any("BAD-FIX" in n for n in notes):
-            print(f"x step 4: rejected row leaked into retrieval results")
+            print("x step 4: rejected row leaked into retrieval results")
             return 1
         if not any("GOOD-FIX" in n for n in notes):
             print(f"x step 4: approved row not retrieved: {notes}")
@@ -119,7 +119,7 @@ def main() -> int:
     try:
         result = rag.query_similar_fixes(query="callable typing collections.abc", rule_code="UP035", min_score=0.0)
         if not result:
-            print(f"x step 5: no results from BM25 query")
+            print("x step 5: no results from BM25 query")
             return 1
         if result[0].rule_code != "UP035":
             print(f"x step 5: top result should be UP035 match; got {result[0].rule_code}")
@@ -127,7 +127,7 @@ def main() -> int:
     finally:
         rag.HITL_LOG = real_log
         tmp_log.unlink(missing_ok=True)
-    print(f"  ok: rule_code='UP035' query → top result is UP035 (rule-code 3x boost works)")
+    print("  ok: rule_code='UP035' query → top result is UP035 (rule-code 3x boost works)")
 
     print("-- 6. NEGATIVE: query without rule_code still works (graceful default) --")
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
@@ -159,13 +159,13 @@ def main() -> int:
     ]
     rendered = rag.render_few_shot(fake_examples)
     if "<prior_fixes>" not in rendered:
-        print(f"x step 7: rendered missing <prior_fixes> tag")
+        print("x step 7: rendered missing <prior_fixes> tag")
         return 1
     if "</prior_fixes>" not in rendered:
-        print(f"x step 7: rendered missing closing tag")
+        print("x step 7: rendered missing closing tag")
         return 1
     if "score=2.5" not in rendered:
-        print(f"x step 7: rendered missing score")
+        print("x step 7: rendered missing score")
         return 1
     print("  ok: render output is XML-fenced; score visible; no leaked metadata")
 

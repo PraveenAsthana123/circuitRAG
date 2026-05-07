@@ -29,7 +29,6 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-
 REPO = Path(__file__).resolve().parents[2]
 SERVER = REPO / "mcp" / "server_observe.py"
 
@@ -144,7 +143,7 @@ def main() -> int:
         print(f"  ok: real_backing=alertmanager, alerts_fired={body['data']['alerts_fired']}")
     else:
         assert body["error"]["code"] == "alertmanager_unreachable"
-        print(f"  ok: AM unreachable → graceful error (post-E4)")
+        print("  ok: AM unreachable → graceful error (post-E4)")
 
     print("-- 8. NEGATIVE: Prometheus unreachable → graceful error --")
     # Reload module pointing at a dead port.

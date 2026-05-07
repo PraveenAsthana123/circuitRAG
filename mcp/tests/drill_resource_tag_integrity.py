@@ -149,9 +149,8 @@ def _imports(source: str) -> set[str]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 names.add(alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                names.add(node.module.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module.split(".")[0])
     return names
 
 
@@ -182,7 +181,7 @@ def main() -> int:
             f"{len(pg_violations)} drill(s) import pg client but missing "
             f"'pg' tag: {pg_violations[:3]}"
         )
-    ok(f"every drill that imports asyncpg/psycopg is tagged 'pg'")
+    ok("every drill that imports asyncpg/psycopg is tagged 'pg'")
 
     step("3. NEGATIVE: drills importing qdrant_client MUST be tagged 'qdrant'")
     qdrant_violations: list[tuple[str, list[str]]] = []
@@ -194,7 +193,7 @@ def main() -> int:
             f"{len(qdrant_violations)} drill(s) import qdrant_client but "
             f"missing 'qdrant' tag: {qdrant_violations[:3]}"
         )
-    ok(f"every drill that imports qdrant_client is tagged 'qdrant'")
+    ok("every drill that imports qdrant_client is tagged 'qdrant'")
 
     step("4. NEGATIVE: drills importing playwright MUST be tagged 'playwright' OR 'frontend'")
     playwright_violations: list[tuple[str, list[str]]] = []
@@ -206,7 +205,7 @@ def main() -> int:
             f"{len(playwright_violations)} drill(s) import playwright but "
             f"missing 'playwright'/'frontend' tag: {playwright_violations[:3]}"
         )
-    ok(f"every drill that imports playwright is tagged 'playwright' or 'frontend'")
+    ok("every drill that imports playwright is tagged 'playwright' or 'frontend'")
 
     step("5. NEGATIVE: readonly/none drills MUST NOT import any infra module")
     watch_list = pg_imports | {"qdrant_client", "playwright"}
@@ -223,7 +222,7 @@ def main() -> int:
             f"modules: {infra_in_readonly[:3]}. Readonly tier must stay "
             "infra-free."
         )
-    ok(f"no readonly/none drill imports asyncpg/qdrant_client/playwright")
+    ok("no readonly/none drill imports asyncpg/qdrant_client/playwright")
 
     step("6. NEGATIVE: MCP-namespace-tagged drills MUST reference the namespace's evidence (URL env or mcp import)")
     mcp_violations: list[tuple[str, str, list[str]]] = []
@@ -253,7 +252,7 @@ def main() -> int:
             f"namespace: {mcp_violations[:3]}. Tag {{ns}} requires URL env "
             "or `from mcp` import."
         )
-    ok(f"every MCP-namespace-tagged drill references the namespace")
+    ok("every MCP-namespace-tagged drill references the namespace")
 
     step("7. POSITIVE: emit per-tag drill count distribution")
     tag_counts: dict[str, int] = {}

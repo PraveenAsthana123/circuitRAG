@@ -30,8 +30,6 @@ from __future__ import annotations
 
 import os
 import pathlib
-import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "sidecar_bootstrap.sh"
@@ -151,7 +149,7 @@ def main():
             "no instructions for disabling the hook. Operator who "
             "wants to opt out needs the exact unset command."
         )
-    ok(f"4 follow-up commands + opt-out instruction printed")
+    ok("4 follow-up commands + opt-out instruction printed")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 SIDECAR-BOOTSTRAP STEPS PASSED{NC}")

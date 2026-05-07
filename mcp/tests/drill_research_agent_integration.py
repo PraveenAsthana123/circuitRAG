@@ -49,7 +49,7 @@ def main() -> int:
         print(f"x step 2: researcher must use qwen2.5; got {researcher['model']}")
         return 1
     if "RESEARCHER" not in researcher["system"]:
-        print(f"x step 2: researcher system prompt missing 'RESEARCHER' marker")
+        print("x step 2: researcher system prompt missing 'RESEARCHER' marker")
         return 1
     print(f"  ok: researcher = {researcher['model']}")
 
@@ -67,57 +67,57 @@ def main() -> int:
             print(f"x step 3: researcher prompt missing {marker!r}")
             return 1
     if "Reply with 3-6 lines" not in prompt:
-        print(f"x step 3: researcher prompt missing reply-format spec")
+        print("x step 3: researcher prompt missing reply-format spec")
         return 1
-    print(f"  ok: researcher prompt has all rule fields + format directive")
+    print("  ok: researcher prompt has all rule fields + format directive")
 
     print("-- 4. NEGATIVE: _author_prompt EMBEDS research_brief when provided --")
     brief = "TEST BRIEF: dead code; safe to delete; no risks"
     prompt = lc._author_prompt(issue, "  42: x = 5", grep_refs="", research_brief=brief)
     if "Research brief" not in prompt:
-        print(f"x step 4: AUTHOR prompt missing 'Research brief' section")
+        print("x step 4: AUTHOR prompt missing 'Research brief' section")
         return 1
     if brief not in prompt:
-        print(f"x step 4: AUTHOR prompt missing the actual brief content")
+        print("x step 4: AUTHOR prompt missing the actual brief content")
         return 1
-    print(f"  ok: AUTHOR prompt embeds research brief inside fenced block")
+    print("  ok: AUTHOR prompt embeds research brief inside fenced block")
 
     print("-- 5. NEGATIVE: _author_prompt OMITS research section when brief is empty --")
     prompt = lc._author_prompt(issue, "  42: x = 5", grep_refs="", research_brief="")
     if "Research brief" in prompt:
-        print(f"x step 5: AUTHOR prompt has 'Research brief' section even when brief=''")
+        print("x step 5: AUTHOR prompt has 'Research brief' section even when brief=''")
         return 1
-    print(f"  ok: empty brief → no research section in AUTHOR prompt (don't bloat)")
+    print("  ok: empty brief → no research section in AUTHOR prompt (don't bloat)")
 
     print("-- 6. NEGATIVE: investigation rules trigger researcher; mechanical do NOT --")
     sys.path.insert(0, str(REPO / "scripts"))
     from rule_fix_strategy import get_strategy  # type: ignore
     if not get_strategy("F841").needs_grep_refs:
-        print(f"x step 6: F841 must trigger researcher (needs_grep_refs=True)")
+        print("x step 6: F841 must trigger researcher (needs_grep_refs=True)")
         return 1
     if get_strategy("UP035").needs_grep_refs:
-        print(f"x step 6: UP035 must NOT trigger researcher (mechanical rule)")
+        print("x step 6: UP035 must NOT trigger researcher (mechanical rule)")
         return 1
     if get_strategy("E702").needs_grep_refs:
-        print(f"x step 6: E702 must NOT trigger researcher (style rule)")
+        print("x step 6: E702 must NOT trigger researcher (style rule)")
         return 1
-    print(f"  ok: F841 → researcher fires; UP035/E702 → researcher skipped (token savings)")
+    print("  ok: F841 → researcher fires; UP035/E702 → researcher skipped (token savings)")
 
     print("-- 7. NEGATIVE: run_local_council source MUST gate researcher on needs_grep_refs --")
     src = MODULE_PATH.read_text(encoding="utf-8")
     if "if strategy.needs_grep_refs and grep_refs:" not in src:
-        print(f"x step 7: run_local_council missing the strategy.needs_grep_refs gate")
+        print("x step 7: run_local_council missing the strategy.needs_grep_refs gate")
         return 1
     if "RESEARCHER" not in src or "research_brief" not in src:
-        print(f"x step 7: run_local_council missing RESEARCHER step or research_brief variable")
+        print("x step 7: run_local_council missing RESEARCHER step or research_brief variable")
         return 1
-    print(f"  ok: researcher step gated correctly; only fires when strategy demands")
+    print("  ok: researcher step gated correctly; only fires when strategy demands")
 
     print("-- 8. POSITIVE: researcher errors fall back to empty brief (AUTHOR still proceeds) --")
     if "research_brief = \"\"  # AUTHOR proceeds without brief" not in src:
-        print(f"x step 8: missing graceful fallback comment + behavior")
+        print("x step 8: missing graceful fallback comment + behavior")
         return 1
-    print(f"  ok: researcher error → empty brief; AUTHOR not blocked (graceful degradation)")
+    print("  ok: researcher error → empty brief; AUTHOR not blocked (graceful degradation)")
 
     print()
     print("ALL 8 STEPS PASSED")

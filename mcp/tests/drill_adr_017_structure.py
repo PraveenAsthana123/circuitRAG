@@ -105,7 +105,7 @@ def main() -> int:
     if "**discipline:" not in decision_text:
         print("✗ step 4: Decision doesn't bold-mark the discipline statement")
         return 1
-    print(f"✓ step 4: Decision presents both halves "
+    print("✓ step 4: Decision presents both halves "
           "(anti-pattern + discipline)")
 
     # ── Step 5: NEGATIVE — FIVE HBR surfaces in Decision ──
@@ -121,7 +121,7 @@ def main() -> int:
     if missing_hbr:
         print(f"✗ step 5: Decision missing HBR surfaces: {missing_hbr}")
         return 1
-    print(f"✓ step 5: Decision lists all 5 HBR surfaces "
+    print("✓ step 5: Decision lists all 5 HBR surfaces "
           "for sweep-before-commit")
 
     # ── Step 6: NEGATIVE — References cites the demonstration phases ──
@@ -150,7 +150,7 @@ def main() -> int:
     if missing_cross:
         print(f"✗ step 7: missing architectural cross-refs: {missing_cross}")
         return 1
-    print(f"✓ step 7: composes-with refs ADR-014 + ADR-015 + ADR-016")
+    print("✓ step 7: composes-with refs ADR-014 + ADR-015 + ADR-016")
 
     # ── Step 8: POSITIVE — Consequences sub-sections ──
     consequences_match = re.search(
@@ -165,7 +165,7 @@ def main() -> int:
     if missing_subs:
         print(f"✗ step 8: Consequences missing sub-sections: {missing_subs}")
         return 1
-    print(f"✓ step 8: Consequences has Positive/Negative/Risks accepted")
+    print("✓ step 8: Consequences has Positive/Negative/Risks accepted")
 
     print("\nALL 8 STEPS PASSED")
     return 0

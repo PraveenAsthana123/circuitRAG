@@ -54,7 +54,7 @@ import logging
 import os
 import sys
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -289,7 +289,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("scripts/stage3_earned_check.py — Stage-3 default-flip earned-check")
-    print(f"Stage-meta opt-in via STAGE3_EARNED_CHECK_ENABLED=1")
+    print("Stage-meta opt-in via STAGE3_EARNED_CHECK_ENABLED=1")
     print()
     print(json.dumps(status(), indent=2))
     print()
@@ -306,7 +306,7 @@ if __name__ == "__main__":
     if args.json:
         print(json.dumps(report.as_dict(), indent=2))
     else:
-        print(f"=== Stage-3 default-flip earned-check ===")
+        print("=== Stage-3 default-flip earned-check ===")
         print(f"  verdict:        {report.verdict}")
         print(f"  rationale:      {report.rationale}")
         print(f"  total attempts: {report.total_attempts}")

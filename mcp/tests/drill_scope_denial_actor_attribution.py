@@ -179,7 +179,7 @@ async def main() -> None:
             )
         if "actor_email" in d:
             fail(f"NOT_AUTHENTICATED leaked actor_email: {d['actor_email']!r}")
-        ok(f"401 NOT_AUTHENTICATED clean (no actor leak)")
+        ok("401 NOT_AUTHENTICATED clean (no actor leak)")
 
         step("4. 401 INVALID_TOKEN does NOT propagate untrusted claims")
         # Build a token with a forged sub but signed with a wrong key —
@@ -215,7 +215,7 @@ async def main() -> None:
                 f"claims: {d}. The signature failed; any decoded claims "
                 f"are untrusted and MUST NOT round-trip to the response."
             )
-        ok(f"401 INVALID_TOKEN does not propagate forged-claim fields")
+        ok("401 INVALID_TOKEN does not propagate forged-claim fields")
 
         step("5. successful call response has no actor leak")
         r = await _call(
@@ -236,7 +236,7 @@ async def main() -> None:
                 f"{body['actor']!r}. Actor attribution belongs in "
                 f"audit, not in user-facing success bodies."
             )
-        ok(f"200 success body has no actor field at top-level")
+        ok("200 success body has no actor field at top-level")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 5 SCOPE-DENIAL-ATTRIBUTION STEPS PASSED{NC}")

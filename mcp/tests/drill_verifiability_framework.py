@@ -83,7 +83,7 @@ def main() -> int:
             return 1
     finally:
         vf.VENV_RUFF = orig
-    print(f"  ok: missing binary → ok=False + 'not found' in error")
+    print("  ok: missing binary → ok=False + 'not found' in error")
 
     print("-- 4. NEGATIVE: any failing layer → all_pass=False --")
     sample_layers = (
@@ -97,7 +97,7 @@ def main() -> int:
         total_duration_s=0.3,
     )
     if result.all_pass:
-        print(f"x step 4: all_pass=True despite mypy failure")
+        print("x step 4: all_pass=True despite mypy failure")
         return 1
     print("  ok: any failing layer flips all_pass=False")
 
@@ -107,9 +107,9 @@ def main() -> int:
         print(f"x step 5: failure_summary should mention 'mypy'; got: {summary}")
         return 1
     if "exit=1" not in summary:
-        print(f"x step 5: failure_summary should include exit code")
+        print("x step 5: failure_summary should include exit code")
         return 1
-    print(f"  ok: failure_summary names mypy + exit=1")
+    print("  ok: failure_summary names mypy + exit=1")
 
     print("-- 6. NEGATIVE: skip_mypy=True omits mypy layer; skip_pytest=True omits pytest --")
     result = vf.run_technical_verification(skip_mypy=True, skip_pytest=True, timeout=10.0)
@@ -123,7 +123,7 @@ def main() -> int:
     if "ruff" not in layer_names:
         print(f"x step 6: skip flags removed ruff (should be required): {layer_names}")
         return 1
-    print(f"  ok: skip flags work; ruff still required")
+    print("  ok: skip flags work; ruff still required")
 
     print("-- 7. NEGATIVE: timeout enforced — slow tool reports ok=False --")
     # We can't easily test a real timeout without a slow binary;

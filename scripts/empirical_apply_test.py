@@ -37,7 +37,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -75,14 +74,14 @@ def cmd_setup(_args: argparse.Namespace) -> int:
     SYNTHETIC_FILE.write_text(content, encoding="utf-8")
     print(f"  ok: created {SYNTHETIC_FILE}")
     print(f"  ok: file size {SYNTHETIC_FILE.stat().st_size} bytes")
-    print(f"  next: python scripts/empirical_apply_test.py scan")
+    print("  next: python scripts/empirical_apply_test.py scan")
     return 0
 
 
 def cmd_scan(_args: argparse.Namespace) -> int:
     """Run issue_scanner.py to populate checklist."""
     if not SYNTHETIC_FILE.exists():
-        print(f"x synthetic file missing — run setup first")
+        print("x synthetic file missing — run setup first")
         return 1
     scanner = Path.home() / ".claude" / "scripts" / "issue_scanner.py"
     if not scanner.exists():
@@ -109,7 +108,7 @@ def cmd_scan(_args: argparse.Namespace) -> int:
             except json.JSONDecodeError:
                 continue
         print(f"  synthetic issues in checklist: {synthetic_count}")
-    print(f"  next: python scripts/empirical_apply_test.py simulate --max-cycles 1")
+    print("  next: python scripts/empirical_apply_test.py simulate --max-cycles 1")
     return 0
 
 
@@ -131,14 +130,14 @@ def cmd_simulate(args: argparse.Namespace) -> int:
     if not args.apply:
         cmd.append("--dry-run")
     print(f"  running: {' '.join(cmd)}")
-    print(f"  expected wall time: 1-3 min per cycle (ruff-only scan + Ollama council)")
+    print("  expected wall time: 1-3 min per cycle (ruff-only scan + Ollama council)")
     started = time.time()
     proc = subprocess.run(cmd, cwd=REPO, capture_output=False, text=True)
     elapsed = time.time() - started
     print(f"  exit={proc.returncode}; elapsed {elapsed:.1f}s")
     if proc.returncode != 0:
         return 1
-    print(f"  next: python scripts/empirical_apply_test.py inspect")
+    print("  next: python scripts/empirical_apply_test.py inspect")
     return 0
 
 
@@ -156,7 +155,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         except json.JSONDecodeError:
             continue
     if not rows:
-        print(f"  apply log empty")
+        print("  apply log empty")
         return 0
     tail = rows[-args.limit:]
     print(f"  last {len(tail)} apply attempts:")
@@ -191,7 +190,7 @@ def cmd_cleanup(_args: argparse.Namespace) -> int:
         return 1
     SYNTHETIC_FILE.unlink()
     print(f"  ok: removed {SYNTHETIC_FILE}")
-    print(f"  note: audit rows in .loop/*.jsonl are preserved")
+    print("  note: audit rows in .loop/*.jsonl are preserved")
     return 0
 
 

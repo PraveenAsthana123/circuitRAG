@@ -23,7 +23,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 MIGRATION = SVC / "migrations" / "013_tenant_budgets.sql"
@@ -76,7 +75,7 @@ def main() -> int:
         has_tier_b=True,
         budget_remaining_cents=500,  # plenty
     )
-    assert d.chosen.tier == "tier_b", f"with budget, novel+high should pick tier_b"
+    assert d.chosen.tier == "tier_b", "with budget, novel+high should pick tier_b"
     print(f"  ok: budget=500 → tier_b ({d.reason})")
 
     print("-- 3. NEGATIVE: budget=0 forces Tier-A on novel+high --")

@@ -23,7 +23,6 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 
@@ -73,7 +72,7 @@ class FakeConn:
 def main() -> int:
     mod = _load_dbcb()
     DbCircuitBreaker = mod.DbCircuitBreaker
-    from documind_core.circuit_breaker import State, CircuitOpenError
+    from documind_core.circuit_breaker import CircuitOpenError
 
     print("-- 1. POSITIVE: DbCircuitBreaker initialises with canonical breaker --")
     cb = DbCircuitBreaker(name="test-db", failure_threshold=3, recovery_timeout=0.1)
@@ -91,7 +90,7 @@ def main() -> int:
             pass
     assert cb.state == "open", f"expected OPEN; got {cb.state}"
     assert cb.is_healthy is False
-    print(f"  ok: 3 connect failures → state=OPEN, is_healthy=False")
+    print("  ok: 3 connect failures → state=OPEN, is_healthy=False")
 
     print("-- 3. NEGATIVE: when OPEN, guarded_admin_connection fast-fails --")
     db_healthy = FakeDb()  # would succeed if called
@@ -109,7 +108,7 @@ def main() -> int:
         f"P0 #36 BROKEN: admin_connection was called despite OPEN breaker "
         f"(admin_calls={db_healthy.admin_calls})"
     )
-    print(f"  ok: OPEN → CircuitOpenError raised; underlying db.admin_connection NOT called")
+    print("  ok: OPEN → CircuitOpenError raised; underlying db.admin_connection NOT called")
 
     print("-- 4. POSITIVE: query exception inside guarded_admin records failure --")
     cb = DbCircuitBreaker(name="query-fail", failure_threshold=2, recovery_timeout=10)
@@ -125,7 +124,7 @@ def main() -> int:
     assert cb.state == "open", (
         f"P0 #36 BROKEN: 2 query failures should trip CB; state={cb.state}"
     )
-    print(f"  ok: query exceptions surface to breaker; state=OPEN after threshold")
+    print("  ok: query exceptions surface to breaker; state=OPEN after threshold")
 
     print("-- 5. POSITIVE: HALF_OPEN → success → CLOSED transition --")
     import time
@@ -149,7 +148,7 @@ def main() -> int:
             pass
     asyncio.run(_q2())
     assert cb.state == "closed", f"expected CLOSED after recovery; got {cb.state}"
-    print(f"  ok: OPEN → recovery elapses → success → CLOSED")
+    print("  ok: OPEN → recovery elapses → success → CLOSED")
 
     print("-- 6. POSITIVE: is_healthy property reflects state for /health/ready --")
     # Used by /health/ready to decide 200 vs 503.

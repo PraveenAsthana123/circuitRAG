@@ -145,7 +145,7 @@ def main() -> int:
         print(f"✗ step 2: {len(malformed)} cron lines have <6 tokens "
               f"(need 5 schedule + 1+ command): {malformed[:2]}")
         return 1
-    print(f"✓ step 2: every cron line has 5 schedule + ≥1 command tokens")
+    print("✓ step 2: every cron line has 5 schedule + ≥1 command tokens")
 
     # ── Step 3: NEGATIVE — each schedule field matches cron grammar ──
     bad_field = []
@@ -158,7 +158,7 @@ def main() -> int:
         print(f"✗ step 3: {len(bad_field)} cron schedule fields invalid: "
               f"{bad_field[:2]}")
         return 1
-    print(f"✓ step 3: every schedule field matches cron grammar")
+    print("✓ step 3: every schedule field matches cron grammar")
 
     # ── Step 4: NEGATIVE — every cron line's script exists ──
     missing_scripts = []
@@ -179,7 +179,7 @@ def main() -> int:
         print(f"✗ step 4: {len(missing_scripts)} cron commands reference "
               f"non-existent scripts: {missing_scripts[:3]}")
         return 1
-    print(f"✓ step 4: every cron command references an existing script")
+    print("✓ step 4: every cron command references an existing script")
 
     # ── Step 5: NEGATIVE — scripts are runnable via interpreter or +x ──
     not_runnable = []
@@ -206,7 +206,7 @@ def main() -> int:
         print(f"✗ step 5: {len(not_runnable)} scripts invoked directly "
               f"without execute bit: {not_runnable[:3]}")
         return 1
-    print(f"✓ step 5: every cron command is runnable (interpreter or +x)")
+    print("✓ step 5: every cron command is runnable (interpreter or +x)")
 
     # ── Step 6: NEGATIVE — no accidental schedule duplicates ──
     # We allow a SAME schedule string to appear in different doc
@@ -230,7 +230,7 @@ def main() -> int:
         print(f"✗ step 6: same cron entry duplicated within one doc: "
               f"{per_doc_dupes[:2]}")
         return 1
-    print(f"✓ step 6: no within-doc cron duplicates "
+    print("✓ step 6: no within-doc cron duplicates "
           "(cross-doc duplication still allowed)")
 
     # ── Step 7: NEGATIVE — schedule diversity ──

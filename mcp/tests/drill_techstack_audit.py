@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -57,14 +56,14 @@ def main() -> int:
     if "summary" not in report or "sections" not in report:
         print("x JSON must have 'summary' + 'sections' top-level keys")
         return 1
-    print(f"  ok: JSON report has summary + sections")
+    print("  ok: JSON report has summary + sections")
 
     print("-- 3. POSITIVE: default text mode produces operator-readable output --")
     rc, out = _run()
     if "TOTAL:" not in out or "By criticality:" not in out:
-        print(f"x text output missing required headers")
+        print("x text output missing required headers")
         return 1
-    print(f"  ok: text report has summary headers")
+    print("  ok: text report has summary headers")
 
     print("-- 4. NEGATIVE: all 9 CRITICAL tools must be installed --")
     rc, out = _run("--json")
@@ -81,7 +80,7 @@ def main() -> int:
     if crit_stats.get("installed", 0) != 9:
         print(f"x expected 9 CRITICAL tools; got {crit_stats.get('installed')}")
         return 1
-    print(f"  ok: all 9 CRITICAL tools installed")
+    print("  ok: all 9 CRITICAL tools installed")
 
     print("-- 5. NEGATIVE: rejected frameworks (CrewAI/Agno/PraisonAI) NOT installed --")
     # Per tool-evaluation: these were rejected. If they appear as installed,
@@ -101,7 +100,7 @@ def main() -> int:
     if rejected_total != 3:
         print(f"x expected 3 rejected entries (CrewAI, Agno, PraisonAI); got {rejected_total}")
         return 1
-    print(f"  ok: 3 rejected frameworks all NOT installed (verdict respected)")
+    print("  ok: 3 rejected frameworks all NOT installed (verdict respected)")
 
     print("-- 6. POSITIVE: audit covers >=6 sections --")
     expected_sections = (
@@ -121,7 +120,7 @@ def main() -> int:
     if list(report["sections"].keys()) != ["binaries"]:
         print(f"x --section filter failed; sections: {list(report['sections'].keys())}")
         return 1
-    print(f"  ok: --section binaries returns single section")
+    print("  ok: --section binaries returns single section")
 
     print("-- 8. NEGATIVE: exit code reflects criticality --")
     # If critical missing → exit 2; if any missing → exit 1; else 0.
@@ -134,7 +133,7 @@ def main() -> int:
         return 1
     # Critical=2 should never happen in a healthy repo (drill step 4 covers).
     if rc == 2:
-        print(f"x exit code 2 means critical tool missing")
+        print("x exit code 2 means critical tool missing")
         return 1
     print(f"  ok: exit code {rc} (0=all-installed, 1=some-non-critical-missing)")
 

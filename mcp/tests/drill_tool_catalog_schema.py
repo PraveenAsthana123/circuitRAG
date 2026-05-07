@@ -102,7 +102,7 @@ def main() -> int:
     # ------------------------------------------------------------------
     step("4. loader rejects mismatched namespace vs. filename")
     import tempfile
-    import yaml
+
     with tempfile.TemporaryDirectory() as tmp:
         bad = Path(tmp) / "slack.yaml"
         bad.write_text("namespace: not_slack\n", encoding="utf-8")

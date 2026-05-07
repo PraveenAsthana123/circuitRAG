@@ -127,7 +127,7 @@ def main():
         fail(f"wrong reject sha: {rejects[0].commit_sha}")
     if rejects[0].verdict != "REJECT":
         fail(f"non-REJECT leaked through filter: {rejects[0].verdict}")
-    ok(f"1 REJECT surfaced; APPROVE + HOLD filtered out")
+    ok("1 REJECT surfaced; APPROVE + HOLD filtered out")
 
     # Step 3: replayed shas excluded
     step("3. NEGATIVE: replayed.log shas EXCLUDED from pending (idempotent)")
@@ -140,7 +140,7 @@ def main():
             f"idempotency broken: all={len(rejects_all)} "
             f"replayed={len(rejects_replayed)}"
         )
-    ok(f"replayed sha excluded; pending list shrinks 1 -> 0")
+    ok("replayed sha excluded; pending list shrinks 1 -> 0")
 
     # Step 4: malformed JSON line skipped
     step("4. NEGATIVE: malformed JSON line skipped (graceful, not crash)")
@@ -166,7 +166,7 @@ def main():
             fail(f"malformed line broke parsing: {len(entries)} entries")
         if [e.commit_sha for e in entries] != ["good1", "bad1"]:
             fail(f"entry order wrong: {[e.commit_sha for e in entries]}")
-        ok(f"malformed line skipped; 2 valid entries surfaced")
+        ok("malformed line skipped; 2 valid entries surfaced")
 
     # Step 5: empty / missing log
     step("5. NEGATIVE: empty/missing watcher.log returns [] (no error)")
@@ -184,7 +184,7 @@ def main():
         # Empty replayed.log
         if rep.load_replayed_set(missing_log) != set():
             fail("missing replayed.log not handled gracefully")
-        ok(f"empty + missing log handled cleanly")
+        ok("empty + missing log handled cleanly")
 
     # Step 6: apply_reverts continues past per-revert failures
     step("6. NEGATIVE: apply_reverts captures per-revert failure; siblings continue")
@@ -238,7 +238,7 @@ def main():
                 f"failed sha leaked into replayed.log: {on_disk!r}. "
                 f"Idempotency broken - re-run wouldn't retry the bad one."
             )
-        ok(f"2 reverted, 1 failed; only successes in replayed.log")
+        ok("2 reverted, 1 failed; only successes in replayed.log")
 
     # Step 7: --apply is opt-in (dry-run does NOT mutate replayed.log)
     step("7. NEGATIVE: dry-run mode (no --apply) does NOT mutate replayed.log")
@@ -254,8 +254,8 @@ def main():
         ])
         replayed_log = tmp_dir / "replayed.log"
         # Run cli() in dry-run mode by patching argv
-        import io
         import contextlib
+        import io
         original_argv = sys.argv
         try:
             sys.argv = [
@@ -274,8 +274,8 @@ def main():
         # replayed.log should NOT have been written
         if replayed_log.exists():
             fail(
-                f"dry-run wrote to replayed.log - safety violation. "
-                f"Operator hasn't consented to revert yet."
+                "dry-run wrote to replayed.log - safety violation. "
+                "Operator hasn't consented to revert yet."
             )
         # Output should mention pending REJECT
         out = buf.getvalue()
@@ -283,7 +283,7 @@ def main():
             fail(f"dry-run output should list pending REJECT sha: {out!r}")
         if "git revert" not in out:
             fail(f"dry-run should suggest git revert command: {out!r}")
-        ok(f"dry-run lists pending without mutating replayed.log")
+        ok("dry-run lists pending without mutating replayed.log")
 
     # Step 8: render_revert_plan edge cases
     step("8. NEGATIVE: render_revert_plan handles empty + non-empty cleanly")
@@ -301,7 +301,7 @@ def main():
         fail(f"plan should include actionable revert command: {nonempty!r}")
     if "rule_fired=1" not in nonempty:
         fail(f"plan should include rule_fired: {nonempty!r}")
-    ok(f"render_revert_plan: empty + non-empty both formatted cleanly")
+    ok("render_revert_plan: empty + non-empty both formatted cleanly")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 REPLAY-VERDICT-LOG STEPS PASSED{NC}")

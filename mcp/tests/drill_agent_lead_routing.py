@@ -85,7 +85,7 @@ def main() -> int:
     if d.route != "human":
         print(f"x step 5: S101 must route to human; got {d.route}")
         return 1
-    print(f"  ok: S101 → human (security gate)")
+    print("  ok: S101 → human (security gate)")
 
     print("-- 6. NEGATIVE: already_attempted=True → skip (retry-loop prevention) --")
     d = al.decide_route(_issue("F841"), already_attempted=True)
@@ -102,7 +102,7 @@ def main() -> int:
     if d.route != "skip":
         print(f"x step 7: out-of-safe-path must skip; got {d.route}")
         return 1
-    print(f"  ok: out-of-safe-path → skip; §42 boundary enforced")
+    print("  ok: out-of-safe-path → skip; §42 boundary enforced")
 
     print("-- 8. POSITIVE: cost estimate strictly ordered (skip=0 < small < council < tier_b) --")
     issue = _issue("F841")

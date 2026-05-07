@@ -18,11 +18,9 @@ Locks 3 cross-cutting integrations:
 """
 from __future__ import annotations
 
-import asyncio
 import importlib.util
 import sys
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -85,7 +83,7 @@ def main() -> int:
     cb.record_failure_cost(75)
     after = cb_mod._cb_failure_cost.labels(name="cost-tracking")._value.get()  # type: ignore[attr-defined]
     assert after - before == 125, f"expected delta 125 cents, got {after - before}"
-    print(f"  ok: counter increased by 125 cents (50 + 75)")
+    print("  ok: counter increased by 125 cents (50 + 75)")
 
     print("-- 3. NEGATIVE: record_failure_cost(0) is a no-op --")
     before = cb_mod._cb_failure_cost.labels(name="cost-tracking")._value.get()  # type: ignore[attr-defined]

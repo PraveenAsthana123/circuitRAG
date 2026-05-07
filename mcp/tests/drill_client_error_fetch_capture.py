@@ -114,7 +114,7 @@ async def main() -> None:
             None,
         )
         if found is None:
-            fail(f"fetch_failed record didn't surface in GET listing")
+            fail("fetch_failed record didn't surface in GET listing")
         ok(f"id={found['id']} kind={found['kind']} status round-trip")
 
         step("2. POST kind='fetch_error' with TypeError → 201 + surfaces")
@@ -138,7 +138,7 @@ async def main() -> None:
             None,
         )
         if found2 is None:
-            fail(f"fetch_error didn't surface")
+            fail("fetch_error didn't surface")
         ok(f"id={found2['id']} kind={found2['kind']} surfaced")
 
         step("3. extra dict round-trips method + url + status")

@@ -60,7 +60,7 @@ def main() -> int:
         if title not in src:
             print(f"x section missing: {title!r}")
             return 1
-    print(f"  ok: all 6 topic sections present")
+    print("  ok: all 6 topic sections present")
 
     print("-- 3. POSITIVE: decision matrix table comparing vectorless vs vector --")
     # Must contain "vectorless" + "vector" + at least 5 row markers
@@ -89,7 +89,7 @@ def main() -> int:
         if marker not in src:
             print(f"x ES query example missing marker: {marker!r}")
             return 1
-    print(f"  ok: all 4 ES query pattern markers present")
+    print("  ok: all 4 ES query pattern markers present")
 
     print("-- 5. NEGATIVE: index mapping must declare tenant_id as keyword (RLS) --")
     # Tenant isolation is non-negotiable. The mapping must define

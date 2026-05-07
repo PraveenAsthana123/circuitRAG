@@ -45,7 +45,7 @@ def _select_canary_repro(
     if percent > 100:
         percent = 100
     gepa_keys = [
-        k for k in cache.keys()
+        k for k in cache
         if k.startswith(f"{template_name}_gepa-")
     ]
     if not gepa_keys:

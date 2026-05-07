@@ -100,7 +100,7 @@ def main() -> int:
     step("3. registry has exactly 20 doc entries (ADR-029 contract)")
     if len(reg.docs) != 20:
         fail(f"registry has {len(reg.docs)} docs; ADR-029 requires 20")
-    ok(f"20 doc entries present (full ADR-029 catalog)")
+    ok("20 doc entries present (full ADR-029 catalog)")
 
     # ------------------------------------------------------------------
     # Step 4 — POSITIVE: each entry has all required fields
@@ -125,7 +125,7 @@ def main() -> int:
     for d in reg.docs:
         if len(d.kpi_dimensions) < 3:
             fail(f"doc {d.doc_type}: only {len(d.kpi_dimensions)} dims; need ≥3")
-    ok(f"all 20 docs have ≥3 KPI dimensions (median 5 per doc)")
+    ok("all 20 docs have ≥3 KPI dimensions (median 5 per doc)")
 
     # ------------------------------------------------------------------
     # Step 6 — POSITIVE: default_min_kpi = 1.0

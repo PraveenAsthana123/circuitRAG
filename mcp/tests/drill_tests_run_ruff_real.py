@@ -21,13 +21,10 @@ real JSON parse.
 from __future__ import annotations
 
 import importlib.util
-import os
 import sys
-import tempfile
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-
 
 REPO = Path(__file__).resolve().parents[2]
 SERVER = REPO / "mcp" / "server_tests.py"

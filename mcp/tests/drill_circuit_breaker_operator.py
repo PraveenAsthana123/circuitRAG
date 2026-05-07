@@ -18,7 +18,6 @@ import sys
 import time
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -58,7 +57,7 @@ def main() -> int:
             f"FIX #19 BROKEN: forced-open error must include forced=True; got {exc.details}"
         )
     assert raised, "FIX #19 BROKEN: forced-OPEN allowed a call to proceed"
-    print(f"  ok: force_open holds OPEN past recovery_timeout (0.1s > 0.05s)")
+    print("  ok: force_open holds OPEN past recovery_timeout (0.1s > 0.05s)")
 
     # -------------------------------------------------------------
     # FIX #19b: force_closed survives natural OPEN state
@@ -84,7 +83,7 @@ def main() -> int:
     # Subsequent call goes through.
     result = asyncio.run(cb.call_async(_ok))
     assert result == "ok", "FIX #19 BROKEN: forced-CLOSED blocked a call"
-    print(f"  ok: force_closed bypasses natural OPEN state")
+    print("  ok: force_closed bypasses natural OPEN state")
 
     # -------------------------------------------------------------
     # FIX #19c: reset() clears force + counters
@@ -106,7 +105,7 @@ def main() -> int:
     assert cb.failures == 0
     assert cb.state is State.CLOSED
     assert len(cb._window) == 0
-    print(f"  ok: reset cleared force + failure_count + window")
+    print("  ok: reset cleared force + failure_count + window")
 
     # -------------------------------------------------------------
     # FIX #19d: ttl auto-expires the force
@@ -119,7 +118,7 @@ def main() -> int:
     time.sleep(0.1)
     # Reading is_forced triggers the expiry check.
     assert cb.is_forced is False, "FIX #19 BROKEN: ttl did NOT auto-expire force"
-    print(f"  ok: ttl_s=0.05 expired after 0.1s wait")
+    print("  ok: ttl_s=0.05 expired after 0.1s wait")
 
     # -------------------------------------------------------------
     # FIX #20a: on_state_change callback fires on every transition
@@ -151,7 +150,7 @@ def main() -> int:
     assert transitions == expected, (
         f"FIX #20 BROKEN: expected {expected}, got {transitions}"
     )
-    print(f"  ok: 3 transitions fired callback in correct order")
+    print("  ok: 3 transitions fired callback in correct order")
 
     # -------------------------------------------------------------
     # FIX #20b: NO duplicate callback for same-state "transitions"
@@ -169,7 +168,7 @@ def main() -> int:
     assert transitions == [], (
         f"FIX #20 BROKEN: callback fired on same-state events; got {transitions}"
     )
-    print(f"  ok: 5 same-state events triggered 0 callbacks")
+    print("  ok: 5 same-state events triggered 0 callbacks")
 
     # -------------------------------------------------------------
     # FIX #20c: callback exception MUST NOT crash the breaker
@@ -191,7 +190,7 @@ def main() -> int:
     assert cb.state is State.OPEN, (
         f"FIX #20 BROKEN: broken callback prevented state transition; got {cb.state}"
     )
-    print(f"  ok: broken callback caught + logged; breaker still trips")
+    print("  ok: broken callback caught + logged; breaker still trips")
 
     # -------------------------------------------------------------
     # FIX #20d: callback fires for force_open / force_closed too

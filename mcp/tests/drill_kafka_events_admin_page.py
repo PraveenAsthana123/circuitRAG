@@ -99,7 +99,7 @@ def main() -> int:
         if topic not in route_src:
             print(f"x BFF must reference topic: {topic!r}")
             return 1
-    print(f"  ok: all 4 topics in BFF schema map")
+    print("  ok: all 4 topics in BFF schema map")
 
     print("-- 8. POSITIVE: §49 compose footer with 5+ cross-refs + sidebar wired --")
     if "Composes with" not in page_src:

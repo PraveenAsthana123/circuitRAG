@@ -28,7 +28,6 @@ Redis in production.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import time
@@ -37,13 +36,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
+
 from mcp.server_common import (
     ToolCallRequest,
     build_auth,
-    enforce_scope as _enforce_scope_common,
     handle_tool_call,
     mount_metrics_endpoint,
     setup_server_otel,
+)
+from mcp.server_common import (
+    enforce_scope as _enforce_scope_common,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -198,7 +200,7 @@ async def tools_call(
 
 
 async def _dispatch(
-    req: "ToolCallRequest",
+    req: ToolCallRequest,
     idempotency_key: str | None,
     cid: str,
 ) -> dict[str, Any]:

@@ -48,12 +48,13 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "services" / "inference-svc"))
 
-from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 from app.workers.draft_replay import (  # type: ignore  # noqa: E402
     DraftReplayWorker,
     _draft_replay_total,
 )
 from documind_core.audit import AuditWriter  # noqa: E402
+
+from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 
 MCP_BASE = os.getenv("MCP_HR_URL", "http://127.0.0.1:8090")
 TENANT = os.getenv("TENANT_ID") or str(uuid.uuid4())  # per-drill isolation
@@ -326,7 +327,7 @@ async def main() -> None:
                 f"_consecutive_failures still carries {DRAFT} after auto-reject — "
                 f"unbounded growth risk"
             )
-        ok(f"auto_rejected +1; status=rejected; audit actor_type=worker reason mentions threshold")
+        ok("auto_rejected +1; status=rejected; audit actor_type=worker reason mentions threshold")
 
         step("4. Subsequent sweep does NOT pick up the rejected draft")
         f_before = _read_local_counter("hr", "failed")

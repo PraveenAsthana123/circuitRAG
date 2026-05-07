@@ -21,7 +21,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 SCANNER = REPO / "scripts" / "issue_scanner.py"
 DISPATCHER = REPO / "scripts" / "issue_dispatcher.py"
@@ -138,7 +137,7 @@ def main() -> int:
                 f"bandit code {code} routes to {routing!r} — MUST be "
                 f"'human-review' per §50.5 safety gate"
             )
-    print(f"  ok: all bandit codes in BANDIT_ROUTING route to human-review (security gate)")
+    print("  ok: all bandit codes in BANDIT_ROUTING route to human-review (security gate)")
 
     print("-- 3. NEGATIVE: security rules (S*) MUST route to human-review --")
     # Per §50.5 safety gate: never let a model auto-fix S* without

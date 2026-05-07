@@ -82,7 +82,7 @@ def main() -> int:
     except json.JSONDecodeError as exc:
         print(f"✗ step 1: catalog_summary --json output not valid JSON: {exc}")
         return 1
-    print(f"✓ step 1: catalog_summary exits 0 in both text + --json modes")
+    print("✓ step 1: catalog_summary exits 0 in both text + --json modes")
 
     # ── Step 2: NEGATIVE — total_drills matches disk count ──
     actual_count = len(list(DRILL_DIR.glob("drill_*.py")))
@@ -100,7 +100,7 @@ def main() -> int:
               f"tagged={sc.get('tagged',0)} + defaulted={sc.get('defaulted',0)}) "
               f"= {sc_total}, expected {actual_count}")
         return 1
-    print(f"✓ step 3: resource_source_counts sum to total_drills "
+    print("✓ step 3: resource_source_counts sum to total_drills "
           "(no silent drops)")
 
     # ── Step 4: NEGATIVE — ratchet_status exits 0 (HEALTHY) ──
@@ -112,7 +112,7 @@ def main() -> int:
         print(f"✗ step 4: ratchet_status exit {rc}, expected 0 "
               "(HEALTHY = clean ratchets). New drift accumulated?")
         return 1
-    print(f"✓ step 4: ratchet_status exits 0 (HEALTHY — all ratchets clean)")
+    print("✓ step 4: ratchet_status exits 0 (HEALTHY — all ratchets clean)")
 
     # ── Step 5: NEGATIVE — ratchet JSON has required schema ──
     rc, json_out, _ = _run(RATCHET_SCRIPT, ["--json"])
@@ -152,10 +152,10 @@ def main() -> int:
 
     # ── Step 7: NEGATIVE — catalog_summary delegates to ratchet_status ──
     if summary.get("ratchets") is None:
-        print(f"✗ step 7: catalog_summary['ratchets'] is None even though "
+        print("✗ step 7: catalog_summary['ratchets'] is None even though "
               "ratchet_status.py exists at expected path. Delegation broken.")
         return 1
-    print(f"✓ step 7: catalog_summary['ratchets'] populated via delegation")
+    print("✓ step 7: catalog_summary['ratchets'] populated via delegation")
 
     # ── Step 8: POSITIVE — integration consistency ──
     # catalog_summary's reported ratchets.ratchet_state should match

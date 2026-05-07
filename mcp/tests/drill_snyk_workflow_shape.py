@@ -161,9 +161,9 @@ def main() -> int:
 
     print(f"\n{GREEN}{BOLD}ALL 7 STEPS PASSED{NC}")
     print(
-        f"\nNote: SNYK_TOKEN is operator-territory (§42 modifying secret "
-        f"stores).\nWhen ready: GitHub → Settings → Secrets → New "
-        f"repository secret → SNYK_TOKEN"
+        "\nNote: SNYK_TOKEN is operator-territory (§42 modifying secret "
+        "stores).\nWhen ready: GitHub → Settings → Secrets → New "
+        "repository secret → SNYK_TOKEN"
     )
     return 0
 

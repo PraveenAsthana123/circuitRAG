@@ -33,7 +33,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import sys
 import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -127,7 +126,7 @@ async def _generate_with_deadline(model: str, prompt: str, deadline: float) -> t
             loop.run_in_executor(None, _http_post_json, "/api/generate", body, deadline),
             timeout=deadline,
         )
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         raise TimeoutError(
             f"model {model} did not respond within {deadline}s"
         ) from exc
@@ -231,7 +230,7 @@ async def main() -> None:
     print(f"{BOLD}{GREEN}  ALL 4 OLLAMA CODER-MODEL STEPS PASSED{NC}")
     print(f"{BOLD}{GREEN}  (1 negative assertion: step 3){NC}")
     print(f"{BOLD}{GREEN}{'=' * 50}{NC}\n")
-    print(f"  Timing summary (cold-cache included):")
+    print("  Timing summary (cold-cache included):")
     for tag, elapsed, chars in timings:
         print(f"    {tag:<36} {elapsed:5.1f}s  ({chars} chars)")
 

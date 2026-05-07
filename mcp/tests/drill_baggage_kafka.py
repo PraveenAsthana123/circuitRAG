@@ -194,13 +194,12 @@ def main() -> int:
     # ── Step 3 ───────────────────────────────────────────────────
     print("\n[3/6] Round-trip — extract from Kafka headers restores baggage in handler")
     try:
-        from opentelemetry import baggage as _ot_baggage
-        from opentelemetry import context as _ot_context
-
         from documind_core.kafka_client import (
             _extract_kafka_context,
             _inject_kafka_headers,
         )
+        from opentelemetry import baggage as _ot_baggage
+        from opentelemetry import context as _ot_context
 
         # Producer side: set baggage + inject into a fresh headers list
         ctx = _ot_baggage.set_baggage("tenant_id", "acme-prod")
@@ -265,13 +264,12 @@ def main() -> int:
     # ── Step 5: NEGATIVE — non-UTF-8 byte sequence skipped ───────
     print("\n[5/6] NEGATIVE: non-UTF-8 header bytes skipped, propagation continues")
     try:
-        from opentelemetry import baggage as _ot_baggage
-        from opentelemetry import context as _ot_context
-
         from documind_core.kafka_client import (
             _extract_kafka_context,
             _inject_kafka_headers,
         )
+        from opentelemetry import baggage as _ot_baggage
+        from opentelemetry import context as _ot_context
 
         # Build headers with a valid baggage entry + a non-UTF-8 garbage
         # header. The garbage MUST be skipped without poisoning the
@@ -308,13 +306,12 @@ def main() -> int:
     # ── Step 6: NEGATIVE — context isolation across Kafka boundary
     print("\n[6/6] NEGATIVE: after detach, parent context unaffected")
     try:
-        from opentelemetry import baggage as _ot_baggage
-        from opentelemetry import context as _ot_context
-
         from documind_core.kafka_client import (
             _extract_kafka_context,
             _inject_kafka_headers,
         )
+        from opentelemetry import baggage as _ot_baggage
+        from opentelemetry import context as _ot_context
 
         # Parent context starts clean — no baggage.
         assert _ot_baggage.get_baggage("tenant_id") is None, (

@@ -216,7 +216,7 @@ async def main() -> None:
         fail("second healthy call did NOT return cached=True; cache plumbing broken")
     if resp2.degraded:
         fail("cached response carries degraded=True; cache wrote a degraded value")
-    ok(f"cache hit on second call (cached=True, degraded=False); plumbing intact")
+    ok("cache hit on second call (cached=True, degraded=False); plumbing intact")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 5 RETRIEVAL-DEGRADED-ENVELOPE STEPS PASSED{NC}")

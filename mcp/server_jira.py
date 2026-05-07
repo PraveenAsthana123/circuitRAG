@@ -37,10 +37,12 @@ from fastapi import FastAPI, Header, HTTPException
 from mcp.server_common import (
     ToolCallRequest,
     build_auth,
-    enforce_scope as _enforce_scope_common,
     handle_tool_call,
     mount_metrics_endpoint,
     setup_server_otel,
+)
+from mcp.server_common import (
+    enforce_scope as _enforce_scope_common,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -161,7 +163,9 @@ def _issue_lookup_impl(args: dict[str, Any]) -> dict[str, Any]:
     if not live:
         return {"key": key, "summary": "", "status": "", "available": False, "reason": reason}
     try:
-        import urllib.request, base64, json as _json  # noqa: PLC0415
+        import base64
+        import json as _json  # noqa: PLC0415
+        import urllib.request
         base = os.environ["JIRA_BASE_URL"].rstrip("/")
         auth = base64.b64encode(
             f"{os.environ['JIRA_EMAIL']}:{os.environ['JIRA_API_TOKEN']}".encode()
@@ -192,7 +196,10 @@ def _issue_search_impl(args: dict[str, Any]) -> dict[str, Any]:
     if not live:
         return {"issues": [], "total": 0, "available": False, "reason": reason}
     try:
-        import urllib.request, urllib.parse, base64, json as _json  # noqa: PLC0415
+        import base64
+        import json as _json  # noqa: PLC0415
+        import urllib.parse
+        import urllib.request
         base = os.environ["JIRA_BASE_URL"].rstrip("/")
         auth = base64.b64encode(
             f"{os.environ['JIRA_EMAIL']}:{os.environ['JIRA_API_TOKEN']}".encode()

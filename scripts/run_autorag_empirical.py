@@ -249,7 +249,7 @@ def main() -> int:
                         history_path=str(Path(args.best).parent / "best_config_history.jsonl"),
                     )
                     gate_used = True
-                    print(f"\n=== promotion gate ===")
+                    print("\n=== promotion gate ===")
                     print(f"  promoted: {decision.promoted}")
                     print(f"  reason:   {decision.reason}")
                     print(f"  pass_rate={decision.pass_rate:.2f} margin={decision.margin:.2f} "
@@ -276,11 +276,11 @@ def main() -> int:
             with open(args.best, "w", encoding="utf-8") as f:
                 json.dump(best_dict, f, indent=2)
             log.info("wrote best-config registry → %s (no gate)", args.best)
-        print(f"\n=== AutoRAG empirical search complete ===")
+        print("\n=== AutoRAG empirical search complete ===")
         print(f"grid: {report.grid_size} configs × {report.eval_set_size} questions")
         print(f"elapsed: {report.total_elapsed_s:.1f}s")
         print(f"\n{report.summary}")
-        print(f"\n=== TOP 3 CONFIGS ===")
+        print("\n=== TOP 3 CONFIGS ===")
         for i, r in enumerate(report.ranked_configs[:3], 1):
             print(f"  {i}. {r.config.signature()}")
             print(f"     pass_rate={r.overall_pass_rate:.2%}")

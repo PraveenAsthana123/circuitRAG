@@ -439,7 +439,7 @@ async def main() -> None:
         )
     if f"advisor_id={advisor_id}" not in msg:
         fail(f"advisor_id label not propagated to log: {msg!r}")
-    ok(f"agent_board_run log present, fields complete, no task body leaked")
+    ok("agent_board_run log present, fields complete, no task body leaked")
 
     # ── Step 7: prompt_version determinism ──────────────────────
     step("7. prompt_version is deterministic: same prompts → same hash")

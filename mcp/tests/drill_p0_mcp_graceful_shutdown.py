@@ -13,7 +13,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -48,7 +47,7 @@ def main() -> int:
         assert "_ACTIVE_PROCS.add(proc)" in window, (
             f"P0 #34 BROKEN: subprocess site #{i+1} missing _ACTIVE_PROCS.add(proc)"
         )
-    print(f"  ok: all 3 subprocess sites register into _ACTIVE_PROCS")
+    print("  ok: all 3 subprocess sites register into _ACTIVE_PROCS")
 
     print("-- 4. POSITIVE: lifespan loads + runs cleanly --")
     spec = importlib.util.spec_from_file_location(

@@ -181,7 +181,7 @@ async def main() -> None:
             fail(f"expected required=[hr:write], got {err.get('required')}")
         if err.get("have") != ["hr:read"]:
             fail(f"expected have=[hr:read], got {err.get('have')}")
-        ok(f"denied required=['hr:write'] have=['hr:read']")
+        ok("denied required=['hr:write'] have=['hr:read']")
 
         step("3. hr:write + leave_request — happy path still works")
         r = await c.post(

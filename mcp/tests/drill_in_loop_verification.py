@@ -61,10 +61,10 @@ def main() -> int:
         ["git", "diff", "--stat"], cwd=REPO, capture_output=True, text=True, timeout=10,
     )
     if out.get("applied"):
-        print(f"x step 3: malformed diff was 'applied'")
+        print("x step 3: malformed diff was 'applied'")
         return 1
     if pre_status.stdout != post_status.stdout:
-        print(f"x step 3: malformed diff mutated worktree (pre != post)")
+        print("x step 3: malformed diff mutated worktree (pre != post)")
         return 1
     print("  ok: malformed diff rejected at git apply --check; worktree unchanged")
 
@@ -95,7 +95,7 @@ def main() -> int:
         if "ruff_exit_code" not in out:
             print(f"x step 4: result missing ruff_exit_code: {out}")
             return 1
-    print(f"  ok: valid path returns applied + ruff_exit_code (or rejected for no-op)")
+    print("  ok: valid path returns applied + ruff_exit_code (or rejected for no-op)")
 
     print("-- 5. NEGATIVE: verification ALWAYS rolls back (worktree never left mutated) --")
     pre_status = subprocess.run(
@@ -116,7 +116,7 @@ def main() -> int:
         ["git", "diff", "--stat"], cwd=REPO, capture_output=True, text=True, timeout=10,
     )
     if pre_status.stdout != post_status.stdout:
-        print(f"x step 5: worktree mutated after verification (pre != post)")
+        print("x step 5: worktree mutated after verification (pre != post)")
         print(f"  pre:  {pre_status.stdout[:200]}")
         print(f"  post: {post_status.stdout[:200]}")
         return 1
@@ -138,7 +138,7 @@ def main() -> int:
         "applied": True, "ruff_exit_code": 0, "ruff_output": "", "error": None,
     })
     if "ruff CLEAN" not in prompt_with:
-        print(f"x step 6: REVIEWER prompt missing 'ruff CLEAN' verdict")
+        print("x step 6: REVIEWER prompt missing 'ruff CLEAN' verdict")
         return 1
     if "Verification result" not in prompt_with:
         print("x step 6: REVIEWER prompt missing verification section header")
@@ -159,7 +159,7 @@ def main() -> int:
         "error": None,
     })
     if "still has issues" not in prompt_failing:
-        print(f"x step 8: REVIEWER prompt for failing ruff missing 'still has issues' verdict")
+        print("x step 8: REVIEWER prompt for failing ruff missing 'still has issues' verdict")
         return 1
     if "F841" not in prompt_failing:
         print("x step 8: REVIEWER prompt didn't include the actual ruff output")

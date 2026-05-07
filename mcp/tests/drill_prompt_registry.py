@@ -179,7 +179,7 @@ async def main() -> None:
             fail(f"expected 1 active row, got {len(ours)}: {[r['version'] for r in ours]}")
         if ours[0]["version"] != "v1":
             fail(f"wrong active row returned: {ours[0]['version']}")
-        ok(f"only the v1/active row surfaced (3 non-active rows filtered)")
+        ok("only the v1/active row surfaced (3 non-active rows filtered)")
 
         step("5. All four lifecycle states accepted; one synthetic state rejected")
         # The 4 states accepted in step 4 already proved themselves on

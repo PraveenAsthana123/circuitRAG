@@ -176,7 +176,7 @@ def main() -> int:
     # Step 9 — NEGATIVE: each server uses _live_or_stub pattern
     # ------------------------------------------------------------------
     step("9. NEGATIVE: each server uses _live_or_stub pattern (env-driven)")
-    for ns, expected_keys, _ in SDLC_SERVERS:
+    for ns, _expected_keys, _ in SDLC_SERVERS:
         src = sources[ns]
         if "_live_or_stub" not in src:
             fail(f"{ns}: missing _live_or_stub function")

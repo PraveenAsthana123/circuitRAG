@@ -109,7 +109,7 @@ def find_function_default(path: Path, function_name: str, arg_name: str) -> str:
                             if index < default_offset:
                                 fail(f"{path}: {function_name}.{arg_name} has no default")
                             return ast.literal_eval(defaults[index - default_offset])
-                    for kwarg, default in zip(stmt.args.kwonlyargs, stmt.args.kw_defaults):
+                    for kwarg, default in zip(stmt.args.kwonlyargs, stmt.args.kw_defaults, strict=False):
                         if kwarg.arg == arg_name:
                             if default is None:
                                 fail(f"{path}: {function_name}.{arg_name} has no default")

@@ -144,7 +144,7 @@ async def main() -> None:
         if not ta or not tb:
             fail(f"missing tickets: {ta}, {tb}")
         if ta == tb:
-            fail(f"no-header calls got SAME ticket — accidental dedup?")
+            fail("no-header calls got SAME ticket — accidental dedup?")
         ok(f"two distinct tickets {ta} and {tb} (no header → no dedup)")
 
         step("5. X-Idempotency-Key alias works equivalently")

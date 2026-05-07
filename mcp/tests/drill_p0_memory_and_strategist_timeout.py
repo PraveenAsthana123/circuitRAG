@@ -20,7 +20,6 @@ import time
 from pathlib import Path
 from types import ModuleType
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 
@@ -160,7 +159,7 @@ def main() -> int:
     asyncio.run(_runs())
     runs = asyncio.run(s.list_task_runs("task_X"))
     assert len(runs) == 3, f"expected 3, got {len(runs)}"
-    print(f"  ok: per-task runs bounded to 3 (was 10 saved)")
+    print("  ok: per-task runs bounded to 3 (was 10 saved)")
 
     # ----- P0 #1: Strategist own timeout -----
     print("-- 5. POSITIVE: StrategistAgent.classify accepts classify_timeout_s --")
@@ -169,7 +168,7 @@ def main() -> int:
     # Heuristic-only; classify should accept the new kwarg.
     out = asyncio.run(s.classify("some routine task", classify_timeout_s=5.0))
     assert "overall_complexity" in out
-    print(f"  ok: classify accepts classify_timeout_s kwarg")
+    print("  ok: classify accepts classify_timeout_s kwarg")
 
     print("-- 6. NEGATIVE: hung pool → strategist returns heuristic within timeout --")
     # Build a stub pool that hangs forever.

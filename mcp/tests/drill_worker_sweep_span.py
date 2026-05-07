@@ -198,7 +198,7 @@ async def main() -> None:
                 f"({cids!r}) — a single global cid would defeat the "
                 f"'group by sweep cycle' Jaeger query"
             )
-        ok(f"2 distinct correlation_ids emitted across 2 sweeps")
+        ok("2 distinct correlation_ids emitted across 2 sweeps")
 
         await client.close()
 

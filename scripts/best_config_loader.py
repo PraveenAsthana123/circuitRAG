@@ -225,14 +225,14 @@ def force_reload() -> BestConfig | None:
 if __name__ == "__main__":
     import sys
     print("scripts/best_config_loader.py — Stage-3 default-on registry reader (ADR-024)")
-    print(f"Stage-3 opt-OUT via BEST_CONFIG_LOADER_ENABLED=0 (default-on after earned verdict)")
+    print("Stage-3 opt-OUT via BEST_CONFIG_LOADER_ENABLED=0 (default-on after earned verdict)")
     print()
     print(json.dumps(status(), indent=2, default=str))
     print()
     if is_available():
         cfg = load_best_config(force=True)
         if cfg:
-            print(f"Loaded BestConfig:")
+            print("Loaded BestConfig:")
             print(json.dumps(cfg.as_dict(), indent=2))
         else:
             print(f"No best_config.json at {BEST_CONFIG_PATH} — using defaults")

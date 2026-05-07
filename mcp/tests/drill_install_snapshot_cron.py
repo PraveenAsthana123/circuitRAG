@@ -45,7 +45,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -83,10 +82,10 @@ def main() -> int:
         print(f"✗ step 1: --dry-run exit {rc}, expected 0\nstderr={err}")
         return 1
     if "[DRY-RUN] would install:" not in out:
-        print(f"✗ step 1: --dry-run missing 'would install:' header")
+        print("✗ step 1: --dry-run missing 'would install:' header")
         return 1
     if "no changes made" not in out:
-        print(f"✗ step 1: --dry-run missing 'no changes made' footer "
+        print("✗ step 1: --dry-run missing 'no changes made' footer "
               "(operator must know nothing happened)")
         return 1
     print("✓ step 1: --dry-run exits 0 with would-install + no-changes footer")
@@ -97,7 +96,7 @@ def main() -> int:
         print(f"✗ step 2: --status exit {rc}, expected 0")
         return 1
     if "[STATUS]" not in out:
-        print(f"✗ step 2: --status missing [STATUS] tag")
+        print("✗ step 2: --status missing [STATUS] tag")
         return 1
     # Must say either 'installed' or 'no managed' — not silent
     if "installed" not in out and "no managed" not in out:
@@ -113,7 +112,7 @@ def main() -> int:
               "CI flag fails to fail.")
         return 1
     if "unknown mode" not in err.lower() and "unknown mode" not in out.lower():
-        print(f"✗ step 3: invalid-mode output didn't mention 'unknown mode'")
+        print("✗ step 3: invalid-mode output didn't mention 'unknown mode'")
         return 1
     print("✓ step 3: invalid mode exits 2 (typo-safe CI behavior)")
 
@@ -184,7 +183,7 @@ def main() -> int:
         out, re.DOTALL,
     )
     if not would_install_match:
-        print(f"✗ step 6: 'would install:' block not found in output")
+        print("✗ step 6: 'would install:' block not found in output")
         return 1
     would_install_block = would_install_match.group(1)
     if custom_python not in would_install_block:
@@ -198,7 +197,7 @@ def main() -> int:
               f"would-install block:\n{would_install_block}")
         return 1
     if "/mnt/deepa/rag/.venv/bin/python " in would_install_block and custom_python != "/mnt/deepa/rag/.venv/bin/python":
-        print(f"✗ step 6: default interpreter still in would-install line "
+        print("✗ step 6: default interpreter still in would-install line "
               "even with PYTHON_BIN set")
         return 1
     print(f"✓ step 6: PYTHON_BIN override changes cron line to {custom_python!r}")
@@ -206,7 +205,8 @@ def main() -> int:
     # ── Step 7: NEGATIVE — read-only modes don't create backups ──
     # Snapshot the Deepa-hosted backup directory state BEFORE we run.
     backup_dir = REPO / ".loop" / "cron-backups"
-    backup_glob = lambda: list(backup_dir.glob("crontab.before-*.bak"))
+    def backup_glob():
+        return list(backup_dir.glob("crontab.before-*.bak"))
     before = {p.name for p in backup_glob()}
     # Run --dry-run and --status — neither should write a backup.
     _run(["--dry-run"])
@@ -217,7 +217,7 @@ def main() -> int:
         print(f"✗ step 7: read-only modes wrote {len(new_backups)} backups: "
               f"{new_backups}. Backups belong to mutating modes only.")
         return 1
-    print(f"✓ step 7: read-only modes wrote 0 backups (mutating-only contract)")
+    print("✓ step 7: read-only modes wrote 0 backups (mutating-only contract)")
 
     # ── Step 8: POSITIVE — idempotency via strip-then-append ──
     # Inspect the bash source for the strip_managed call site inside

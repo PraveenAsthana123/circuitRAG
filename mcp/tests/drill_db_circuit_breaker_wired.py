@@ -33,13 +33,10 @@ force_open() so the OPEN-path is exercised end-to-end.
 """
 from __future__ import annotations
 
-import importlib.util
 import inspect
 import os
 import sys
 from pathlib import Path
-from types import ModuleType
-
 
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
@@ -90,8 +87,8 @@ def main() -> int:
     print("  ok: import + construction + state.db_breaker all present")
 
     print("-- 4. POSITIVE: app.state.db_breaker reachable through TestClient lifespan --")
-    from fastapi.testclient import TestClient
     from app.main import app
+    from fastapi.testclient import TestClient
 
     with TestClient(app) as client:
         breaker = getattr(app.state, "db_breaker", None)

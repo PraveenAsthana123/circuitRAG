@@ -157,7 +157,7 @@ async def main() -> None:
 
         if broken_status:
             print(f"\n  {RED}BROKEN — {len(broken_status)} non-200 link target(s):{NC}")
-            for src, path, st, msg in broken_status[:30]:
+            for src, path, st, _msg in broken_status[:30]:
                 print(f"    {RED}✗ {src} → {path}  (HTTP {st}){NC}")
             if len(broken_status) > 30:
                 print(f"    {DIM}… {len(broken_status) - 30} more{NC}")

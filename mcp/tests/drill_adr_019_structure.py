@@ -88,7 +88,7 @@ def main() -> int:
     if missing_modes:
         print(f"✗ step 4: Decision missing failure modes: {missing_modes}")
         return 1
-    print(f"✓ step 4: Decision names all 5 failure modes")
+    print("✓ step 4: Decision names all 5 failure modes")
 
     if "what this is not" not in decision_text:
         print("✗ step 5: Decision missing 'What this is NOT' carve-out")
@@ -98,7 +98,7 @@ def main() -> int:
     if missing_not:
         print(f"✗ step 5: 'What this is NOT' missing concepts: {missing_not}")
         return 1
-    print(f"✓ step 5: Decision includes 'What this is NOT' carve-out (3 items)")
+    print("✓ step 5: Decision includes 'What this is NOT' carve-out (3 items)")
 
     if "operator-facing ux rule" not in decision_text:
         print("✗ step 6: Decision missing 'Operator-facing UX rule' section")
@@ -106,7 +106,7 @@ def main() -> int:
     if "stderr" not in decision_text:
         print("✗ step 6: UX rule doesn't mention stderr (the channel)")
         return 1
-    print(f"✓ step 6: Decision includes operator-facing UX rule")
+    print("✓ step 6: Decision includes operator-facing UX rule")
 
     refs_match = re.search(r"## References(.*?)\Z", body, re.DOTALL)
     if not refs_match:
@@ -133,7 +133,7 @@ def main() -> int:
     if missing_subs:
         print(f"✗ step 8: Consequences missing sub-sections: {missing_subs}")
         return 1
-    print(f"✓ step 8: Consequences has Positive/Negative/Risks accepted")
+    print("✓ step 8: Consequences has Positive/Negative/Risks accepted")
 
     print("\nALL 8 STEPS PASSED")
     return 0

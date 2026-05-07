@@ -9,8 +9,6 @@ from documind_core.exceptions import ValidationError
 from documind_core.schemas import HealthResponse
 from fastapi import APIRouter, Depends, Query, Request
 
-log = logging.getLogger(__name__)
-
 from app.schemas import (
     BestConfigInfo,
     HealthBestConfigHistoryResponse,
@@ -19,6 +17,8 @@ from app.schemas import (
     RetrieveResponse,
 )
 from app.services import HybridRetriever
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -91,7 +91,7 @@ async def health_best_config() -> HealthBestConfigResponse:
                     promoted_at_ts=cfg.promoted_at_ts,
                     eval_set_size=cfg.eval_set_size,
                 )
-    except Exception:  # noqa: BLE001,S110 — visibility must never crash
+    except Exception:  # noqa: BLE001,S110 — visibility must never crash  # nosec B110
         pass  # noqa: S110 — intentional fail-safe (see comment above)
 
     return HealthBestConfigResponse(
@@ -176,7 +176,7 @@ async def health_best_config_history(
             latest_decision = summary.latest_decision
             earliest_ts = summary.earliest_ts
             latest_ts = summary.latest_ts
-    except Exception:  # noqa: BLE001,S110 — visibility never crashes
+    except Exception:  # noqa: BLE001,S110 — visibility never crashes  # nosec B110
         pass  # noqa: S110 — intentional fail-safe (see comment above)
 
     return HealthBestConfigHistoryResponse(

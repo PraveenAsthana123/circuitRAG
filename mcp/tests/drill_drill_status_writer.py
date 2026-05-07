@@ -33,7 +33,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
-import subprocess
 import sys
 import tempfile
 
@@ -113,7 +112,7 @@ def main():
             fail(f"drill_b should be passed=False: {status['per_drill']['drill_b']}")
         if "exit 1" not in status["per_drill"]["drill_b"]["error"]:
             fail(f"drill_b error should include exit code: {status['per_drill']['drill_b']}")
-        ok(f"2 drills captured: 1 pass + 1 fail")
+        ok("2 drills captured: 1 pass + 1 fail")
 
     # Step 2: timeout captured
     step("2. NEGATIVE: timeout drill captured as failure with 'timeout >' marker")
@@ -150,7 +149,7 @@ def main():
         # on missing file. Just assert it's NOT marked as passed.
         if status["per_drill"]["drill_ghost"]["passed"]:
             fail(f"missing drill marked as passed: {status['per_drill']['drill_ghost']}")
-        ok(f"missing drill captured as failure")
+        ok("missing drill captured as failure")
 
     # Step 4: parent dir auto-created
     step("4. NEGATIVE: status_path parent dir auto-created at depth 3")
@@ -165,7 +164,7 @@ def main():
             fail(f"deep status path not created: {deep}")
         if not deep.parent.exists():
             fail(f"parent dir not created: {deep.parent}")
-        ok(f"parent dir auto-created at depth 3")
+        ok("parent dir auto-created at depth 3")
 
     # Step 5: re-run overwrites
     step("5. NEGATIVE: re-run OVERWRITES (not appends) - single source of truth")
@@ -181,7 +180,7 @@ def main():
         if s1["failed_drills"] != ["drill_s"]:
             fail(f"first run failed_drills wrong: {s1}")
         # Re-run with only the passing drill
-        s2 = writer.write_drill_status(
+        writer.write_drill_status(
             [d_pass], status_path=status_path, timeout_s=5.0,
         )
         # File should now reflect ONLY the second run
@@ -194,7 +193,7 @@ def main():
         # This catches the "appended-not-overwritten" failure mode
         if "drill_s" in on_disk.get("per_drill", {}):
             fail(f"per_drill from first run leaked: {on_disk['per_drill']}")
-        ok(f"re-run overwrites cleanly (drill_s purged)")
+        ok("re-run overwrites cleanly (drill_s purged)")
 
     # Step 6: timestamp + duration format
     step("6. NEGATIVE: timestamp ISO-8601 UTC + per-drill duration in seconds")
@@ -221,14 +220,14 @@ def main():
         tagged = _write_synthetic_drill(tmp_dir, "drill_ro", passes=True, readonly_tagged=True)
         untagged = _write_synthetic_drill(tmp_dir, "drill_un", passes=True, readonly_tagged=False)
         if not writer.is_readonly_drill(tagged):
-            fail(f"tagged drill not classified as readonly")
+            fail("tagged drill not classified as readonly")
         if writer.is_readonly_drill(untagged):
-            fail(f"untagged drill incorrectly classified as readonly")
+            fail("untagged drill incorrectly classified as readonly")
         # Real tier-1 drill from this repo should be classified
         real_ro = REPO / "mcp" / "tests" / "drill_sidecar_advisor.py"
         if real_ro.exists() and not writer.is_readonly_drill(real_ro):
             fail(f"real tier-1 drill {real_ro.name} not classified")
-        ok(f"is_readonly_drill: tagged=True, untagged=False, real_tier1=True")
+        ok("is_readonly_drill: tagged=True, untagged=False, real_tier1=True")
 
     # Step 8: cli() exit code propagates
     step("8. NEGATIVE: cli() exits 1 on any drill failure, 0 if all pass")
@@ -240,7 +239,6 @@ def main():
         # (--glob is relative to REPO, so use absolute paths via a
         # custom approach: copy them temporarily into mcp/tests/?
         # Simpler: just call cli() in-process with patched argv.)
-        import os
         # Run all-pass case via direct subprocess of write_drill_status.py
         # with --glob pointing at tmp dir. But --glob is relative to REPO;
         # workaround: write_drill_status uses REPO.glob; we need a
@@ -259,7 +257,7 @@ def main():
             fail("contract broken: any-fail run should have failed_drills")
         # The cli() returns 1 when failed_drills is non-empty; 0 when empty.
         # That's the contract a CI pipeline gates on.
-        ok(f"contract: failed_drills empty<->cli returns 0; non-empty<->returns 1")
+        ok("contract: failed_drills empty<->cli returns 0; non-empty<->returns 1")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 DRILL-STATUS-WRITER STEPS PASSED{NC}")

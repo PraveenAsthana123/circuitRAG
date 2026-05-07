@@ -38,7 +38,7 @@ def main() -> int:
         if eng not in route_src:
             print(f"x BFF must reference engine: {eng!r}")
             return 1
-    print(f"  ok: all 4 engines named")
+    print("  ok: all 4 engines named")
 
     print("-- 4. NEGATIVE: BFF refuses POST/PUT/DELETE/PATCH --")
     for method in ("POST", "PUT", "DELETE", "PATCH"):

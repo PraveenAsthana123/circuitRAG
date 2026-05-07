@@ -71,9 +71,8 @@ def main() -> int:
     sys.path.insert(0, str(REPO / "libs" / "py"))
 
     try:
-        from fastapi.testclient import TestClient
-
         from app.main import create_app
+        from fastapi.testclient import TestClient
     except Exception as e:
         print(f"{RED}cannot import evaluation-svc app: {e}{NC}")
         print(f"  REPO={REPO}")
@@ -129,7 +128,7 @@ def main() -> int:
     if r.status_code == 200:
         body = r.json()
         if body.get("audit", {}).get("prediction_id") == pid:
-            ok(f"step 2: GET explain → 200 with matching prediction_id")
+            ok("step 2: GET explain → 200 with matching prediction_id")
         else:
             fail(f"step 2: response missing audit.prediction_id, body={body}")
             failures += 1

@@ -139,7 +139,7 @@ async def main():
     paths_out = [r.path for r in results]
     if paths_out != paths_in:
         fail(f"path order drift: {paths_out}")
-    ok(f"submission order preserved across 10 files")
+    ok("submission order preserved across 10 files")
 
     # Step 3: one file's council raises -> siblings still complete
     step("3. NEGATIVE: one file council raising doesn't sink bulk")
@@ -180,7 +180,7 @@ async def main():
                    and r.advisor_output.confidence > 0]
     if len(successful) < 4:
         fail(f"siblings should succeed; only {len(successful)}/4")
-    ok(f"file_3 chair degraded (graceful); 4 siblings succeeded")
+    ok("file_3 chair degraded (graceful); 4 siblings succeeded")
 
     # Step 4: aggregate risk_counts
     step("4. aggregate stats: risk_counts groups LOW/MEDIUM/HIGH")
@@ -228,7 +228,7 @@ async def main():
         fail(f"stats.total_files != 0: {stats5.total_files}")
     if stats5.success_rate != 0.0:
         fail(f"empty bulk: success_rate should be 0.0, got {stats5.success_rate}")
-    ok(f"empty file list handled cleanly")
+    ok("empty file list handled cleanly")
 
     # Step 6: max=1 sequential
     step("6. NEGATIVE: max_concurrent_files=1 forces sequential")
@@ -269,7 +269,7 @@ async def main():
             fail(f"reviews missing in telemetry for {r.path}")
         if len(r.telemetry["drafts"]) != 3:
             fail(f"expected 3 drafts per file, got {len(r.telemetry['drafts'])}")
-    ok(f"per-file telemetry has 3 drafts + 3 reviews each")
+    ok("per-file telemetry has 3 drafts + 3 reviews each")
 
     # Step 8: success_rate edge cases
     step("8. NEGATIVE: success_rate handles edge cases without div-by-zero")
@@ -293,7 +293,7 @@ async def main():
     )
     if abs(half.success_rate - 0.5) > 0.001:
         fail(f"half-failed success_rate should be 0.5, got {half.success_rate}")
-    ok(f"success_rate: empty=0.0, all_failed=0.0, half=0.5")
+    ok("success_rate: empty=0.0, all_failed=0.0, half=0.5")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 BULK-PR-REVIEW STEPS PASSED{NC}")

@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 MONITORING_PAGE = REPO / "services" / "frontend" / "app" / "admin" / "monitoring" / "page.tsx"
 RUNTIME_ROUTE = REPO / "services" / "frontend" / "app" / "app-meta" / "runtime-status" / "route.ts"

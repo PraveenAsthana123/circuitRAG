@@ -100,7 +100,7 @@ def main() -> int:
         for sec in standard_sections:
             if sec not in src:
                 fail(f"{d.doc_type}: skeleton missing section header {sec!r}")
-    ok(f"all 20 skeletons have all 8 standard section headers")
+    ok("all 20 skeletons have all 8 standard section headers")
 
     # ------------------------------------------------------------------
     # Step 3 — POSITIVE: each prompt references owner + reviewer roles

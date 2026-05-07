@@ -120,7 +120,7 @@ async def main() -> None:
                 f"datastore must declare MVP/production/enterprise — "
                 f"that's the 'where on the curve?' interview answer."
             )
-        ok(f"maturity-model block appears 6x")
+        ok("maturity-model block appears 6x")
 
         step("6. 'Failure modes' EXACTLY 6x")
         fm = body.count("Failure modes")
@@ -130,13 +130,13 @@ async def main() -> None:
                 f"datastore must declare detect+recover — without "
                 f"this, the page is theoretical not operational."
             )
-        ok(f"failure-modes block appears 6x")
+        ok("failure-modes block appears 6x")
 
         step("7. sidebar exposes /admin/database/deep + sibling deep-dive routes")
         for marker in REQUIRED_SIDEBAR:
             if marker not in body:
                 fail(f"sidebar marker {marker!r} missing")
-        ok(f"sidebar exposes all 3 deep-dive routes")
+        ok("sidebar exposes all 3 deep-dive routes")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 7 DATABASE-DEEP-DIVE STEPS PASSED{NC}")

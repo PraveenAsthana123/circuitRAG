@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -114,7 +113,7 @@ def main() -> None:
         fail(f"expected exit 2 for unknown format, got {code}")
     if "unknown --report format" not in out:
         fail(f"expected error message in stdout, got: {out[-300:]}")
-    ok(f"unknown format → exit 2 with clean error message")
+    ok("unknown format → exit 2 with clean error message")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 5 RUNNER-JUNIT STEPS PASSED{NC}")

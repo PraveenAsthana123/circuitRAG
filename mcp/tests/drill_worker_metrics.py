@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import sys
 import time
 import uuid
@@ -51,12 +50,12 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "services" / "inference-svc"))
 
-from mcp import MCPClient, PostgresDraftStore  # noqa: E402
-from mcp.drafts import DraftRecord  # noqa: E402
 from app.workers.draft_replay import (  # type: ignore  # noqa: E402
     DraftReplayWorker,
     _draft_replay_total,
 )
+
+from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 
 INFERENCE = os.getenv("INFERENCE_URL", "http://127.0.0.1:8084")
 METRICS = os.getenv("METRICS_URL", "http://127.0.0.1:9466/metrics")
@@ -224,7 +223,7 @@ async def main() -> None:
         if _read_local_counter("hr", "cb_wait") - b_cb_wait != 0:
             fail("cb_wait moved on a successful replay — wrong label")
         await client.close()
-        ok(f"hr/replayed +1; hr/cb_wait unchanged (label isolation)")
+        ok("hr/replayed +1; hr/cb_wait unchanged (label isolation)")
 
         step("3. ``no_server`` outcome — counter +1 for {UNKNOWN, no_server}")
         # Insert a draft for an unknown tool namespace. The worker's

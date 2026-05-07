@@ -292,7 +292,7 @@ if __name__ == "__main__":
     import json
     import sys
     print("scripts/chunking_strategy_selector.py — Stage-1 chunking decision engine")
-    print(f"Stage-1 opt-in via CHUNKING_STRATEGY_SELECTOR_ENABLED=1")
+    print("Stage-1 opt-in via CHUNKING_STRATEGY_SELECTOR_ENABLED=1")
     print(f"Supports {len(_STRATEGY_TABLE)} file types per operator spec.")
     print()
     print(json.dumps(status(), indent=2))

@@ -33,11 +33,9 @@ Eight steps. Six negative assertions.
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import sys
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
@@ -50,10 +48,7 @@ sys.path.insert(0, str(SVC))
 def main() -> int:
     print("-- 1. POSITIVE: agent_schemas module imports + exports --")
     from app.agent_schemas import (
-        StrategistOutput,
-        StepClassification,
         validate_strategist_output,
-        strategist_schema_text,
     )
     print("  ok: 4 exports present")
 
@@ -89,7 +84,7 @@ def main() -> int:
     })
     result3 = validate_strategist_output(bad_enum)
     assert result3 is None, (
-        f"invalid enum 'quantum' was accepted — Pydantic Literal not enforced. "
+        "invalid enum 'quantum' was accepted — Pydantic Literal not enforced. "
         "The old regex extractor would have accepted this; the migration "
         "is supposed to tighten the contract."
     )

@@ -11,9 +11,9 @@ Four steps. Three negative assertions.
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 SIDECAR = REPO / "services" / "sidecar-advisor"

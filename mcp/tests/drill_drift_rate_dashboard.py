@@ -81,15 +81,11 @@ MIN_APPROVE_RATE_OVERALL = 0.20
 # floor matches reality; future improvement above 50% is the goal,
 # not a constraint.
 #
-# 2026-05-05 update: last 20 commits at 0% APPROVE — every commit
-# in the empirical-loop session (f94eaf4..635c125) was REJECTed
-# by pre-commit because of self-referential stale-snapshot rejects
-# on drill_drift_rate_dashboard, drill_drift_volume_meta,
-# drill_outcome_eval, drill_dspy_optimizer_stage1, etc. Live
-# verification of those drills shows them PASSING; the gauge is
-# stuck on stale .loop snapshot data. Lower recent floor to 0.0
-# until operator investigates the snapshot-refresh race.
-MIN_APPROVE_RATE_RECENT = 0.0
+# 2026-05-05 update: recent window recovered to 25% APPROVE
+# (5/20). Ratchet floor walks back up conservatively to 20% so the
+# dashboard no longer accepts the temporary 0% stale-snapshot low,
+# while leaving room for the still-noisy watcher history.
+MIN_APPROVE_RATE_RECENT = 0.20
 # Floor matches observed historical max. Per ADR-015 ratchet
 # pattern, the floor walks up with reality:
 #   * Phase 7W (init): 5 — Phase 7Q-7R cascade ran 5 consecutive
@@ -273,9 +269,7 @@ def main() -> int:
         verdict = e.get("verdict")
         rule = e.get("rule_fired")
         outcome = e.get("drill_outcome", "")
-        if verdict == "APPROVE" and rule == 6 and outcome != "green":
-            consistency_violations.append((sha, verdict, rule, outcome))
-        elif verdict == "REJECT" and rule == 1 and outcome != "FAILED":
+        if verdict == "APPROVE" and rule == 6 and outcome != "green" or verdict == "REJECT" and rule == 1 and outcome != "FAILED":
             consistency_violations.append((sha, verdict, rule, outcome))
     if consistency_violations:
         fail(

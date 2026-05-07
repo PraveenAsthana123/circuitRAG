@@ -34,7 +34,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 MODULE_PATH = REPO / "libs" / "py" / "documind_core" / "dr_metrics.py"
 

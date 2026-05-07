@@ -31,7 +31,6 @@ import asyncio
 import os
 import subprocess
 import sys
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -41,8 +40,9 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "services" / "inference-svc"))
 
-from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 from app.workers.draft_replay import DraftReplayWorker  # type: ignore  # noqa: E402
+
+from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 
 PG_DSN = (
     f"postgresql://{os.getenv('DOCUMIND_PG_USER', 'documind_app')}:"

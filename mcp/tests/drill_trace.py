@@ -135,7 +135,7 @@ async def main() -> None:
             fail(f"no POST /api/v1/ask span in inference-svc: {inf_ops}")
         if "POST /api/v1/retrieve" not in ret_ops:
             fail(f"no POST /api/v1/retrieve span in retrieval-svc: {ret_ops}")
-        ok(f"inference ops include POST /api/v1/ask; retrieval ops include POST /api/v1/retrieve")
+        ok("inference ops include POST /api/v1/ask; retrieval ops include POST /api/v1/retrieve")
 
         step("6. /api/v1/agent/ask — agent + MCP trace")
         r = await c.post(
@@ -231,10 +231,10 @@ async def main() -> None:
             # Don't hard-fail: the drill doesn't kill MCP itself. Print
             # an informative line so a human can rerun with MCP dead.
             print(
-                f"  \033[33m· no recent agent/ask with PG spans found "
-                f"(kill MCP and hit agent/ask to create one). Skipping hard "
-                f"assertion — drill_health_detailed.py + drill_prometheus_breakers.py "
-                f"cover the same degraded path with stricter setup.\033[0m"
+                "  \033[33m· no recent agent/ask with PG spans found "
+                "(kill MCP and hit agent/ask to create one). Skipping hard "
+                "assertion — drill_health_detailed.py + drill_prometheus_breakers.py "
+                "cover the same degraded path with stricter setup.\033[0m"
             )
         else:
             inf_ops = set(pg_trace["operations"].get("inference-svc", []))

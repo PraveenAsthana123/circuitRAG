@@ -34,6 +34,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -50,6 +51,127 @@ def load_eval_set(path: str) -> list[dict]:
             if line:
                 rows.append(json.loads(line))
     return rows
+
+
+def _build_trainset(dspy: Any, eval_set: list[dict]) -> list[Any]:
+    """Build DSPy examples from the eval-set's question/ground_truth shape."""
+    trainset = []
+    for row in eval_set:
+        q = row.get("question", "")
+        gt = row.get("ground_truth", "") or row.get("answer", "")
+        if not q or not gt:
+            continue
+        ex = dspy.Example(question=q, expected=gt).with_inputs("question")
+        trainset.append(ex)
+    return trainset
+
+
+def _stage3_debug_metric(args, eval_set: list[dict]) -> int:
+    """Run a tiny real-prediction metric probe before spending GEPA budget.
+
+    This exists because a 400-rollout GEPA pass in ~2s is a false-success
+    signal for local Ollama. The probe logs each prediction's answer length,
+    score, and wall time so operators can see whether GEPA has a learning
+    signal or is optimizing empty/zero predictions.
+    """
+    log.info("=== Stage-3 GEPA metric debug (samples=%d) ===", args.debug_samples)
+    try:
+        import dspy
+    except ImportError as exc:
+        log.error("dspy not importable: %s", exc)
+        return 1
+
+    try:
+        from dspy_optimizer import (
+            get_council_program,
+            make_simple_metric,
+        )
+        from dspy_optimizer import (
+            status as dspy_status,
+        )
+    except Exception as exc:
+        log.error("dspy_optimizer not importable: %s", exc)
+        return 1
+
+    s = dspy_status()
+    lm_model = s.get("lm_model", "ollama_chat/gemma2:9b")
+    ollama_host = s.get("ollama_host", "http://localhost:11435")
+    log.info("configuring DSPy LM: model=%s host=%s", lm_model, ollama_host)
+    try:
+        lm = dspy.LM(model=lm_model, api_base=ollama_host)
+        dspy.configure(lm=lm)
+        program = get_council_program()
+        metric = make_simple_metric()
+    except Exception as exc:
+        log.error("debug setup failed: %s", exc)
+        return 1
+
+    trainset = _build_trainset(dspy, eval_set)
+    if not trainset:
+        log.error("trainset empty — eval_set rows missing question/ground_truth")
+        return 1
+
+    metric_calls = []
+    total_t0 = time.monotonic()
+    for idx, gold in enumerate(trainset[: max(args.debug_samples, 1)], start=1):
+        t0 = time.monotonic()
+        try:
+            pred = program(question=gold.question)
+            score = float(metric(gold, pred))
+            error = None
+        except Exception as exc:  # noqa: BLE001 - diagnostic command reports all failures
+            pred = None
+            score = 0.0
+            error = str(exc)
+        elapsed = time.monotonic() - t0
+        answer = getattr(pred, "answer", "") if pred is not None else ""
+        row = {
+            "idx": idx,
+            "question": gold.question,
+            "expected": getattr(gold, "expected", ""),
+            "score": score,
+            "answer_len": len(answer or ""),
+            "elapsed_s": round(elapsed, 3),
+            "answer_preview": (answer or "")[:240],
+            "error": error,
+        }
+        metric_calls.append(row)
+        log.info(
+            "metric_debug idx=%d score=%.3f answer_len=%d elapsed=%.3fs error=%s",
+            idx,
+            score,
+            row["answer_len"],
+            elapsed,
+            error,
+        )
+
+    empty_answers = sum(1 for row in metric_calls if row["answer_len"] == 0)
+    zero_scores = sum(1 for row in metric_calls if row["score"] == 0.0)
+    elapsed_total = time.monotonic() - total_t0
+    suspect = empty_answers == len(metric_calls) or elapsed_total < len(metric_calls)
+    report = {
+        "ran_at_ts": time.time(),
+        "status": "stage_3_metric_debug_suspect" if suspect else "stage_3_metric_debug_ok",
+        "eval_set_size": len(eval_set),
+        "trainset_size": len(trainset),
+        "samples": len(metric_calls),
+        "elapsed_s": elapsed_total,
+        "empty_answers": empty_answers,
+        "zero_scores": zero_scores,
+        "lm_model": lm_model,
+        "ollama_host": ollama_host,
+        "metric_calls": metric_calls,
+        "next_steps": [
+            "If answers are empty, inspect dspy.LM Ollama chat compatibility",
+            "If every score is 0, improve eval ground_truth substrings or metric",
+            "Only run --mode=compile after this probe shows non-empty multi-second predictions",
+        ],
+    }
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    with open(args.out, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    log.info("wrote Stage-3 metric debug report → %s", args.out)
+    return 1 if suspect else 0
 
 
 def _stage3_compile(args, eval_set: list[dict]) -> int:
@@ -99,6 +221,8 @@ def _stage3_compile(args, eval_set: list[dict]) -> int:
         from dspy_optimizer import (
             get_council_program,
             make_simple_metric,
+        )
+        from dspy_optimizer import (
             status as dspy_status,
         )
     except Exception as exc:
@@ -108,7 +232,7 @@ def _stage3_compile(args, eval_set: list[dict]) -> int:
     # Configure DSPy LM. dspy_optimizer.status() reports the model.
     s = dspy_status()
     lm_model = s.get("lm_model", "ollama_chat/gemma2:9b")
-    ollama_host = s.get("ollama_host", "http://localhost:11434")
+    ollama_host = s.get("ollama_host", "http://localhost:11435")
     log.info("configuring DSPy LM: model=%s host=%s", lm_model, ollama_host)
     try:
         lm = dspy.LM(model=lm_model, api_base=ollama_host)
@@ -119,14 +243,7 @@ def _stage3_compile(args, eval_set: list[dict]) -> int:
 
     # Build trainset from eval_set rows. Each row has question +
     # ground_truth. DSPy expects dspy.Example with .with_inputs().
-    trainset = []
-    for row in eval_set:
-        q = row.get("question", "")
-        gt = row.get("ground_truth", "") or row.get("answer", "")
-        if not q or not gt:
-            continue
-        ex = dspy.Example(question=q, expected=gt).with_inputs("question")
-        trainset.append(ex)
+    trainset = _build_trainset(dspy, eval_set)
     log.info("built trainset: %d examples", len(trainset))
     if not trainset:
         log.error("trainset empty — eval_set rows missing question/ground_truth")
@@ -140,15 +257,55 @@ def _stage3_compile(args, eval_set: list[dict]) -> int:
         log.error("get_council_program / make_simple_metric failed: %s", exc)
         return 1
 
+    initial_prompts: dict[str, str] = {}
+    try:
+        for name, pred in program.named_predictors():
+            sig = getattr(pred, "signature", None)
+            if sig is not None:
+                initial_prompts[name] = getattr(sig, "instructions", "")
+    except Exception as exc:
+        log.warning("could not extract initial named_predictors: %s", exc)
+
     # Wrap metric to match GEPA's expected feedback shape.
     # GEPA's metric receives (gold, pred, trace, pred_name, pred_trace)
     # and can return either a float OR a dspy.Prediction with .score
     # + .feedback. Simplest path: return float; GEPA handles the rest.
+    metric_stats = {
+        "calls": 0,
+        "zero_scores": 0,
+        "empty_answers": 0,
+        "errors": 0,
+        "samples": [],
+    }
+
     def gepa_metric(gold, pred, trace=None, pred_name=None, pred_trace=None):
+        t0 = time.monotonic()
+        metric_stats["calls"] += 1
+        answer = getattr(pred, "answer", "") if pred is not None else ""
+        if not answer:
+            metric_stats["empty_answers"] += 1
         try:
-            return metric(gold, pred, trace=trace)
-        except Exception:
+            score = float(metric(gold, pred, trace=trace))
+        except Exception as exc:
+            metric_stats["errors"] += 1
+            if len(metric_stats["samples"]) < 20:
+                metric_stats["samples"].append({
+                    "score": 0.0,
+                    "answer_len": len(answer or ""),
+                    "elapsed_s": round(time.monotonic() - t0, 3),
+                    "error": str(exc),
+                })
             return 0.0
+        if score == 0.0:
+            metric_stats["zero_scores"] += 1
+        if len(metric_stats["samples"]) < 20:
+            metric_stats["samples"].append({
+                "score": score,
+                "answer_len": len(answer or ""),
+                "elapsed_s": round(time.monotonic() - t0, 3),
+                "error": None,
+            })
+        return score
 
     log.info("invoking GEPA(auto=%s).compile(...)", args.auto)
     try:
@@ -209,14 +366,29 @@ def _stage3_compile(args, eval_set: list[dict]) -> int:
     except Exception as exc:
         log.warning("could not extract named_predictors: %s", exc)
 
+    prompt_changed = any(
+        (data.get("instructions") or "") != initial_prompts.get(name, "")
+        for name, data in optimized_prompts.items()
+    )
+    suspect_compile = (
+        metric_stats["calls"] == 0
+        or (
+            metric_stats["empty_answers"] == metric_stats["calls"]
+            or elapsed < max(10.0, len(trainset) * 2.0)
+            or not prompt_changed
+        )
+    )
+
     report = {
         "ran_at_ts": time.time(),
-        "status": "stage_3_compiled",
+        "status": "stage_3_compile_suspect" if suspect_compile else "stage_3_compiled",
         "eval_set_size": len(eval_set),
         "trainset_size": len(trainset),
         "auto": args.auto,
         "elapsed_s": elapsed,
         "lm_model": lm_model,
+        "metric_stats": metric_stats,
+        "prompt_changed": prompt_changed,
         "optimized_prompts": optimized_prompts,
         "next_stage": (
             "Stage-4 — wire optimized_prompts back into "
@@ -232,11 +404,22 @@ def _stage3_compile(args, eval_set: list[dict]) -> int:
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
     log.info("wrote Stage-3 compile report → %s", args.out)
-    print(f"\n=== GEPA Stage-3 compile complete ===")
+    print("\n=== GEPA Stage-3 compile complete ===")
     print(f"  elapsed: {elapsed:.1f}s (auto={args.auto})")
     print(f"  trainset: {len(trainset)} examples")
+    print(f"  metric calls: {metric_stats['calls']}")
     print(f"  predictors tuned: {len(optimized_prompts)}")
     print(f"\nReport saved to {args.out}")
+    if suspect_compile:
+        log.error(
+            "GEPA compile marked suspect: elapsed=%.1fs metric_calls=%d "
+            "empty_answers=%d prompt_changed=%s",
+            elapsed,
+            metric_stats["calls"],
+            metric_stats["empty_answers"],
+            prompt_changed,
+        )
+        return 1
     return 0
 
 
@@ -248,14 +431,15 @@ def main() -> int:
     parser.add_argument("--max-iters", type=int, default=3)
     parser.add_argument(
         "--mode",
-        choices=["preflight", "compile"],
+        choices=["preflight", "compile", "debug-metric"],
         default="preflight",
         help=(
             "preflight (default): Stage-2 placeholder — measures baseline "
             "and writes shape report; cheap (<1s), no LLM cost. "
             "compile: Stage-3 — invokes dspy.GEPA().compile() against the "
             "Gemma council program. EXPENSIVE: ~30-90 min wall-clock + "
-            "Ollama compute. Persists optimized prompts to --out."
+            "Ollama compute. debug-metric: run a tiny live metric probe "
+            "and write per-call score/timing diagnostics to --out."
         ),
     )
     parser.add_argument(
@@ -263,6 +447,12 @@ def main() -> int:
         choices=["light", "medium", "heavy"],
         default="light",
         help="GEPA compute budget. light=quick, heavy=thorough.",
+    )
+    parser.add_argument(
+        "--debug-samples",
+        type=int,
+        default=3,
+        help="number of eval examples to run in --mode=debug-metric",
     )
     args = parser.parse_args()
 
@@ -312,6 +502,8 @@ def main() -> int:
     # Stage-3 compile path: actually invoke dspy.GEPA().compile().
     if args.mode == "compile":
         return _stage3_compile(args, eval_set)
+    if args.mode == "debug-metric":
+        return _stage3_debug_metric(args, eval_set)
 
     # Stage-2 preflight path (default): no LLM cost, just shape report.
     log.info("=== Stage-2 GEPA preflight (use --mode=compile for Stage-3) ===")
@@ -328,7 +520,7 @@ def main() -> int:
     # invokes GEPA().compile(); Stage-2 just measures the baseline.
     log.info("computing baseline pass-rate (pre-optimization)")
     pre_pass_count = 0
-    for row in eval_set:
+    for _row in eval_set:
         # Without running the council, we can only check the score
         # of the ground_truth itself against itself = always 1.0.
         # This is meta-shape — Stage-3 swaps in real run_council.
@@ -360,10 +552,10 @@ def main() -> int:
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
     log.info("wrote GEPA preflight report → %s", args.out)
-    print(f"\n=== GEPA Stage-2 preflight complete ===")
+    print("\n=== GEPA Stage-2 preflight complete ===")
     print(f"eval_set: {len(eval_set)} pairs")
-    print(f"council program: gemma_agent_council.run_council")
-    print(f"metric: substring_match (Stage-3 swaps in RAGAS)")
+    print("council program: gemma_agent_council.run_council")
+    print("metric: substring_match (Stage-3 swaps in RAGAS)")
     print(f"\nReport saved to {args.out}")
     return 0
 

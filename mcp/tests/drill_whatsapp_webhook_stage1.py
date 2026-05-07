@@ -145,8 +145,8 @@ def main() -> int:
 
     print("-- 6. NEGATIVE: Meta HMAC-SHA256 signature verification works --")
     # Real Meta verification: HMAC-SHA256(body, app_secret) → hex
-    import hmac as _hmac
     import hashlib as _hashlib
+    import hmac as _hmac
     body = b'{"test":"payload"}'
     secret = "myappsecret"
     valid_sig = "sha256=" + _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()

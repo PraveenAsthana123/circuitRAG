@@ -167,7 +167,7 @@ def main() -> int:
         print(f"✗ step 3: {len(pytest_offenders)} drills import pytest: "
               f"{pytest_offenders[:3]} — drills must be standalone scripts")
         return 1
-    print(f"✓ step 3: no drill imports pytest (catalog stays runner-compatible)")
+    print("✓ step 3: no drill imports pytest (catalog stays runner-compatible)")
 
     # ── Step 4: NEGATIVE — no NEW mock imports (KNOWN_MOCK_OFFENDERS grandfathered) ──
     mock_offenders = []
@@ -303,10 +303,10 @@ def main() -> int:
         else:
             resourced_count += 1
     if readonly_count == 0:
-        print(f"✗ step 8: catalog has 0 readonly drills — fast path missing")
+        print("✗ step 8: catalog has 0 readonly drills — fast path missing")
         return 1
     if resourced_count == 0:
-        print(f"✗ step 8: catalog has 0 resourced drills — only API-layer coverage")
+        print("✗ step 8: catalog has 0 resourced drills — only API-layer coverage")
         return 1
     print(f"✓ step 8: catalog spans both tiers "
           f"({readonly_count} readonly + {resourced_count} resourced)")

@@ -50,7 +50,7 @@ def main() -> int:
         print(f"x step 2: F841 expected investigation; got {s.category!r}")
         return 1
     if not s.needs_grep_refs:
-        print(f"x step 2: F841 must needs_grep_refs=True (real-bug-or-not requires references)")
+        print("x step 2: F841 must needs_grep_refs=True (real-bug-or-not requires references)")
         return 1
     if s.context_lines < 20:
         print(f"x step 2: F841 needs ≥20 context_lines; got {s.context_lines}")
@@ -63,7 +63,7 @@ def main() -> int:
         print(f"x step 3: UP035 expected mechanical_rewrite; got {s.category!r}")
         return 1
     if s.needs_grep_refs:
-        print(f"x step 3: UP035 must NOT need grep_refs (it's literal — wastes tokens)")
+        print("x step 3: UP035 must NOT need grep_refs (it's literal — wastes tokens)")
         return 1
     if s.context_lines > 10:
         print(f"x step 3: UP035 only needs ≤10 context_lines; got {s.context_lines}")
@@ -77,9 +77,9 @@ def main() -> int:
               "Per §50.5.3 bandit B* NEVER goes to a model.")
         return 1
     if not rs.is_human_only("B110"):
-        print(f"x step 4: is_human_only('B110') must be True")
+        print("x step 4: is_human_only('B110') must be True")
         return 1
-    print(f"  ok: B110 (bandit) → human-only via SECURITY_PREFIXES")
+    print("  ok: B110 (bandit) → human-only via SECURITY_PREFIXES")
 
     print("-- 5. NEGATIVE: S101 (ruff security) → human-only --")
     s = rs.get_strategy("S101")
@@ -87,9 +87,9 @@ def main() -> int:
         print(f"x step 5: S101 must route to human; got {s.model_tier!r}")
         return 1
     if not rs.is_human_only("S101"):
-        print(f"x step 5: is_human_only('S101') must be True")
+        print("x step 5: is_human_only('S101') must be True")
         return 1
-    print(f"  ok: S101 (ruff security) → human-only via SECURITY_PREFIXES")
+    print("  ok: S101 (ruff security) → human-only via SECURITY_PREFIXES")
 
     print("-- 6. NEGATIVE: unknown rule code → DEFAULT (conservative fallback) --")
     s = rs.get_strategy("XYZQ999")
@@ -97,7 +97,7 @@ def main() -> int:
         print(f"x step 6: unknown rule must fall back to default; got {s.category!r}")
         return 1
     if s.model_tier == "human":
-        print(f"x step 6: unknown should NOT go to human (only S*/B* should)")
+        print("x step 6: unknown should NOT go to human (only S*/B* should)")
         return 1
     print(f"  ok: unknown rule → default category, model_tier={s.model_tier}")
 
@@ -115,7 +115,7 @@ def main() -> int:
             if marker not in template:
                 print(f"x step 7: template {cat!r} missing marker {marker!r}")
                 return 1
-    print(f"  ok: 6 templates × 3 mandatory markers (<role>/<goal>/<rules>) all present")
+    print("  ok: 6 templates × 3 mandatory markers (<role>/<goal>/<rules>) all present")
 
     print("-- 8. POSITIVE: empty rule code → DEFAULT (no crash) --")
     s = rs.get_strategy("")

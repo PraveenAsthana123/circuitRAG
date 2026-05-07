@@ -20,15 +20,12 @@ Run:
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
-import time
 
 import httpx
 
 from mcp.client import MCPClient
-
 
 BASE = os.getenv("MCP_BASE_URL", "http://127.0.0.1:8090")
 

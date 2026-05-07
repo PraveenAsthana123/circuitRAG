@@ -194,9 +194,8 @@ def _scan_drill_function_local(path: Path) -> list[str]:
                     if isinstance(tgt, ast.Name):
                         tgt_name = tgt.id
                         break
-            elif isinstance(sub, ast.AnnAssign):
-                if isinstance(sub.target, ast.Name):
-                    tgt_name = sub.target.id
+            elif isinstance(sub, ast.AnnAssign) and isinstance(sub.target, ast.Name):
+                tgt_name = sub.target.id
             if tgt_name and any(tgt_name.startswith(p) for p in TRACKED_PREFIXES):
                 bad.append(tgt_name)
     return bad

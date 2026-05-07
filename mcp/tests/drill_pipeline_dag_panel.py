@@ -18,7 +18,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 PANEL = REPO / "services" / "frontend" / "app" / "admin" / "agentic" / "control-plane" / "PipelineDagPanel.tsx"
 REGISTRY = REPO / "services" / "agent-orchestrator-svc" / "app" / "agent_registry.py"

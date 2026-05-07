@@ -54,9 +54,10 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 from mcp.server_common import (  # type: ignore[import-untyped]
-    setup_server_otel, build_auth, enforce_scope,
+    build_auth,
+    enforce_scope,
+    setup_server_otel,
 )
-
 
 log = logging.getLogger("mcp.server_ollama")
 

@@ -40,7 +40,6 @@ from __future__ import annotations
 import os
 import pathlib
 import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "migrate_ollama_to_deepa.sh"
@@ -115,7 +114,7 @@ def main():
     )
     if len(set(branches)) < 4:
         fail(f"main case missing branches: have {sorted(set(branches))}")
-    ok(f"all 4 mode functions defined + routed")
+    ok("all 4 mode functions defined + routed")
 
     # Step 5: snapshot before stop
     step(

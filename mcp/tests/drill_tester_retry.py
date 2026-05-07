@@ -15,7 +15,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 MIGRATION = SVC / "migrations" / "010_test_results.sql"
@@ -38,7 +37,7 @@ def _bootstrap():
         sys.modules[pkg].__path__ = [str(SVC / "app")]
     sys.modules[f"{pkg}.llm_clients"] = ModuleType(f"{pkg}.llm_clients")
     sys.modules[f"{pkg}.llm_clients"].__path__ = [str(SVC / "app" / "llm_clients")]
-    proto = _load(f"{pkg}.llm_clients.protocol", SVC / "app" / "llm_clients" / "protocol.py", f"{pkg}.llm_clients")
+    _load(f"{pkg}.llm_clients.protocol", SVC / "app" / "llm_clients" / "protocol.py", f"{pkg}.llm_clients")
     pool = _load(f"{pkg}.llm_clients.pool", SVC / "app" / "llm_clients" / "pool.py", f"{pkg}.llm_clients")
     init = sys.modules[f"{pkg}.llm_clients"]
     init.LlmClientPool = pool.LlmClientPool

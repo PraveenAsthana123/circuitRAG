@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import pathlib
 import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PAGE = REPO / "services" / "frontend" / "app" / "admin" / "sidecar" / "page.tsx"
@@ -183,7 +182,7 @@ def main():
             f"Adding more needs another scope-extension entry in §7."
         )
     if "page.tsx" not in actual_relative:
-        fail(f"page.tsx (Phase 1B) missing")
+        fail("page.tsx (Phase 1B) missing")
     # deep/page.tsx is OPTIONAL at the Phase 1B level - it's a Phase
     # 5B add-on. Don't fail if absent; just log.
     ok(

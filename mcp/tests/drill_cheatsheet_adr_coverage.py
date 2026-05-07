@@ -201,7 +201,7 @@ def main() -> int:
         print(f"✗ step 6: ADR refs out of order in composes-with: "
               f"{deduped} (expected {sorted(deduped)})")
         return 1
-    print(f"✓ step 6: ADR refs appear in numerical order")
+    print("✓ step 6: ADR refs appear in numerical order")
 
     # ── Step 7: NEGATIVE — every ADR ref has an inline gloss ──
     # The cheatsheet pattern is:

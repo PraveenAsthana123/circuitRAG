@@ -19,7 +19,6 @@ Eight steps. Six negative.
 from __future__ import annotations
 
 import importlib
-import inspect
 import os
 import re
 import subprocess

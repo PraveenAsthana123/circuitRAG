@@ -107,12 +107,12 @@ def main() -> int:
         print(f"  report status:    {status} ({_format_age(ts)})")
         print(f"  elapsed:          {elapsed:.1f}s")
         if status == "stage_3_compile_suspect":
-            print(f"  ⚠ SUSPECT — operator should investigate before promoting")
+            print("  ⚠ SUSPECT — operator should investigate before promoting")
             print(f"    metric_calls={ms.get('calls', 0)}, "
                   f"empty_answers={ms.get('empty_answers', 0)}, "
                   f"prompt_changed={report.get('prompt_changed', False)}")
         elif status == "stage_3_compiled":
-            print(f"  ✓ ready for Stage-4 promotion")
+            print("  ✓ ready for Stage-4 promotion")
             print(f"    predictors tuned: {len(report.get('optimized_prompts', {}))}")
             print(f"    metric_calls={ms.get('calls', 0)}, "
                   f"errors={ms.get('errors', 0)}")
@@ -125,7 +125,7 @@ def main() -> int:
     total, promoted, rejected = _load_jsonl_count(GEPA_HISTORY)
     print(f"  history rows:     {total} (promoted: {promoted}, rejected: {rejected})")
     if total == 0:
-        print(f"  → gate has never run; run promote_gepa_prompts.py after compile")
+        print("  → gate has never run; run promote_gepa_prompts.py after compile")
 
     # Stage 5: overlay artifact
     print()
@@ -135,7 +135,7 @@ def main() -> int:
     active = _load_json(GEPA_ACTIVE)
     if active is None:
         print(f"  artifact: {GEPA_ACTIVE.relative_to(REPO)}: (not present)")
-        print(f"  → run Stage-4 gate first (promote_gepa_prompts.py)")
+        print("  → run Stage-4 gate first (promote_gepa_prompts.py)")
     else:
         ts = active.get("promoted_at_ts", 0)
         print(f"  artifact:         present ({_format_age(ts)})")
@@ -146,7 +146,7 @@ def main() -> int:
         if target:
             print(f"  target prompt:    {target!r} (Path-B alias active)")
         else:
-            print(f"  target prompt:    (none — predictor namespace only)")
+            print("  target prompt:    (none — predictor namespace only)")
 
     # Stage 6: Path-B alignment
     print()
@@ -156,7 +156,7 @@ def main() -> int:
     if active and active.get("gepa_target_prompt"):
         print(f"  artifact carries target:   {active['gepa_target_prompt']!r}")
     else:
-        print(f"  → set GEPA_TARGET_PROMPT_NAME=rag.qa before next compile")
+        print("  → set GEPA_TARGET_PROMPT_NAME=rag.qa before next compile")
 
     # Stage 7: canary routing
     print()
@@ -167,9 +167,9 @@ def main() -> int:
     print(f"  GEPA_CANARY_ENABLED         = {canary_enabled}")
     print(f"  GEPA_CANARY_PERCENT         = {canary_pct}")
     if not canary_enabled:
-        print(f"  → canary OFF; all traffic on baseline")
+        print("  → canary OFF; all traffic on baseline")
     elif int(canary_pct or 0) == 0:
-        print(f"  → canary enabled but percent=0; all traffic on baseline")
+        print("  → canary enabled but percent=0; all traffic on baseline")
     else:
         print(f"  → routing ~{canary_pct}% of tenants to GEPA version")
 

@@ -116,10 +116,10 @@ async def main() -> None:
         step("3. Loader uses same-origin path '/mermaid.min.js'")
         if "/mermaid.min.js" not in text:
             fail(
-                f"Mermaid.tsx doesn't reference '/mermaid.min.js' — "
-                f"the path may have drifted (e.g. '/static/...' or "
-                f"'/_next/...'). Self-hosted assets MUST be at the "
-                f"public-folder root path or the script tag 404s."
+                "Mermaid.tsx doesn't reference '/mermaid.min.js' — "
+                "the path may have drifted (e.g. '/static/...' or "
+                "'/_next/...'). Self-hosted assets MUST be at the "
+                "public-folder root path or the script tag 404s."
             )
         ok("loader path is /mermaid.min.js (same-origin)")
 
@@ -135,7 +135,7 @@ async def main() -> None:
                 "page rendered without Mermaid mount points — the "
                 "Mermaid component may have been removed."
             )
-        ok(f"page 200 + Mermaid mount points present")
+        ok("page 200 + Mermaid mount points present")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 4 MERMAID-SELF-HOSTED STEPS PASSED{NC}")

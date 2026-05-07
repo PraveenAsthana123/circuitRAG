@@ -58,9 +58,13 @@ log = logging.getLogger("mcp.server_common")
 try:
     from prometheus_client import (
         CONTENT_TYPE_LATEST,
-        Counter as _PromCounter,
-        Histogram as _PromHistogram,
         generate_latest,
+    )
+    from prometheus_client import (
+        Counter as _PromCounter,
+    )
+    from prometheus_client import (
+        Histogram as _PromHistogram,
     )
     _PROM_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -510,7 +514,7 @@ class NoopCM:
 # ---------------------------------------------------------------------------
 async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
     *,
-    req: "ToolCallRequest",
+    req: ToolCallRequest,
     tools: list[dict[str, Any]],
     idempotency_key: str | None,
     authorization: str | None,
@@ -520,7 +524,7 @@ async def handle_tool_call(  # noqa: PLR0913 — deliberate: one big helper
     # The store knows how to fingerprint payloads, detect same-key /
     # different-payload conflicts, and finalise on success or failure.
     # ``handle_tool_call`` stays dumb — get-or-record — see mcp/idempotency.py.
-    idempotency_store: "Any",  # IdempotencyStore protocol; avoid circular import here
+    idempotency_store: Any,  # IdempotencyStore protocol; avoid circular import here
     dispatch,  # noqa: ANN001 — async callable(req, idempotency_key, cid) -> dict
     tracer_module: str,
     logger: logging.Logger,

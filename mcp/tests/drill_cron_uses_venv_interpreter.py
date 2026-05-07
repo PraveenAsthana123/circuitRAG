@@ -116,7 +116,7 @@ def main() -> int:
               f"{EPHEMERAL_INTERPRETER}: {bad_tmp[:2]}. Migrate to "
               f"{VENV_INTERPRETER} (Deepa-backed; survives reboots).")
         return 1
-    print(f"✓ step 2: no cron line uses ephemeral /tmp/documind-venv")
+    print("✓ step 2: no cron line uses ephemeral /tmp/documind-venv")
 
     # ── Step 3: NEGATIVE — no bare python/python3 ──
     bad_bare = []
@@ -134,7 +134,7 @@ def main() -> int:
               f"python/python3 (PATH-dependent): {bad_bare[:2]}. "
               "Use absolute interpreter path.")
         return 1
-    print(f"✓ step 3: no cron line uses bare python/python3")
+    print("✓ step 3: no cron line uses bare python/python3")
 
     # ── Step 4: NEGATIVE — no /usr/bin/python3 for project scripts ──
     bad_sys = []
@@ -150,7 +150,7 @@ def main() -> int:
         print(f"✗ step 4: {len(bad_sys)} cron lines use /usr/bin/python3 "
               f"to run project scripts (lacks documind_core): {bad_sys[:2]}")
         return 1
-    print(f"✓ step 4: no cron line runs project scripts via /usr/bin/python3")
+    print("✓ step 4: no cron line runs project scripts via /usr/bin/python3")
 
     # ── Step 5: NEGATIVE — project Python scripts use .venv ──
     bad_python = []
@@ -195,7 +195,7 @@ def main() -> int:
         print(f"✗ step 6: {len(bad_shell)} cron lines invoke .sh script "
               f"with python prefix: {bad_shell[:2]}")
         return 1
-    print(f"✓ step 6: shell-script cron lines invoke directly (no python prefix)")
+    print("✓ step 6: shell-script cron lines invoke directly (no python prefix)")
 
     # ── Step 7: NEGATIVE — every referenced script exists ──
     missing_scripts = []
@@ -212,7 +212,7 @@ def main() -> int:
         print(f"✗ step 7: {len(missing_scripts)} cron-line scripts don't "
               f"exist on disk: {missing_scripts[:3]}")
         return 1
-    print(f"✓ step 7: every cron-line project script exists on disk")
+    print("✓ step 7: every cron-line project script exists on disk")
 
     # ── Step 8: POSITIVE — end-to-end count parity ──
     # Recount via the cron-line regex directly to catch silent drops

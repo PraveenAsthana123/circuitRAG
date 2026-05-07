@@ -160,6 +160,11 @@ def create_app() -> FastAPI:
             log.exception("outbox_worker_start_failed — events will queue in outbox until recovery")
 
         app.state.ingestion_service = ingestion_service
+        # Expose the drain worker so /health/ready can probe it. None is
+        # an acceptable state (Kafka was down at boot, app is degraded
+        # but reading-only). Drill enforces /health/ready returns 503
+        # ONLY when worker exists and has crashed (vs. ok when None).
+        app.state.outbox_worker = outbox_worker
         log.info("ingestion_service_ready model=%s dim=%d", embedder.model_name, embedder.dimension)
         try:
             yield

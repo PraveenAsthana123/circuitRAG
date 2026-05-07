@@ -56,14 +56,13 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
 from typing import Any
 
 log = logging.getLogger(__name__)
 
 DSPY_OPTIMIZER_ENABLED = os.getenv("DSPY_OPTIMIZER_ENABLED", "").strip() == "1"
 DSPY_LM_MODEL = os.getenv("DSPY_LM_MODEL", "ollama_chat/gemma2:9b")
-DSPY_OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+DSPY_OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11435")
 
 
 class DSPyOptimizerDisabled(RuntimeError):
@@ -144,8 +143,8 @@ def get_council_program():
         )
     import sys
     sys.path.insert(0, "/mnt/deepa/rag/scripts")
-    from gemma_agent_council import run_council
     import dspy
+    from gemma_agent_council import run_council
 
     class CouncilSignature(dspy.Signature):
         """Answer the user's question via the local Gemma 5-agent council.
@@ -226,7 +225,7 @@ if __name__ == "__main__":
     if args.json:
         print(_json.dumps(s, indent=2))
     else:
-        print(f"scripts/dspy_optimizer.py — Stage-1 DSPy + GEPA adapter")
-        print(f"Stage-1 opt-in via DSPY_OPTIMIZER_ENABLED=1")
+        print("scripts/dspy_optimizer.py — Stage-1 DSPy + GEPA adapter")
+        print("Stage-1 opt-in via DSPY_OPTIMIZER_ENABLED=1")
         print()
         print(_json.dumps(s, indent=2))

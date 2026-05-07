@@ -77,7 +77,7 @@ async def main() -> None:
         # Capture baseline so we can assert relative changes — the
         # buffer may have rows from earlier smoke tests.
         baseline = await _list(c)
-        baseline_count = baseline["count"]
+        baseline["count"]
         capacity = baseline["capacity"]
 
         step("1. POST returns 201 with server-generated id + received_at")

@@ -40,10 +40,10 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "services" / "retrieval-svc"))
 
-from documind_core.circuit_breaker import CircuitBreaker, State  # noqa: E402
 from app.schemas import RetrieveRequest  # type: ignore  # noqa: E402
 from app.services.hybrid_retriever import HybridRetriever  # type: ignore  # noqa: E402
 from app.services.reranker import ReciprocalRankFusion  # type: ignore  # noqa: E402
+from documind_core.circuit_breaker import CircuitBreaker, State  # noqa: E402
 
 GREEN = "\033[32m"; RED = "\033[31m"; BOLD = "\033[1m"; NC = "\033[0m"
 
@@ -172,7 +172,7 @@ async def main() -> None:
     step("2. Vector backend raises 3× → vector_breaker OPENs; graph stays CLOSED")
     r, vec, grp, vbr, gbr = _make_retriever(vector_raise_n=999)  # always raises
     # Drive 3 retrievals to trip the vector breaker.
-    for i in range(3):
+    for _i in range(3):
         await r.retrieve(tenant_id=TENANT, request=REQ)
     if vbr.state is not State.OPEN:
         fail(
@@ -198,21 +198,21 @@ async def main() -> None:
             f"vector backend was called {vec.call_count - pre_calls} time(s) "
             f"despite breaker OPEN — fast-reject is broken"
         )
-    ok(f"breaker OPEN → vector backend NOT called (fast-reject works)")
+    ok("breaker OPEN → vector backend NOT called (fast-reject works)")
 
     step("4. Graph backend keeps being called even with vector breaker OPEN")
     pre_grp = grp.call_count
     resp = await r.retrieve(tenant_id=TENANT, request=REQ)
     if grp.call_count <= pre_grp:
         fail(
-            f"graph backend was NOT called when vector breaker is OPEN — "
-            f"backend independence broken (one bad backend should not block "
-            f"the other)"
+            "graph backend was NOT called when vector breaker is OPEN — "
+            "backend independence broken (one bad backend should not block "
+            "the other)"
         )
     if not resp.degraded:
         fail(
-            f"degraded=False but vector backend was breaker-rejected — "
-            f"degraded envelope should reflect ANY backend failure"
+            "degraded=False but vector backend was breaker-rejected — "
+            "degraded envelope should reflect ANY backend failure"
         )
     ok(
         f"graph still called (count={grp.call_count}); response carries "

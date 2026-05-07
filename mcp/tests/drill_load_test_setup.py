@@ -20,7 +20,6 @@ import os
 import re
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 K6 = REPO / "infra" / "load-test" / "k6" / "baseline.js"
 WRAPPER = REPO / "scripts" / "load-test.sh"
@@ -40,7 +39,7 @@ def main() -> int:
             raise AssertionError(f"missing {p.relative_to(REPO)}")
     k6 = K6.read_text(encoding="utf-8")
     wrapper = WRAPPER.read_text(encoding="utf-8")
-    runbook = RUNBOOK.read_text(encoding="utf-8")
+    RUNBOOK.read_text(encoding="utf-8")
     status = STATUS.read_text(encoding="utf-8")
     print("  ok: k6 baseline + wrapper + runbook + STATUS all present")
 

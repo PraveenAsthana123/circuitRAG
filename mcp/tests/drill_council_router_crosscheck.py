@@ -73,7 +73,7 @@ def main() -> int:
         if f'"{field_name}"' not in src:
             print(f"x audit_chain['agent_router'] missing field: {field_name!r}")
             return 1
-    print(f"  ok: all 7 agent_router audit fields documented")
+    print("  ok: all 7 agent_router audit fields documented")
 
     print("-- 4. NEGATIVE: router failure is non-fatal (try/except + fallback) --")
     # Bit-rot prevention: a refactor that turns the router call into a
@@ -135,7 +135,7 @@ def main() -> int:
     if d.recommended_actor != "council:author":
         print(f"x fix-lint should route to council:author; got {d.recommended_actor}")
         return 1
-    print(f"  ok: agent_router still classifies correctly when called from council path")
+    print("  ok: agent_router still classifies correctly when called from council path")
 
     print("-- 8. POSITIVE: fresh import of local_council does NOT call Ollama --")
     # The cross-check imports agent_router INSIDE run_local_council,

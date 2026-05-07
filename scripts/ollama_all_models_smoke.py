@@ -37,7 +37,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -103,7 +103,7 @@ def smoke_one_model(name: str, timeout: float) -> dict:
                 "preview": preview,
                 "error": None,
                 "kind": "embed",
-                "smoked_at": datetime.now(timezone.utc).isoformat(),
+                "smoked_at": datetime.now(UTC).isoformat(),
             }
 
         status, data, elapsed_ms = _http_post(
@@ -126,7 +126,7 @@ def smoke_one_model(name: str, timeout: float) -> dict:
             "preview": response_text[:80],
             "error": None,
             "kind": "generate",
-            "smoked_at": datetime.now(timezone.utc).isoformat(),
+            "smoked_at": datetime.now(UTC).isoformat(),
         }
 
     except urllib.error.HTTPError as e:
@@ -137,7 +137,7 @@ def smoke_one_model(name: str, timeout: float) -> dict:
             "preview": "",
             "error": f"HTTP {e.code}: {e.reason}",
             "kind": "embed" if is_embed else "generate",
-            "smoked_at": datetime.now(timezone.utc).isoformat(),
+            "smoked_at": datetime.now(UTC).isoformat(),
         }
     except TimeoutError:
         return {
@@ -147,7 +147,7 @@ def smoke_one_model(name: str, timeout: float) -> dict:
             "preview": "",
             "error": f"timeout after {timeout}s",
             "kind": "embed" if is_embed else "generate",
-            "smoked_at": datetime.now(timezone.utc).isoformat(),
+            "smoked_at": datetime.now(UTC).isoformat(),
         }
     except Exception as e:  # noqa: BLE001
         return {
@@ -157,7 +157,7 @@ def smoke_one_model(name: str, timeout: float) -> dict:
             "preview": "",
             "error": f"{type(e).__name__}: {e}",
             "kind": "embed" if is_embed else "generate",
-            "smoked_at": datetime.now(timezone.utc).isoformat(),
+            "smoked_at": datetime.now(UTC).isoformat(),
         }
 
 
@@ -169,7 +169,7 @@ def smoke_all(only: str | None, timeout: float) -> dict:
             print(f"NO model matches --only={only!r}", file=sys.stderr)
             return {
                 "ollama_base_url": OLLAMA_BASE,
-                "smoked_at": datetime.now(timezone.utc).isoformat(),
+                "smoked_at": datetime.now(UTC).isoformat(),
                 "models_total": 0,
                 "by_status": {},
                 "results": {},
@@ -192,7 +192,7 @@ def smoke_all(only: str | None, timeout: float) -> dict:
 
     return {
         "ollama_base_url": OLLAMA_BASE,
-        "smoked_at": datetime.now(timezone.utc).isoformat(),
+        "smoked_at": datetime.now(UTC).isoformat(),
         "models_total": len(installed),
         "by_status": by_status,
         "results": results,

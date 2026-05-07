@@ -18,7 +18,6 @@ import sys
 import time
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -64,7 +63,7 @@ def main() -> int:
     )
     assert cb._consecutive_open_count == 2
     assert cb._failure_count == 5
-    print(f"  ok: hydrated state=OPEN, consecutive_opens=2, failures=5")
+    print("  ok: hydrated state=OPEN, consecutive_opens=2, failures=5")
 
     # -------------------------------------------------------------
     # FIX #21b: stale snapshot is ignored
@@ -86,7 +85,7 @@ def main() -> int:
     assert cb.state is State.CLOSED, (
         f"FIX #21 BROKEN: stale snapshot should be ignored; got {cb.state}"
     )
-    print(f"  ok: stale snapshot rejected → fresh CLOSED start")
+    print("  ok: stale snapshot rejected → fresh CLOSED start")
 
     # -------------------------------------------------------------
     # FIX #21c: writes propagate on transition

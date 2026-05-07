@@ -234,7 +234,7 @@ async def main() -> None:
             code = (body.get("detail") or {}).get("code") if isinstance(body.get("detail"), dict) else None
             if code != "INVALID_CORRELATION_ID":
                 fail(f"expected detail.code=INVALID_CORRELATION_ID, got {body}")
-            ok(f"400 INVALID_CORRELATION_ID returned for malformed UUID")
+            ok("400 INVALID_CORRELATION_ID returned for malformed UUID")
 
             step("2. unknown UUID → 200 with empty arrays")
             status, body = await _lookup(c, str(uuid.uuid4()), tenant)
@@ -246,7 +246,7 @@ async def main() -> None:
                 fail(f"expected empty audit_rows, got {body['audit_rows']}")
             if body.get("draft_rows") != []:
                 fail(f"expected empty draft_rows, got {body['draft_rows']}")
-            ok(f"200 with empty arrays for unknown correlation_id (no spurious 404)")
+            ok("200 with empty arrays for unknown correlation_id (no spurious 404)")
 
             step("3. insert audit + draft sharing cid → both surface")
             audit1_id = await _insert_audit(
@@ -295,7 +295,7 @@ async def main() -> None:
                 )
             if len(audits) != 1:
                 fail(f"expected still 1 audit, got {len(audits)}")
-            ok(f"WHERE correlation_id filter holds (unrelated cid filtered out)")
+            ok("WHERE correlation_id filter holds (unrelated cid filtered out)")
 
             step("5. multiple audits same cid → ordered by timestamp ASC")
             await asyncio.sleep(0.05)
@@ -335,7 +335,7 @@ async def main() -> None:
                     f"strongest negative: rows for tenant A must NEVER "
                     f"surface to a request scoped to tenant B."
                 )
-            ok(f"wrong tenant returns empty arrays (RLS per-tenant scoping holds)")
+            ok("wrong tenant returns empty arrays (RLS per-tenant scoping holds)")
 
             step("6. fail_closed_failed projection — surfaces correctly per row")
             await _insert_audit(
@@ -362,7 +362,7 @@ async def main() -> None:
                     f"{len(ok_rows)} — projection should distinguish "
                     f"per-row, not bulk-flag."
                 )
-            ok(f"fail_closed_failed projection: 1 true / 2 false (correctly per-row)")
+            ok("fail_closed_failed projection: 1 true / 2 false (correctly per-row)")
 
             step("7. HITL join — flagged answer surfaces with review_status")
             # Insert a HITL row sharing cid_main with review_status=pending.

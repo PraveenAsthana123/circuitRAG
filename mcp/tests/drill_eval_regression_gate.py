@@ -49,9 +49,8 @@ sys.path.insert(0, str(REPO / "services" / "evaluation-svc"))
 # to OTLP — short-circuit before importing main.
 os.environ.setdefault("DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT", "")
 
-from fastapi.testclient import TestClient  # noqa: E402
-
 from app.main import create_app  # type: ignore  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
 GREEN = "\033[32m"; RED = "\033[31m"; BOLD = "\033[1m"; NC = "\033[0m"
 
@@ -109,7 +108,7 @@ def main() -> None:
             fail(f"identical run reports non-zero delta: {d}")
         if not d["passed"]:
             fail(f"per-metric passed=False for identical run: {d}")
-    ok(f"identical run → passed=True; all 6 deltas are 0")
+    ok("identical run → passed=True; all 6 deltas are 0")
 
     step("2. Current 0.01 below baseline (within default 0.02 tolerance) → passed")
     cur = dict(base)
@@ -182,7 +181,7 @@ def main() -> None:
     faith_d = next(d for d in body["deltas"] if d["metric"] == "faithfulness")
     if faith_d["tolerance"] != 0.10:
         fail(f"per-metric tolerance not honored: {faith_d}")
-    ok(f"same data + tolerance=0.10 → passed=True (operator-tunable envelope)")
+    ok("same data + tolerance=0.10 → passed=True (operator-tunable envelope)")
 
     step("5. Improvement (current > baseline) always passes")
     cur = dict(base)
@@ -200,7 +199,7 @@ def main() -> None:
         )
     if any(d["delta"] < 0 for d in body["deltas"]):
         fail(f"improvement run has negative deltas: {body['deltas']}")
-    ok(f"improvements always pass (positive deltas across all 6 metrics)")
+    ok("improvements always pass (positive deltas across all 6 metrics)")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 5 EVAL-REGRESSION-GATE STEPS PASSED{NC}")

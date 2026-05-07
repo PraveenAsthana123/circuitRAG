@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import pathlib
 import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 CAPTURE = REPO / "scripts" / "capture_and_review.py"
@@ -160,7 +159,7 @@ def main():
             f"both scripts diverged from 'sidecar_advisor_pkg'; "
             f"got {capture_pkgs}. The drills use that exact name."
         )
-    ok(f"both scripts use 'sidecar_advisor_pkg' (consistent)")
+    ok("both scripts use 'sidecar_advisor_pkg' (consistent)")
 
     # 7. NEGATIVE: no regressed legacy names
     step(

@@ -14,7 +14,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 

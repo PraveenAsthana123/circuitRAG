@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import pathlib
 import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PAGE = REPO / "services" / "frontend" / "app" / "admin" / "sidecar" / "deep" / "page.tsx"
@@ -108,7 +107,7 @@ def main():
             f"per UI per scenario - L1+L2 is the foundation; per-scenario "
             f"diagrams use sequenceDiagram (different shape)."
         )
-    ok(f"exactly 2 flowchart diagrams (C4 L1 + L2)")
+    ok("exactly 2 flowchart diagrams (C4 L1 + L2)")
 
     # Step 5: 6 sequenceDiagram scenarios. Phase 5S added the
     # telemetry-pipeline scenario as the 5th; Phase 5AA added the
@@ -125,7 +124,7 @@ def main():
             f"this drill — and the count should match the scenarios listed in "
             f"Phase 5AA's ledger entry."
         )
-    ok(f"6 sequenceDiagram blocks (one per scenario, incl. Phase 5AA self-healing)")
+    ok("6 sequenceDiagram blocks (one per scenario, incl. Phase 5AA self-healing)")
 
     # Step 6: NEGATIVE - concrete class names in diagrams
     step(
@@ -178,7 +177,7 @@ def main():
         fail(f"unexpected file: {files[0]}")
     if deep_dir.name != "deep" or deep_dir.parent.name != "sidecar":
         fail(f"path drift: {deep_dir}")
-    ok(f"single page.tsx under .../sidecar/deep/ (scope respected)")
+    ok("single page.tsx under .../sidecar/deep/ (scope respected)")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 SIDECAR-DEEP-PAGE STEPS PASSED{NC}")

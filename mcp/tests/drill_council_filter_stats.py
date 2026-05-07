@@ -41,7 +41,7 @@ import importlib.util
 import json
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -67,7 +67,7 @@ def _write_log(tmpdir: Path, entries: list[dict]) -> Path:
 
 def _ts(offset_minutes: int = 0) -> str:
     """Build an ISO timestamp `offset_minutes` ago (negative = past)."""
-    t = datetime.now(timezone.utc) + timedelta(minutes=offset_minutes)
+    t = datetime.now(UTC) + timedelta(minutes=offset_minutes)
     return t.isoformat(timespec="seconds")
 
 

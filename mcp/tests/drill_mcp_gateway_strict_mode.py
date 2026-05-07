@@ -91,7 +91,7 @@ def main() -> int:
         persist_audit=False,
     )
     if decision.allow:
-        print(f"x STRICT mode + no rule should deny; got allow=True")
+        print("x STRICT mode + no rule should deny; got allow=True")
         print(f"   reason: {decision.reason!r}")
         return 1
     if decision.rule_matched != "strict:no-polisai-rule":
@@ -109,7 +109,7 @@ def main() -> int:
         persist_audit=False,
     )
     if not decision.allow:
-        print(f"x default mode should fall through to allow; got allow=False")
+        print("x default mode should fall through to allow; got allow=False")
         print(f"   reason: {decision.reason!r}")
         return 1
     if "no-rule-fallthrough" not in decision.reason:

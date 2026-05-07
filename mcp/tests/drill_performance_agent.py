@@ -13,7 +13,6 @@ failure mode for a layered gate extension.
 from __future__ import annotations
 
 import importlib.util
-import os
 import sys
 from pathlib import Path
 
@@ -60,7 +59,7 @@ def main() -> int:
         if not isinstance(vf.PERFORMANCE_BUDGETS[budget_key], float):
             print(f"x step 2: budget {budget_key} not float")
             return 1
-    print(f"  ok: 3 budgets defined (k6 / lighthouse / pytest-benchmark)")
+    print("  ok: 3 budgets defined (k6 / lighthouse / pytest-benchmark)")
 
     print("-- 3. NEGATIVE: budgets are POSITIVE numbers (no zero/negative) --")
     for k, v in vf.PERFORMANCE_BUDGETS.items():
@@ -99,7 +98,7 @@ def main() -> int:
                 return 1
     finally:
         _sh.which = original_which
-    print(f"  ok: missing binaries → ok=True (graceful no-op; gate not weaponized)")
+    print("  ok: missing binaries → ok=True (graceful no-op; gate not weaponized)")
 
     print("-- 6. NEGATIVE: run_technical_verification accepts skip_performance kwarg --")
     import inspect
@@ -107,7 +106,7 @@ def main() -> int:
     if "skip_performance" not in sig.parameters:
         print(f"x step 6: skip_performance kwarg missing; got params {list(sig.parameters)}")
         return 1
-    print(f"  ok: skip_performance kwarg present in signature")
+    print("  ok: skip_performance kwarg present in signature")
 
     print("-- 7. NEGATIVE: skip_performance=True OMITS the perf layer --")
     result = vf.run_technical_verification(
@@ -121,7 +120,7 @@ def main() -> int:
     if "ruff" not in layer_names:
         print(f"x step 7: ruff missing despite always-required: {layer_names}")
         return 1
-    print(f"  ok: skip_performance=True omits perf layer; ruff still required")
+    print("  ok: skip_performance=True omits perf layer; ruff still required")
 
     print("-- 8. POSITIVE: skip_performance=False (default) INCLUDES the layer --")
     result = vf.run_technical_verification(
@@ -131,7 +130,7 @@ def main() -> int:
     if "performance" not in layer_names:
         print(f"x step 8: default run missing perf layer: {layer_names}")
         return 1
-    print(f"  ok: default verification includes perf layer (4 layers total when no skips)")
+    print("  ok: default verification includes perf layer (4 layers total when no skips)")
 
     print()
     print("ALL 8 STEPS PASSED")

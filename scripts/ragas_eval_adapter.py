@@ -356,7 +356,7 @@ if __name__ == "__main__":
     import json
     import sys
     print("scripts/ragas_eval_adapter.py — Stage-1 RAGAS evaluation adapter")
-    print(f"Stage-1 opt-in via RAGAS_EVAL_ENABLED=1")
+    print("Stage-1 opt-in via RAGAS_EVAL_ENABLED=1")
     print(f"Computes 5 metrics: {', '.join(ALL_METRICS)}")
     print()
     print(json.dumps(status(), indent=2))

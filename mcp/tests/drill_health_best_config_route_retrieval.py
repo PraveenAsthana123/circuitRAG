@@ -148,7 +148,7 @@ def main() -> int:
     if fb["min_score"] != 0.0 or fb["top_k"] != 10 or fb["rerank_enabled"] is not False:
         print(f"x fallback_defaults must be legacy un-tuned; got {fb}")
         return 1
-    print(f"  ok: legacy fallbacks min_score=0.0 top_k=10 rerank=False")
+    print("  ok: legacy fallbacks min_score=0.0 top_k=10 rerank=False")
 
     print()
     print("ALL 8 STEPS PASSED")

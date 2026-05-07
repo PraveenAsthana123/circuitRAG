@@ -40,7 +40,6 @@ import asyncio
 import json
 import os
 import sys
-import time
 import uuid
 from pathlib import Path
 
@@ -91,7 +90,6 @@ async def main() -> None:
     suffix = uuid.uuid4().hex[:8].upper()
     K_FRESH = f"DRILL-IDEMP-FRESH-{suffix}"
     K_DURABLE = f"DRILL-IDEMP-DURABLE-{suffix}"
-    K_CONFLICT = f"DRILL-IDEMP-CONF-{suffix}"
     K_TTL = f"DRILL-IDEMP-TTL-{suffix}"
     K_BAD = f"DRILL-IDEMP-BAD-{suffix}"
 

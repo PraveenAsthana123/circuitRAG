@@ -118,6 +118,17 @@ class OutboxDrainWorker:
             self._task = None
         log.info("outbox_drain_stopped")
 
+    def is_running(self) -> bool:
+        """True iff the drain task exists and hasn't completed.
+
+        Used by /health/ready to gate readiness on the drain worker
+        actually being alive — not just on the FastAPI process being up.
+        Without this gate, a crashed worker would silently accumulate
+        outbox backlog while the service reports healthy (the exact
+        failure mode that produced 186 stale rows pre-2026-05-06).
+        """
+        return self._task is not None and not self._task.done()
+
     async def _loop(self) -> None:
         while not self._stopping:
             try:

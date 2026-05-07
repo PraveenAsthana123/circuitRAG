@@ -88,6 +88,7 @@ def _get_wrapper():
     if not hasattr(_get_wrapper, "_instance"):
         # Lazy imports — keep cold-start fast for callers who don't use this
         from native_compute_wrapper import NativeComputeWrapper  # noqa: PLC0415
+
         from app.services import bge_reranker  # noqa: PLC0415
 
         if not bge_reranker.is_available():

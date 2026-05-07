@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -46,7 +46,7 @@ def review_row(status: str, note: str) -> str:
 
 def build_review(ns: str, server_path: Path, catalog_path: Path | None) -> str:
     src = server_path.read_text(encoding="utf-8")
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(UTC).date().isoformat()
 
     # ============= A. Critical correctness =============
     has_timeout = _has_any(src, "timeout=", "request_timeout", "timeout:")
@@ -229,14 +229,14 @@ def build_review(ns: str, server_path: Path, catalog_path: Path | None) -> str:
     md = [
         f"# `mcp/server_{ns}.py` — Brutal Tool Review",
         "",
-        f"> Per `~/.claude/policies/brutal-tool-review.md` (§52). Every row marked `✓` / `⚠` / `✗`",
-        f"> with empirical evidence. Every `✗` is a P0 backlog item; every `⚠` is P1/P2.",
+        "> Per `~/.claude/policies/brutal-tool-review.md` (§52). Every row marked `✓` / `⚠` / `✗`",
+        "> with empirical evidence. Every `✗` is a P0 backlog item; every `⚠` is P1/P2.",
         "",
         f"**Source:** `mcp/server_{ns}.py`",
         f"**Catalog:** {'`config/tool_catalog/' + ns + '.yaml`' if has_catalog else 'NOT CATALOGED'}",
-        f"**Reviewer:** autonomous-loop iter-84 (auto-generated from grep evidence)",
+        "**Reviewer:** autonomous-loop iter-84 (auto-generated from grep evidence)",
         f"**Date:** {today}",
-        f"**Status:** generated — needs operator verification on `⚠` rows",
+        "**Status:** generated — needs operator verification on `⚠` rows",
         "",
         "---",
         "",

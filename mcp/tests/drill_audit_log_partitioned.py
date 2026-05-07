@@ -61,7 +61,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import sys
 import uuid as _uuid
 from datetime import UTC, datetime, timedelta
@@ -379,7 +378,7 @@ async def main() -> None:
         )
         # Use a year guaranteed not to clash with bootstrap or step 6.
         async with pool.acquire() as conn:
-            dec_name = await conn.fetchval(
+            await conn.fetchval(
                 "SELECT governance.create_audit_log_partition('2087', '12')"
             )
             # Verify the partition's bound range bridges to 2088-01.

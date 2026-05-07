@@ -173,7 +173,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("scripts/best_config_history.py — Stage-1 audit-trail reader")
-    print(f"Stage-1 opt-in via BEST_CONFIG_HISTORY_ENABLED=1")
+    print("Stage-1 opt-in via BEST_CONFIG_HISTORY_ENABLED=1")
     print()
     print(json.dumps(status(), indent=2))
     print()
@@ -193,12 +193,12 @@ if __name__ == "__main__":
         print(f"  rejected:       {summary.rejected}")
         print(f"  skipped:        {summary.skipped}")
         if summary.gates_failed_counts:
-            print(f"  gates failed by type:")
+            print("  gates failed by type:")
             for gate, n in sorted(summary.gates_failed_counts.items(), key=lambda x: -x[1]):
                 print(f"    {gate}: {n}")
         if summary.latest_decision:
             ld = summary.latest_decision
-            print(f"\n  latest decision:")
+            print("\n  latest decision:")
             print(f"    promoted: {ld.get('promoted')}")
             print(f"    reason:   {ld.get('reason', '?')}")
             print(f"    config:   {ld.get('raw_winner_signature', '?')}")

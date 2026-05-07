@@ -100,8 +100,8 @@ async def main() -> None:
             fail("fastapi missing from catalog — should be a 'core' entry")
         if not fastapi["installed"]:
             fail(
-                f"fastapi reported as pending — but inference-svc is "
-                f"RUNNING on fastapi. Probe is broken."
+                "fastapi reported as pending — but inference-svc is "
+                "RUNNING on fastapi. Probe is broken."
             )
         if not fastapi.get("version"):
             fail(f"fastapi installed=True but no version: {fastapi}")
@@ -113,12 +113,12 @@ async def main() -> None:
             fail("autogen missing from catalog — should be 'agent-framework'")
         if autogen["installed"]:
             fail(
-                f"autogen reported as installed — should be pending. "
-                f"A regression that hardcoded installed=True would land here."
+                "autogen reported as installed — should be pending. "
+                "A regression that hardcoded installed=True would land here."
             )
         if autogen["version"] is not None:
             fail(f"autogen pending should have version=None, got {autogen['version']!r}")
-        ok(f"autogen pending (correctly not detected)")
+        ok("autogen pending (correctly not detected)")
 
         step("4. category enum constrained — no cardinality drift")
         cats = {e["category"] for e in entries}

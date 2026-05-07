@@ -168,10 +168,10 @@ def main() -> int:
     ])
     payload = stats.build_webhook_payload(multi, {}, "slack")
     if "text" not in payload:
-        print(f"✗ step 4: slack missing 'text' fallback")
+        print("✗ step 4: slack missing 'text' fallback")
         return 1
     if "blocks" not in payload:
-        print(f"✗ step 4: slack missing 'blocks'")
+        print("✗ step 4: slack missing 'blocks'")
         return 1
     sections = [b for b in payload["blocks"] if b.get("type") == "section"]
     if len(sections) != 3:
@@ -205,7 +205,7 @@ def main() -> int:
         if "title" not in em or "description" not in em:
             print(f"✗ step 5: discord embed {i} missing title/description: {em}")
             return 1
-    print(f"✓ step 5: discord format caps at 10 embeds (was 15 fired)")
+    print("✓ step 5: discord format caps at 10 embeds (was 15 fired)")
 
     # ── Step 6: NEGATIVE — connection refused returns (False, msg) ──
     # Find a port that's almost certainly not bound (high random port,
@@ -226,7 +226,7 @@ def main() -> int:
         print(f"✗ step 6: post_webhook returned ok=True on refused: {msg}")
         return 1
     if not msg:
-        print(f"✗ step 6: post_webhook ok=False but msg empty")
+        print("✗ step 6: post_webhook ok=False but msg empty")
         return 1
     print(f"✓ step 6: connection refused → (False, {msg!r}); no exception")
 
@@ -273,10 +273,10 @@ def main() -> int:
             return 1
         body = json.loads(rec["body"])
         if body["fired_alerts"] != fired_norm:
-            print(f"✗ step 8: server received wrong fired_alerts")
+            print("✗ step 8: server received wrong fired_alerts")
             return 1
         if body["context"].get("test") is not True:
-            print(f"✗ step 8: context not transmitted")
+            print("✗ step 8: context not transmitted")
             return 1
         print(f"✓ step 8: end-to-end POST verified ({msg}, payload preserved)")
     finally:

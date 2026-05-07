@@ -26,10 +26,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-import signal
 import subprocess
 import sys
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -41,8 +39,9 @@ sys.path.insert(0, str(REPO))
 # inference-svc's workers package is the authoritative home of DraftReplayWorker
 sys.path.insert(0, str(REPO / "services" / "inference-svc"))
 
-from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 from app.workers.draft_replay import DraftReplayWorker  # type: ignore  # noqa: E402
+
+from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 
 PG_DSN = (
     f"postgresql://{os.getenv('DOCUMIND_PG_USER', 'documind_app')}:"
@@ -145,7 +144,7 @@ async def main() -> None:
     step("0. clean slate — delete test-tenant drafts")
     pool = await asyncpg.create_pool(dsn=PG_DSN, min_size=1, max_size=2)
     try:
-        async with pool.acquire() as conn:
+        async with pool.acquire():
             # Admin deletion requires a user that can see the rows; run
             # as documind (superuser) via docker exec instead so we don't
             # couple the drill to any specific role.

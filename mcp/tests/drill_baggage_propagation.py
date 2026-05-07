@@ -42,8 +42,6 @@ Run:
 """
 from __future__ import annotations
 
-import sys
-
 
 def green(msg: str) -> None:
     print(f"\033[32m✓\033[0m {msg}")
@@ -174,7 +172,7 @@ def main() -> int:
             carrier: dict[str, str] = {}
             inject_propagation_headers(carrier)
             # Lower-case header names (W3C convention; HTTP/2 enforces).
-            keys = {k.lower() for k in carrier.keys()}
+            keys = {k.lower() for k in carrier}
             assert "traceparent" in keys, (
                 f"traceparent header MISSING from carrier {carrier!r}"
             )

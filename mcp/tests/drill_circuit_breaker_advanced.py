@@ -19,7 +19,6 @@ import sys
 import time
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -76,7 +75,7 @@ def main() -> int:
     assert cb.state is State.CLOSED, (
         f"FIX #22 BROKEN: healthy probe should short-circuit; got {cb.state}"
     )
-    print(f"  ok: healthy probe → OPEN→HALF_OPEN (without waiting 10s recovery)")
+    print("  ok: healthy probe → OPEN→HALF_OPEN (without waiting 10s recovery)")
 
     # -------------------------------------------------------------
     # FIX #22 NEGATIVE: broken probe doesn't crash breaker
@@ -102,7 +101,7 @@ def main() -> int:
     assert cb.state is State.CLOSED, (
         f"FIX #22 BROKEN: broken probe must be ignored; got {cb.state}"
     )
-    print(f"  ok: broken probe → caught + ignored; time-based recovery still works")
+    print("  ok: broken probe → caught + ignored; time-based recovery still works")
 
     # -------------------------------------------------------------
     # FIX #26: per-tenant breaker scope (tenant_id kwarg)
@@ -131,7 +130,7 @@ def main() -> int:
     )
     # tenant_b can still make calls
     asyncio.run(cb_b.call_async(_ok))
-    print(f"  ok: tenant isolation — tenant_a OPEN, tenant_b stayed CLOSED")
+    print("  ok: tenant isolation — tenant_a OPEN, tenant_b stayed CLOSED")
 
     # -------------------------------------------------------------
     # FIX #26 NEGATIVE: tenant_id=None preserves legacy
@@ -186,7 +185,7 @@ def main() -> int:
     time.sleep(0.1)
     asyncio.run(cb.call_async(_ok))
     assert cb.state is State.CLOSED
-    print(f"  ok: legacy time-based recovery works without probe")
+    print("  ok: legacy time-based recovery works without probe")
 
     print()
     print("ALL 8 STEPS PASSED")

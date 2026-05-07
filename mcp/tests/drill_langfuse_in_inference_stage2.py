@@ -132,7 +132,7 @@ def main() -> int:
     # is synchronous; emitting from an async function is fine but the
     # emission itself must not await — that would block ask() on
     # observability)
-    ask_head_check = src[src.find("from langfuse_tracer"):src.find("# Stage-2 Langfuse")] \
+    src[src.find("from langfuse_tracer"):src.find("# Stage-2 Langfuse")] \
         if src.find("# Stage-2 Langfuse") > src.find("from langfuse_tracer") \
         else ask_head
     print("  ok: rag_inference Python-valid; emission non-blocking")

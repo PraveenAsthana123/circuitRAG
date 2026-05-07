@@ -36,7 +36,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 MIGRATIONS_DIR = REPO / "services" / "agent-orchestrator-svc" / "migrations"
 

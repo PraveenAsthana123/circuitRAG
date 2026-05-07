@@ -24,7 +24,6 @@ import asyncio
 import json
 import os
 import urllib.parse
-from pathlib import Path
 
 import httpx
 

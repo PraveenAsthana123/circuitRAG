@@ -36,7 +36,6 @@ from __future__ import annotations
 import os
 import pathlib
 import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 HOOK = REPO / "scripts" / "git-hooks" / "pre-commit"

@@ -199,7 +199,7 @@ async def main() -> None:
             fail(f"mcp_itsm gauge expected 2 (open), got {g.get('mcp_itsm')}")
         if g.get("mcp_hr") != 0:
             fail(f"mcp_hr gauge moved: {g.get('mcp_hr')}")
-        ok(f"gauge: mcp_itsm=2 mcp_hr=0 (isolation preserved in Prom too)")
+        ok("gauge: mcp_itsm=2 mcp_hr=0 (isolation preserved in Prom too)")
 
         step("6. restart ITSM, 32s CB recovery, one probe → mcp_itsm back to closed")
         proc = _spawn_itsm()

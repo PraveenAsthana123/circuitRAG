@@ -59,7 +59,7 @@ async def main() -> None:
         from playwright.async_api import async_playwright
     except ImportError:
         print(f"{YELLOW}⚠ playwright not installed — skipping{NC}")
-        print(f"  install: pip install playwright && playwright install chromium")
+        print("  install: pip install playwright && playwright install chromium")
         sys.exit(0)
 
     fail_count = 0

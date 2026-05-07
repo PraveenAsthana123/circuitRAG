@@ -78,9 +78,9 @@ rejected; invalid role_type rejected.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 RoleType = Literal[
     "researcher",       # context-gather BEFORE other agents
@@ -109,7 +109,7 @@ class ObservabilityHooks(BaseModel):
         description="Audit fields written per agent invocation",
     )
 
-    model_config: ClassVar[dict] = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
 
 
 class AgentSpec(BaseModel):
@@ -157,7 +157,7 @@ class AgentSpec(BaseModel):
         description="Pydantic model name if output is structured (e.g. 'CouncilProposal')",
     )
 
-    model_config: ClassVar[dict] = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
 
 
 def validate_agent(spec: AgentSpec, *, repo_root: Path) -> list[str]:

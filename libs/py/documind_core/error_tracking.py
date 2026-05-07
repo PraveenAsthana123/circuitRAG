@@ -138,7 +138,8 @@ def capture_exception(exc: BaseException, **extra: Any) -> str | None:
         scope = sentry_sdk.get_isolation_scope()
         for k, v in extra.items():
             scope.set_extra(k, v)
-    return sentry_sdk.capture_exception(exc)
+    result = sentry_sdk.capture_exception(exc)
+    return str(result) if result is not None else None
 
 
 def _reset_for_tests() -> None:

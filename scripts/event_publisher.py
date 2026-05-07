@@ -37,10 +37,10 @@ import json
 import logging
 import os
 import sys
-import time
 import uuid
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -77,13 +77,13 @@ def _make_envelope(
       correlation_id      cross-service trace
       payload             event-specific dict
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
     return {
         "event_id": str(uuid.uuid4()),
         "event_type": event_type,
         "event_version": 1,
         "source_layer": source_layer,
-        "timestamp_iso": datetime.now(timezone.utc).isoformat(),
+        "timestamp_iso": datetime.now(UTC).isoformat(),
         "correlation_id": correlation_id or str(uuid.uuid4()),
         "payload": payload,
     }

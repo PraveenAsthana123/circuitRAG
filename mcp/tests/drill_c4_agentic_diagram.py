@@ -20,7 +20,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 C4 = REPO / "docs" / "architecture" / "C4-agentic.md"
 EXISTING_C4 = [

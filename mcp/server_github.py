@@ -44,10 +44,12 @@ from fastapi import FastAPI, Header, HTTPException
 from mcp.server_common import (
     ToolCallRequest,
     build_auth,
-    enforce_scope as _enforce_scope_common,
     handle_tool_call,
     mount_metrics_endpoint,
     setup_server_otel,
+)
+from mcp.server_common import (
+    enforce_scope as _enforce_scope_common,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -91,7 +93,7 @@ def _validate_repo_slug(slug: str) -> str:
         raise HTTPException(
             status_code=403,
             detail={"code": "repo_not_allowed", "slug": slug,
-                    "message": f"repo not in GITHUB_ALLOWED_REPOS allow-list"},
+                    "message": "repo not in GITHUB_ALLOWED_REPOS allow-list"},
         )
     return slug
 
@@ -286,7 +288,8 @@ def _live_or_stub() -> tuple[bool, str]:
 
 def _gh_get(url: str) -> dict[str, Any]:
     """One-shot GitHub REST GET. 10s timeout."""
-    import urllib.request, json as _json  # noqa: PLC0415
+    import json as _json  # noqa: PLC0415
+    import urllib.request
     token = os.environ["GITHUB_TOKEN"]
     req = urllib.request.Request(
         url,

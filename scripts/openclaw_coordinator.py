@@ -42,7 +42,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 AUDIT_LOG = REPO / ".loop" / "openclaw_audit.jsonl"
@@ -363,6 +363,8 @@ def dispatch(
             sys.path.insert(0, str(REPO / "scripts"))
             from mcp_gateway import (  # noqa: PLC0415
                 MCPGatewayDisabled,
+            )
+            from mcp_gateway import (
                 check as _gateway_check,
             )
             try:

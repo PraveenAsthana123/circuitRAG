@@ -7,7 +7,7 @@ dspy.GEPA().compile() against the Gemma council program. The Stage-2
 preflight default must remain a working fallback; --mode=compile is
 the explicit operator opt-in for the expensive path.
 
-Eight steps. Six negative. AST-only — no Ollama required.
+Ten steps. Seven negative. AST-only — no Ollama required.
 """
 from __future__ import annotations
 
@@ -28,13 +28,13 @@ def main() -> int:
     if '"--mode"' not in src:
         print("x --mode flag must be declared")
         return 1
-    if 'choices=["preflight", "compile"]' not in src:
-        print("x --mode must enforce choices=preflight|compile")
+    if 'choices=["preflight", "compile", "debug-metric"]' not in src:
+        print("x --mode must enforce choices=preflight|compile|debug-metric")
         return 1
     if 'default="preflight"' not in src:
         print("x --mode default must be 'preflight' (Stage-2 stays the safe default)")
         return 1
-    print("  ok: --mode preflight|compile, default preflight")
+    print("  ok: --mode preflight|compile|debug-metric, default preflight")
 
     print("-- 2. POSITIVE: --auto budget flag with 3 tiers (GEPA contract) --")
     if '"--auto"' not in src:
@@ -106,17 +106,20 @@ def main() -> int:
     # The eval_set rows have question + ground_truth (not 'expected').
     # If we miswire the field name, GEPA optimizes against empty strings
     # → all metric scores 0 → no learning signal.
-    if 'row.get("question"' not in s3_body:
+    if 'row.get("question"' not in src:
         print("x trainset must read 'question' from eval_set rows")
         return 1
-    if 'row.get("ground_truth"' not in s3_body:
+    if 'row.get("ground_truth"' not in src:
         print("x trainset must read 'ground_truth' from eval_set rows")
         return 1
-    if "dspy.Example(question=" not in s3_body:
+    if "dspy.Example(question=" not in src:
         print("x trainset must build dspy.Example with question= field")
         return 1
-    if '.with_inputs("question")' not in s3_body:
+    if '.with_inputs("question")' not in src:
         print("x trainset rows must mark 'question' as input field")
+        return 1
+    if "_build_trainset(dspy, eval_set)" not in s3_body:
+        print("x _stage3_compile must use the shared eval_set -> trainset helper")
         return 1
     print("  ok: trainset shape matches eval_set + DSPy Example contract")
 
@@ -150,8 +153,44 @@ def main() -> int:
         return 1
     print("  ok: optimized prompts extracted + Stage-4 path documented")
 
+    print("-- 9. NEGATIVE: suspect fast/empty GEPA compile is not reported as success --")
+    if '"status": "stage_3_compile_suspect"' not in s3_body:
+        print("x compile path must mark physically-impossible/empty runs as suspect")
+        return 1
+    if "metric_stats" not in s3_body:
+        print("x compile report must include metric_stats diagnostics")
+        return 1
+    if 'metric_stats["calls"] == 0' not in s3_body:
+        print("x compile path must reject runs where GEPA never calls the metric")
+        return 1
+    if "empty_answers" not in s3_body or "zero_scores" not in s3_body:
+        print("x metric_stats must track empty answers and zero scores")
+        return 1
+    if "elapsed < max(10.0, len(trainset) * 2.0)" not in s3_body:
+        print("x compile path must reject too-fast local-Ollama GEPA runs")
+        return 1
+    if "return 1" not in s3_body[s3_body.find("if suspect_compile:"):]:
+        print("x suspect compile must exit non-zero")
+        return 1
+    print("  ok: suspect GEPA runs write diagnostics and fail closed")
+
+    print("-- 10. POSITIVE: debug-metric command emits per-call score/timing diagnostics --")
+    if "def _stage3_debug_metric" not in src:
+        print("x debug metric helper must exist")
+        return 1
+    if 'if args.mode == "debug-metric":' not in main_body:
+        print("x main() must route --mode=debug-metric")
+        return 1
+    if '"metric_calls"' not in src:
+        print("x debug report must include metric_calls")
+        return 1
+    if '"answer_len"' not in src or '"elapsed_s"' not in src:
+        print("x debug report must include answer_len and elapsed_s")
+        return 1
+    print("  ok: debug-metric mode records metric score, answer length, and timing")
+
     print()
-    print("ALL 8 STEPS PASSED")
+    print("ALL 10 STEPS PASSED")
     return 0
 
 

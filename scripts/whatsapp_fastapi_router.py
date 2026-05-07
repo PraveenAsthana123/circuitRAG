@@ -254,6 +254,6 @@ def status() -> dict[str, Any]:
 if __name__ == "__main__":
     import json
     print("scripts/whatsapp_fastapi_router.py — Stage-2 reusable FastAPI router")
-    print(f"Stage-2 opt-in via WHATSAPP_WEBHOOK_ENABLED=1 (Stage-1 inheritance)")
+    print("Stage-2 opt-in via WHATSAPP_WEBHOOK_ENABLED=1 (Stage-1 inheritance)")
     print()
     print(json.dumps(status(), indent=2))

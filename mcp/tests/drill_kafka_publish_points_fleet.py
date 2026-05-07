@@ -99,7 +99,7 @@ def main() -> int:
         src = sources[label]
         if f'type="{event_type}"' not in src and f"type='{event_type}'" not in src:
             fail(f"{label} publish missing type={event_type!r}")
-    ok(f"both routes use correct CloudEvents type")
+    ok("both routes use correct CloudEvents type")
 
     # ------------------------------------------------------------------
     # Step 2 — POSITIVE: each publish has key=tenant_id (per-tenant ordering)

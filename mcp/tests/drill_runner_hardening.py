@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -81,7 +80,7 @@ async def main() -> None:
     try:
         step("1. PY_BIN resolves to sys.executable (env-driven, no /tmp default)")
         # Reload the module's PY_BIN under no env override — should be sys.executable.
-        if PY_BIN != sys.executable:
+        if sys.executable != PY_BIN:
             # PYTHON_BIN env is set by the test harness — that's allowed.
             if not os.getenv("PYTHON_BIN"):
                 fail(

@@ -18,7 +18,6 @@ import sys
 import time
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -130,7 +129,7 @@ def main() -> int:
     time.sleep(0.1)
     admitted = sum(1 for _ in range(10) if cb.allow())
     assert admitted == 3, f"expected 3 admitted, got {admitted}"
-    print(f"  ok: 3 of 10 admitted under cap=3")
+    print("  ok: 3 of 10 admitted under cap=3")
 
     # -------------------------------------------------------------
     # FIX #8: half_open_success_threshold=3 — 1 success not enough
@@ -246,7 +245,7 @@ def main() -> int:
     cb.record_success()
     cb.record_success()
     assert cb.state is State.CLOSED, f"expected CLOSED after 2 successes; got {cb.state}"
-    print(f"  ok: 5 concurrent probes → 2 admitted; 2 successes → CLOSED")
+    print("  ok: 5 concurrent probes → 2 admitted; 2 successes → CLOSED")
 
     print()
     print("ALL 8 STEPS PASSED")

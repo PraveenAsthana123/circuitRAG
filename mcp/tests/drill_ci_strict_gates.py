@@ -21,7 +21,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 CI = REPO / ".github" / "workflows" / "ci.yml"
 
@@ -46,33 +45,30 @@ def main() -> int:
     print("-- 3. NEGATIVE: mypy step MUST NOT carry || true (hard gate) --")
     # Find the mypy line and assert no || true on it.
     for line in text.splitlines():
-        if "mypy --ignore-missing-imports libs/py/documind_core" in line:
-            if "|| true" in line:
-                raise AssertionError(
-                    f"mypy step is non-blocking ('|| true' present): {line!r}; "
-                    "clean since d0c1a1f — drill enforces hard gate"
-                )
+        if "mypy --ignore-missing-imports libs/py/documind_core" in line and "|| true" in line:
+            raise AssertionError(
+                f"mypy step is non-blocking ('|| true' present): {line!r}; "
+                "clean since d0c1a1f — drill enforces hard gate"
+            )
     print("  ok: mypy is a hard gate")
 
     print("-- 4. NEGATIVE: ruff step MUST be a hard gate --")
     for line in text.splitlines():
-        if line.strip().startswith("run: ruff check"):
-            if "|| true" in line:
-                raise AssertionError(
-                    f"ruff step is non-blocking: {line!r}; "
-                    "ruff is at 0 errors and must stay there"
-                )
+        if line.strip().startswith("run: ruff check") and "|| true" in line:
+            raise AssertionError(
+                f"ruff step is non-blocking: {line!r}; "
+                "ruff is at 0 errors and must stay there"
+            )
     print("  ok: ruff is a hard gate")
 
     print("-- 5. NEGATIVE: bandit step MUST be a hard gate --")
     for line in text.splitlines():
-        if line.strip().startswith("run: bandit -r"):
-            if "|| true" in line:
-                raise AssertionError(
-                    f"bandit step is non-blocking: {line!r}; "
-                    "bandit findings must fail CI (operator review path "
-                    "documented in scripts/issue_dispatcher.py)"
-                )
+        if line.strip().startswith("run: bandit -r") and "|| true" in line:
+            raise AssertionError(
+                f"bandit step is non-blocking: {line!r}; "
+                "bandit findings must fail CI (operator review path "
+                "documented in scripts/issue_dispatcher.py)"
+            )
     print("  ok: bandit is a hard gate")
 
     print("-- 6. NEGATIVE: mypy target MUST NOT silently shrink --")

@@ -61,7 +61,7 @@ def main() -> int:
             if key not in info:
                 print(f"x agent {name!r} missing key {key!r}")
                 return 1
-    print(f"  ok: 6 agents, each with capabilities + required_scope + endpoint")
+    print("  ok: 6 agents, each with capabilities + required_scope + endpoint")
 
     print("-- 3. NEGATIVE: unknown requesting_agent → UnknownAgentError --")
     try:
@@ -126,7 +126,7 @@ def main() -> int:
         scopes_granted=["delegate:council:reviewer"],
     )
     if decision.allow:
-        print(f"x Stage-1 dispatch should default-deny (no rules); got allow=True")
+        print("x Stage-1 dispatch should default-deny (no rules); got allow=True")
         return 1
     if decision.rule_matched != "default-deny":
         print(f"x rule_matched should be 'default-deny'; got {decision.rule_matched!r}")
@@ -134,7 +134,7 @@ def main() -> int:
     if envelope is not None:
         print(f"x denied dispatch must return envelope=None; got {envelope}")
         return 1
-    print(f"  ok: default-deny, envelope=None, rule_matched='default-deny'")
+    print("  ok: default-deny, envelope=None, rule_matched='default-deny'")
 
     print("-- 7. POSITIVE: audit row appended for every dispatch attempt --")
     if not AUDIT_LOG.exists():
@@ -158,7 +158,7 @@ def main() -> int:
     if not found:
         print("x audit row from step 6 not found in last 10 rows of openclaw_audit.jsonl")
         return 1
-    print(f"  ok: audit row present (last 10 rows scanned; deny case found)")
+    print("  ok: audit row present (last 10 rows scanned; deny case found)")
 
     print("-- 8. NEGATIVE: module import is side-effect-free + no Stage-2 surfaces --")
     # Locks: importing openclaw_coordinator does NOT spawn a network
@@ -178,7 +178,7 @@ def main() -> int:
     if "Stage-1" not in src.split('"""')[1]:
         print("x module docstring must mark Stage-1")
         return 1
-    print(f"  ok: 0 Stage-2 surfaces present; docstring marks Stage-1 explicitly")
+    print("  ok: 0 Stage-2 surfaces present; docstring marks Stage-1 explicitly")
 
     print()
     print("ALL 8 STEPS PASSED")

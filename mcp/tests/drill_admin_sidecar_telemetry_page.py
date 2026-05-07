@@ -84,7 +84,7 @@ def main() -> int:
               "the snapshot file at request time. Without this, 5S "
               "is doc-only — the whole point is live data.")
         return 1
-    print(f"✓ step 3: imports fs for runtime read")
+    print("✓ step 3: imports fs for runtime read")
 
     # ── Step 4: NEGATIVE — references the canonical snapshot path ──
     if "council_stats_daily.jsonl" not in body:

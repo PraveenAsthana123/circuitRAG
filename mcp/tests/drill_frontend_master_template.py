@@ -156,7 +156,7 @@ async def main() -> None:
                 f"The renderer fell back to the legacy interviewLine; the "
                 f"new finalScript field was dropped."
             )
-        ok(f"§36 long-form final-script content present")
+        ok("§36 long-form final-script content present")
 
         step("5b. §5 Network Flow + §7 Core Layers SSR content present")
         # Note: Mermaid is a client-only component, so HLD/LLD/networkFlow
@@ -209,7 +209,7 @@ async def main() -> None:
                     f"5W label {label!r} missing from the §2 window. "
                     f"The fiveW renderer dropped a row."
                 )
-        ok(f"all 5 5W row labels present in §2 window")
+        ok("all 5 5W row labels present in §2 window")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 5 MASTER-TEMPLATE STEPS PASSED{NC}")

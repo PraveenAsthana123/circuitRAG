@@ -285,7 +285,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("scripts/promote_gepa_prompts.py — Stage-4 GEPA-prompt promotion gate")
-    print(f"Stage-4 opt-in via GEPA_PROMOTION_GATE_ENABLED=1")
+    print("Stage-4 opt-in via GEPA_PROMOTION_GATE_ENABLED=1")
     print()
     if not args.json:
         print(json.dumps(status(), indent=2))
@@ -305,14 +305,14 @@ if __name__ == "__main__":
     if args.json:
         print(json.dumps(decision.as_dict(), indent=2))
     else:
-        print(f"=== GEPA-prompt promotion decision ===")
+        print("=== GEPA-prompt promotion decision ===")
         print(f"  promoted:         {decision.promoted}")
         print(f"  reason:           {decision.reason}")
         print(f"  report_status:    {decision.report_status}")
         print(f"  prompt_changed:   {decision.prompt_changed}")
         print(f"  predictors:       {decision.predictors_count}")
         if decision.gates_failed:
-            print(f"  gates_failed:")
+            print("  gates_failed:")
             for g in decision.gates_failed:
                 print(f"    - {g}")
         print(f"  history_appended: {decision.history_appended}")

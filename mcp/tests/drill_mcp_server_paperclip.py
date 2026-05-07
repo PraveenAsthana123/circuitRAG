@@ -42,7 +42,7 @@ def main() -> int:
     if not hasattr(server_paperclip, "TOOLS"):
         print("x server_paperclip.TOOLS missing")
         return 1
-    print(f"  ok: server_paperclip imports + has app + TOOLS")
+    print("  ok: server_paperclip imports + has app + TOOLS")
 
     print("-- 2. POSITIVE: exactly 2 tools registered (paperclip.snapshot + paperclip.health) --")
     tools = server_paperclip.TOOLS
@@ -66,7 +66,7 @@ def main() -> int:
         if t.get("side_effects") != "read":
             print(f"x tool {t['name']} must declare side_effects='read'; got {t.get('side_effects')!r}")
             return 1
-    print(f"  ok: 0 write tools; all 2 tools declare side_effects='read'")
+    print("  ok: 0 write tools; all 2 tools declare side_effects='read'")
 
     print("-- 4. NEGATIVE: every tool requires snapshot:read scope --")
     # Stage-1 scope policy: only snapshot:read. Adding ANY tool that
@@ -91,7 +91,7 @@ def main() -> int:
         if not callable(fn):
             print(f"x handler for {name!r} not callable")
             return 1
-    print(f"  ok: 2 handlers, exactly matching the 2 registered tools, all callable")
+    print("  ok: 2 handlers, exactly matching the 2 registered tools, all callable")
 
     print("-- 6. NEGATIVE: tool name regex enforces 'paperclip.' prefix --")
     # Bit-rot prevention: a future PR adding a non-paperclip tool to
@@ -126,7 +126,6 @@ def main() -> int:
     # on an actual tool invocation — that's the lazy-init posture.
     # We measure import time of a fresh subprocess.
     import subprocess
-    import time
     proc = subprocess.run(
         [sys.executable, "-c",
          "import sys; sys.path.insert(0, '.'); "

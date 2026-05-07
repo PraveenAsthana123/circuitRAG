@@ -38,11 +38,9 @@ Eight steps. Six negative assertions.
 """
 from __future__ import annotations
 
-import inspect
 import os
 import sys
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
@@ -74,14 +72,14 @@ def main() -> int:
     print("  ok: imports + state binding + header alias all present")
 
     print("-- 2. POSITIVE: app.state.idempotency_store after lifespan --")
-    from fastapi.testclient import TestClient
-    from app.main import app
     from app.idempotency import (
-        InMemoryIdempotencyStore,
         IdempotencyRecord,
+        InMemoryIdempotencyStore,
         hash_body,
     )
     from app.idempotency_postgres import PostgresIdempotencyStore
+    from app.main import app
+    from fastapi.testclient import TestClient
 
     with TestClient(app) as client:
         idem = getattr(app.state, "idempotency_store", None)

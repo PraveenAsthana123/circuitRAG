@@ -55,7 +55,7 @@ def main() -> int:
         if f"{field_name}:" not in src:
             print(f"x ToolEval objects missing field: {field_name!r}")
             return 1
-    print(f"  ok: 6 evaluation fields (license/maintenance/useful/safe/verdict/recommendation)")
+    print("  ok: 6 evaluation fields (license/maintenance/useful/safe/verdict/recommendation)")
 
     print("-- 4. POSITIVE: 4 verdict categories used --")
     verdicts = ("integrate", "sandbox-only", "specific-use", "skip")
@@ -63,7 +63,7 @@ def main() -> int:
         if f"'{v}'" not in src and f'"{v}"' not in src:
             print(f"x verdict category not used: {v!r}")
             return 1
-    print(f"  ok: all 4 verdict categories used")
+    print("  ok: all 4 verdict categories used")
 
     print("-- 5. POSITIVE: LiteLLM verdict=integrate (the headline rec) --")
     # LiteLLM is the one tool that should be 'integrate' — drill locks
@@ -113,7 +113,7 @@ def main() -> int:
         if action not in bottom_section:
             print(f"x bottom-line must include action: {action!r}")
             return 1
-    print(f"  ok: 5 concrete actionable next moves named")
+    print("  ok: 5 concrete actionable next moves named")
 
     print("-- 8. POSITIVE: §49 compose footer + sidebar wired --")
     if "Composes with" not in src:

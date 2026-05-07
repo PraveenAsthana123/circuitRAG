@@ -136,7 +136,7 @@ def main() -> int:
     for var in expected:
         if var not in inference_src:
             fail(f"convention violated: missing env var {var}")
-    ok(f"all 3 mcp namespaces use the DOCUMIND_MCP_<NS>_URL convention")
+    ok("all 3 mcp namespaces use the DOCUMIND_MCP_<NS>_URL convention")
 
     # ------------------------------------------------------------------
     # Step 6 — NEGATIVE: launcher does NOT hardcode the port

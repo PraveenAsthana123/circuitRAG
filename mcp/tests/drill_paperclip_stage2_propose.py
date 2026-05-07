@@ -73,7 +73,7 @@ def main() -> int:
     if result.get("stage") != 2:
         print(f"x stage must be 2; got {result.get('stage')}")
         return 1
-    print(f"  ok: returns dict with stage=2 + 4 required keys")
+    print("  ok: returns dict with stage=2 + 4 required keys")
 
     print("-- 3. NEGATIVE: function does NOT mutate .loop/ files --")
     loop_dir = REPO / ".loop"
@@ -150,7 +150,7 @@ def main() -> int:
     if parsed.get("stage") != 2:
         print(f"x stage must be 2; got {parsed.get('stage')}")
         return 1
-    print(f"  ok: CLI propose returns valid JSON with stage=2")
+    print("  ok: CLI propose returns valid JSON with stage=2")
 
     print("-- 8. NEGATIVE: Stage-1 drill still passes (no regression) --")
     proc = subprocess.run(

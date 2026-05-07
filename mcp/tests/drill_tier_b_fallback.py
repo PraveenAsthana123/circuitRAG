@@ -46,7 +46,7 @@ def main() -> int:
         "author": {},
     }
     if not tb.should_escalate_to_tier_b(chain):
-        print(f"x step 2: both-attempts-rejected should escalate; got False")
+        print("x step 2: both-attempts-rejected should escalate; got False")
         return 1
     print("  ok: both-attempts-rejected → escalate=True (trigger 1)")
 
@@ -56,7 +56,7 @@ def main() -> int:
         "author": {"proposal": {"confidence": 0.3}},  # below default 0.6
     }
     if not tb.should_escalate_to_tier_b(chain):
-        print(f"x step 3: confidence 0.3 < 0.6 should escalate; got False")
+        print("x step 3: confidence 0.3 < 0.6 should escalate; got False")
         return 1
     print("  ok: low confidence (0.3) → escalate=True (trigger 2)")
 
@@ -66,7 +66,7 @@ def main() -> int:
         "author": {"proposal": {"confidence": 0.9}},
     }
     if tb.should_escalate_to_tier_b(chain):
-        print(f"x step 4: confident proposal (0.9) should NOT escalate; got True (theater!)")
+        print("x step 4: confident proposal (0.9) should NOT escalate; got True (theater!)")
         return 1
     print("  ok: confident proposal (0.9) → escalate=False (no theater)")
 
@@ -82,7 +82,7 @@ def main() -> int:
         },
     }
     if not tb.should_escalate_to_tier_b(chain):
-        print(f"x step 5: advisor alt with 3+ risks should escalate; got False")
+        print("x step 5: advisor alt with 3+ risks should escalate; got False")
         return 1
     print("  ok: advisor alt with 3+ risks → escalate=True (trigger 3)")
 
@@ -98,7 +98,7 @@ def main() -> int:
         },
     }
     if not tb.should_escalate_to_tier_b(chain):
-        print(f"x step 6: 'breaking' risk should escalate; got False")
+        print("x step 6: 'breaking' risk should escalate; got False")
         return 1
     print("  ok: 'breaking' in risk text → escalate=True (trigger 3 keyword)")
 
@@ -113,7 +113,7 @@ def main() -> int:
         if result is not None:
             print(f"x step 7: try_tier_b returned non-None when no binary available; got {type(result).__name__}")
             return 1
-        print(f"  ok: no Tier-B binary on PATH → None returned (graceful degradation)")
+        print("  ok: no Tier-B binary on PATH → None returned (graceful degradation)")
     else:
         # If a binary IS available (rare on dev hosts), we just verify
         # the call doesn't crash; result may be None (timeout/parse fail).

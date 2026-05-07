@@ -22,11 +22,8 @@ Eight steps. Six negative assertions.
 from __future__ import annotations
 
 import importlib
-import os
-import re
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "scripts"
@@ -106,7 +103,7 @@ def main() -> int:
     finally:
         del sys.modules["pydanticai_adapter"]
     if result is None:
-        print(f"x valid JSON should parse via regex path; got None")
+        print("x valid JSON should parse via regex path; got None")
         return 1
     if fallback_called["hit"]:
         print("x fallback was called even though regex succeeded")

@@ -17,7 +17,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE = REPO / "docker-compose.yml"
 NGINX = REPO / "infra" / "nginx" / "nginx.conf"

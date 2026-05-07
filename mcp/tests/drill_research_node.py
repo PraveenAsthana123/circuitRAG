@@ -27,7 +27,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 MIGRATION = SVC / "migrations" / "009_research_artifacts.sql"
@@ -59,7 +58,7 @@ def _bootstrap():
     init.LlmClientUnavailable = proto.LlmClientUnavailable
     init.LlmCallResult = proto.LlmCallResult
 
-    catalog = _load(f"{pkg}.model_catalog", SVC / "app" / "model_catalog.py", pkg)
+    _load(f"{pkg}.model_catalog", SVC / "app" / "model_catalog.py", pkg)
     router = _load(f"{pkg}.model_router", SVC / "app" / "model_router.py", pkg)
     registry = _load(f"{pkg}.agent_registry", SVC / "app" / "agent_registry.py", pkg)
 
@@ -75,7 +74,7 @@ def _bootstrap():
     fake_ollama.OllamaGenerateClient = _Ollama
     sys.modules[f"{pkg}.ollama_client"] = fake_ollama
 
-    agents = _load(f"{pkg}.agents", SVC / "app" / "agents.py", pkg)
+    _load(f"{pkg}.agents", SVC / "app" / "agents.py", pkg)
     research = _load(f"{pkg}.research", SVC / "app" / "research.py", pkg)
     return research, registry, router, pool, proto
 

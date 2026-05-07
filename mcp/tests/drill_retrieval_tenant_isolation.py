@@ -158,7 +158,7 @@ async def main() -> None:
     # Per-drill UUID tenants — same isolation pattern as drill_worker_metrics.
     TENANT_A = str(uuid.uuid4())
     TENANT_B = str(uuid.uuid4())
-    suffix = uuid.uuid4().hex[:8]
+    uuid.uuid4().hex[:8]
     CHUNK_A = str(uuid.uuid4())
     CHUNK_B = str(uuid.uuid4())
     DOC_A = str(uuid.uuid4())
@@ -183,7 +183,7 @@ async def main() -> None:
                 f"unfiltered search did not return both planted chunks; "
                 f"saw {len(ours)} of 2 — setup broken"
             )
-        ok(f"unfiltered search saw both chunks (tenant A + tenant B in same hit list)")
+        ok("unfiltered search saw both chunks (tenant A + tenant B in same hit list)")
 
         step("2. VectorSearcher tenant=A returns ONLY A's chunk")
         searcher = VectorSearcher(

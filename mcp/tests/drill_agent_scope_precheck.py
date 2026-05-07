@@ -98,7 +98,7 @@ async def main() -> None:
             )
         if (await c.get(f"{MCP_BASE}/health")).status_code != 200:
             fail("MCP not reachable")
-        ok(f"inference auth=required; mcp up")
+        ok("inference auth=required; mcp up")
 
         read_tok = _mint(["hr:read"])
         write_tok = _mint(["hr:read", "hr:write"])
@@ -187,7 +187,7 @@ async def main() -> None:
                     f"for {cid_dashed}"
                 )
             # Sanity: the hr:write correlation SHOULD be in there
-            cid_write_dashed = uuid.UUID(corr_write)
+            uuid.UUID(corr_write)
             # We don't strictly assert presence because the agent might
             # have used a DIFFERENT correlation_id for the MCP hop; just
             # check denial wasn't logged.
@@ -213,7 +213,7 @@ async def main() -> None:
             fail(f"expected intent=answer, got {body.get('intent')}")
         if body.get("action") is not None:
             fail(f"expected action=None on plain RAG, got {body['action']}")
-        ok(f"intent=answer action=None — scope check didn't spuriously trigger")
+        ok("intent=answer action=None — scope check didn't spuriously trigger")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 5 AGENT-SCOPE-PRECHECK STEPS PASSED{NC}")

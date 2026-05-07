@@ -51,7 +51,7 @@ def main() -> int:
     import inspect
     sig_complete = inspect.signature(litellm_adapter.complete)
     public_params = [
-        p for p in sig_complete.parameters.keys() if not p.startswith("_")
+        p for p in sig_complete.parameters if not p.startswith("_")
     ]
     expected_public = ["model", "system", "prompt", "timeout", "actor"]
     if public_params != expected_public:

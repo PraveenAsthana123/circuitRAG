@@ -90,7 +90,7 @@ async def main() -> None:
                 f"senior-signal that distinguishes this page from the "
                 f"flat /admin/python catalog."
             )
-        ok(f"interview-line block appears 12x (correct)")
+        ok("interview-line block appears 12x (correct)")
 
         step("4. 'Where it fits in this project' appears EXACTLY 12x")
         wcount = body.count("Where it fits in this project")
@@ -100,7 +100,7 @@ async def main() -> None:
                 f"Every topic must anchor to actual repo state — file "
                 f"paths or commit hashes — not be abstract."
             )
-        ok(f"project-fit anchor appears 12x")
+        ok("project-fit anchor appears 12x")
 
         step("5. sidebar exposes /admin/python/deep + sibling /admin/python")
         for marker in ("/admin/python/deep", "/admin/python"):

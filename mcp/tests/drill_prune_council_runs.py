@@ -30,12 +30,11 @@ Tag: readonly. Pure-Python -- runs in tier 1.
 from __future__ import annotations
 
 import importlib.util
-import json
 import pathlib
 import sqlite3
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
@@ -110,7 +109,7 @@ def main():
         mem = AdvisorMemory(db)
         mem.set_policy_version("v1")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # 2 old (60 days ago), 2 new (5 days ago)
         for i in range(2):
             _insert_council_run_at(
@@ -128,7 +127,7 @@ def main():
         if result["kept"] != 2:
             fail(f"expected 2 kept, got {result['kept']}")
         if result["dry_run"]:
-            fail(f"apply mode should report dry_run=False")
+            fail("apply mode should report dry_run=False")
         # Verify on disk
         with sqlite3.connect(str(db)) as conn:
             n = conn.execute(
@@ -144,7 +143,7 @@ def main():
         db = pathlib.Path(tmp) / "advisor.db"
         mem = AdvisorMemory(db)
         mem.set_policy_version("v1")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(3):
             _insert_council_run_at(
                 db, created_at=(now - timedelta(days=100+i)).isoformat(timespec="seconds"),
@@ -169,7 +168,7 @@ def main():
         result = mem.prune_council_runs(older_than_days=30, dry_run=False)
         if result["deleted"] != 0 or result["kept"] != 0:
             fail(f"empty table should yield 0/0, got {result}")
-        ok(f"empty table: deleted=0 kept=0 (graceful)")
+        ok("empty table: deleted=0 kept=0 (graceful)")
 
     # Step 4: idempotent re-run
     step("4. NEGATIVE: re-run after apply is idempotent")
@@ -177,7 +176,7 @@ def main():
         db = pathlib.Path(tmp) / "advisor.db"
         mem = AdvisorMemory(db)
         mem.set_policy_version("v1")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(2):
             _insert_council_run_at(
                 db, created_at=(now - timedelta(days=100+i)).isoformat(timespec="seconds"),
@@ -196,7 +195,7 @@ def main():
             fail(f"re-run should be no-op: {r2}")
         if r2["kept"] != 2:
             fail(f"re-run kept != 2: {r2}")
-        ok(f"re-run: deleted=0 kept=2 (idempotent)")
+        ok("re-run: deleted=0 kept=2 (idempotent)")
 
     # Step 5: future timestamps preserved
     step("5. NEGATIVE: future-timestamped rows preserved (clock-skew safety)")
@@ -204,7 +203,7 @@ def main():
         db = pathlib.Path(tmp) / "advisor.db"
         mem = AdvisorMemory(db)
         mem.set_policy_version("v1")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Future timestamp (e.g. NTP skew on a node)
         _insert_council_run_at(
             db, created_at=(now + timedelta(days=5)).isoformat(timespec="seconds"),
@@ -218,7 +217,7 @@ def main():
             fail(f"should delete only the old one: {result}")
         if result["kept"] != 1:
             fail(f"future row should be kept: {result}")
-        ok(f"future timestamp preserved (clock-skew safe)")
+        ok("future timestamp preserved (clock-skew safe)")
 
     # Step 6: older_than_days=0 cutoff at "now"
     step("6. NEGATIVE: older_than_days=0 prunes anything before now")
@@ -226,7 +225,7 @@ def main():
         db = pathlib.Path(tmp) / "advisor.db"
         mem = AdvisorMemory(db)
         mem.set_policy_version("v1")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # 1 second ago - should be < threshold
         _insert_council_run_at(
             db, created_at=(now - timedelta(seconds=1)).isoformat(timespec="seconds"),
@@ -240,7 +239,7 @@ def main():
             fail(f"older_than_days=0: should delete 1, got {result}")
         if result["kept"] != 1:
             fail(f"future-timestamp row kept: expected 1, got {result['kept']}")
-        ok(f"older_than_days=0: instant cutoff at now")
+        ok("older_than_days=0: instant cutoff at now")
 
     # Step 7: negative days raises
     step("7. NEGATIVE: older_than_days < 0 raises ValueError (sanity)")
@@ -252,7 +251,7 @@ def main():
             fail("negative days should raise ValueError")
         except ValueError:
             pass
-        ok(f"negative days rejected at parameter validation")
+        ok("negative days rejected at parameter validation")
 
     # Step 8: events untouched
     step("8. NEGATIVE: prune does NOT touch advisor_events rows")
@@ -266,7 +265,7 @@ def main():
         for i in range(3):
             _seed_event(mem, content=f"content_{i}")
         # Insert 3 council runs - 2 old, 1 new
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(2):
             _insert_council_run_at(
                 db, created_at=(now - timedelta(days=100+i)).isoformat(timespec="seconds"),
@@ -287,7 +286,7 @@ def main():
             n = conn.execute("SELECT COUNT(*) FROM advisor_council_runs").fetchone()[0]
         if n != 1:
             fail(f"council_runs final count != 1: {n}")
-        ok(f"prune deleted 2 council_runs; 3 events + 1 council_run preserved")
+        ok("prune deleted 2 council_runs; 3 events + 1 council_run preserved")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 PRUNE-COUNCIL-RUNS STEPS PASSED{NC}")

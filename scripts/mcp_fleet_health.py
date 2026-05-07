@@ -271,7 +271,7 @@ def _probe_e2e(url: str, ns: str, tools: list[ToolHealth], timeout: float) -> tu
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = json.loads(r.read().decode("utf-8", errors="replace"))
+            json.loads(r.read().decode("utf-8", errors="replace"))
         # Shape check: response should have a payload (server_common
         # wraps results); accept any 200 response as "tool reachable".
         return True, f"called {read_tool.name}; response shape ok"

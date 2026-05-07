@@ -160,8 +160,8 @@ class DbBackedPromptBuilder:
           §43 drill — drill_prompt_repo_gepa_overlay_stage5
           §47 fail-safe — error never breaks baseline reload
         """
-        import os
         import json as _json
+        import os
         from pathlib import Path
 
         if os.environ.get("GEPA_PROMPT_LOADER_ENABLED", "").strip() != "1":
@@ -222,7 +222,7 @@ class DbBackedPromptBuilder:
             # need Path A's per-predictor mapping which is out of scope.
             if gepa_target and not any(
                 k.startswith(f"{gepa_target}_gepa-")
-                for k in cache.keys()
+                for k in cache
             ):
                 alias_key = f"{gepa_target}_{version_tag}"
                 cache[alias_key] = PromptTemplate(
@@ -305,7 +305,7 @@ class DbBackedPromptBuilder:
         # Find the gepa-aliased version for this template_name. Cache
         # keys are like `<template>_gepa-<ts>`; pick the most recent.
         gepa_keys = [
-            k for k in self._cache.keys()
+            k for k in self._cache
             if k.startswith(f"{template_name}_gepa-")
         ]
         if not gepa_keys:

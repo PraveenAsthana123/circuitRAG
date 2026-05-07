@@ -133,15 +133,14 @@ def main() -> int:
     print("\n[3/6] Real middleware stack: header → request.state → baggage")
     try:
         sys.path.insert(0, str(repo / "libs/py"))
-        from fastapi import FastAPI, Request
-        from fastapi.testclient import TestClient
-        from opentelemetry import baggage as _ot_baggage
-
         from documind_core.middleware import (
             BaggageContextMiddleware,
             CorrelationIdMiddleware,
             TenantContextMiddleware,
         )
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from opentelemetry import baggage as _ot_baggage
 
         app = FastAPI()
         # add_middleware order — same as services use:
@@ -192,15 +191,14 @@ def main() -> int:
     print("\n[4/6] NEGATIVE: omitted X-Tenant-ID → no tenant_id in baggage "
           "(no invented default)")
     try:
-        from fastapi import FastAPI, Request
-        from fastapi.testclient import TestClient
-        from opentelemetry import baggage as _ot_baggage
-
         from documind_core.middleware import (
             BaggageContextMiddleware,
             CorrelationIdMiddleware,
             TenantContextMiddleware,
         )
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from opentelemetry import baggage as _ot_baggage
 
         app2 = FastAPI()
         app2.add_middleware(BaggageContextMiddleware)
@@ -244,7 +242,6 @@ def main() -> int:
     # ── Step 5: middleware degrades gracefully without OTel ─────
     print("\n[5/6] Middleware constructor handles OTel-missing gracefully")
     try:
-        from documind_core.middleware import BaggageContextMiddleware as BCM
 
         # The class stores _baggage / _context refs at __init__ time.
         # If those are None (ImportError fallback), dispatch() still
@@ -270,14 +267,13 @@ def main() -> int:
     print("\n[6/6] NEGATIVE: only tenant_id / user_id / request_id promoted "
           "(no PII keys leak into baggage)")
     try:
-        from fastapi import FastAPI, Request
-        from fastapi.testclient import TestClient
-        from opentelemetry import baggage as _ot_baggage
-
         from documind_core.middleware import (
             BaggageContextMiddleware,
             TenantContextMiddleware,
         )
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from opentelemetry import baggage as _ot_baggage
 
         # Try injecting a fake PII attribute on request.state via a
         # custom middleware BEFORE BaggageContextMiddleware runs.

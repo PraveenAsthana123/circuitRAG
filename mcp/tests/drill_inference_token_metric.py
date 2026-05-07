@@ -101,7 +101,7 @@ def main() -> None:
         fail(f"prompt delta != 236: got {delta_p}")
     if delta_c != 48:
         fail(f"completion delta != 48: got {delta_c}")
-    ok(f"A.prompt +236  A.completion +48 (separate kind buckets)")
+    ok("A.prompt +236  A.completion +48 (separate kind buckets)")
 
     step("3. Two responses on same model accumulate (Counter semantics)")
     _record_tokens(model=MODEL_A, prompt_tokens=100, completion_tokens=20)
@@ -125,10 +125,10 @@ def main() -> None:
     # didn't leak into A's series.
     if _val(MODEL_A, "prompt") - b_a_prompt != 336:
         fail(
-            f"MODEL_A.prompt changed after recording MODEL_B tokens! "
-            f"Cross-model leak."
+            "MODEL_A.prompt changed after recording MODEL_B tokens! "
+            "Cross-model leak."
         )
-    ok(f"B.prompt +500 B.completion +200; A unchanged (no cross-model leak)")
+    ok("B.prompt +500 B.completion +200; A unchanged (no cross-model leak)")
 
     step("5. Zero-token response → counter unchanged AND no phantom series")
     pre_a_prompt = _val(MODEL_A, "prompt")
@@ -140,14 +140,14 @@ def main() -> None:
     # series should be materialized for the new model name.
     if _series_count_for("nonexistent-model-xyz") != pre_series:
         fail(
-            f"zero-token call materialized a phantom series under "
-            f"'nonexistent-model-xyz' — Counter was inc(0)'d which "
-            f"creates the labelset. Counter must skip the call entirely."
+            "zero-token call materialized a phantom series under "
+            "'nonexistent-model-xyz' — Counter was inc(0)'d which "
+            "creates the labelset. Counter must skip the call entirely."
         )
-    ok(f"zero-token call → no phantom series")
+    ok("zero-token call → no phantom series")
 
     step("6. Counter exposes HELP/TYPE in Prometheus exposition format")
-    from prometheus_client import generate_latest, REGISTRY
+    from prometheus_client import REGISTRY, generate_latest
     out = generate_latest(REGISTRY).decode()
     has_help = (
         "# HELP documind_inference_tokens_total" in out

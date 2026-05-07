@@ -170,7 +170,7 @@ async def main() -> None:
                 f"scope counter shifted on decline path: "
                 f"{after.get(key, 0)} → {after2.get(key, 0)}"
             )
-        ok(f"reason=allow_actions_false +1; scope counter untouched")
+        ok("reason=allow_actions_false +1; scope counter untouched")
 
         step("4. hr:write happy path — NO counter increment")
         r = await c.post(
@@ -196,7 +196,7 @@ async def main() -> None:
             fail("scope counter moved on happy path")
         if after3.get(key2, 0) != after2.get(key2, 0):
             fail("decline counter moved on happy path")
-        ok(f"no counter changes on happy path (as expected)")
+        ok("no counter changes on happy path (as expected)")
 
         step("5. plain-RAG query — NO counter increment")
         r = await c.post(

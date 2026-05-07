@@ -69,7 +69,7 @@ def main() -> int:
               "have grown it past 80 lines")
         return 1
     if "Phase 5Y" not in body:
-        print(f"✗ step 1: hook missing 'Phase 5Y' citation in header")
+        print("✗ step 1: hook missing 'Phase 5Y' citation in header")
         return 1
     print(f"✓ step 1: hook exists, {line_count} lines, cites Phase 5Y")
 
@@ -223,7 +223,7 @@ def main() -> int:
         print(f"✗ step 8: hook exit {proc.returncode}, expected 0\n"
               f"stderr: {proc.stderr}")
         return 1
-    print(f"✓ step 8: hook exits 0 with SKIP_DRILL_STATUS=1 (in-repo invocation)")
+    print("✓ step 8: hook exits 0 with SKIP_DRILL_STATUS=1 (in-repo invocation)")
 
     print("\nALL 8 STEPS PASSED")
     return 0

@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
 
 import httpx
 
@@ -82,10 +81,10 @@ async def main() -> None:
         if node_env == "production":
             if body["build_id"] in (None, ""):
                 fail(
-                    f"build_id null in PRODUCTION mode — likely "
-                    f"BUILD_ID unreadable. Route reads "
-                    f"$NEXT_DIST_DIR/BUILD_ID; verify the env var "
-                    f"matches the build script."
+                    "build_id null in PRODUCTION mode — likely "
+                    "BUILD_ID unreadable. Route reads "
+                    "$NEXT_DIST_DIR/BUILD_ID; verify the env var "
+                    "matches the build script."
                 )
         elif node_env == "development":
             # Dev mode: null is acceptable (next dev doesn't write
@@ -102,9 +101,9 @@ async def main() -> None:
         step("2. app_version round-trips from package.json")
         if body["app_version"] in (None, ""):
             fail(
-                f"app_version null — npm_package_version env not "
-                f"set on the running process. Restart with `npm run` "
-                f"so npm injects the version."
+                "app_version null — npm_package_version env not "
+                "set on the running process. Restart with `npm run` "
+                "so npm injects the version."
             )
         # Just the version string, not specific value (drill is
         # repo-agnostic — version bumps shouldn't break it).
@@ -120,10 +119,10 @@ async def main() -> None:
         second_at = r2.json()["generated_at"]
         if second_at == first_at:
             fail(
-                f"generated_at identical across calls — the route is "
-                f"being cached. Stale-build detection requires a fresh "
-                f"timestamp every fetch. Verify ``export const dynamic "
-                f"= 'force-dynamic';`` is set on the route."
+                "generated_at identical across calls — the route is "
+                "being cached. Stale-build detection requires a fresh "
+                "timestamp every fetch. Verify ``export const dynamic "
+                "= 'force-dynamic';`` is set on the route."
             )
         ok(f"first={first_at}\\n          second={second_at} (no caching)")
 

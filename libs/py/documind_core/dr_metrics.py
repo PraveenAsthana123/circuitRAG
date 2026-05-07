@@ -131,4 +131,8 @@ def get_targets(tier: Tier) -> DrTargets:
 
 def all_targets() -> tuple[DrTargets, ...]:
     """Return all tier targets in critical→standard order. Stable across calls."""
-    return tuple(DEFAULT_TIER_TARGETS[t] for t in ("critical", "important", "standard"))
+    return (
+        DEFAULT_TIER_TARGETS["critical"],
+        DEFAULT_TIER_TARGETS["important"],
+        DEFAULT_TIER_TARGETS["standard"],
+    )

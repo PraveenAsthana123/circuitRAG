@@ -63,7 +63,7 @@ def main() -> int:
         if param.kind != inspect.Parameter.KEYWORD_ONLY:
             print(f"x param {name!r} must be keyword-only; kind={param.kind}")
             return 1
-    print(f"  ok: 6 keyword-only params")
+    print("  ok: 6 keyword-only params")
 
     print("-- 3. POSITIVE: DispatchResult has 5 fields --")
     sample = oc.DispatchResult(
@@ -79,7 +79,7 @@ def main() -> int:
     if missing:
         print(f"x DispatchResult missing fields: {missing}")
         return 1
-    print(f"  ok: 5 DispatchResult fields present")
+    print("  ok: 5 DispatchResult fields present")
 
     print("-- 4. NEGATIVE: dispatch() with no PolisAI rule → ok=False (gate denies) --")
     # Stage-1 has no a2a:dispatch:* rules; default-deny posture.
@@ -90,10 +90,10 @@ def main() -> int:
         scopes_granted=["delegate:council:reviewer"],
     )
     if result.ok:
-        print(f"x dispatch should default-deny; got ok=True")
+        print("x dispatch should default-deny; got ok=True")
         return 1
     if result.decision.allow:
-        print(f"x decision.allow should be False")
+        print("x decision.allow should be False")
         return 1
     if result.envelope is not None:
         print(f"x envelope should be None on deny; got {result.envelope}")
@@ -169,7 +169,7 @@ def main() -> int:
         scopes_granted=[],
     )
     if not isinstance(decision, oc.DispatchDecision):
-        print(f"x evaluate_dispatch first return must be DispatchDecision")
+        print("x evaluate_dispatch first return must be DispatchDecision")
         return 1
     print("  ok: Stage-1 evaluate_dispatch contract preserved")
 

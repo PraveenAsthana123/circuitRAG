@@ -69,7 +69,7 @@ def main() -> int:
     status_line = status_match.group(1).strip()
     valid = ("Proposed", "Accepted", "Superseded", "Deprecated")
     if not any(s in status_line for s in valid):
-        print(f"✗ step 3: Status doesn't match enum")
+        print("✗ step 3: Status doesn't match enum")
         return 1
     print(f"✓ step 3: Status = {status_line.split('—')[0].strip()!r}")
 
@@ -85,7 +85,7 @@ def main() -> int:
     if missing_actors:
         print(f"✗ step 4: Decision missing actor sections: {missing_actors}")
         return 1
-    print(f"✓ step 4: Decision names all 3 actor sections")
+    print("✓ step 4: Decision names all 3 actor sections")
 
     # Allocation table — markdown table with the three actors as columns
     if "Operator" not in decision_text or "Parallel-tool" not in decision_text \
@@ -96,7 +96,7 @@ def main() -> int:
         print("✗ step 5: Decision missing allocation-table example row "
               "(sudo capability)")
         return 1
-    print(f"✓ step 5: Decision includes allocation table with all 3 actors")
+    print("✓ step 5: Decision includes allocation table with all 3 actors")
 
     refs_match = re.search(r"## References(.*?)\Z", body, re.DOTALL)
     if not refs_match:
@@ -121,7 +121,7 @@ def main() -> int:
     if missing_cross:
         print(f"✗ step 7: missing cross-refs: {missing_cross}")
         return 1
-    print(f"✓ step 7: composes-with refs ADR-014 + ADR-016 + ADR-017 + §42")
+    print("✓ step 7: composes-with refs ADR-014 + ADR-016 + ADR-017 + §42")
 
     consequences_match = re.search(
         r"## Consequences\n(.*?)\n## ", body, re.DOTALL
@@ -135,7 +135,7 @@ def main() -> int:
     if missing_subs:
         print(f"✗ step 8: Consequences missing sub-sections: {missing_subs}")
         return 1
-    print(f"✓ step 8: Consequences has Positive/Negative/Risks accepted")
+    print("✓ step 8: Consequences has Positive/Negative/Risks accepted")
 
     print("\nALL 8 STEPS PASSED")
     return 0

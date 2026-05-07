@@ -14,7 +14,6 @@ is a dead button — no observability of operator decisions.
 from __future__ import annotations
 
 import pathlib
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PAGE = REPO / "services" / "frontend" / "app" / "admin" / "sidecar" / "page.tsx"

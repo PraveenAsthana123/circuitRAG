@@ -88,7 +88,7 @@ def main() -> int:
     if args.keep_alive != "24h":
         print(f"x step 6: WarmArgs default keep_alive expected '24h'; got {args.keep_alive!r}")
         return 1
-    print(f"  ok: WarmArgs default keep_alive='24h' (matches scripts/warm_council_pool.py)")
+    print("  ok: WarmArgs default keep_alive='24h' (matches scripts/warm_council_pool.py)")
 
     print("-- 7. NEGATIVE: TOOL_REGISTRY scopes follow ollama:* namespace --")
     for name, meta in so.TOOL_REGISTRY.items():
@@ -96,7 +96,7 @@ def main() -> int:
             if not scope.startswith("ollama:"):
                 print(f"x step 7: tool {name} has non-namespaced scope {scope!r}; must start with 'ollama:'")
                 return 1
-    print(f"  ok: all scopes namespaced under 'ollama:*'")
+    print("  ok: all scopes namespaced under 'ollama:*'")
 
     print("-- 8. POSITIVE: FastAPI app exposes /health/live, /health/ready, /tools/list, /tools/call --")
     routes = {r.path for r in so.app.routes if hasattr(r, "path")}
@@ -104,7 +104,7 @@ def main() -> int:
         if required not in routes:
             print(f"x step 8: missing route {required}; got {sorted(routes)}")
             return 1
-    print(f"  ok: 4 standard MCP routes present")
+    print("  ok: 4 standard MCP routes present")
 
     print()
     print("ALL 8 STEPS PASSED")

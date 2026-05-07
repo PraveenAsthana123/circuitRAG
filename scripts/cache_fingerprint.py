@@ -259,7 +259,7 @@ if __name__ == "__main__":
     import json
     import sys
     print("scripts/cache_fingerprint.py — Stage-1 12-layer cache key helper")
-    print(f"Stage-1 opt-in via CACHE_FINGERPRINT_ENABLED=1")
+    print("Stage-1 opt-in via CACHE_FINGERPRINT_ENABLED=1")
     print()
     print(json.dumps(status(), indent=2))
     sys.exit(0)

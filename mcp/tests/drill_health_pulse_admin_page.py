@@ -50,7 +50,7 @@ def main() -> int:
     if "Promise.all" not in route_src:
         print("x route must Promise.all the 6 reads")
         return 1
-    print(f"  ok: all 6 audit logs read in parallel")
+    print("  ok: all 6 audit logs read in parallel")
 
     print("-- 4. NEGATIVE: BFF refuses POST/PUT/DELETE/PATCH --")
     for method in ("POST", "PUT", "DELETE", "PATCH"):

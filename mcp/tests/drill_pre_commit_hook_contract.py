@@ -34,7 +34,6 @@ Run: python3 mcp/tests/drill_pre_commit_hook_contract.py
 """
 from __future__ import annotations
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -120,7 +119,7 @@ def main() -> int:
     has_exit_zero = any(re.match(r"^\s*exit\s+0\s*$", ln) for ln in last_lines)
     if not has_exit_zero:
         fail(
-            f"no explicit `exit 0` in last 5 lines of hook. ADR-014's "
+            "no explicit `exit 0` in last 5 lines of hook. ADR-014's "
             "advisory contract requires the hook to never block the "
             "commit; explicit exit 0 makes that intent visible."
         )

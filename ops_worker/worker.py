@@ -33,6 +33,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import logging
 import os
@@ -59,6 +60,8 @@ TASK_FILE = Path(__file__).resolve().parent / "tasks.json"
 PRIORITY_ORDER = {"high": 3, "medium": 2, "low": 1}
 
 ACTIVE_STATUSES = {"PENDING", "REVISION_REQUIRED"}
+RUNNING_STATUSES = {"PICKED_UP", "IN_PROGRESS", "CODE_READY", "CLAUDE_REVIEW"}
+DONE_STATUSES = {"COMPLETED"}
 
 
 def load_tasks() -> list[dict[str, Any]]:
@@ -184,6 +187,108 @@ def pick_next_task(tasks: list[dict[str, Any]]) -> dict[str, Any] | None:
         reverse=True,
     )
     return candidates[0]
+
+
+def build_status_report(tasks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build the operator report used by --status and command-center.
+
+    This is intentionally read-only. It summarizes what is currently
+    working, what is fixed, and what is blocked without making an
+    Ollama or Claude call.
+    """
+    by_status = Counter(str(t.get("status", "UNKNOWN")) for t in tasks)
+    by_priority = Counter(str(t.get("priority", "unknown")) for t in tasks)
+    by_risk = Counter(str(t.get("risk", "unknown")) for t in tasks)
+
+    running = [
+        t for t in tasks
+        if str(t.get("status", "UNKNOWN")) in RUNNING_STATUSES
+    ]
+    pending = [
+        t for t in tasks
+        if str(t.get("status", "UNKNOWN")) in ACTIVE_STATUSES
+    ]
+    fixed = [
+        t for t in tasks
+        if str(t.get("status", "UNKNOWN")) in DONE_STATUSES
+    ]
+    blocked = [
+        t for t in tasks
+        if str(t.get("status", "UNKNOWN")) in {"FAILED", "BLOCKED", "WAITING_FOR_HUMAN"}
+    ]
+
+    def _row(task: dict[str, Any]) -> dict[str, Any]:
+        review = task.get("claude_review") or {}
+        approval = task.get("approval_decision") or {}
+        return {
+            "id": task.get("id"),
+            "title": task.get("title"),
+            "status": task.get("status"),
+            "priority": task.get("priority"),
+            "risk": task.get("risk"),
+            "attempts": task.get("attempts", 0),
+            "ollama_model": task.get("ollama_model"),
+            "ollama_latency_ms": task.get("ollama_latency_ms"),
+            "review_decision": review.get("decision"),
+            "approval_decision": approval.get("decision"),
+            "error": task.get("error"),
+        }
+
+    return {
+        "version": "ops-worker-status-v1",
+        "task_file": str(TASK_FILE),
+        "total": len(tasks),
+        "by_status": dict(sorted(by_status.items())),
+        "by_priority": dict(sorted(by_priority.items())),
+        "by_risk": dict(sorted(by_risk.items())),
+        "working_now": [_row(t) for t in running],
+        "next_up": [_row(t) for t in pending[:10]],
+        "fixed": [_row(t) for t in fixed[-10:]],
+        "blocked": [_row(t) for t in blocked[-10:]],
+    }
+
+
+def print_status_report(report: dict[str, Any], *, as_json: bool = False) -> None:
+    if as_json:
+        print(json.dumps(report, indent=2))
+        return
+
+    print("OPS WORKER STATUS")
+    print("=================")
+    print(f"task_file: {report['task_file']}")
+    print(f"total: {report['total']}")
+    print(f"by_status: {report['by_status']}")
+    print()
+
+    def _print_section(title: str, rows: list[dict[str, Any]]) -> None:
+        print(title)
+        print("-" * len(title))
+        if not rows:
+            print("  none")
+            print()
+            return
+        for row in rows:
+            model = row.get("ollama_model") or "-"
+            latency = row.get("ollama_latency_ms")
+            latency_s = f"{latency}ms" if latency is not None else "-"
+            review = row.get("review_decision") or "-"
+            approval = row.get("approval_decision") or "-"
+            print(
+                "  "
+                f"{row.get('id')} [{row.get('status')}] "
+                f"{row.get('title')} | priority={row.get('priority')} "
+                f"risk={row.get('risk')} attempts={row.get('attempts')} "
+                f"model={model} latency={latency_s} "
+                f"review={review} approval={approval}"
+            )
+            if row.get("error"):
+                print(f"    error: {row['error']}")
+        print()
+
+    _print_section("WORKING NOW", report["working_now"])
+    _print_section("NEXT UP", report["next_up"])
+    _print_section("FIXED", report["fixed"])
+    _print_section("BLOCKED / NEEDS HUMAN", report["blocked"])
 
 
 def _update_task(tasks: list[dict[str, Any]], task: dict[str, Any]) -> None:
@@ -393,9 +498,15 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--once", action="store_true", help="single iteration")
     p.add_argument("--loop", action="store_true", help="loop with sleep")
+    p.add_argument("--status", action="store_true", help="print task status without running workers")
+    p.add_argument("--json", action="store_true", help="with --status, print machine-readable JSON")
     p.add_argument("--interval", type=int, default=300, help="loop sleep seconds")
     p.add_argument("--dry-run", action="store_true", help="skip Ollama + Claude calls")
     args = p.parse_args()
+
+    if args.status:
+        print_status_report(build_status_report(load_tasks()), as_json=args.json)
+        return 0
 
     if not (args.once or args.loop):
         args.once = True

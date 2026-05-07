@@ -28,7 +28,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 MODULE = SVC / "app" / "explainability.py"
@@ -61,7 +60,7 @@ def main() -> int:
     actual = set(mod.REQUIRED_AUDIT_FIELDS)
     missing = must_have - actual
     assert not missing, f"REQUIRED_AUDIT_FIELDS missing §48.4 keys: {missing}"
-    print(f"  ok: all §48.4 keys present in REQUIRED_AUDIT_FIELDS")
+    print("  ok: all §48.4 keys present in REQUIRED_AUDIT_FIELDS")
 
     print("-- 3. POSITIVE: assemble basic task with one run --")
     task = {

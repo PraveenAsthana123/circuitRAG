@@ -194,7 +194,7 @@ def main() -> int:
     if leak:
         print(f"✗ step 6: pre-approved section leaks gated commands: {leak}")
         return 1
-    print(f"✓ step 6: pre-approved cheat-sheet is clean of gated commands")
+    print("✓ step 6: pre-approved cheat-sheet is clean of gated commands")
 
     # ── Step 7: NEGATIVE — composes-with refs to real surfaces ──
     composes_match = re.search(
@@ -224,7 +224,7 @@ def main() -> int:
     headings = re.findall(r"^(## .+)$", body, re.MULTILINE)
     sections = re.split(r"^## .+$", body, flags=re.MULTILINE)
     truncated = []
-    for h, content in zip(headings, sections[1:]):
+    for h, content in zip(headings, sections[1:], strict=False):
         lines = [ln.rstrip() for ln in content.splitlines() if ln.strip()]
         if not lines:
             truncated.append(h)

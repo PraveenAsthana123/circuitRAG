@@ -134,7 +134,7 @@ async def main() -> None:
                 f"resolve, got {r.status_code} (set DOCUMIND_AUTH_REQUIRED=true "
                 "on inference-svc and restart)",
             )
-        ok(f"auth enforcement verified (401 on unauthenticated)")
+        ok("auth enforcement verified (401 on unauthenticated)")
 
         # --- 1: kill MCP to create a pending draft ---
         step("1. kill MCP + create pending draft via agent/ask")
@@ -167,7 +167,7 @@ async def main() -> None:
         detail = r.json().get("detail", {})
         if detail.get("code") != "NOT_AUTHENTICATED":
             fail(f"expected NOT_AUTHENTICATED, got: {detail}")
-        ok(f"401 NOT_AUTHENTICATED")
+        ok("401 NOT_AUTHENTICATED")
 
         # --- 3: bogus token → 401 INVALID_TOKEN ---
         step("3. resolve w/ bogus token → 401 INVALID_TOKEN")
@@ -183,7 +183,7 @@ async def main() -> None:
         detail = r.json().get("detail", {})
         if detail.get("code") != "INVALID_TOKEN":
             fail(f"expected INVALID_TOKEN, got: {detail}")
-        ok(f"401 INVALID_TOKEN")
+        ok("401 INVALID_TOKEN")
 
         # --- 4: valid token w/ only hr:read → 403 INSUFFICIENT_SCOPE ---
         step("4. resolve w/ hr:read only → 403 INSUFFICIENT_SCOPE")
@@ -206,7 +206,7 @@ async def main() -> None:
 
         # --- 5: restart MCP, resolve w/ hr:write → 200 ---
         step("5. restart MCP + resolve w/ hr:write → 200")
-        mcp_proc = _spawn_mcp()
+        _spawn_mcp()
         if not await _healthy(c, MCP_BASE):
             fail("MCP didn't come back")
         ok("MCP back up")
@@ -245,7 +245,7 @@ async def main() -> None:
         detail = r.json().get("detail", {})
         if detail.get("code") != "DRAFT_NOT_PENDING":
             fail(f"expected DRAFT_NOT_PENDING, got: {detail}")
-        ok(f"409 DRAFT_NOT_PENDING (scope check didn't bypass state machine)")
+        ok("409 DRAFT_NOT_PENDING (scope check didn't bypass state machine)")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 6 SCOPE STEPS PASSED{NC}")

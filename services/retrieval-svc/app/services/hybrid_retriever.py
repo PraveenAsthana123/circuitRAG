@@ -120,7 +120,7 @@ class HybridRetriever:
                     min_score=str(req.min_score),
                 )
                 return Cache.tenant_key(tenant_id, "retr", fp.hash())
-            except Exception:  # noqa: S110 — intentional fail-safe
+            except Exception:  # noqa: S110 — intentional fail-safe  # nosec B110
                 # Fail-safe: fall through to legacy key shape
                 pass  # noqa: S110 — intentional fail-safe (see comment above)
         h = hashlib.sha256(f"{req.strategy}|{req.top_k}|{req.query}|{sorted(req.filters.items())}".encode()).hexdigest()

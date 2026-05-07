@@ -183,6 +183,8 @@ def validate_council_proposal(
         try:
             from pydanticai_adapter import (  # noqa: PLC0415
                 PydanticAIUnavailable,
+            )
+            from pydanticai_adapter import (
                 validate as _pyaai_validate,
             )
             try:

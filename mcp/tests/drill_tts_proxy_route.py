@@ -123,7 +123,7 @@ def main() -> int:
             "input cap weakened (cost-regression risk)"
         )
     if not re.search(
-        rf"text\.length\s*>\s*MAX_TEXT_CHARS|length\s*>\s*MAX_TEXT_CHARS",
+        r"text\.length\s*>\s*MAX_TEXT_CHARS|length\s*>\s*MAX_TEXT_CHARS",
         body,
     ):
         fail(

@@ -221,7 +221,7 @@ async def main() -> None:
             fail("NOT_AUTHENTICATED bumped on a successful call (must NOT)")
         if den1.get((NS, TOOL, "INSUFFICIENT_SCOPE"), 0.0) != d_insuff_before:
             fail("INSUFFICIENT_SCOPE bumped on a successful call (must NOT)")
-        ok(f"latency +1; no denial counters moved")
+        ok("latency +1; no denial counters moved")
         lat_before = lat1.get(KEY_LAT, 0.0)
 
         step("2. no Authorization → NOT_AUTHENTICATED +1; latency UNCHANGED")
@@ -244,7 +244,7 @@ async def main() -> None:
                 "auth-reject must NOT contribute timing (it never reached "
                 f"dispatch). got delta={lat2.get(KEY_LAT, 0.0) - lat_before}"
             )
-        ok(f"NOT_AUTHENTICATED +1; latency unchanged")
+        ok("NOT_AUTHENTICATED +1; latency unchanged")
         d_unauth_before = den2.get((NS, TOOL, "NOT_AUTHENTICATED"), 0.0)
 
         step("3. garbage Bearer token → INVALID_TOKEN +1; latency UNCHANGED")
@@ -264,7 +264,7 @@ async def main() -> None:
             fail(f"INVALID_TOKEN delta != 1; got {d_delta}")
         if lat3.get(KEY_LAT, 0.0) != lat_before:
             fail("latency moved on INVALID_TOKEN (must NOT)")
-        ok(f"INVALID_TOKEN +1; latency unchanged")
+        ok("INVALID_TOKEN +1; latency unchanged")
         d_invalid_before = den3.get((NS, TOOL, "INVALID_TOKEN"), 0.0)
 
         step("4. hr:read on hr.leave_request → INSUFFICIENT_SCOPE +1")
@@ -284,7 +284,7 @@ async def main() -> None:
             fail(f"INSUFFICIENT_SCOPE delta != 1; got {d_delta}")
         if lat4.get(KEY_LAT, 0.0) != lat_before:
             fail("latency moved on INSUFFICIENT_SCOPE (must NOT)")
-        ok(f"INSUFFICIENT_SCOPE +1; latency unchanged")
+        ok("INSUFFICIENT_SCOPE +1; latency unchanged")
 
         step("5. idempotent replay → tool_calls{outcome=replay} +1; latency UNCHANGED")
         idem = str(uuid.uuid4())
@@ -317,12 +317,12 @@ async def main() -> None:
                 f"contribute timing. expected {int(lat_after_first)}, "
                 f"got {int(lat5b.get(KEY_LAT, 0.0))}"
             )
-        ok(f"first call latency +1; replay latency +0 (replay path skips timing)")
+        ok("first call latency +1; replay latency +0 (replay path skips timing)")
 
         step("6. denial reason cardinality — only known reasons appear")
         _, den_final = await _scrape(c)
         observed_reasons = {
-            r for (ns, tool, r) in den_final.keys() if ns == NS and tool == TOOL
+            r for (ns, tool, r) in den_final if ns == NS and tool == TOOL
         }
         valid = {
             "NOT_AUTHENTICATED", "INVALID_TOKEN",

@@ -78,7 +78,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 MessageType = Literal[
     "request",         # agent A asks agent B for something
@@ -102,7 +102,7 @@ class AgentMessage(BaseModel):
     timestamp: str = Field(description="ISO 8601 UTC")
     in_reply_to: str | None = Field(default=None, description="request_id this is a reply to")
 
-    model_config: ClassVar[dict] = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
 
     def payload_hash(self) -> str:
         """Stable SHA-256 hash for audit / dedup."""

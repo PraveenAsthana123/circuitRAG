@@ -64,7 +64,7 @@ def main() -> int:
         if tier not in page_src.lower():
             print(f"x page must render criticality tier: {tier!r}")
             return 1
-    print(f"  ok: all 6 criticality tiers rendered")
+    print("  ok: all 6 criticality tiers rendered")
 
     print("-- 6. NEGATIVE: page has filter (all/missing/installed) but NO install button --")
     # Page is observation-only — installing tools goes through §56 gates,

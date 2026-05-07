@@ -151,15 +151,6 @@ def main() -> int:
     # contract is: None or one of these six. If a future refactor
     # adds a seventh filter (e.g. "size_too_big"), it MUST update
     # this drill — the test failure forces a deliberate decision.
-    EXPECTED = {
-        None,
-        "capture_error",
-        "empty_diff",
-        "skip_token",
-        "all_binary",
-        "doc_only",
-        # too_short carries a payload count, so we match the prefix
-    }
     observed_prefixes = set()
     cases = [
         _make_capture(gc, message="feat: real", payload_lines=40),

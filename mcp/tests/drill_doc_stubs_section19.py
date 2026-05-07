@@ -126,7 +126,7 @@ def main() -> int:
             if not resolved.exists():
                 broken.append((rel, target))
     if not broken:
-        ok(f"step 3: all in-repo redirect targets resolve to existing files")
+        ok("step 3: all in-repo redirect targets resolve to existing files")
     else:
         fail(f"step 3: broken redirect targets ({len(broken)}):")
         for stub, tgt in broken[:8]:

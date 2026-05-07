@@ -13,7 +13,6 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -50,7 +49,7 @@ def main() -> int:
         if not hasattr(metrics, field):
             print(f"x step 2: OutcomeMetrics missing §55.3 field {field}")
             return 1
-    print(f"  ok: 3 §55.3 metrics + label + window_days + counts present")
+    print("  ok: 3 §55.3 metrics + label + window_days + counts present")
 
     print("-- 3. NEGATIVE: apply_rate is 0.0 when no attempts (no division by zero) --")
     # Verify the 0-attempts edge case doesn't crash. We can't easily
@@ -68,9 +67,9 @@ def main() -> int:
         print(f"x step 4: cost_per_fix should be None when 0 fixes applied; got {metrics.cost_per_fix_cents}")
         return 1
     if metrics.apply_succeeded > 0 and metrics.cost_per_fix_cents is None:
-        print(f"x step 4: cost_per_fix should NOT be None when fixes applied")
+        print("x step 4: cost_per_fix should NOT be None when fixes applied")
         return 1
-    print(f"  ok: cost_per_fix=None when 0 fixes (no division-by-zero theater)")
+    print("  ok: cost_per_fix=None when 0 fixes (no division-by-zero theater)")
 
     print("-- 5. NEGATIVE: COST_PER_1K_CENTS includes all 4 council models + tier-B --")
     expected_models = (
@@ -86,9 +85,9 @@ def main() -> int:
             return 1
     # Tier-B should be substantially more expensive than local Ollama
     if oe.COST_PER_1K_CENTS["claude-cli"] <= oe.COST_PER_1K_CENTS["deepseek-coder:6.7b-instruct"]:
-        print(f"x step 5: claude-cli rate not higher than deepseek-coder; cost-ordering broken")
+        print("x step 5: claude-cli rate not higher than deepseek-coder; cost-ordering broken")
         return 1
-    print(f"  ok: 5 model rates; claude-cli rate ≫ local-Ollama rates (cost-aware routing signal)")
+    print("  ok: 5 model rates; claude-cli rate ≫ local-Ollama rates (cost-aware routing signal)")
 
     print("-- 6. NEGATIVE: snapshot writes a file; compare-to reads it back --")
     # Use a fresh subdirectory under .loop/outcome_snapshots/ for the drill.
@@ -119,12 +118,12 @@ def main() -> int:
         cwd=REPO, capture_output=True, text=True, timeout=30,
     )
     if proc.returncode == 0:
-        print(f"x step 7: compare-to with unknown label should exit non-zero; got 0")
+        print("x step 7: compare-to with unknown label should exit non-zero; got 0")
         return 1
     if "no snapshot" not in proc.stdout.lower() and "no snapshot" not in proc.stderr.lower():
         print(f"x step 7: compare-to didn't print 'no snapshot' message: stdout={proc.stdout[:200]} stderr={proc.stderr[:200]}")
         return 1
-    print(f"  ok: unknown label rejected with operator-readable message")
+    print("  ok: unknown label rejected with operator-readable message")
 
     print("-- 8. POSITIVE: contract subcommand recognizes §55.3-compliant commit --")
     # Check the current HEAD commit. This drill is doc-only, so the
@@ -139,7 +138,7 @@ def main() -> int:
     if "§55.3" not in proc.stdout and "outcome" not in proc.stdout.lower():
         print(f"x step 8: contract output missing §55.3 reference: {proc.stdout[:200]}")
         return 1
-    print(f"  ok: contract subcommand emits §55.3-aware verdict")
+    print("  ok: contract subcommand emits §55.3-aware verdict")
 
     print()
     print("ALL 8 STEPS PASSED")

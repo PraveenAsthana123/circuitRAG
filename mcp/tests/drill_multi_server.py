@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -191,7 +190,7 @@ async def main() -> None:
             fail(f"expected INSUFFICIENT_SCOPE on HR side too, got: {r}")
         if "hr:write" not in r.error.get("required", []):
             fail(f"required missing hr:write: {r.error}")
-        ok(f"symmetric denial: HR server also rejects itsm:write token")
+        ok("symmetric denial: HR server also rejects itsm:write token")
 
         step("6. union token (hr:write + itsm:write) → both servers accept")
         r1 = await hr_client.call_tool(

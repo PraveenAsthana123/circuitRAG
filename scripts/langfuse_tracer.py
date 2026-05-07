@@ -289,7 +289,7 @@ if __name__ == "__main__":
     import json
     import sys
     print("scripts/langfuse_tracer.py — Stage-1 Langfuse LLM observability")
-    print(f"Stage-1 opt-in via LANGFUSE_TRACER_ENABLED=1 (+ keys)")
+    print("Stage-1 opt-in via LANGFUSE_TRACER_ENABLED=1 (+ keys)")
     print("Offline-safe: no-op when host/keys unavailable.")
     print()
     print(json.dumps(status(), indent=2))

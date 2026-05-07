@@ -32,7 +32,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 
@@ -161,7 +160,7 @@ def main() -> int:
     assert len(ollama2.calls) == 1
     assert len(claude2.calls) == 0, "TIER-B BURN: routine work hit cloud!"
     assert outcome.result.cost_usd_cents == 0
-    print(f"  ok: routine work stayed local, cost=0")
+    print("  ok: routine work stayed local, cost=0")
 
     print("-- 3. POSITIVE: chosen backend fails → fallback chain runs --")
     failing_codex = StubClient(backend="codex_cli", tier="tier_b", raise_on_call=True)

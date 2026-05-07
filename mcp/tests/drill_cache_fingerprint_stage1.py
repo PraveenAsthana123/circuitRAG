@@ -133,8 +133,8 @@ def main() -> int:
         {"embedding_model_version": "e2"},
     ]
     for change in changes:
-        kwargs = dict(tenant_id="t", query="q", prompt_version="v1",
-                      model_version="m1", embedding_model_version="e1")
+        kwargs = {"tenant_id": "t", "query": "q", "prompt_version": "v1",
+                      "model_version": "m1", "embedding_model_version": "e1"}
         kwargs.update(change)
         derived = mod.fingerprint(**kwargs)
         if base.hash() == derived.hash():

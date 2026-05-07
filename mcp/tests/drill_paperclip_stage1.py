@@ -27,7 +27,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -189,10 +188,10 @@ def main() -> int:
     # Without this, Paperclip becomes a vanity dashboard.
     apply = snap.get("apply_attempts", {})
     if "apply_rate" not in apply:
-        print(f"x snapshot.apply_attempts missing apply_rate field")
+        print("x snapshot.apply_attempts missing apply_rate field")
         return 1
     if "honesty_signal" not in apply:
-        print(f"x snapshot.apply_attempts missing honesty_signal field")
+        print("x snapshot.apply_attempts missing honesty_signal field")
         return 1
     rate = apply["apply_rate"]
     signal = apply["honesty_signal"]

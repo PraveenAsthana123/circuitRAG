@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import importlib
 import os
-import re
 import sys
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -144,7 +143,7 @@ def main() -> int:
     if text != "LITELLM_OK" or tokens != 77:
         print(f"x fallback path returned wrong values: text={text!r}, tokens={tokens}")
         return 1
-    print(f"  ok: fallback path returned ('LITELLM_OK', 77)")
+    print("  ok: fallback path returned ('LITELLM_OK', 77)")
 
     print("-- 6. NEGATIVE: PolisAI gate fires BEFORE both curl + fallback --")
     # Whether curl or fallback handles the call, PolisAI must gate first.
@@ -179,7 +178,7 @@ def main() -> int:
         print("x internal exception name must exist")
         return 1
     # Convention: leading underscore = internal
-    if "LiteLLMNotApplicable" in local_council.__dict__ and not "_LiteLLMNotApplicable" in local_council.__dict__:
+    if "LiteLLMNotApplicable" in local_council.__dict__ and "_LiteLLMNotApplicable" not in local_council.__dict__:
         print("x internal exception must use leading-underscore convention")
         return 1
     print("  ok: _LiteLLMNotApplicable is leading-underscore-internal")

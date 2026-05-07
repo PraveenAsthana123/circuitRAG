@@ -93,8 +93,16 @@ async def _fetch_rows(
         where.append(f"tenant_id = ${len(args) + 1}::uuid")
         args.append(tenant_id)
     if since is not None:
-        where.append(f"timestamp >= ${len(args) + 1}::timestamptz")
-        args.append(since)
+        # asyncpg validates type before SQL parsing — accept ISO date OR
+        # datetime strings via fromisoformat, fall back to date-only
+        # parse for "YYYY-MM-DD" inputs.
+        from datetime import date, datetime
+        try:
+            since_dt = datetime.fromisoformat(since)
+        except ValueError:
+            since_dt = datetime.combine(date.fromisoformat(since), datetime.min.time())
+        where.append(f"timestamp >= ${len(args) + 1}")
+        args.append(since_dt)
     clause = f"WHERE {' AND '.join(where)}" if where else ""
     return await conn.fetch(
         f"""

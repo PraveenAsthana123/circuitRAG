@@ -132,7 +132,7 @@ def main() -> int:
         print(f"✗ step 4: {len(refless)} ADRs have ## References but zero "
               f"commit citations: {refless}")
         return 1
-    print(f"✓ step 4: every ADR with ## References cites ≥1 commit")
+    print("✓ step 4: every ADR with ## References cites ≥1 commit")
 
     # ── Step 5: NEGATIVE — ADR-014 + ADR-015 each have ≥1 hash ──
     session_adrs = ["014-autonomous-loop-architecture.md",
@@ -148,7 +148,7 @@ def main() -> int:
             print(f"✗ step 5: {name} cites zero commits; load-bearing "
                   "ADRs must connect to landed code")
             return 1
-    print(f"✓ step 5: ADR-014 + ADR-015 both cite commits "
+    print("✓ step 5: ADR-014 + ADR-015 both cite commits "
           "(architectural lineage preserved)")
 
     # ── Step 6: NEGATIVE — sequential numbering, no gaps ──

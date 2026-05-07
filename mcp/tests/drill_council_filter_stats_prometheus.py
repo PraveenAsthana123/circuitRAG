@@ -51,8 +51,7 @@ import json
 import re
 import sys
 import tempfile
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -85,7 +84,7 @@ def _entry(*, fired: bool = True, filtered: bool = False,
            reason: str = "council_completed risk=MEDIUM",
            risk_level: str = "MEDIUM") -> dict:
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
         "fired": fired, "filtered": filtered,
         "reason": reason, "risk_level": risk_level,
     }
@@ -158,7 +157,7 @@ def main() -> int:
     line = next(ln for ln in out.splitlines()
                 if "council_filter_skipped" in ln and "{" in ln)
     if "\n" in line[: line.index("}")]:
-        print(f"✗ step 4: raw newline in label region")
+        print("✗ step 4: raw newline in label region")
         return 1
     # Direct test of the helper
     if stats._prom_escape_label('a"b\\c\nd') != 'a\\"b\\\\c\\nd':
@@ -188,7 +187,7 @@ def main() -> int:
         # And re-write must overwrite cleanly
         stats.write_prometheus_atomic(target, "council_filter_total 99\n")
         if "99" not in target.read_text():
-            print(f"✗ step 5: re-write didn't replace content")
+            print("✗ step 5: re-write didn't replace content")
             return 1
         print("✓ step 5: atomic write via tmp + rename, no partial-read window")
 

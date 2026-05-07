@@ -20,7 +20,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 MIGRATION = SVC / "migrations" / "012_observe_windows.sql"
@@ -43,7 +42,7 @@ def _bootstrap():
         sys.modules[pkg].__path__ = [str(SVC / "app")]
     sys.modules[f"{pkg}.llm_clients"] = ModuleType(f"{pkg}.llm_clients")
     sys.modules[f"{pkg}.llm_clients"].__path__ = [str(SVC / "app" / "llm_clients")]
-    proto = _load(f"{pkg}.llm_clients.protocol", SVC / "app" / "llm_clients" / "protocol.py", f"{pkg}.llm_clients")
+    _load(f"{pkg}.llm_clients.protocol", SVC / "app" / "llm_clients" / "protocol.py", f"{pkg}.llm_clients")
     pool = _load(f"{pkg}.llm_clients.pool", SVC / "app" / "llm_clients" / "pool.py", f"{pkg}.llm_clients")
     init = sys.modules[f"{pkg}.llm_clients"]
     init.LlmClientPool = pool.LlmClientPool
@@ -90,7 +89,7 @@ def main() -> int:
     out = asyncio.run(agent.observe(alerts_fired=3, p95_baseline_ms=100, p95_observed_ms=300))
     assert out["status"] == "rollback_required"
     assert "rollback" in out["recommended_action"]
-    print(f"  ok: both signals → rollback_required")
+    print("  ok: both signals → rollback_required")
 
     print("-- 7. POSITIVE: pure decision function is callable directly --")
     status, concerns = obs.ObserverAgent.evaluate_metrics(
@@ -98,7 +97,7 @@ def main() -> int:
     )
     assert status == "rollback_required"
     assert len(concerns) == 2
-    print(f"  ok: evaluate_metrics is pure, drillable")
+    print("  ok: evaluate_metrics is pure, drillable")
 
     print()
     print("ALL 7 STEPS PASSED")

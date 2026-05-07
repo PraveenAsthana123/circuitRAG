@@ -111,7 +111,7 @@ def main() -> int:
     if len(supported) != 23:
         print(f"x expected 23 supported types; got {len(supported)}")
         return 1
-    print(f"  ok: all 23 file types supported")
+    print("  ok: all 23 file types supported")
 
     print("-- 6. NEGATIVE: use-case overrides for legal/policy/compliance --")
     # Per operator spec: legal/policy/compliance docs use clause-level

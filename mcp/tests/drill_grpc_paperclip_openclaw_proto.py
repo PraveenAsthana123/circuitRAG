@@ -68,7 +68,7 @@ def main() -> int:
         if re.search(pattern, pc_src, re.MULTILINE):
             print(f"x PaperclipService has mutating RPC starting with {verb!r}")
             return 1
-    print(f"  ok: 0 mutating RPCs (Stage-1 sandbox contract preserved)")
+    print("  ok: 0 mutating RPCs (Stage-1 sandbox contract preserved)")
 
     print("-- 4. POSITIVE: OpenClawService has 4 RPCs (Health + EvalDispatch + List + Recent) --")
     oc_src = OPENCLAW_PROTO.read_text(encoding="utf-8")
@@ -117,7 +117,7 @@ def main() -> int:
         # Allow extra fields, but warn — Stage-2 may add them. For
         # Stage-1 lock we want no surprises.
         print(f"  note: DispatchEnvelope has extra fields beyond Python dataclass: {extra}")
-    print(f"  ok: all 8 envelope fields present in proto")
+    print("  ok: all 8 envelope fields present in proto")
 
     print("-- 7. POSITIVE: scripts/gen-proto.sh auto-discovers new protos --")
     if not GEN_SCRIPT.exists():

@@ -48,7 +48,7 @@ import importlib.util
 import json
 import sys
 import tempfile
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -167,7 +167,7 @@ def main() -> int:
         # iso_week must still be populated even when log is missing —
         # we know what week the target date is in.
         if not row["iso_week"]:
-            print(f"✗ step 3: iso_week empty, expected ISO key")
+            print("✗ step 3: iso_week empty, expected ISO key")
             return 1
         print("✓ step 3: missing log → zero row with date+iso_week populated (cron-safe)")
 
@@ -213,7 +213,7 @@ def main() -> int:
         # And the original row1 line must be intact (not overwritten)
         first = json.loads(lines[0])
         if first.get("snapshot_taken_at") != "2026-04-29T01:00:00+00:00":
-            print(f"✗ step 5: first line was overwritten")
+            print("✗ step 5: first line was overwritten")
             return 1
         print("✓ step 5: append_snapshot is append-only (2 lines for 2 writes)")
 
@@ -271,7 +271,7 @@ def main() -> int:
             row = snap.take_snapshot(tmpdir / "no.log", d)
             # Build a ts at noon UTC on that date and ask iso_week_key
             ts = datetime(d.year, d.month, d.day, 12, 0, 0,
-                          tzinfo=timezone.utc).isoformat()
+                          tzinfo=UTC).isoformat()
             expected = stats.iso_week_key(ts)
             if row["iso_week"] != expected:
                 print(f"✗ step 7: snapshot iso_week={row['iso_week']!r} for "

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 import time
 import uuid
 from pathlib import Path
@@ -107,7 +106,7 @@ def main() -> int:
     # constants for ergonomics — the test reads tenant + n_docs from
     # env (DEEP_RAG_TEST_*) at module-load time.
 
-    print(f"=== DEEP RAG TEST ===")
+    print("=== DEEP RAG TEST ===")
     print(f"tenant_id: {args.tenant}")
     print(f"corpus:    BBC News tech category, {args.n_docs} docs")
     print()
@@ -173,7 +172,7 @@ def main() -> int:
             print()
 
     # ---- REPORT ----
-    print(f"=== SUMMARY ===")
+    print("=== SUMMARY ===")
     print(f"INGEST: {ok_count}/{N_DOCS} ok  (avg {ingest_elapsed/max(N_DOCS,1):.2f}s/doc)")
     retrieve_ok = sum(1 for r in retrieve_results if r["status"] == 200)
     retrieve_p95 = sorted([r["latency_ms"] for r in retrieve_results])[int(len(retrieve_results) * 0.95)] if retrieve_results else 0

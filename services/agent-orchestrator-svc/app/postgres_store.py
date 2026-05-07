@@ -30,20 +30,36 @@ class PostgresTaskStore:
         self._breaker = breaker
 
     @asynccontextmanager
-    async def _admin_conn(self):  # noqa: ANN202 — yields asyncpg.Connection
-        """Acquire an admin connection, optionally guarded by the
-        DbCircuitBreaker. Used in place of `self._db.admin_connection()`
-        at every call site; the conditional lives here once instead of
-        17 inline branches."""
-        if self._breaker is not None:
-            async with self._breaker.guarded_admin_connection(self._db) as conn:
-                yield conn
+    async def _admin_conn(self, tenant_id: str | None = None):  # noqa: ANN202
+        """Acquire a DB connection, optionally guarded by the
+        DbCircuitBreaker.
+
+        When ``tenant_id`` is set, returns an RLS-scoped connection with
+        ``app.current_tenant`` set — required for INSERT/UPDATE on every
+        tenant-scoped table in ``orchestration.*``. Without this the
+        RLS policy ``tenant_isolation`` rejects the row.
+
+        When ``tenant_id`` is None, returns an un-scoped admin
+        connection — only safe for global tables (``agent_policies``)
+        and platform-admin reads.
+        """
+        if tenant_id:
+            if self._breaker is not None:
+                async with self._breaker.guarded_tenant_connection(self._db, tenant_id) as conn:
+                    yield conn
+            else:
+                async with self._db.tenant_connection(tenant_id) as conn:
+                    yield conn
         else:
-            async with self._admin_conn() as conn:
-                yield conn
+            if self._breaker is not None:
+                async with self._breaker.guarded_admin_connection(self._db) as conn:
+                    yield conn
+            else:
+                async with self._db.admin_connection() as conn:
+                    yield conn
 
     async def save(self, task: TaskView) -> None:
-        async with self._admin_conn() as conn:
+        async with self._admin_conn(tenant_id=task.tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_tasks
@@ -246,7 +262,7 @@ class PostgresTaskStore:
         )
 
     async def save_project(self, project: ProjectView) -> None:
-        async with self._admin_conn() as conn:
+        async with self._admin_conn(tenant_id=project.tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_projects
@@ -306,7 +322,7 @@ class PostgresTaskStore:
         return [_row_to_project(row) for row in rows]
 
     async def save_project_plan_item(self, item: ProjectPlanItemView) -> None:
-        async with self._admin_conn() as conn:
+        async with self._admin_conn(tenant_id=item.tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_project_plan_items
@@ -363,7 +379,7 @@ class PostgresTaskStore:
         return [_row_to_project_plan_item(row) for row in rows]
 
     async def save_task_run(self, run: TaskRunView) -> None:
-        async with self._admin_conn() as conn:
+        async with self._admin_conn(tenant_id=run.tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_task_runs
@@ -430,7 +446,7 @@ class PostgresTaskStore:
         return [_row_to_task_run(row) for row in rows]
 
     async def save_approval(self, approval: ApprovalView) -> None:
-        async with self._admin_conn() as conn:
+        async with self._admin_conn(tenant_id=approval.tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_approvals
@@ -475,7 +491,7 @@ class PostgresTaskStore:
         return [_row_to_approval(row) for row in rows]
 
     async def save_memory(self, memory: MemoryRecordView) -> None:
-        async with self._admin_conn() as conn:
+        async with self._admin_conn(tenant_id=memory.tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO orchestration.agent_memories

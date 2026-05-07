@@ -45,12 +45,12 @@ COMPOSES WITH (per §49):
 """
 from __future__ import annotations
 
-import itertools
 import logging
 import os
 import statistics
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -368,7 +368,7 @@ if __name__ == "__main__":
         print(json.dumps(s, indent=2))
     else:
         print("scripts/autorag_optimizer.py — Stage-1 AutoRAG empirical search")
-        print(f"Stage-1 opt-in via AUTORAG_OPTIMIZER_ENABLED=1")
+        print("Stage-1 opt-in via AUTORAG_OPTIMIZER_ENABLED=1")
         print()
         print(json.dumps(s, indent=2))
     sys.exit(0)

@@ -160,7 +160,7 @@ async def run() -> int:
             browser_path_taken = True
         except Exception:
             print(f"  {YELLOW}⚠{NC} steps 2-3, 5-6: skipped — browser-TTS path unavailable in headless")
-            print(f"      (production browsers with system voices exercise this; covered by focused tests)")
+            print("      (production browsers with system voices exercise this; covered by focused tests)")
             # Continue to steps 4 + 7 which don't depend on browser TTS
 
         if browser_path_taken:

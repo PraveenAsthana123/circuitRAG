@@ -13,9 +13,7 @@ unverified.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 DOC = REPO / "docs" / "architecture" / "LATENCY-BUDGET.md"

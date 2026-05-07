@@ -15,10 +15,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
-import json
-import sys
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 REPO = Path(__file__).resolve().parents[2]
 PROMPT_REPO = REPO / "services" / "inference-svc" / "app" / "services" / "prompt_repo.py"
@@ -106,7 +103,7 @@ def main() -> int:
     print("-- 7. POSITIVE: live overlay produces expected version keys --")
     # Load the module and exercise the overlay against a synthetic
     # artifact. Verify the cache gets the gepa-tagged keys.
-    spec = importlib.util.spec_from_file_location("documind_core", REPO / "libs" / "py" / "documind_core" / "__init__.py")
+    importlib.util.spec_from_file_location("documind_core", REPO / "libs" / "py" / "documind_core" / "__init__.py")
     # We don't actually load documind_core (heavy). Instead, just import
     # the prompt_template dataclass via the prompt_builder module path.
     # Verify by executing the overlay logic in a sandboxed copy of the

@@ -165,7 +165,7 @@ async def main() -> None:
         for k in ("retrieval-svc", "ollama-llm"):
             if k in g and g[k] != 0:
                 fail(f"unrelated series {k} moved: {g[k]}")
-        ok(f"mcp_hr=2 (open) — other series unchanged")
+        ok("mcp_hr=2 (open) — other series unchanged")
 
         step("4. restart MCP, wait recovery_timeout (32s), fire probe")
         mcp_proc = _spawn_mcp()
@@ -191,7 +191,7 @@ async def main() -> None:
             g = _gauge(r.text)
             if g.get("mcp_hr") != 0:
                 fail(f"expected mcp_hr=0 after recovery, got {g.get('mcp_hr')}")
-            ok(f"mcp_hr=0 (closed) — transition round-trip visible in Prometheus")
+            ok("mcp_hr=0 (closed) — transition round-trip visible in Prometheus")
         finally:
             if mcp_proc.poll() is None:
                 mcp_proc.terminate()

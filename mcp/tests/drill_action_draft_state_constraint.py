@@ -29,7 +29,7 @@ import asyncpg
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from mcp.drafts import DraftRecord, PostgresDraftStore  # noqa: E402
+from mcp.drafts import PostgresDraftStore  # noqa: E402
 
 TENANT = os.getenv("TENANT_ID", "137e2ae5-09bc-44b3-b77f-cecb3ac3fe1a")
 PG_DSN = (

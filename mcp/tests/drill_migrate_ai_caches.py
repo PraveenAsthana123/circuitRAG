@@ -36,7 +36,6 @@ from __future__ import annotations
 import os
 import pathlib
 import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "migrate_ai_caches_to_deepa.sh"

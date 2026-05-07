@@ -20,7 +20,6 @@ import sys
 import time
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -55,7 +54,7 @@ def main() -> int:
         f"FIX #15 BROKEN: _cb_failures missing 'exception_class' label; "
         f"got {failures._labelnames}"
     )
-    print(f"  ok: 5 new metrics declared; failures has exception_class label")
+    print("  ok: 5 new metrics declared; failures has exception_class label")
 
     # -------------------------------------------------------------
     # FIX #14: success_total counter increments on success
@@ -106,7 +105,7 @@ def main() -> int:
     )
     assert conn_count == 3, f"ConnectionError label count {conn_count}, expected 3"
     assert timeout_count == 2, f"TimeoutError label count {timeout_count}, expected 2"
-    print(f"  ok: ConnectionError=3, TimeoutError=2 (operator can grep by class)")
+    print("  ok: ConnectionError=3, TimeoutError=2 (operator can grep by class)")
 
     # -------------------------------------------------------------
     # FIX #16: half_open_probe outcome counter
@@ -152,7 +151,7 @@ def main() -> int:
     )
     assert probe_success_after - probe_success_before == 1
     assert probe_failure_after - probe_failure_before == 1
-    print(f"  ok: probe success +1, failure +1 (real recovery signal)")
+    print("  ok: probe success +1, failure +1 (real recovery signal)")
 
     # -------------------------------------------------------------
     # FIX #13: latency histogram observed on every call
@@ -182,7 +181,7 @@ def main() -> int:
         f"FIX #13 BROKEN: 5 calls → histogram count delta "
         f"{sample_count_after - sample_count_before}, expected 5"
     )
-    print(f"  ok: 5 calls observed in histogram (success outcome)")
+    print("  ok: 5 calls observed in histogram (success outcome)")
 
     # -------------------------------------------------------------
     # FIX #17: open_duration gauge tracks stuck-in-OPEN time
@@ -221,7 +220,7 @@ def main() -> int:
     assert duration_after_close == 0.0, (
         f"FIX #17 BROKEN: gauge should reset to 0 on CLOSED; got {duration_after_close}"
     )
-    print(f"  ok: open-duration reset to 0 on CLOSED")
+    print("  ok: open-duration reset to 0 on CLOSED")
 
     # -------------------------------------------------------------
     # FIX #13: timeout has its own histogram outcome label
@@ -241,7 +240,7 @@ def main() -> int:
     for _ in range(3):
         try:
             asyncio.run(cb.call_async(_hang))
-        except (asyncio.TimeoutError, cb_mod.CircuitOpenError):
+        except (TimeoutError, cb_mod.CircuitOpenError):
             pass
     timeout_count_after = sum(
         s.value for s in histogram_metric.collect()[0].samples
@@ -252,7 +251,7 @@ def main() -> int:
         f"timeout outcome should be labelled separately; got delta "
         f"{timeout_count_after - timeout_count_before}"
     )
-    print(f"  ok: 3 timeouts → 3 histogram samples with outcome='timeout'")
+    print("  ok: 3 timeouts → 3 histogram samples with outcome='timeout'")
 
     print()
     print("ALL 8 STEPS PASSED")

@@ -35,13 +35,11 @@ Run:
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
 
 import asyncpg
 
@@ -264,7 +262,7 @@ async def main() -> None:
                 f"got {_gauge('hr'):.1f}. A stale value lingering from "
                 f"step 3 would trigger phantom alerts."
             )
-        ok(f"hr=0 after drain (no stale value)")
+        ok("hr=0 after drain (no stale value)")
 
         step("5. Plant itsm draft → itsm > 0; hr stays at 0 (independence)")
         await _seed_draft(pool, draft_id=ITSM1, tool="itsm.incident_open", age_seconds=300)

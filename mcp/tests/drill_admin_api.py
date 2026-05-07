@@ -25,10 +25,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import httpx
@@ -112,7 +110,7 @@ async def main() -> None:
         if r.status_code != 200:
             fail(f"list failed: {r.status_code} {r.text[:200]}")
         baseline = r.json()["drafts"]
-        baseline_ids = {d["draft_id"] for d in baseline}
+        {d["draft_id"] for d in baseline}
         ok(f"baseline drafts (pending) = {len(baseline)}")
 
         # ---- 2. kill MCP -----------------------------------------
@@ -159,7 +157,7 @@ async def main() -> None:
 
         # ---- 5. restart MCP --------------------------------------
         step("5. restart MCP")
-        mcp_proc = _spawn_mcp()
+        _spawn_mcp()
         if not await _wait_healthy(c, MCP_BASE):
             fail("MCP did not come back")
         ok("MCP back up")
@@ -213,7 +211,7 @@ async def main() -> None:
         )
         if r.status_code != 404:
             fail(f"expected 404, got {r.status_code}: {r.text[:200]}")
-        ok(f"404 DRAFT_NOT_FOUND")
+        ok("404 DRAFT_NOT_FOUND")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 9 ADMIN-API STEPS PASSED{NC}")

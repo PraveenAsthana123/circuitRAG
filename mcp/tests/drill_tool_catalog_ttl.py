@@ -74,7 +74,7 @@ async def main() -> None:
     ok(f"fetch_count=1 tools={tool_names}")
 
     step("2. 3 immediate calls — all cache hits (fetch_count stays 1)")
-    for i in range(3):
+    for _i in range(3):
         t = await client.list_tools()
         if sorted(x["name"] for x in t) != tool_names:
             fail(f"tools changed across cache-hit calls: {t}")
@@ -83,7 +83,7 @@ async def main() -> None:
             f"fetch_count grew on cache hits: expected 1 got "
             f"{client.tools_fetch_count}"
         )
-    ok(f"fetch_count=1 after 3 extra calls — cache held")
+    ok("fetch_count=1 after 3 extra calls — cache held")
 
     step("3. wait 2.5s → next call refetches, fetch_count=2")
     await asyncio.sleep(2.5)
@@ -92,13 +92,13 @@ async def main() -> None:
         fail(f"catalog unexpectedly changed post-TTL: {tools}")
     if client.tools_fetch_count != 2:
         fail(f"expected fetch_count=2 after TTL, got {client.tools_fetch_count}")
-    ok(f"fetch_count=2 — TTL-triggered refetch fired")
+    ok("fetch_count=2 — TTL-triggered refetch fired")
 
     step("4. within new TTL — next call still cache hit (fetch_count=2)")
     await client.list_tools()
     if client.tools_fetch_count != 2:
         fail(f"fetch_count moved spuriously: {client.tools_fetch_count}")
-    ok(f"fetch_count=2 — new TTL window covering next call")
+    ok("fetch_count=2 — new TTL window covering next call")
 
     await client.close()
 

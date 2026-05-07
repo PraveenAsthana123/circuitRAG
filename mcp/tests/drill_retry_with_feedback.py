@@ -70,7 +70,7 @@ def main() -> int:
     if "ValidationError" not in out and "validation" not in out.lower():
         print(f"x step 4: feedback should cite Pydantic error type: {out!r}")
         return 1
-    print(f"  ok: missing rule_code surfaced in feedback")
+    print("  ok: missing rule_code surfaced in feedback")
 
     print("-- 5. NEGATIVE: extra field → top-3 ValidationError detail --")
     bad = json.dumps({
@@ -86,7 +86,7 @@ def main() -> int:
     if "reasoning" not in out and "extra" not in out.lower():
         print(f"x step 5: extra-field feedback should mention 'reasoning' or 'extra': {out!r}")
         return 1
-    print(f"  ok: extra 'reasoning' field surfaced in feedback")
+    print("  ok: extra 'reasoning' field surfaced in feedback")
 
     print("-- 6. NEGATIVE: tokenizer artifact → top-3 ValidationError detail --")
     bad = json.dumps({
@@ -101,7 +101,7 @@ def main() -> int:
     if "tokenizer" not in out.lower() and "file_path" not in out:
         print(f"x step 6: tokenizer artifact should be cited: {out!r}")
         return 1
-    print(f"  ok: tokenizer artifact rejection surfaced in feedback")
+    print("  ok: tokenizer artifact rejection surfaced in feedback")
 
     print("-- 7. NEGATIVE: run_local_council source has the retry loop --")
     src = LC_PATH.read_text(encoding="utf-8")

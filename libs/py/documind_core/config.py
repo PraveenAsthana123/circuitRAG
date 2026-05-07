@@ -91,7 +91,14 @@ class BaseServiceSettings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: SecretStr = SecretStr("documind")
 
-    kafka_bootstrap: str = "localhost:9092"
+    # Kafka — default points at the EXTERNAL listener (advertised hostname
+    # = localhost), NOT the internal listener (which advertises the docker
+    # hostname `kafka:9092` and fails name resolution from host network).
+    # Symptoms when wrong: producer.start() succeeds (TCP connect ok) but
+    # send_and_wait fails with `Errno -3 Temporary failure in name
+    # resolution` after metadata exchange. Discovered + fixed 2026-05-06.
+    # Override via DOCUMIND_KAFKA_BOOTSTRAP=kafka:9092 inside docker network.
+    kafka_bootstrap: str = "localhost:9094"
     kafka_client_id: str = "documind"
     kafka_consumer_group_prefix: str = "documind-"
 

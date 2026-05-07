@@ -277,7 +277,7 @@ async def main():
         )
         if result.fired or not result.filtered:
             fail(f"tiny diff should be filtered: {result}")
-        ok(f"tiny diff filtered (saves council LLM cost)")
+        ok("tiny diff filtered (saves council LLM cost)")
 
     # Step 5: --no-council mode
     step("5. NEGATIVE: --no-council records event but skips council")
@@ -310,7 +310,7 @@ async def main():
         runs = mem.get_council_runs(event_id=result.event_id)
         if runs:
             fail(f"should be 0 council_runs for --no-council: {len(runs)}")
-        ok(f"event recorded; no council_run row (saves LLM cost on bulk imports)")
+        ok("event recorded; no council_run row (saves LLM cost on bulk imports)")
 
     # Step 6: council error gracefully captured
     step("6. NEGATIVE: council error captured in reason; never raises")
@@ -378,7 +378,7 @@ async def main():
             entry = json.loads(ln)  # each line valid JSON
             if not entry.get("fired"):
                 fail(f"each invocation should have fired=True: {entry}")
-        ok(f"3 invocations -> 3 log lines (append, not overwrite)")
+        ok("3 invocations -> 3 log lines (append, not overwrite)")
 
     # Step 8: non-git directory
     step("8. NEGATIVE: non-git directory -> filtered with capture_error reason")
@@ -402,7 +402,7 @@ async def main():
         events = mem.recent_events(limit=10)
         if events:
             fail(f"non-git capture should NOT write events: {len(events)}")
-        ok(f"non-git capture filtered cleanly; no DB writes")
+        ok("non-git capture filtered cleanly; no DB writes")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 CAPTURE-AND-REVIEW STEPS PASSED{NC}")

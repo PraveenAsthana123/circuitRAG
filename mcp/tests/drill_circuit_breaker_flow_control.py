@@ -20,7 +20,6 @@ import sys
 import time
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -167,8 +166,8 @@ def main() -> int:
     # bound: ≤ 5. Hard requirement: at least 1 rejection (cap fired).
     assert successes >= 2, f"at least 2 should succeed (cap=2); got {successes}"
     assert rejections >= 1, (
-        f"FIX #10 BROKEN: 5 concurrent calls under cap=2 with 0.1s slow fn "
-        f"produced 0 rejections; bulkhead not enforcing"
+        "FIX #10 BROKEN: 5 concurrent calls under cap=2 with 0.1s slow fn "
+        "produced 0 rejections; bulkhead not enforcing"
     )
     print(f"  ok: cap=2 → {successes} succeeded, {rejections} rejected as bulkhead-overloaded")
 
@@ -193,7 +192,7 @@ def main() -> int:
     assert successes == 10, (
         f"max_concurrent=None should admit all; got {successes}/10"
     )
-    print(f"  ok: legacy mode (no bulkhead) — all 10 admitted")
+    print("  ok: legacy mode (no bulkhead) — all 10 admitted")
 
     # -------------------------------------------------------------
     # FIX #12: slow-call detection
@@ -224,7 +223,7 @@ def main() -> int:
     assert cb.state is State.OPEN, (
         f"FIX #12 BROKEN: 60% slow-call rate did NOT trip; state={cb.state}"
     )
-    print(f"  ok: 60% slow-call rate tripped breaker (zero errors)")
+    print("  ok: 60% slow-call rate tripped breaker (zero errors)")
 
     # -------------------------------------------------------------
     # FIX #12 NEGATIVE: slow_call_threshold=None disables detection

@@ -164,7 +164,7 @@ async def main() -> None:
                     f"wrong version surfaced: {ours[0]['version']}. "
                     f"Only the v1/active row should appear."
                 )
-            ok(f"only the active row v1 surfaced (3 non-active rows filtered)")
+            ok("only the active row v1 surfaced (3 non-active rows filtered)")
 
             step("2. tuning fields round-trip — model, temperature, max_tokens")
             row = ours[0]

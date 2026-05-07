@@ -121,7 +121,7 @@ async def run() -> int:
         )
         if text_len < 15000:
             print(f"  {YELLOW}⚠{NC} target page text only {text_len} chars; chunking drill needs >15000")
-            print(f"      (page MAY have been truncated by PageDownloadBar; not a code bug)")
+            print("      (page MAY have been truncated by PageDownloadBar; not a code bug)")
         else:
             ok(f"step 0: page text length = {text_len} chars (>15000 — exercises chunking)")
 

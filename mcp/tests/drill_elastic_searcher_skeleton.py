@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 ES_FILE = REPO / "services" / "retrieval-svc" / "app" / "services" / "elastic_searcher.py"
 

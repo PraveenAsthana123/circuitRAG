@@ -106,7 +106,7 @@ def main() -> int:
     if missing_pre:
         print(f"✗ step 4: Decision missing preconditions: {missing_pre}")
         return 1
-    print(f"✓ step 4: Decision names all 5 parallel-agent preconditions")
+    print("✓ step 4: Decision names all 5 parallel-agent preconditions")
 
     # ── Step 5: NEGATIVE — THREE allocation patterns in Decision ──
     patterns = [
@@ -118,7 +118,7 @@ def main() -> int:
     if missing_patterns:
         print(f"✗ step 5: Decision missing allocation patterns: {missing_patterns}")
         return 1
-    print(f"✓ step 5: Decision names all 3 allocation patterns (A/B/C)")
+    print("✓ step 5: Decision names all 3 allocation patterns (A/B/C)")
 
     # ── Step 6: NEGATIVE — References cites the FOUR demonstration phases ──
     refs_match = re.search(r"## References(.*?)\Z", body, re.DOTALL)
@@ -145,7 +145,7 @@ def main() -> int:
     if missing_cross:
         print(f"✗ step 7: missing architectural cross-refs: {missing_cross}")
         return 1
-    print(f"✓ step 7: composes-with refs ADR-014 + ADR-015 + autonomous-feature-loop")
+    print("✓ step 7: composes-with refs ADR-014 + ADR-015 + autonomous-feature-loop")
 
     # ── Step 8: POSITIVE — Consequences sub-sections ──
     consequences_match = re.search(
@@ -160,7 +160,7 @@ def main() -> int:
     if missing_subs:
         print(f"✗ step 8: Consequences missing sub-sections: {missing_subs}")
         return 1
-    print(f"✓ step 8: Consequences has Positive/Negative/Risks accepted")
+    print("✓ step 8: Consequences has Positive/Negative/Risks accepted")
 
     print("\nALL 8 STEPS PASSED")
     return 0

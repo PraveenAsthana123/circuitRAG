@@ -39,8 +39,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -167,7 +165,7 @@ def main() -> int:
             return 1
         out = stats.render_prometheus_snapshots(loaded)
         if 'council_filter_total{date="2026-04-28"} 99' not in out:
-            print(f"✗ step 4: rendered output didn't reflect deduped row")
+            print("✗ step 4: rendered output didn't reflect deduped row")
             return 1
         print("✓ step 4: dedup-by-date reused from 5N (latest snapshot_taken_at wins)")
 

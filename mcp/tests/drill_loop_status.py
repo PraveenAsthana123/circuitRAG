@@ -28,10 +28,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
-import sqlite3
 import subprocess
 import sys
 import tempfile
+from datetime import UTC
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "loop_status.py"
@@ -140,9 +140,9 @@ def main():
         # Seed: 3 events all with council_runs
         _seed_db_via_memory(mod.ADVISOR_DB, n_events=3, n_council=3)
         # Fresh drill status (now)
-        from datetime import datetime, timezone
+        from datetime import datetime
         mod.DRILL_STATUS.write_text(json.dumps({
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "failed_drills": [],
             "total_drills": 30,
         }))
@@ -165,7 +165,7 @@ def main():
             fail(f"events_total wrong: {status['events_total']}")
         if status["council_runs_pending"] != 0:
             fail(f"pending should be 0: {status['council_runs_pending']}")
-        ok(f"HEALTHY with 3 events, 0 pending, 5 APPROVE verdicts")
+        ok("HEALTHY with 3 events, 0 pending, 5 APPROVE verdicts")
 
     # 4. WARNING when drill stale
     step("4. NEGATIVE: WARNING when drill status stale (>STALE_AFTER)")
@@ -180,8 +180,8 @@ def main():
         mod.DRILL_STATUS = loop / "last_drill_outcome.json"
         _seed_db_via_memory(mod.ADVISOR_DB, n_events=1, n_council=1)
         # STALE drill status (timestamp far in past)
-        from datetime import datetime, timezone, timedelta
-        old_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(timespec="seconds")
+        from datetime import datetime, timedelta
+        old_ts = (datetime.now(UTC) - timedelta(hours=2)).isoformat(timespec="seconds")
         mod.DRILL_STATUS.write_text(json.dumps({
             "timestamp": old_ts,
             "failed_drills": [],
@@ -259,9 +259,9 @@ def main():
         mod.DRILL_STATUS = loop / "last_drill_outcome.json"
         # Seed 5 events but only 2 council_runs
         _seed_db_via_memory(mod.ADVISOR_DB, n_events=5, n_council=2)
-        from datetime import datetime, timezone
+        from datetime import datetime
         mod.DRILL_STATUS.write_text(json.dumps({
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "failed_drills": [], "total_drills": 1,
         }))
         mod.WATCHER_LOG.write_text("")
@@ -275,7 +275,7 @@ def main():
                 f"council_runs_pending should be 3 (5 events - 2 with council "
                 f"= 3 pending), got {status['council_runs_pending']}"
             )
-        ok(f"counts match: events=5, council_runs=2, pending=3")
+        ok("counts match: events=5, council_runs=2, pending=3")
 
     # 9. Non-rule-1 trailing REJECT remains visible even with green drills
     step("9. NEGATIVE: non-rule-1 trailing REJECT still surfaces as WARNING")
@@ -289,9 +289,9 @@ def main():
         mod.COUNCIL_LOG = loop / "council_runs.log"
         mod.DRILL_STATUS = loop / "last_drill_outcome.json"
         _seed_db_via_memory(mod.ADVISOR_DB, n_events=1, n_council=1)
-        from datetime import datetime, timezone
+        from datetime import datetime
         mod.DRILL_STATUS.write_text(json.dumps({
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "failed_drills": [],
             "total_drills": 30,
         }))

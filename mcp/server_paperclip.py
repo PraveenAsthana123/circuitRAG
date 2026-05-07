@@ -40,13 +40,16 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
+
 from mcp.server_common import (
     ToolCallRequest,
     build_auth,
-    enforce_scope as _enforce_scope_common,
     handle_tool_call,
     mount_metrics_endpoint,
     setup_server_otel,
+)
+from mcp.server_common import (
+    enforce_scope as _enforce_scope_common,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

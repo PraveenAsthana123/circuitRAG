@@ -66,7 +66,7 @@ def main() -> int:
     if not SCRIPT.exists():
         print(f"✗ pre-step: {SCRIPT} missing")
         return 1
-    body = SCRIPT.read_text()
+    SCRIPT.read_text()
 
     # ── Step 1: --dry-run prints all 3 step commands ──
     rc, _, err = _run([
@@ -95,7 +95,7 @@ def main() -> int:
         print(f"✗ step 2: unknown flag exit {rc}, expected 2")
         return 1
     if "unknown flag" not in err.lower():
-        print(f"✗ step 2: missing 'unknown flag' message")
+        print("✗ step 2: missing 'unknown flag' message")
         return 1
     print("✓ step 2: unknown flag exits 2 (typo-safe CI)")
 
@@ -109,7 +109,7 @@ def main() -> int:
         print(f"✗ step 3: no-op exit {rc}, expected 0")
         return 1
     if "[DRY-RUN]" in err:
-        print(f"✗ step 3: no --dry-run flag, but output has [DRY-RUN]. "
+        print("✗ step 3: no --dry-run flag, but output has [DRY-RUN]. "
               "Active-by-default contract broken.")
         return 1
     print("✓ step 3: active by default (no [DRY-RUN] without explicit flag)")
@@ -127,17 +127,17 @@ def main() -> int:
     # snapshot step should NOT have a DRY-RUN command line; it should
     # have the (skipped per --skip-snapshot) message
     if "[DRY-RUN] [snapshot]" in err:
-        print(f"✗ step 4: --skip-snapshot did not suppress snapshot step")
+        print("✗ step 4: --skip-snapshot did not suppress snapshot step")
         return 1
     if "(skipped per --skip-snapshot)" not in err:
-        print(f"✗ step 4: missing skip-snapshot explanation message")
+        print("✗ step 4: missing skip-snapshot explanation message")
         return 1
     # But other steps must still be present
     if "[DRY-RUN] [prometheus]" not in err:
-        print(f"✗ step 4: --skip-snapshot wrongly suppressed prometheus")
+        print("✗ step 4: --skip-snapshot wrongly suppressed prometheus")
         return 1
     if "[DRY-RUN] [alerts]" not in err:
-        print(f"✗ step 4: --skip-snapshot wrongly suppressed alerts")
+        print("✗ step 4: --skip-snapshot wrongly suppressed alerts")
         return 1
     print("✓ step 4: --skip-snapshot suppresses only snapshot; others still fire")
 
@@ -185,7 +185,7 @@ def main() -> int:
         None,
     )
     if not alerts_line:
-        print(f"✗ step 6: no alerts line in dry-run output")
+        print("✗ step 6: no alerts line in dry-run output")
         return 1
     on_count = alerts_line.count("--alert-on")
     if on_count != 3:
@@ -208,15 +208,15 @@ def main() -> int:
         None,
     )
     if not prom_line:
-        print(f"✗ step 7: no prometheus dry-run line")
+        print("✗ step 7: no prometheus dry-run line")
         return 1
     if sentinel not in prom_line:
         print(f"✗ step 7: --prometheus-out value {sentinel!r} not in prom command")
         return 1
     if "--prometheus-out" not in prom_line:
-        print(f"✗ step 7: --prometheus-out flag missing from prom command")
+        print("✗ step 7: --prometheus-out flag missing from prom command")
         return 1
-    print(f"✓ step 7: --prometheus-out value threads through to prom step command")
+    print("✓ step 7: --prometheus-out value threads through to prom step command")
 
     # ── Step 8: NEGATIVE — missing --prometheus-out skips gracefully ──
     rc, _, err = _run([
@@ -227,7 +227,7 @@ def main() -> int:
         print(f"✗ step 8: missing --prometheus-out exit {rc}, expected 0")
         return 1
     if "[DRY-RUN] [prometheus]" in err:
-        print(f"✗ step 8: prom step ran without --prometheus-out path")
+        print("✗ step 8: prom step ran without --prometheus-out path")
         return 1
     # Must have an explanation message
     if "no --prometheus-out path given" not in err:

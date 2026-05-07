@@ -46,7 +46,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -370,7 +370,7 @@ def main() -> int:
         by_status[r["status"]] = by_status.get(r["status"], 0) + 1
 
     summary = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "by_status": by_status,
         "results": results,
     }

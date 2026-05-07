@@ -106,7 +106,7 @@ def main() -> int:
             if g.get("configured") is not False:
                 fail(f"GuardrailsEngine flag-unset: configured={g.get('configured')}")
             if "GUARDRAILS_EVAL_ENABLED" not in g.get("reason", ""):
-                fail(f"GuardrailsEngine reason missing flag name")
+                fail("GuardrailsEngine reason missing flag name")
 
         deep = eval_harness.DeepEvalEngine()
         if deep.is_available():
@@ -114,7 +114,7 @@ def main() -> int:
             if d.get("configured") is not False:
                 fail(f"DeepEvalEngine flag-unset: configured={d.get('configured')}")
             if "DEEPEVAL_ENABLED" not in d.get("reason", ""):
-                fail(f"DeepEvalEngine reason missing flag name")
+                fail("DeepEvalEngine reason missing flag name")
     finally:
         for var, val in saved.items():
             if val is not None:

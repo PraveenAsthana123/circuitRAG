@@ -383,8 +383,8 @@ async def main() -> None:
             f"{skipped[0].error!r}"
         )
     ok(
-        f"reviewer invoked exactly once (only ok_a); "
-        f"fail_a×counter recorded as upstream_author_error"
+        "reviewer invoked exactly once (only ok_a); "
+        "fail_a×counter recorded as upstream_author_error"
     )
 
     # ── Step 7: NEGATIVE — advisor failure → fallback to top draft ─
@@ -444,8 +444,8 @@ async def main() -> None:
             f"{result.final_advice[:120]!r}"
         )
     ok(
-        f"advisor crash captured in BoardResult.error; "
-        f"fallback returned 'b_mid_winner' (score 9)"
+        "advisor crash captured in BoardResult.error; "
+        "fallback returned 'b_mid_winner' (score 9)"
     )
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")

@@ -25,11 +25,9 @@ once the routed path is wired by B1).
 """
 from __future__ import annotations
 
-import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
-
 
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
@@ -127,7 +125,7 @@ def main() -> int:
     # Pick out the substring around the comparison.
     rule_snip = after_review_body[rule_idx:rule_idx + 60]
     assert "retry_count < MAX_REVIEW_ITERATIONS" in rule_snip, (
-        "cap comparison must use '<' (strict). Found: {!r}".format(rule_snip)
+        f"cap comparison must use '<' (strict). Found: {rule_snip!r}"
     )
     print("  ok: cap uses '<' (strict) — retry=3 exits loop")
 

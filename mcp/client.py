@@ -29,7 +29,6 @@ Usage::
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import time
@@ -39,7 +38,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
 from documind_core.circuit_breaker import CircuitBreaker
 
 from .drafts import DraftRecord, DraftStore, InMemoryDraftStore
@@ -255,6 +253,8 @@ class MCPClient:
                 _sys.path.insert(0, _scripts_dir)
             from mcp_gateway import (  # type: ignore[import-not-found]  # noqa: PLC0415
                 MCPGatewayDisabled,
+            )
+            from mcp_gateway import (
                 check as _gateway_check,
             )
             # tool name format is "<server>.<tool>" — split for gateway

@@ -208,7 +208,7 @@ if __name__ == "__main__":
     import json
     import sys
     print("scripts/hyde_adapter.py — Stage-1 HyDE hypothetical-document adapter")
-    print(f"Stage-1 opt-in via HYDE_ENABLED=1")
+    print("Stage-1 opt-in via HYDE_ENABLED=1")
     print()
     print(json.dumps(status(), indent=2))
     sys.exit(0)

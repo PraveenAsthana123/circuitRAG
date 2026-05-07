@@ -50,9 +50,11 @@ import logging
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutTimeout
+from dataclasses import dataclass
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -295,8 +297,8 @@ if __name__ == "__main__":
     import json
     import sys
     print("scripts/native_compute_wrapper.py — Stage-1 LLVM/MLIR + CB wrapper")
-    print(f"Stage-1 opt-in via NATIVE_COMPUTE_WRAPPER_ENABLED=1")
-    print(f"Composes ANY native callable with circuit breaker + timeout + fallback")
+    print("Stage-1 opt-in via NATIVE_COMPUTE_WRAPPER_ENABLED=1")
+    print("Composes ANY native callable with circuit breaker + timeout + fallback")
     print()
     sample_status = {
         "stage": 1,

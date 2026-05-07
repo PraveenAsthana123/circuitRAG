@@ -52,7 +52,7 @@ def main() -> int:
     if not POLICY_FILE.exists():
         print(f"x {POLICY_FILE} missing")
         return 1
-    print(f"  ok: policy_check.py + policy file present")
+    print("  ok: policy_check.py + policy file present")
 
     print("-- 2. POSITIVE: rules surface lists 12 documented rules + version --")
     rc, out, err = _run("rules")
@@ -109,7 +109,7 @@ def main() -> int:
         return 1
     if decision.get("rule_matched") != "council-author-read-checklist":
         # The rule WAS matched but failed scope; rule_matched should still be set
-        print(f"x rule_matched should reflect the matched-but-denied rule")
+        print("x rule_matched should reflect the matched-but-denied rule")
         return 1
     print("  ok: deny + missing_scopes=['checklist:read'] + rule_matched preserved")
 

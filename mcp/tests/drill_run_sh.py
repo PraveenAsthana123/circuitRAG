@@ -92,7 +92,7 @@ def main() -> int:
         cwd=REPO, capture_output=True, text=True, timeout=10,
     )
     if proc.returncode == 0:
-        print(f"x unknown verb returned 0; should be non-zero")
+        print("x unknown verb returned 0; should be non-zero")
         return 1
     output = proc.stdout + proc.stderr
     if "valid:" not in output and "unknown" not in output.lower():
@@ -138,7 +138,7 @@ def main() -> int:
         if marker not in header and marker.lower() not in header.lower():
             # tolerant check: at least §42 reference must be present
             if marker == "§42":
-                print(f"x header missing §42 reference")
+                print("x header missing §42 reference")
                 return 1
     print("  ok: §42 SAFETY block present in script header")
 

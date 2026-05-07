@@ -46,7 +46,6 @@ import random
 import sys
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 MODULE_PATH = REPO / "libs" / "py" / "documind_core" / "drift_detection.py"
 
@@ -171,7 +170,7 @@ def main() -> int:
     if actual_keys != expected_keys:
         print(f"x step 7: DriftReport schema mismatch — extra={actual_keys - expected_keys}, missing={expected_keys - actual_keys}")
         return 1
-    print(f"  ok: 10-field DriftReport round-trips through JSON; #48 Risk Engine ready")
+    print("  ok: 10-field DriftReport round-trips through JSON; #48 Risk Engine ready")
 
     print("-- 8. POSITIVE: severity ladder is monotone (psi increase → severity escalation) --")
     # Build minor-shift A/B: Beta(8,2) vs Beta(7,3) — small drift.

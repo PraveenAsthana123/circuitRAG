@@ -24,12 +24,10 @@ transition order silently regresses the breaker into uselessness.
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import sys
 import threading
 import time
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 CB_FILE = REPO / "libs" / "py" / "documind_core" / "circuit_breaker.py"
@@ -68,7 +66,7 @@ def main() -> int:
     for _ in range(2):
         try:
             asyncio.run(cb.call_async(_hang))
-        except (asyncio.TimeoutError, CircuitOpenError):
+        except (TimeoutError, CircuitOpenError):
             raised += 1
     assert raised == 2, f"expected 2 timeouts caught; got {raised}"
     assert cb.state is State.OPEN, (
@@ -125,7 +123,7 @@ def main() -> int:
     assert cb.failures == 0, (
         f"FIX #6 BROKEN: caller bug counted as failure; failures={cb.failures}"
     )
-    print(f"  ok: 5x KeyError propagated, breaker stayed CLOSED, failures=0")
+    print("  ok: 5x KeyError propagated, breaker stayed CLOSED, failures=0")
 
     # -------------------------------------------------------------
     # FIX #3 (CB-A3): asyncio.CancelledError pass-through
@@ -153,7 +151,7 @@ def main() -> int:
     assert cb.failures == 0, (
         f"FIX #3 BROKEN: cancellations incremented failures; failures={cb.failures}"
     )
-    print(f"  ok: 5x cancellation propagated, breaker stayed CLOSED, failures=0")
+    print("  ok: 5x cancellation propagated, breaker stayed CLOSED, failures=0")
 
     # -------------------------------------------------------------
     # FIX #5 (CB-A4): _opened_at set BEFORE _transition(OPEN)
@@ -232,7 +230,7 @@ def main() -> int:
         f"FIX #4 BROKEN: {len(closed_observations)} callers saw CLOSED during "
         f"OPEN→HALF_OPEN transition: {closed_observations[:5]}"
     )
-    print(f"  ok: 50 concurrent allow()s converged to HALF_OPEN, no phantom CLOSED")
+    print("  ok: 50 concurrent allow()s converged to HALF_OPEN, no phantom CLOSED")
 
     # -------------------------------------------------------------
     # FIX #1+#5 combined: hung fn() with tight recovery → still trips correctly
@@ -250,7 +248,7 @@ def main() -> int:
 
     try:
         asyncio.run(cb.call_async(_slow))
-    except (asyncio.TimeoutError, CircuitOpenError):
+    except (TimeoutError, CircuitOpenError):
         pass
     assert cb.state is State.OPEN
     # Within recovery: allow() False
@@ -259,7 +257,7 @@ def main() -> int:
     time.sleep(0.1)
     assert cb.allow() is True
     assert cb.state is State.HALF_OPEN
-    print(f"  ok: hung→OPEN→(recovery elapses)→HALF_OPEN — full machine works under all fixes")
+    print("  ok: hung→OPEN→(recovery elapses)→HALF_OPEN — full machine works under all fixes")
 
     # -------------------------------------------------------------
     # All fixes in place — produce a summary

@@ -11,7 +11,6 @@ Eight steps. Six negative assertions.
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -55,7 +54,7 @@ def main() -> int:
             print(f"x step 2: default status should be 'pending'; got {task.status!r}")
             return 1
         if task.priority != "high":
-            print(f"x step 2: priority not preserved")
+            print("x step 2: priority not preserved")
             return 1
         print(f"  ok: task added; id={task.id} status=pending")
 
@@ -92,7 +91,7 @@ def main() -> int:
         # add task A; add task B depending on A; try to add task C
         # making A depend on C (cycle: A → C → A would form, but
         # we add by changing existing — drill via direct cycle test)
-        a = tm.add_task(title="A", owner="praveen", task_id="task-a")
+        tm.add_task(title="A", owner="praveen", task_id="task-a")
         # Direct cycle: task that depends on itself
         try:
             tm.add_task(title="self-cycle", owner="praveen",
@@ -116,7 +115,7 @@ def main() -> int:
             return 1
 
         print("-- 7. NEGATIVE: update_status appends; latest-row-wins --")
-        b = tm.add_task(title="B", owner="praveen", task_id="task-b")
+        tm.add_task(title="B", owner="praveen", task_id="task-b")
         # initial: pending
         loaded = tm.list_current_tasks()
         b_initial = next((t for t in loaded if t.id == "task-b"), None)
@@ -139,7 +138,7 @@ def main() -> int:
         if len(b_rows) != 3:
             print(f"x step 7: expected 3 task-b rows in log; got {len(b_rows)}")
             return 1
-        print(f"  ok: 3 append rows for task-b; latest-row-wins → 'done'")
+        print("  ok: 3 append rows for task-b; latest-row-wins → 'done'")
 
         print("-- 8. POSITIVE: update_status on nonexistent id raises --")
         try:

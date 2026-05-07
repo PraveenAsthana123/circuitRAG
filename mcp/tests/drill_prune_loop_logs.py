@@ -40,11 +40,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -61,7 +60,7 @@ def _load_pruner():
 
 def _ts(offset_days: int) -> str:
     """ISO timestamp `offset_days` from now (negative = past)."""
-    t = datetime.now(timezone.utc) + timedelta(days=offset_days)
+    t = datetime.now(UTC) + timedelta(days=offset_days)
     return t.isoformat(timespec="seconds")
 
 

@@ -11,6 +11,7 @@ partially wired:
 - Host/container exporters for deeper infra metrics
 - Linux host-gateway wiring for containers that reach host-native services
 - Honest local scrape-contract docs for host-native Python services
+- Python service entrypoints explicitly pass prometheus_port into setup_observability
 
 Negative assertions cover: each provisioning artifact (Grafana
 dashboards yaml, Prometheus alert-rules, Alertmanager config)
@@ -29,7 +30,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE = REPO / "docker-compose.yml"
 PROM = REPO / "infra" / "observability" / "prometheus.yml"
@@ -38,6 +38,13 @@ ALERTMANAGER = REPO / "infra" / "observability" / "alertmanager.yml"
 GRAFANA_PROVIDER = REPO / "infra" / "observability" / "grafana-dashboards.yaml"
 GRAFANA_DIR = REPO / "infra" / "observability" / "grafana-dashboards"
 GRAFANA_OVERVIEW = GRAFANA_DIR / "documind-overview.json"
+PY_SERVICE_MAINS = (
+    REPO / "services" / "ingestion-svc" / "app" / "main.py",
+    REPO / "services" / "retrieval-svc" / "app" / "main.py",
+    REPO / "services" / "inference-svc" / "app" / "main.py",
+    REPO / "services" / "evaluation-svc" / "app" / "main.py",
+    REPO / "services" / "agent-orchestrator-svc" / "app" / "main.py",
+)
 
 
 def require(text: str, needle: str, label: str) -> None:
@@ -141,13 +148,26 @@ def main() -> int:
     require(prom, "DOCUMIND_PROMETHEUS_PORT", "per-service prometheus port note")
     print("  ok: prometheus.yml no longer claims every app exposes /metrics on its HTTP port")
 
-    print("-- 16. NEGATIVE: no manual-import-only README claim should remain true after provisioning --")
+    print("-- 16. POSITIVE: Python service entrypoints pass prometheus_port explicitly --")
+    missing_prom_ports: list[str] = []
+    for path in PY_SERVICE_MAINS:
+        src = path.read_text(encoding="utf-8")
+        if "prometheus_port=settings.prometheus_port" not in src:
+            missing_prom_ports.append(str(path.relative_to(REPO)))
+    if missing_prom_ports:
+        raise AssertionError(
+            "python services missing explicit prometheus_port wiring: "
+            + ", ".join(missing_prom_ports)
+        )
+    print(f"  ok: all {len(PY_SERVICE_MAINS)} Python service entrypoints wire prometheus_port")
+
+    print("-- 17. NEGATIVE: no manual-import-only README claim should remain true after provisioning --")
     readme = (GRAFANA_DIR / "README.md").read_text(encoding="utf-8")
     if "import this" in readme.lower() and "auto" not in readme.lower():
         raise AssertionError("dashboard README still appears to describe import-only flow without auto-provision context")
     print("  ok: README is not import-only drift")
 
-    print("\nALL 16 STEPS PASSED")
+    print("\nALL 17 STEPS PASSED")
     return 0
 
 

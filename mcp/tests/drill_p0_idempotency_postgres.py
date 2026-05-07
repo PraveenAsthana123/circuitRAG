@@ -21,7 +21,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 
@@ -56,7 +55,7 @@ def main() -> int:
     methods = [name for name, _ in inspect.getmembers(Cls, predicate=inspect.isfunction)]
     assert "get" in methods, "missing get(tenant_id, key) method"
     assert "save" in methods, "missing save(record) method"
-    print(f"  ok: get + save methods present")
+    print("  ok: get + save methods present")
 
     print("-- 3. POSITIVE: get signature matches Protocol --")
     get_sig = inspect.signature(Cls.get)

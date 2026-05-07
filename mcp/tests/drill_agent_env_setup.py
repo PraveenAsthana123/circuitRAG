@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -72,7 +71,7 @@ def main() -> int:
             print(f"x step 3: --status missing {k!r} in output: {status_line!r}")
             return 1
     if "\n" in status_line:
-        print(f"x step 3: --status produced multiple lines (must be one-liner)")
+        print("x step 3: --status produced multiple lines (must be one-liner)")
         return 1
     print(f"  ok: one-line k=v status: {status_line}")
 
@@ -89,7 +88,7 @@ def main() -> int:
         if m not in src:
             print(f"x step 4: required-models list missing {m!r}")
             return 1
-    print(f"  ok: all 4 council models referenced")
+    print("  ok: all 4 council models referenced")
 
     print("-- 5. NEGATIVE: required-pip-deps covers core stack --")
     for dep in ("pydantic", "langgraph", "ruff", "pytest"):
@@ -106,7 +105,7 @@ def main() -> int:
         if dep not in deps_body:
             print(f"x step 5: REQUIRED_PIP_DEPS missing {dep!r}")
             return 1
-    print(f"  ok: all 5 core pip deps in REQUIRED_PIP_DEPS")
+    print("  ok: all 5 core pip deps in REQUIRED_PIP_DEPS")
 
     print("-- 6. NEGATIVE: required-global-scripts points at ~/.claude/scripts/ --")
     if "$HOME/.claude/scripts/issue_scanner.py" not in src:

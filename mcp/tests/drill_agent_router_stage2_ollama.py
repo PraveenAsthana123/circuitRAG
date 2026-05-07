@@ -19,7 +19,6 @@ from __future__ import annotations
 import importlib
 import inspect
 import os
-import re
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -108,13 +107,11 @@ def main() -> int:
 
     print("-- 5. NEGATIVE: flag ON + Ollama-unavailable → falls back to heuristic --")
     importlib.reload(agent_router)
-    fallback_via_heuristic = {"hit": False}
 
     def fake_ollama_fail(_message):
         raise agent_router._OllamaClassifierUnavailable("simulated network error")
 
     # Hook into the heuristic path by counting pattern matches
-    original_classify = agent_router.classify
 
     with patch.object(agent_router, "_classify_via_ollama", side_effect=fake_ollama_fail):
         result = agent_router.classify("explain how this works", persist_audit=False)
@@ -176,7 +173,7 @@ def main() -> int:
         if d.risk != expected_risk:
             print(f"x Stage-1 regression: {msg!r} expected risk={expected_risk}; got {d.risk}")
             return 1
-    print(f"  ok: 4 Stage-1 cases still classified correctly (no regression)")
+    print("  ok: 4 Stage-1 cases still classified correctly (no regression)")
 
     # Cleanup
     os.environ.pop("AGENT_ROUTER_OLLAMA_ENABLED", None)

@@ -26,21 +26,19 @@ import asyncio
 import os
 import subprocess
 import sys
-import time
-import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import asyncpg
 import httpx
-import jwt as pyjwt
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "services" / "inference-svc"))
 
-from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 from app.workers.draft_replay import DraftReplayWorker  # type: ignore  # noqa: E402
+
+from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 
 TENANT = os.getenv("TENANT_ID", "137e2ae5-09bc-44b3-b77f-cecb3ac3fe1a")
 HR_BASE = os.getenv("MCP_HR_URL", "http://127.0.0.1:8090")

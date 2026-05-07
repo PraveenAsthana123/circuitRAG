@@ -76,7 +76,7 @@ class _LogCapture:
         self.handler = logging.StreamHandler(self.buf)
         self.handler.setLevel(logging.INFO)
 
-    def __enter__(self) -> "_LogCapture":
+    def __enter__(self) -> _LogCapture:
         logger = logging.getLogger("app.services.guardrails")
         logger.setLevel(logging.INFO)
         logger.addHandler(self.handler)
@@ -216,7 +216,7 @@ def main() -> None:
             f"{len(completed)}. Double-emission would double "
             f"alert-rate counters."
         )
-    ok(f"5 calls → 5 log lines (no double-emission)")
+    ok("5 calls → 5 log lines (no double-emission)")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 5 GUARDRAIL-OTEL-ATTR STEPS PASSED{NC}")

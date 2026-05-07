@@ -46,8 +46,9 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "services" / "inference-svc"))
 
-from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 from app.workers.draft_replay import DraftReplayWorker  # type: ignore  # noqa: E402
+
+from mcp import MCPClient, PostgresDraftStore  # noqa: E402
 
 INFERENCE = os.getenv("INFERENCE_URL", "http://127.0.0.1:8084")
 MCP_BASE = os.getenv("MCP_HR_URL", "http://127.0.0.1:8090")

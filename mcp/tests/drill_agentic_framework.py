@@ -49,7 +49,7 @@ def main() -> int:
         if failures:
             print(f"x step 2: reference spec {spec_dict['name']!r} repo-validation: {failures}")
             return 1
-    print(f"  ok: all 4 council specs (researcher/author/reviewer/advisor) validate")
+    print("  ok: all 4 council specs (researcher/author/reviewer/advisor) validate")
 
     print("-- 3. NEGATIVE: invalid role_type → ValidationError --")
     bad_dict = dict(af.COUNCIL_AGENT_SPECS[0])

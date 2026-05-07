@@ -95,7 +95,7 @@ def main() -> int:
         # Look for at least one tool name with the namespace prefix
         if not re.search(rf'"name":\s*"{ns}\.[a-z_]+', src):
             fail(f"{ns} server has no tool with '{ns}.*' namespace")
-    ok(f"all 5 servers have TOOLS with ≥1 namespaced tool")
+    ok("all 5 servers have TOOLS with ≥1 namespaced tool")
 
     # ------------------------------------------------------------------
     # Step 3 — POSITIVE: every tool in every server is read-only
@@ -133,7 +133,7 @@ def main() -> int:
         # Default empty (operator opt-in)
         if not re.search(rf'os\.getenv\("{env_var}",\s*""\)', inf_src):
             fail(f"{env_var} default is not empty string (operator opt-in broken)")
-    ok(f"all 5 SaaS env-flags wired into mcp_spec with empty defaults")
+    ok("all 5 SaaS env-flags wired into mcp_spec with empty defaults")
 
     # ------------------------------------------------------------------
     # Step 6 — NEGATIVE: NO write tools in any SaaS server

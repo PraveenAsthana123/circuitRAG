@@ -201,8 +201,8 @@ def main() -> int:
             suggestions = _suggest_keywords(slug)
             msg_lines.append(f"  ADR-{num:03d} '{slug}'")
             msg_lines.append(
-                f"    To classify as LOOP-DISCIPLINE, add ONE of these "
-                f"to LOOP_KEYWORDS in drill_cheatsheet_adr_coverage.py:"
+                "    To classify as LOOP-DISCIPLINE, add ONE of these "
+                "to LOOP_KEYWORDS in drill_cheatsheet_adr_coverage.py:"
             )
             for cand in suggestions:
                 msg_lines.append(f"      \"{cand}\",")
@@ -243,7 +243,7 @@ def main() -> int:
             f"{len(both)} ADR(s) in BOTH categories: {both}. "
             "Operator decision required — pick one."
         )
-    ok(f"no ADR is double-classified")
+    ok("no ADR is double-classified")
 
     step("5. NEGATIVE: ADR numbering is dense (no missing files within range)")
     numbers = sorted(num for num, _, _ in adr_files)

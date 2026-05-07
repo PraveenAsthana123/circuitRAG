@@ -14,7 +14,6 @@ Eight steps. Six negative assertions.
 """
 from __future__ import annotations
 
-import os
 import re
 import stat
 import subprocess
@@ -46,10 +45,10 @@ def main() -> int:
         print(f"x step 2: --help only {len(h)} chars; expected ≥400")
         return 1
     if "§42" not in h:
-        print(f"x step 2: --help missing §42 reference")
+        print("x step 2: --help missing §42 reference")
         return 1
     if "force-push" not in h.lower() and "force push" not in h.lower():
-        print(f"x step 2: --help should explicitly disclaim force-push")
+        print("x step 2: --help should explicitly disclaim force-push")
         return 1
     print(f"  ok: --help cites §42 + disclaims force-push; {len(h)} chars")
 

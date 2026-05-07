@@ -59,7 +59,6 @@ import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import quote
 
 log = logging.getLogger(__name__)
 
@@ -303,7 +302,7 @@ if __name__ == "__main__":
     import json
     import sys
     print("scripts/whatsapp_webhook.py — Stage-1 WhatsApp gateway")
-    print(f"Stage-1 opt-in via WHATSAPP_WEBHOOK_ENABLED=1")
+    print("Stage-1 opt-in via WHATSAPP_WEBHOOK_ENABLED=1")
     print("Supports Meta Cloud API + Twilio Business API")
     print()
     print(json.dumps(status(), indent=2))

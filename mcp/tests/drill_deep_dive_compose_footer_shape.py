@@ -267,7 +267,7 @@ def main() -> int:
             f"{len(schema_violations)} entries missing required keys: "
             f"{schema_violations[:5]}"
         )
-    ok(f"every ref entry has href + label + why")
+    ok("every ref entry has href + label + why")
 
     step("6. NEGATIVE: no ref href self-links to the current page's route")
     self_links: list[tuple[str, str]] = []
@@ -302,7 +302,7 @@ def main() -> int:
             f"{len(relative_paths)} relative href(s) found "
             f"(must start with '/'): {relative_paths[:5]}"
         )
-    ok(f"every href is an absolute path")
+    ok("every href is an absolute path")
 
     step("8. POSITIVE: emit per-page entry count distribution")
     distribution: dict[int, int] = {}

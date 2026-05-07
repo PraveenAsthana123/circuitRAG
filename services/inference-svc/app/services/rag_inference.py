@@ -140,7 +140,8 @@ class RagInferenceService:
         import sys as _sys  # noqa: PLC0415
         _sys.path.insert(0, "/mnt/deepa/rag/scripts")
         try:
-            from langfuse_tracer import is_available as _lf_avail, _get_client as _lf_client  # noqa: PLC0415
+            from langfuse_tracer import _get_client as _lf_client
+            from langfuse_tracer import is_available as _lf_avail  # noqa: PLC0415
             if _lf_avail():
                 _client = _lf_client()
                 if _client is not None:
@@ -156,9 +157,9 @@ class RagInferenceService:
                             "strategy": request.strategy,
                         },
                     )
-        except Exception:
+        except Exception:  # noqa: S110 — intentional fail-safe
             # Offline-safe: NEVER block the request path on observability
-            pass
+            pass  # noqa: S110 — intentional fail-safe (see comment above)
 
         # -1. Adversarial input heuristics — reject early for length / DoS /
         #     non-printable / URL-burst patterns.
@@ -204,6 +205,8 @@ class RagInferenceService:
                     _sys.path.insert(0, "/mnt/deepa/rag/scripts")
                     from best_config_loader import (  # noqa: PLC0415
                         get_default_top_k as _bc_top_k,
+                    )
+                    from best_config_loader import (
                         is_available as _bc_avail,
                     )
                     if _bc_avail() and "top_k" not in request.model_fields_set:

@@ -108,7 +108,7 @@ def main() -> None:
             f"email counter delta = {delta}, expected 1 (frequency-of-kind, "
             f"not match-count). Three emails in one call should bump once."
         )
-    ok(f"email counter +1 even though 3 emails matched in the same call")
+    ok("email counter +1 even though 3 emails matched in the same call")
 
     step("3. Idempotent: redact(redact(t)) == redact(t)")
     text = "SSN 123-45-6789 and email a@b.com and ip 10.0.0.1"
@@ -149,7 +149,7 @@ def main() -> None:
         fail(f"None passthrough broken: {out['score']!r}")
     if not isinstance(out["trace_ids"], tuple):
         fail(f"tuple type lost in recursion: {type(out['trace_ids'])}")
-    ok(f"recursive walk; non-string scalars passthrough; tuple type preserved")
+    ok("recursive walk; non-string scalars passthrough; tuple type preserved")
 
     step("5. redact_value increments counter once per matched kind per inner string")
     pre_ssn = _counter("ssn")
@@ -174,7 +174,7 @@ def main() -> None:
             f"email counter delta = {_counter('email') - pre_email}, "
             f"expected +1 (one email in one string)"
         )
-    ok(f"recursion multiplies bumps correctly: ssn +3, email +1")
+    ok("recursion multiplies bumps correctly: ssn +3, email +1")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 5 PII-REDACTION STEPS PASSED{NC}")

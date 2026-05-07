@@ -25,7 +25,6 @@ Run:
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import os
 import subprocess
@@ -38,7 +37,7 @@ import httpx
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from libs.py.documind_core.audit import _canonical_json, _compute_entry_hash  # type: ignore  # noqa: E402
+from libs.py.documind_core.audit import _compute_entry_hash  # type: ignore  # noqa: E402
 
 TENANT = os.getenv("TENANT_ID", "137e2ae5-09bc-44b3-b77f-cecb3ac3fe1a")
 INFERENCE = os.getenv("INFERENCE_URL", "http://127.0.0.1:8084")
@@ -223,7 +222,7 @@ async def main() -> None:
 
             # --- 4: restart MCP, resolve via admin API ---
             step("4. restart MCP → POST /drafts/{id}/resolve")
-            mcp_proc = _spawn_mcp()
+            _spawn_mcp()
             if not await _healthy(c, MCP_BASE):
                 fail("MCP didn't come back")
             ok("MCP back up")
@@ -268,7 +267,7 @@ async def main() -> None:
                 details=details2,
             )
             if expected_hash2 != r2["entry_hash"]:
-                fail(f"replayed entry_hash mismatch")
+                fail("replayed entry_hash mismatch")
             ok(f"mcp_draft.replayed chain-valid hash={r2['entry_hash'][:12]}... details.ticket_id={ticket}")
 
             # --- 6: full-chain verification ---

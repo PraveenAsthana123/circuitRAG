@@ -28,10 +28,8 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
-import os
 import sys
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"

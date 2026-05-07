@@ -26,7 +26,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import sys
 import time
 
 OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"

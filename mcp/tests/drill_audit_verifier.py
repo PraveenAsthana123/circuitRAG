@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -133,7 +132,7 @@ def main() -> None:
     # tracks expected_prev, which we keep strict (it tracks the
     # STORED entry_hash, not the recomputed one — so subsequent rows
     # stay OK in this drill).
-    ok(f"exit code=1 (tampering detected)")
+    ok("exit code=1 (tampering detected)")
 
     step("4. restore row; verifier clean again")
     _psql(
@@ -195,15 +194,15 @@ def main() -> None:
 
     step("7. delete synthetic row + draft; verifier clean")
     _psql(
-        f"DELETE FROM governance.audit_log WHERE action='drill.injected'"
+        "DELETE FROM governance.audit_log WHERE action='drill.injected'"
     )
     _psql(
-        f"DELETE FROM governance.action_drafts WHERE draft_id='DRAFT-VERIFIER-DRILL'"
+        "DELETE FROM governance.action_drafts WHERE draft_id='DRAFT-VERIFIER-DRILL'"
     )
     result = _run_verifier()
     if result["exit"] != 0:
         fail(f"expected exit 0 after cleanup got {result['exit']}: {result}")
-    ok(f"cleanup OK, exit=0")
+    ok("cleanup OK, exit=0")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 7 AUDIT-VERIFIER STEPS PASSED{NC}")

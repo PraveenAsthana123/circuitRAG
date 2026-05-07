@@ -66,7 +66,7 @@ def main() -> int:
     prc = FRONTEND / ".prettierrc"
     pri = FRONTEND / ".prettierignore"
     if prc.is_file() and pri.is_file():
-        ok(f"step 1: .prettierrc + .prettierignore both present at services/frontend/")
+        ok("step 1: .prettierrc + .prettierignore both present at services/frontend/")
     else:
         fail(f"step 1: missing — .prettierrc:{prc.is_file()} .prettierignore:{pri.is_file()}")
         failures += 1
@@ -81,7 +81,7 @@ def main() -> int:
             cfg = json.loads(prc.read_text(encoding="utf-8"))
             missing = expected_fields - set(cfg.keys())
             if not missing:
-                ok(f"step 2: .prettierrc valid JSON; all 8 §19.5 fields present")
+                ok("step 2: .prettierrc valid JSON; all 8 §19.5 fields present")
             else:
                 fail(f"step 2: .prettierrc missing §19.5 fields: {sorted(missing)}")
                 failures += 1
@@ -98,7 +98,7 @@ def main() -> int:
         required_paths = [".next", "node_modules", "package-lock.json"]
         missing = [p for p in required_paths if p not in text]
         if not missing:
-            ok(f"step 3: .prettierignore covers .next + node_modules + lockfile")
+            ok("step 3: .prettierignore covers .next + node_modules + lockfile")
         else:
             fail(f"step 3: .prettierignore missing entries: {missing}")
             failures += 1
@@ -109,15 +109,15 @@ def main() -> int:
         text = husky.read_text(encoding="utf-8")
         # Should reference pre-commit framework or a fallback script.
         if "pre-commit" in text or "loop_watcher_hook" in text:
-            ok(f"step 4: .husky/pre-commit executable + delegates to pre-commit framework")
+            ok("step 4: .husky/pre-commit executable + delegates to pre-commit framework")
         else:
-            fail(f"step 4: .husky/pre-commit exists but doesn't delegate to a real hook")
+            fail("step 4: .husky/pre-commit exists but doesn't delegate to a real hook")
             failures += 1
     elif husky.is_file():
-        fail(f"step 4: .husky/pre-commit exists but is NOT executable (chmod +x)")
+        fail("step 4: .husky/pre-commit exists but is NOT executable (chmod +x)")
         failures += 1
     else:
-        fail(f"step 4: .husky/pre-commit missing")
+        fail("step 4: .husky/pre-commit missing")
         failures += 1
 
     # 5. package.json has the §19.4 + circuitRAG scripts.
@@ -133,7 +133,7 @@ def main() -> int:
             fail(f"step 5: package.json missing scripts: {missing}")
             failures += 1
     else:
-        fail(f"step 5: package.json not found")
+        fail("step 5: package.json not found")
         failures += 1
 
     # 6. NEGATIVE — corrupt JSON must reject.

@@ -107,7 +107,7 @@ async def main() -> None:
                 f"that hardcoded every row's status would still render "
                 f"headings; the missing-badge sniff catches it."
             )
-        ok(f"shipped + partial + open badges all rendered")
+        ok("shipped + partial + open badges all rendered")
 
         step("4. sidebar exposes all five admin routes on this page")
         for marker in REQUIRED_SIDEBAR_LINKS:
@@ -117,7 +117,7 @@ async def main() -> None:
                     f"Sidebar.tsx entry was lost or the layout no "
                     f"longer renders the sidebar on this route."
                 )
-        ok(f"sidebar exposes Operator Dashboard + Techstack + Python + LLMOps + Client errors")
+        ok("sidebar exposes Operator Dashboard + Techstack + Python + LLMOps + Client errors")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 4 ADMIN-LLMOPS-PAGE STEPS PASSED{NC}")

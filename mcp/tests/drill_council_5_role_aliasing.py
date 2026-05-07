@@ -116,7 +116,7 @@ def main() -> int:
                 f"KeyError doesn't list valid 4-role + 5-role options; "
                 f"operator can't recover. msg: {msg[:300]}"
             )
-        ok(f"KeyError raised with valid-options hint")
+        ok("KeyError raised with valid-options hint")
 
     # ------------------------------------------------------------------
     # Step 5 — NEGATIVE: alias map has EXACTLY 5 entries
@@ -128,7 +128,7 @@ def main() -> int:
             f"COUNCIL_ROLE_ALIASES has {actual_count} entries, expected 5. "
             f"Adding/removing requires a deliberate ADR change."
         )
-    ok(f"alias map has exactly 5 entries (Planner/Retriever/Risk/Evaluator/Writer)")
+    ok("alias map has exactly 5 entries (Planner/Retriever/Risk/Evaluator/Writer)")
 
     # ------------------------------------------------------------------
     # Step 6 — NEGATIVE: each canonical target is a real COUNCIL_ROLES key

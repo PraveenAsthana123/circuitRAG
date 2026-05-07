@@ -94,6 +94,7 @@ memory_mod = _load_mod(
 # pr_review route. Set up a fake package so that relative import works
 # when we load the module via importlib.
 import types
+
 _pkg = types.ModuleType("sidecar_advisor_pkg")
 _pkg.__path__ = [str(REPO / "services" / "sidecar-advisor")]
 sys.modules["sidecar_advisor_pkg"] = _pkg
@@ -177,7 +178,7 @@ async def main() -> None:
                 f"classifier mis-routed: {paste[:40]!r} → {actual.value!r}, "
                 f"expected {expected.value!r}"
             )
-    ok(f"all 6 canonical shapes route to expected event_type")
+    ok("all 6 canonical shapes route to expected event_type")
 
     # ── Step 2: NEGATIVE — DEBUG outranks CODE ──────────────────
     step("2. NEGATIVE: traceback containing 'def' MUST classify as DEBUG, not CODE")
@@ -195,7 +196,7 @@ async def main() -> None:
             f"A regression here would route every error paste to "
             f"code_reviewer agent at the wrong model."
         )
-    ok(f"traceback with embedded 'def' → DEBUG (rule priority preserved)")
+    ok("traceback with embedded 'def' → DEBUG (rule priority preserved)")
 
     # ── Step 3: parser handles fences, prose-wrap, plain JSON ───
     step(
@@ -262,7 +263,7 @@ async def main() -> None:
             fail(f"advisor.review {event_type!r}: wrong summary {parsed.summary!r}")
         if not model_used:
             fail(f"advisor.review {event_type!r}: model_used empty")
-    ok(f"all 5 routes parsed cleanly via stub generator")
+    ok("all 5 routes parsed cleanly via stub generator")
 
     # ── Step 6: NEGATIVE — unknown route → placeholder, no fallthrough ─
     step(

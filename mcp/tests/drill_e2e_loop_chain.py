@@ -54,6 +54,7 @@ import subprocess
 import sys
 import tempfile
 import types
+from datetime import UTC
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
@@ -246,7 +247,7 @@ async def main():
         # Each line is valid JSON
         json.loads(watcher_lines[0])
         json.loads(council_lines[0])
-        ok(f"both logs have exactly 1 valid JSON line each")
+        ok("both logs have exactly 1 valid JSON line each")
 
         # Step 5: render_dashboard joins all 3 sources
         step(
@@ -267,7 +268,7 @@ async def main():
         # The capture's reason mentions risk=LOW
         if "risk-LOW" not in html_out and "council_completed" not in html_out:
             fail("council outcome not surfaced in HTML")
-        ok(f"HTML joins all 3 sources (event + verdict + council)")
+        ok("HTML joins all 3 sources (event + verdict + council)")
 
         # Step 6: replay_verdict_log parses the watcher.log
         step(
@@ -293,9 +294,10 @@ async def main():
             "event row + fresh council_run preserved"
         )
         import sqlite3 as _sqlite3
-        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        from datetime import datetime as _dt
+        from datetime import timedelta as _td
         old_iso = (
-            _dt.now(_tz.utc) - _td(days=120)
+            _dt.now(UTC) - _td(days=120)
         ).isoformat(timespec="seconds")
         with _sqlite3.connect(str(d / "advisor.db")) as conn:
             conn.execute(
@@ -379,8 +381,8 @@ async def main():
         if len(rejects) != 1:
             fail(f"replay should find 1 REJECT, found {len(rejects)}")
         ok(
-            f"rule 1 chain: failing drill -> REJECT (rule 1) -> "
-            f"watcher.log -> replay parser surfaced"
+            "rule 1 chain: failing drill -> REJECT (rule 1) -> "
+            "watcher.log -> replay parser surfaced"
         )
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")

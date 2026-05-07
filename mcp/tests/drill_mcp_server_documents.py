@@ -113,7 +113,7 @@ def main() -> int:
             "server is read-only by contract; ingest/insert tools belong "
             "in a separate server"
         )
-    ok(f"4 read tools / 0 write tools (read-only surface held)")
+    ok("4 read tools / 0 write tools (read-only surface held)")
 
     # ------------------------------------------------------------------
     # Step 4 — POSITIVE: every tool requires 'documents:read' scope

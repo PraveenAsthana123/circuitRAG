@@ -100,7 +100,7 @@ async def main() -> None:
                 f"that hardcoded every capability to one status would "
                 f"still render titles; this catches deceptive uniformity."
             )
-        ok(f"shipped + partial + open badges all rendered")
+        ok("shipped + partial + open badges all rendered")
 
         step("4. Mermaid mounts present (≥20 for 10 caps × 2 diagrams)")
         # Each Mermaid component renders <div class="md-mermaid-wrap">
@@ -123,14 +123,14 @@ async def main() -> None:
                 f"senior-signal that distinguishes this page from the "
                 f"flat scorecard."
             )
-        ok(f"interview-line block appears 10x (correct)")
+        ok("interview-line block appears 10x (correct)")
 
         step("6. sidebar exposes /admin/llmops/deep")
         if "/admin/llmops/deep" not in body:
             fail(
-                f"sidebar marker /admin/llmops/deep missing. Sidebar "
-                f"entry was removed or layout no longer renders the "
-                f"sidebar on this route."
+                "sidebar marker /admin/llmops/deep missing. Sidebar "
+                "entry was removed or layout no longer renders the "
+                "sidebar on this route."
             )
         # Also verify the scorecard sibling is still there (no
         # accidental replacement).

@@ -40,7 +40,6 @@ import dataclasses
 import importlib.util
 import pathlib
 import sys
-import types
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
@@ -140,7 +139,7 @@ def main():
                 f"Role specialisation collapses if prompts duplicate."
             )
         seen_prompts[a.prompt_template] = a.name
-    ok(f"all 6 prompts distinct (no copy-paste role collapse)")
+    ok("all 6 prompts distinct (no copy-paste role collapse)")
 
     # Step 5: NEGATIVE - names unique
     step("5. NEGATIVE: every agent name is UNIQUE in the registry")
@@ -149,14 +148,14 @@ def main():
         if a.name in seen_names:
             fail(f"duplicate name in registry: {a.name}")
         seen_names.add(a.name)
-    ok(f"all 6 names distinct")
+    ok("all 6 names distinct")
 
     # Step 6: NEGATIVE - by_name returns None for unknown
     step("6. NEGATIVE: by_name('nonexistent') returns None (no raise)")
     if by_name("nonexistent_agent_xyz") is not None:
-        fail(f"by_name should return None for unknown")
+        fail("by_name should return None for unknown")
     if by_name("code_reviewer") is None:
-        fail(f"by_name should find existing")
+        fail("by_name should find existing")
     ok("by_name('nonexistent') -> None; by_name('code_reviewer') -> found")
 
     # Step 7: NEGATIVE - role enum enforced at construction
@@ -188,7 +187,7 @@ def main():
         # Python's frozen-dataclass impl raises FrozenInstanceError
         # which is a subclass of AttributeError
         pass
-    ok(f"CoderAgent frozen — model assignment raises (registry immutable)")
+    ok("CoderAgent frozen — model assignment raises (registry immutable)")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 AGENTS-REGISTRY STEPS PASSED{NC}")

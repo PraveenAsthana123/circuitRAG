@@ -263,13 +263,12 @@ def main() -> int:
     print("\n[5/6] On collision, contextvar (_inject_context) wins over baggage "
           "(_inject_baggage runs after)")
     try:
-        from opentelemetry import baggage as _ot_baggage
-        from opentelemetry import context as _ot_context
-
         from documind_core.logging_config import (
             bind_request_context,
             clear_request_context,
         )
+        from opentelemetry import baggage as _ot_baggage
+        from opentelemetry import context as _ot_context
 
         def emit_collision(logger):
             # Set DIFFERENT values in contextvar vs baggage for the same key.

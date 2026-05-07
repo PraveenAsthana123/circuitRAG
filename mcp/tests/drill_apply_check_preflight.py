@@ -51,8 +51,8 @@ def main() -> int:
         # which we know we just shipped
         claude_md = REPO / "docs" / "architecture" / "full-stack-architecture.md"
     src = claude_md.read_text(encoding="utf-8")
-    first_line = src.split("\n")[0]
-    rel_path = claude_md.relative_to(REPO).as_posix()
+    src.split("\n")[0]
+    claude_md.relative_to(REPO).as_posix()
     # No-op patch: replace a context-only diff (no `+`/`-` rows) is
     # rejected by git, so we add a comment then immediately remove it.
     # Easier: create a 1-line context diff that adds nothing — git apply
@@ -66,12 +66,12 @@ def main() -> int:
     # case returns ok=False with a specific error.
     r = fn(REPO, "")
     if r["ok"]:
-        print(f"x empty diff should be rejected; got ok=True")
+        print("x empty diff should be rejected; got ok=True")
         return 1
     if "empty" not in r["error"].lower():
         print(f"x empty-diff error should mention 'empty'; got {r['error']!r}")
         return 1
-    print(f"  ok: empty-diff edge case → ok=False + 'empty' in error")
+    print("  ok: empty-diff edge case → ok=False + 'empty' in error")
 
     print("-- 3. NEGATIVE: bad file path → ok=False with actionable error --")
     bad_path = (
@@ -83,18 +83,18 @@ def main() -> int:
     )
     r = fn(REPO, bad_path)
     if r["ok"]:
-        print(f"x bad-path diff should be rejected; got ok=True")
+        print("x bad-path diff should be rejected; got ok=True")
         return 1
     if "no such file" not in r["error"].lower() and "doesn't exist" not in r["error"].lower():
         print(f"x bad-path error should mention 'no such file'; got {r['error']!r}")
         return 1
-    print(f"  ok: bad-path → ok=False + actionable error")
+    print("  ok: bad-path → ok=False + actionable error")
 
     print("-- 4. NEGATIVE: malformed diff (no @@ headers) → ok=False --")
     malformed = "this is not a diff at all\njust plain text\n"
     r = fn(REPO, malformed)
     if r["ok"]:
-        print(f"x malformed diff should be rejected; got ok=True")
+        print("x malformed diff should be rejected; got ok=True")
         return 1
     print(f"  ok: malformed → ok=False (err: {r['error'][:60]!r})")
 
@@ -161,7 +161,7 @@ def main() -> int:
         if hint not in feedback_section:
             print(f"x retry feedback missing concrete hint: {hint!r}")
             return 1
-    print(f"  ok: retry feedback cites all 3 concrete causes (path / offsets / context)")
+    print("  ok: retry feedback cites all 3 concrete causes (path / offsets / context)")
 
     print("-- 8. POSITIVE: audit row records apply_check field per attempt --")
     # The audit chain must persist apply_check status so post-mortem

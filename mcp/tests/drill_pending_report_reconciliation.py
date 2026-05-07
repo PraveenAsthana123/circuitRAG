@@ -22,9 +22,7 @@ Eight steps. Six negative.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -64,7 +62,7 @@ def main() -> int:
     print(f"  ok: report parses; {len(report)} top-level keys")
 
     print("-- 2. NEGATIVE: report has expected schema (fix_drill_* + other_drill_failures) --")
-    fix_keys = [k for k in report.keys() if k.startswith("fix_drill_")]
+    fix_keys = [k for k in report if k.startswith("fix_drill_")]
     other = report.get("other_drill_failures", [])
     if not fix_keys and not other:
         print("x report must contain fix_drill_* keys OR other_drill_failures list")
@@ -172,18 +170,17 @@ def main() -> int:
 
     print("-- 8. POSITIVE: emit reconciliation summary for operator visibility --")
     # Summary helps operators see what's actually still pending.
-    pending_real: list[str] = []
     pending_claimed = sum(1 for v in report.values() if v == "PENDING")
     gated = sum(
         1 for v in report.values()
         if v == "GATED_OPERATOR_APPROVAL_REQUIRED"
     )
-    print(f"  report state:")
+    print("  report state:")
     print(f"    fix_drill_* keys total:        {len(fix_keys)}")
     print(f"    claimed PENDING:               {pending_claimed}")
     print(f"    GATED_OPERATOR_APPROVAL:       {gated}")
     print(f"    other_drill_failures total:    {len(other)}")
-    print(f"  reconciliation status:")
+    print("  reconciliation status:")
     print(f"    dangling references:           {len(dangling) + len(dangling_other)}")
     print(f"    false-pending (drift):         {len(false_pending) + len(false_failures)}")
 

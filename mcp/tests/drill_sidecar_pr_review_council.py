@@ -54,6 +54,7 @@ import asyncio
 import importlib.util
 import pathlib
 import sys
+
 import httpx
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
@@ -98,6 +99,7 @@ advisor_mod = _load_mod(
 # import lands on the same object.
 sys.modules["sidecar_advisor"].__package__ = "sidecar_advisor_pkg"
 import types
+
 _pkg = types.ModuleType("sidecar_advisor_pkg")
 _pkg.advisor = advisor_mod
 _pkg.__path__ = [str(REPO / "services" / "sidecar-advisor")]
@@ -224,8 +226,8 @@ async def main() -> None:
     # should NOT contain the OTHER roles' primary focus.
     if "test" in sec_prompt and "missing tests" in sec_prompt:
         fail(
-            f"security prompt is contaminated with test focus — "
-            f"would collapse the council's role specialisation"
+            "security prompt is contaminated with test focus — "
+            "would collapse the council's role specialisation"
         )
     ok("each author's prompt is role-specific (security/test/bugs distinct)")
 

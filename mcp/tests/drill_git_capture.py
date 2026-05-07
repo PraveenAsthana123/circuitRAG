@@ -31,7 +31,6 @@ Tag: readonly. Pure-Python -- runs in tier 1 (git is universal).
 from __future__ import annotations
 
 import importlib.util
-import os
 import pathlib
 import subprocess
 import sys
@@ -197,7 +196,7 @@ def main():
             )
         if staged_capture.source != "git-diff-staged":
             fail(f"wrong source for staged mode: {staged_capture.source}")
-        ok(f"staged + HEAD modes correctly distinguished")
+        ok("staged + HEAD modes correctly distinguished")
 
     # Step 6: tiny diffs filtered
     step("6. NEGATIVE: is_likely_pr_review returns False for tiny diffs")
@@ -249,7 +248,7 @@ def main():
                 f"doc-only diff should NOT be sent to council; "
                 f"files: {capture.files_touched}"
             )
-        ok(f"doc-only diff (.md files) filtered out (council reviews code)")
+        ok("doc-only diff (.md files) filtered out (council reviews code)")
 
     # Step 8: non-git directory
     step("8. NEGATIVE: capture_diff in non-git directory returns error, no crash")
@@ -259,7 +258,7 @@ def main():
         capture = capture_diff(repo=tmp_dir, ref="HEAD")
         if capture.error is None:
             fail(f"non-git dir should set error: {capture}")
-        ok(f"non-git dir: error captured cleanly")
+        ok("non-git dir: error captured cleanly")
 
     # Sanity: a meaningful code diff DOES pass is_likely_pr_review
     step("Bonus: meaningful code diff passes is_likely_pr_review")

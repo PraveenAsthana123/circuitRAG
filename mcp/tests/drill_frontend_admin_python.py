@@ -110,7 +110,7 @@ async def main() -> None:
                     f"Stripping the SVG components would render a "
                     f"content-only page; this catches that."
                 )
-        ok(f"both flowchart aria-labels found")
+        ok("both flowchart aria-labels found")
 
         step("4. sidebar shows Techstack + Python links on the same page")
         # Sidebar is rendered into every page's HTML by the layout.
@@ -121,7 +121,7 @@ async def main() -> None:
                     f"Sidebar.tsx entry was lost or the layout no "
                     f"longer renders the sidebar on this route."
                 )
-        ok(f"sidebar exposes Operator Dashboard + Techstack + Python")
+        ok("sidebar exposes Operator Dashboard + Techstack + Python")
 
         step("5. per-topic deep-dive anchors present (≥10 of the deep set)")
         # Topics with a deep-dive entry on /admin/python/deep MUST link

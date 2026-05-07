@@ -36,10 +36,10 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
-from pathlib import Path
 import sys
-from typing import Any
 import types
+from pathlib import Path
+from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
 APP_DIR = REPO / "services" / "agent-orchestrator-svc" / "app"

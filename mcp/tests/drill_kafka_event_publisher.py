@@ -60,7 +60,7 @@ def main() -> int:
         print(f"x topic names mismatch; expected {expected_topics}, got {topics}")
         return 1
     # Each topic must follow documind.<layer>.<noun> pattern
-    for k, v in topics.items():
+    for _k, v in topics.items():
         if not re.fullmatch(r"documind\.[a-z]+\.[a-z_]+", v):
             print(f"x topic {v!r} doesn't match documind.<layer>.<noun> pattern")
             return 1
@@ -77,7 +77,7 @@ def main() -> int:
         decision={"test": True}, correlation_id="drill-test",
     )
     if result.get("published"):
-        print(f"x default publish should be no-op; got published=True")
+        print("x default publish should be no-op; got published=True")
         return 1
     if not result.get("stub"):
         print(f"x default publish must set stub=True; got {result}")
@@ -106,7 +106,7 @@ def main() -> int:
         if not re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", eid):
             print(f"x event_id {eid!r} doesn't look like UUID")
             return 1
-    print(f"  ok: 5 calls produced 5 distinct UUID event_ids")
+    print("  ok: 5 calls produced 5 distinct UUID event_ids")
 
     print("-- 5. NEGATIVE: envelope must include all 7 CloudEvents fields --")
     envelope = event_publisher._make_envelope(
@@ -130,7 +130,7 @@ def main() -> int:
     if not re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", envelope["timestamp_iso"]):
         print(f"x timestamp_iso wrong format: {envelope['timestamp_iso']!r}")
         return 1
-    print(f"  ok: all 7 CloudEvents fields + event_version=int + ISO-8601 timestamp")
+    print("  ok: all 7 CloudEvents fields + event_version=int + ISO-8601 timestamp")
 
     print("-- 6. NEGATIVE: importing module does NOT connect to Kafka --")
     # Stage-1 contract: module import is cheap. The Kafka client is
@@ -185,7 +185,7 @@ def main() -> int:
     if len(used_topics) != 4:
         print(f"x expected 4 distinct topics; got {len(used_topics)}")
         return 1
-    print(f"  ok: 4 publishers use 4 distinct topics")
+    print("  ok: 4 publishers use 4 distinct topics")
 
     print("-- 8. NEGATIVE: publish_* calls do NOT raise on stub mode --")
     # Fail-open posture per §41.5 — a publish failure must NEVER

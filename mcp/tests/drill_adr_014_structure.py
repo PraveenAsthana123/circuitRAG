@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import pathlib
 import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 ADR_DIR = REPO / "docs" / "architecture" / "adr"
@@ -78,7 +77,7 @@ def main():
     missing = [s for s in required if s not in text]
     if missing:
         fail(f"missing required sections: {missing}")
-    ok(f"all 6 required sections present")
+    ok("all 6 required sections present")
 
     # Step 3: Status enum
     step("3. NEGATIVE: Status is one of the standard ADR values")
@@ -163,8 +162,8 @@ def main():
     adr_013 = ADR_DIR / "013-audit-redaction-policy.md"
     if not adr_013.exists():
         fail(
-            f"ADR-013 missing: numbering is sequential per §47.3, no "
-            f"gaps allowed"
+            "ADR-013 missing: numbering is sequential per §47.3, no "
+            "gaps allowed"
         )
     # Verify ADR-014 numbering is unique (no duplicate ADR-014 files).
     # The original assertion here checked "015 doesn't yet exist" —
@@ -177,7 +176,7 @@ def main():
             f"ADR-014 numbering not unique: {adr_014_files}. ADRs "
             f"never-reuse-numbers per §47.3."
         )
-    ok(f"ADR-014 at canonical path; 013 exists; numbering unique")
+    ok("ADR-014 at canonical path; 013 exists; numbering unique")
 
     print(f"\n{BOLD}{GREEN}{'=' * 50}{NC}")
     print(f"{BOLD}{GREEN}  ALL 8 ADR-014 STRUCTURE STEPS PASSED{NC}")

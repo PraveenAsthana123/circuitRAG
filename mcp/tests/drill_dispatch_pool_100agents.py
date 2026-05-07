@@ -139,7 +139,7 @@ async def main():
     task_names = [r.task for r in results]
     if task_names != tasks:
         fail(f"task order drift: {task_names}")
-    ok(f"submission order preserved across staggered completions")
+    ok("submission order preserved across staggered completions")
 
     # Step 4: error isolation
     step("4. NEGATIVE: one task raising -> siblings complete cleanly")

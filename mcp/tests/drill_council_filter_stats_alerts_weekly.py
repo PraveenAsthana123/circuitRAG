@@ -125,7 +125,7 @@ def main() -> int:
         print(f"✗ step 2: fired weeks {fired_weeks}, expected "
               "{2026-W18, 2026-W16, 2026-W15}")
         return 1
-    print(f"✓ step 2: each mode surfaces all 3 breaching weeks (skips passing W17)")
+    print("✓ step 2: each mode surfaces all 3 breaching weeks (skips passing W17)")
 
     # ── Step 3: NEGATIVE — latest mode ignores older weeks ──
     weekly = _weekly_with_rows([
@@ -144,7 +144,7 @@ def main() -> int:
     if len(fired_each) != 2:
         print(f"✗ step 3: each-mode sanity check expected 2 fires, got {len(fired_each)}")
         return 1
-    print(f"✓ step 3: latest mode ignores 2 older breaching weeks (each-mode would fire 2)")
+    print("✓ step 3: latest mode ignores 2 older breaching weeks (each-mode would fire 2)")
 
     # ── Step 4: NEGATIVE — aggregate mode matches no-weekly behavior ──
     weekly = _weekly_with_rows([
@@ -170,12 +170,12 @@ def main() -> int:
     fired_agg_55 = stats.check_alerts_weekly(weekly, [expr_55], mode="aggregate")
     fired_each_55 = stats.check_alerts_weekly(weekly, [expr_55], mode="each")
     if fired_agg_55:
-        print(f"✗ step 4b: aggregate>0.55 fired (observed 0.5)")
+        print("✗ step 4b: aggregate>0.55 fired (observed 0.5)")
         return 1
     if len(fired_each_55) != 1:
         print(f"✗ step 4b: each>0.55 expected 1 fire (W17=0.6), got {len(fired_each_55)}")
         return 1
-    print(f"✓ step 4: aggregate rollup = 0.5; each-mode breaks down to 0.4/0.6")
+    print("✓ step 4: aggregate rollup = 0.5; each-mode breaks down to 0.4/0.6")
 
     # ── Step 5: NEGATIVE — invalid mode rejected ──
     try:

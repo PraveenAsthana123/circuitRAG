@@ -44,7 +44,7 @@ import importlib.util
 import json
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -63,7 +63,7 @@ def _entry(*, fired: bool = True, filtered: bool = False,
            reason: str = "council_completed risk=MEDIUM",
            risk_level: str = "MEDIUM") -> dict:
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
         "fired": fired, "filtered": filtered,
         "reason": reason, "risk_level": risk_level,
     }
@@ -227,10 +227,10 @@ def main() -> int:
               "expected 0.4 (fired_by_risk only, NOT council_errors)")
         return 1
     if is_fired:
-        print(f"✗ step 6: fired>0.5 fired at observed=0.4")
+        print("✗ step 6: fired>0.5 fired at observed=0.4")
         return 1
-    print(f"✓ step 6: 'fired' meta-bucket = 0.4 "
-          f"(fired_by_risk only, council_errors separate)")
+    print("✓ step 6: 'fired' meta-bucket = 0.4 "
+          "(fired_by_risk only, council_errors separate)")
 
     # ── Step 7: NEGATIVE — multiple alerts surface ALL fired ──
     summary = {

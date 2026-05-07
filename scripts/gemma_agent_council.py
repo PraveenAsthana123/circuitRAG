@@ -56,14 +56,14 @@ import json
 import logging
 import os
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any
 
 log = logging.getLogger(__name__)
 
 # Stage-1 feature flag — default opt-out per §56
 GEMMA_AGENT_COUNCIL_ENABLED = os.getenv("GEMMA_AGENT_COUNCIL_ENABLED", "").strip() == "1"
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11435")
 HIGH_RISK_DOMAINS = {
     d.strip().lower()
     for d in os.getenv(
@@ -436,10 +436,10 @@ def is_high_risk_domain(domain: str | None) -> bool:
 if __name__ == "__main__":
     import sys
     print("scripts/gemma_agent_council.py — 5-agent local-Gemma orchestrator")
-    print(f"Stage-1 adapter; opt-in via GEMMA_AGENT_COUNCIL_ENABLED=1")
-    print(f"Composes 5 models: shieldgemma:2b · gemma3:1b · gemma3:4b · "
-          f"{{codegemma:7b|gemma2:9b}} · gemma2:9b critic")
-    print(f"Optional 6th stage: shieldgemma:9b for high-risk domains.")
+    print("Stage-1 adapter; opt-in via GEMMA_AGENT_COUNCIL_ENABLED=1")
+    print("Composes 5 models: shieldgemma:2b · gemma3:1b · gemma3:4b · "
+          "{codegemma:7b|gemma2:9b} · gemma2:9b critic")
+    print("Optional 6th stage: shieldgemma:9b for high-risk domains.")
     print()
     print(json.dumps(status(), indent=2))
     sys.exit(0)

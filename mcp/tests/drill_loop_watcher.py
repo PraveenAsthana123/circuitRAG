@@ -226,7 +226,7 @@ def main():
     )
     if decision.verdict != "APPROVE":
         fail(f"empty files should APPROVE, got {decision.verdict}")
-    ok(f"empty files_touched -> APPROVE")
+    ok("empty files_touched -> APPROVE")
 
     # Step 8: NEGATIVE - rule order priority (drill_failed wins over never)
     step(
@@ -254,7 +254,7 @@ def main():
             f"priority over the never-file check - drill failure is "
             f"the more pressing alert."
         )
-    ok(f"rule order: rule 1 (drill) fires before rule 2 (never)")
+    ok("rule order: rule 1 (drill) fires before rule 2 (never)")
 
     # Final sanity: file_disposition function directly
     step("Bonus: file_disposition function spot-check")

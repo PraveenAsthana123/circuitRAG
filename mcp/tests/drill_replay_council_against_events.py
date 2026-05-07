@@ -171,15 +171,15 @@ async def main():
         mem = AdvisorMemory(db)
         mem.set_policy_version("v1")
         pr = _seed_event(mem, event_type="pr_review", content="diff")
-        cd = _seed_event(mem, event_type="code", content="def f(): pass")
-        ar = _seed_event(mem, event_type="architecture", content="ADR-001")
+        _seed_event(mem, event_type="code", content="def f(): pass")
+        _seed_event(mem, event_type="architecture", content="ADR-001")
         pending = mem.find_events_without_council_run(event_type="pr_review")
         if len(pending) != 1:
             fail(f"expected 1 pr_review event pending, got {len(pending)}: "
                   f"{[e['id'] for e in pending]}")
         if pending[0]["id"] != pr:
             fail(f"wrong event surfaced: {pending[0]['id']}")
-        ok(f"only pr_review event surfaced; code + architecture filtered")
+        ok("only pr_review event surfaced; code + architecture filtered")
 
     # Step 4: limit caps result count
     step("4. NEGATIVE: limit caps result count")
@@ -196,7 +196,7 @@ async def main():
         all_pending = mem.find_events_without_council_run()
         if len(all_pending) != 10:
             fail(f"default limit should give 10, got {len(all_pending)}")
-        ok(f"limit=3 -> 3 events; default -> 10 events")
+        ok("limit=3 -> 3 events; default -> 10 events")
 
     # Step 5: replay fires council + persists council_run rows
     step("5. replay_council_for_events fires council; persists council_runs")
@@ -304,7 +304,7 @@ async def main():
         pending_2 = mem.find_events_without_council_run()
         if len(pending_2) != 0:
             fail(f"after replay, expected 0 pending, got {len(pending_2)}")
-        ok(f"first run: 3 pending; after replay: 0 pending (idempotent)")
+        ok("first run: 3 pending; after replay: 0 pending (idempotent)")
 
     # Step 8: max_concurrent bounded across events
     step("8. NEGATIVE: max_concurrent caps in-flight (DispatchPool composes)")

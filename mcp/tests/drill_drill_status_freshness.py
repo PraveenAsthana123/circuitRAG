@@ -55,7 +55,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -124,13 +124,13 @@ def main() -> int:
     try:
         ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
     except ValueError as e:
         fail(f"timestamp '{ts_str}' does not parse as ISO 8601: {e}")
     ok(f"timestamp parsed: {ts.isoformat(timespec='seconds')}")
 
     step("4. NEGATIVE: snapshot age <= MAX_AGE_SECONDS")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     age_seconds = (now - ts).total_seconds()
     if age_seconds > MAX_AGE_SECONDS:
         fail(

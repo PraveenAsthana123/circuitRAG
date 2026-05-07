@@ -348,7 +348,7 @@ def main() -> int:
     write_jsonl(pairs, args.out)
     print(f"\ngenerated {len(pairs)} eval pairs → {args.out}")
     if pairs:
-        print(f"\nfirst 3 pairs:")
+        print("\nfirst 3 pairs:")
         for p in pairs[:3]:
             print(f"  Q: {p.question}")
             print(f"  A: {p.ground_truth[:100]}")

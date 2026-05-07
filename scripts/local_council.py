@@ -282,6 +282,8 @@ def _litellm_fallback(
     try:
         from litellm_adapter import (  # noqa: PLC0415
             LiteLLMUnavailable,
+        )
+        from litellm_adapter import (
             complete as _litellm_complete,
         )
     except ImportError as exc:

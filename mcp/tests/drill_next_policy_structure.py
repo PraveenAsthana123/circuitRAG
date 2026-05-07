@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import pathlib
 import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 POLICY = REPO / "docs" / "NEXT_POLICY.md"
@@ -165,7 +164,7 @@ def main():
             f"§8 has {len(rule_lines)} brutal rules (expected exactly 5). "
             f"Adding/removing a rule shifts the policy invariants."
         )
-    ok(f"§8 has exactly 5 brutal rules")
+    ok("§8 has exactly 5 brutal rules")
 
     # Step 8 - NEGATIVE: no Streamlit references
     step("8. NEGATIVE: 'Streamlit' word does not appear in the policy")
@@ -176,9 +175,9 @@ def main():
             if re.search(r"\bStreamlit\b", ln, re.IGNORECASE)
         ]
         fail(
-            f"policy still mentions Streamlit:\n"
-            f"  " + "\n  ".join(bad_lines[:3]) + "\n"
-            f"User chose Next.js; lingering Streamlit refs mislead the loop."
+            "policy still mentions Streamlit:\n"
+            "  " + "\n  ".join(bad_lines[:3]) + "\n"
+            "User chose Next.js; lingering Streamlit refs mislead the loop."
         )
     ok("no Streamlit references (Next.js stack pivot complete)")
 

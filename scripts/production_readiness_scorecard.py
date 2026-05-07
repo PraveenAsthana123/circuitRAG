@@ -27,7 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -176,7 +176,7 @@ def score_maturity() -> dict:
             levels[item] = level
         passed = sum(1 for L in levels.values() if L >= "L4")
     else:
-        levels = {item: "UNKNOWN" for item in items}
+        levels = dict.fromkeys(items, "UNKNOWN")
         passed = 0
 
     score = int(100 * passed / len(items))
@@ -205,7 +205,7 @@ def score_outcome() -> dict:
       - Deterministic-lane apply rate is also outcome (different lane).
       - Drill regression count is part of the §55 outcome contract.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     rep = _read_json(".loop/agent_readiness_report.json") or {"results": {}}
     apply_rate_probe = rep.get("results", {}).get("D_apply_rate", {})
@@ -233,7 +233,7 @@ def score_outcome() -> dict:
     council_recent_n = 0
     if apply_log.exists():
         try:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+            cutoff = datetime.now(UTC) - timedelta(days=7)
             for line in apply_log.read_text(encoding="utf-8").splitlines():
                 try:
                     row = json.loads(line)
@@ -360,7 +360,7 @@ def aggregate() -> dict:
     )
 
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "overall_score": overall,
         "production_grade": is_prod_grade,
         "dimensions": {

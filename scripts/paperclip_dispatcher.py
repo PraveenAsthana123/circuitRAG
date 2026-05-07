@@ -30,7 +30,7 @@ import json
 import logging
 import os
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -91,12 +91,12 @@ def dispatch_next_task() -> CombinedResult:
 
     # Lazy imports — match the rest of the adapter pattern
     sys.path.insert(0, str(REPO / "scripts"))
-    from paperclip_manager import propose_next_task  # noqa: PLC0415
-    from openclaw_coordinator import dispatch as oc_dispatch  # noqa: PLC0415
     from openclaw_coordinator import (  # noqa: PLC0415
-        UnknownAgentError,
         CapabilityNotSupportedError,
+        UnknownAgentError,
     )
+    from openclaw_coordinator import dispatch as oc_dispatch  # noqa: PLC0415
+    from paperclip_manager import propose_next_task  # noqa: PLC0415
 
     proposal_doc = propose_next_task()
     proposal = proposal_doc.get("proposal")

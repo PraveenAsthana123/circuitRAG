@@ -53,7 +53,7 @@ def main() -> int:
         if adapter not in src:
             print(f"x adapter not tracked: {adapter!r}")
             return 1
-    print(f"  ok: 4 adapters tracked")
+    print("  ok: 4 adapters tracked")
 
     print("-- 5. POSITIVE: all 3 tool-eval rejected items present --")
     expected_rejected = ("CrewAI", "Agno", "PraisonAI")
@@ -71,7 +71,7 @@ def main() -> int:
         if "'rejected'" not in section:
             print(f"x {item!r} should have stage1.status='rejected'")
             return 1
-    print(f"  ok: 3 rejected items present + tagged 'rejected'")
+    print("  ok: 3 rejected items present + tagged 'rejected'")
 
     print("-- 6. NEGATIVE: every component has 3 stages defined --")
     # Each Component object must have stage1 + stage2 + stage3 fields.

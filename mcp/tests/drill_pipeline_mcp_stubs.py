@@ -26,7 +26,6 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-
 REPO = Path(__file__).resolve().parents[2]
 MCP_DIR = REPO / "mcp"
 

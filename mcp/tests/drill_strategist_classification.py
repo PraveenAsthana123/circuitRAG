@@ -31,7 +31,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 
@@ -68,7 +67,7 @@ def _bootstrap():
     init_pkg.LlmClientUnavailable = proto.LlmClientUnavailable
     init_pkg.LlmCallResult = proto.LlmCallResult
 
-    catalog = _load(f"{pkg_name}.model_catalog", SVC / "app" / "model_catalog.py", pkg_name)
+    _load(f"{pkg_name}.model_catalog", SVC / "app" / "model_catalog.py", pkg_name)
     router = _load(f"{pkg_name}.model_router", SVC / "app" / "model_router.py", pkg_name)
     registry = _load(f"{pkg_name}.agent_registry", SVC / "app" / "agent_registry.py", pkg_name)
 
@@ -174,7 +173,7 @@ def main() -> int:
     assert "llm_text_unparseable" in out, (
         "unparseable LLM text must be recorded for forensics"
     )
-    print(f"  ok: parse-fail → heuristic fallback with llm_text_unparseable recorded")
+    print("  ok: parse-fail → heuristic fallback with llm_text_unparseable recorded")
 
     print("-- 7. NEGATIVE: backend down → AllBackendsUnavailable handled gracefully --")
     class FailClient(CannedClient):
@@ -187,7 +186,7 @@ def main() -> int:
     out = asyncio.run(classifier_down.classify("deploy something"))
     assert "llm_unavailable" in out, "backend-down must be recorded"
     assert out["overall_complexity"] == "high", "heuristic still classifies deploy as high"
-    print(f"  ok: all backends down → heuristic + llm_unavailable record")
+    print("  ok: all backends down → heuristic + llm_unavailable record")
 
     print("-- 8. POSITIVE: classification dict is JSON-serializable --")
     import json

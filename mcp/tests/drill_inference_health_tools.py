@@ -219,7 +219,7 @@ async def main() -> None:
                 f"latency.count moved on denied call — must NOT contribute. "
                 f"baseline={b_lat} now={_latency_count(s2_row)}"
             )
-        ok(f"denials.NOT_AUTHENTICATED +1; latency.count unchanged")
+        ok("denials.NOT_AUTHENTICATED +1; latency.count unchanged")
         b_unauth = _denials(s2_row, "NOT_AUTHENTICATED")
 
         step("3. insufficient scope → denials.INSUFFICIENT_SCOPE +1")
@@ -238,7 +238,7 @@ async def main() -> None:
                 f"INSUFFICIENT_SCOPE delta != 1; "
                 f"got {_denials(s3_row, 'INSUFFICIENT_SCOPE') - b_insuff}"
             )
-        ok(f"denials.INSUFFICIENT_SCOPE +1")
+        ok("denials.INSUFFICIENT_SCOPE +1")
 
         step("4. per-tool isolation — hr.policy_lookup stats UNCHANGED")
         s4 = await _fetch_tools(c)
@@ -254,7 +254,7 @@ async def main() -> None:
                 f"hr.policy_lookup latency.count moved during drill — "
                 f"baseline={b_other_lat} now={_latency_count(s4_other)}"
             )
-        ok(f"hr.policy_lookup unchanged across drill (label isolation works)")
+        ok("hr.policy_lookup unchanged across drill (label isolation works)")
 
         step("5. unreachable shape — list, empty when all MCP servers reachable")
         s5 = await _fetch_tools(c)
@@ -269,7 +269,7 @@ async def main() -> None:
         if u:
             ok(f"unreachable={u} (acceptable — drill only requires list shape)")
         else:
-            ok(f"all MCP servers reachable (unreachable=[])")
+            ok("all MCP servers reachable (unreachable=[])")
 
     print(f"\n{BOLD}{GREEN}════════════════════════════════════════{NC}")
     print(f"{BOLD}{GREEN}  ALL 6 HEALTH-TOOLS-AGGREGATE STEPS PASSED{NC}")

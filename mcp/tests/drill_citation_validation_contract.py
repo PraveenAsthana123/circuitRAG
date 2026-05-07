@@ -67,7 +67,6 @@ def main() -> int:
     from documind_core.citations import (
         CitationLinker,
         CitedClaim,
-        Claim,
         split_into_claims,
     )
 
@@ -142,7 +141,7 @@ def main() -> int:
             f"hallucination_rate should be 0.0 (both claims grounded); "
             f"got {rate}"
         )
-    ok(f"hallucination_rate=0.0 (both claims grounded); range valid")
+    ok("hallucination_rate=0.0 (both claims grounded); range valid")
 
     # ------------------------------------------------------------------
     # Step 5 — POSITIVE: verbatim quote → cited (lexical floor)
@@ -205,7 +204,7 @@ def main() -> int:
         )
     whitespace_cited = linker.link(answer="   \n  ", chunks=chunks)
     if whitespace_cited:
-        fail(f"whitespace-only answer should yield empty list")
+        fail("whitespace-only answer should yield empty list")
     ok("empty + whitespace-only answers → 0 citations (boundary held)")
 
     # ------------------------------------------------------------------
@@ -235,8 +234,8 @@ def main() -> int:
     h_rate = linker.hallucination_rate(h_cited)
     if h_rate != 1.0:
         fail(f"hallucination_rate should be 1.0 (all unsupported); got {h_rate}")
-    ok(f"hallucinated claim → is_supported=False; "
-       f"hallucination_rate=1.0 (full flag)")
+    ok("hallucinated claim → is_supported=False; "
+       "hallucination_rate=1.0 (full flag)")
 
     # ------------------------------------------------------------------
     # Step 10 — NEGATIVE: wrong-chunk attribution suppressed

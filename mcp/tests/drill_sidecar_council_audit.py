@@ -295,8 +295,8 @@ async def main() -> None:
                 f"failed — only that it failed."
             )
         ok(
-            f"failure row inserted with advisor_error preserved "
-            f"(audit doesn't skip)"
+            "failure row inserted with advisor_error preserved "
+            "(audit doesn't skip)"
         )
 
     # ── Step 4: NEGATIVE — event_id=None inserts ────────────────
@@ -409,7 +409,7 @@ async def main() -> None:
             f"{telemetry!r}. Council runs would be over-counted on "
             f"the dashboard."
         )
-    ok(f"single-agent path: telemetry=None (no spurious council row)")
+    ok("single-agent path: telemetry=None (no spurious council row)")
 
     # And the council path returns telemetry as a dict
     parsed2, raw2, model2, dur2, telemetry2 = await advisor.review(

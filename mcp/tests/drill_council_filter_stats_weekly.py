@@ -44,7 +44,6 @@ import importlib.util
 import json
 import sys
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]

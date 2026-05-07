@@ -13,7 +13,6 @@ from __future__ import annotations
 import ast
 import importlib.util
 import re
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -140,14 +139,14 @@ def main() -> int:
         print(f"x syntax error after Stage-3 wires: {exc}")
         return 1
     # Smoke: import recursive.py and verify the signature
-    spec = importlib.util.spec_from_file_location("_chunker_smoke", RECURSIVE)
+    importlib.util.spec_from_file_location("_chunker_smoke", RECURSIVE)
     # Actually loading would require app.parsers in sys.path; a
     # lighter check: signature inspection via ast.
     tree = ast.parse(rec_src)
     found_chunk = False
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "chunk":
-            args = [a.arg for a in node.args.args]
+            [a.arg for a in node.args.args]
             kwonly = [a.arg for a in node.args.kwonlyargs]
             if "strategy" in kwonly:
                 found_chunk = True

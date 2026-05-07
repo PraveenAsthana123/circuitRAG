@@ -320,7 +320,7 @@ class DocumentIngestionSaga:
                         document_id=str(self._document_id),
                     )
                     page.text = clean
-            except Exception as exc:
+            except Exception:  # noqa: S110 — intentional fail-safe
                 # Fail-safe: PII error must not block ingestion. Log
                 # for ops; chunker proceeds with original text.
                 pass  # noqa: S110
@@ -372,6 +372,8 @@ class DocumentIngestionSaga:
                 _sys_bc.path.insert(0, "/mnt/deepa/rag/scripts")
                 from best_config_loader import (  # noqa: PLC0415
                     is_available as _bc_avail,
+                )
+                from best_config_loader import (
                     load_best_config as _bc_load,
                 )
                 if _bc_avail():

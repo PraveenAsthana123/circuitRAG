@@ -133,7 +133,7 @@ def main() -> int:
     }
     missing = [k for k, v in sections.items() if v is None]
     if not missing:
-        ok(f"step 2: Dockerfile has all 5 §19.13 sections (FROM/WORKDIR/USER/HEALTHCHECK/CMD)")
+        ok("step 2: Dockerfile has all 5 §19.13 sections (FROM/WORKDIR/USER/HEALTHCHECK/CMD)")
     else:
         fail(f"step 2: Dockerfile missing sections: {missing}")
         failures += 1

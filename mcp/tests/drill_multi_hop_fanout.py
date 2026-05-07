@@ -255,7 +255,7 @@ async def main():
         fail(f"max_hops violated: {len(retr.calls)} retrieve calls")
     if len(trace) != 3 or len(gathered) != 3:
         fail(f"trace/gathered not capped: {len(trace)}/{len(gathered)}")
-    ok(f"50 sub_questions capped to 3 retrieves")
+    ok("50 sub_questions capped to 3 retrieves")
 
     # Step 7
     step("7. NEGATIVE: loop_cb stop at hop-2 breaks the result walk")
@@ -268,7 +268,7 @@ async def main():
         max_parallel=4, max_hops=10,
     )
     if stop is _NONE:
-        fail(f"stop sentinel returned when loop should have fired")
+        fail("stop sentinel returned when loop should have fired")
     if stop != "loop_detected":
         fail(f"unexpected stop value: {stop!r}")
     if len(gathered) != 2:

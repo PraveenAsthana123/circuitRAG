@@ -52,7 +52,7 @@ def main() -> int:
         if name not in route_src:
             print(f"x BFF must list adapter: {name!r}")
             return 1
-    print(f"  ok: 3 adapters in BFF inventory")
+    print("  ok: 3 adapters in BFF inventory")
 
     print("-- 4. POSITIVE: BFF Promise.all-invokes adapter status commands --")
     if "Promise.all" not in route_src:
@@ -102,7 +102,7 @@ def main() -> int:
         if f"{field}:" not in route_src:
             print(f"x AdapterInfo must include field: {field!r}")
             return 1
-    print(f"  ok: all 5 metadata fields documented per adapter")
+    print("  ok: all 5 metadata fields documented per adapter")
 
     print("-- 8. POSITIVE: §49 compose footer + sidebar wired --")
     if "Composes with" not in page_src:

@@ -41,7 +41,6 @@ Run: python3 mcp/tests/drill_scripts_have_help.py
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -68,7 +67,7 @@ def _help_runs(path: Path) -> tuple[bool, str, float]:
             cmd, capture_output=True, text=True, timeout=10.0, cwd=str(REPO),
         )
     except subprocess.TimeoutExpired:
-        return False, f"TIMEOUT after 10s", 10.0
+        return False, "TIMEOUT after 10s", 10.0
     except (FileNotFoundError, PermissionError, OSError) as exc:
         return False, f"{type(exc).__name__}: {exc}", time.monotonic() - t0
     duration = time.monotonic() - t0
@@ -122,19 +121,19 @@ def main() -> int:
             print(f"✗ step 3: {len(sh_fails)} shell scripts fail --help: "
                   f"{sh_fails[:3]}")
             return 1
-    print(f"✓ step 2: every conformant Python script exits 0 on --help")
-    print(f"✓ step 3: every conformant shell script exits 0 on --help")
+    print("✓ step 2: every conformant Python script exits 0 on --help")
+    print("✓ step 3: every conformant shell script exits 0 on --help")
 
     if sparse:
         print(f"✗ step 4: {len(sparse)} scripts emit <40 chars on --help: "
               f"{sparse[:3]}")
         return 1
-    print(f"✓ step 4: every --help output ≥40 chars (operator-readable)")
+    print("✓ step 4: every --help output ≥40 chars (operator-readable)")
 
     if slow:
         print(f"✗ step 5: {len(slow)} scripts take >10s on --help: {slow[:3]}")
         return 1
-    print(f"✓ step 5: every --help completes within 10s")
+    print("✓ step 5: every --help completes within 10s")
 
     # ── Step 6: NEGATIVE — KNOWN_NO_HELP doesn't grow ──
     actual_nonconformers = set()

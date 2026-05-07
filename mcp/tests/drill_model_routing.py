@@ -26,7 +26,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 SVC = REPO / "services" / "agent-orchestrator-svc"
 ROUTER_FILE = SVC / "app" / "model_router.py"
@@ -87,7 +86,7 @@ def main() -> int:
     print("-- 5. POSITIVE: strategist always tier_b (D2 rule R1) --")
     d = router.route(role_id="strategist", complexity="trivial", novelty="routine", has_tier_b=True)
     assert d.chosen.tier == "tier_b", (
-        f"R1 broken: strategist with tier_b available must always be tier_b"
+        "R1 broken: strategist with tier_b available must always be tier_b"
     )
     assert d.reason == "R1_strategist_always_tier_b"
     print(f"  ok: strategist always tier_b ({d.reason})")

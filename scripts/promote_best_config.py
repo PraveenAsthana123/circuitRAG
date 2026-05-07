@@ -265,7 +265,7 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     print("scripts/promote_best_config.py — Stage-1 promotion gate")
-    print(f"Stage-1 opt-in via PROMOTION_GATE_ENABLED=1")
+    print("Stage-1 opt-in via PROMOTION_GATE_ENABLED=1")
     print()
     print(json.dumps(status(), indent=2))
     print()

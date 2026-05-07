@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 PAGE = REPO / "services" / "frontend" / "app" / "admin" / "ops-fabric" / "deep" / "page.tsx"
 SIDEBAR = REPO / "services" / "frontend" / "components" / "Sidebar.tsx"
@@ -81,9 +80,9 @@ def main() -> int:
     require(page, "docs/runbooks/", "docs/runbooks/ directory citation")
     require(page, "alertmanager-webhook.md", "alertmanager runbook citation")
     if not RUNBOOKS_DIR.exists():
-        raise AssertionError(f"docs/runbooks/ missing")
+        raise AssertionError("docs/runbooks/ missing")
     if not ALERTMGR_RUNBOOK.exists():
-        raise AssertionError(f"alertmanager-webhook.md runbook missing")
+        raise AssertionError("alertmanager-webhook.md runbook missing")
     print("  ok: runbooks dir + key file cited and exist")
 
     print("-- 8. NEGATIVE: page must cite observability.py for correlation_id source --")

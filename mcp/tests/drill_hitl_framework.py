@@ -66,7 +66,7 @@ def main() -> int:
     assert valid_score.gate == "author"
     assert valid_score.verdict == "approve"
     assert valid_score.score == 4
-    print(f"  ok: HitlScore validated; 11 fields including optional chosen_text/rejected_text")
+    print("  ok: HitlScore validated; 11 fields including optional chosen_text/rejected_text")
 
     print("-- 3. NEGATIVE: invalid gate type → ValidationError --")
     try:
@@ -182,7 +182,7 @@ def main() -> int:
     if len(pairs) != 1:
         print(f"x step 8: filter produced {len(pairs)} pairs, expected 1")
         return 1
-    print(f"  ok: only 1 valid (chosen, rejected) pair extracted from 3 inputs")
+    print("  ok: only 1 valid (chosen, rejected) pair extracted from 3 inputs")
 
     print()
     print("ALL 8 STEPS PASSED")

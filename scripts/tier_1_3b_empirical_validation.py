@@ -24,7 +24,6 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 from local_council import _git_apply_check_only  # noqa: E402
 
-
 # The 4 historical failure modes from agent_task_board_apply.jsonl.
 # Each entry mirrors a real failure observed in the prior batch.
 HISTORICAL_FAILURES = [
@@ -108,13 +107,12 @@ def main() -> int:
             print(f"            actual:   GATE REJECTED — {result['error'][:100]}")
             caught += count
         else:
-            print(f"            actual:   GATE PASSED (gap — Tier 1.3.b would NOT have caught this)")
+            print("            actual:   GATE PASSED (gap — Tier 1.3.b would NOT have caught this)")
             not_caught += count
             failure_details.append((mode, count))
         print()
 
     catch_rate = caught / max(total_history_failures, 1)
-    projected_apply_rate_floor = catch_rate
 
     print("=" * 70)
     print(f"  RESULT: {caught} / {total_history_failures} historical failures caught by gate")
@@ -129,10 +127,10 @@ def main() -> int:
         print("  regex for the fence-missing case, or a Pydantic field validator")
         print("  that pre-flights the diff at schema time).")
         print()
-    print(f"  PROJECTION (§55.3 outcome contract):")
+    print("  PROJECTION (§55.3 outcome contract):")
     print(f"    Historical apply rate: 0/{total_history_failures} = 0.0%")
     print(f"    Projected after Tier 1.3.b: ≥{caught}/{total_history_failures} = ≥{catch_rate:.1%}")
-    print(f"    (≥ because retry-with-feedback may also rescue some of the")
+    print("    (≥ because retry-with-feedback may also rescue some of the")
     print(f"    {not_caught} non-caught modes via AUTHOR pass-2.)")
     print("=" * 70)
 

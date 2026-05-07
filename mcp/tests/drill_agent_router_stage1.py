@@ -58,7 +58,7 @@ def main() -> int:
     if not (0.0 <= decision.confidence <= 1.0):
         print(f"x confidence out of [0,1]; got {decision.confidence}")
         return 1
-    print(f"  ok: all 7 fields present; risk + confidence in valid ranges")
+    print("  ok: all 7 fields present; risk + confidence in valid ranges")
 
     print("-- 3. NEGATIVE: high-risk inputs → risk='high' (4 patterns tested) --")
     high_risk_messages = [
@@ -75,7 +75,7 @@ def main() -> int:
         if d.recommended_actor != "operator:human":
             print(f"x high-risk msg should route to operator:human; got {d.recommended_actor!r}")
             return 1
-    print(f"  ok: all 4 high-risk messages → risk='high' + operator:human")
+    print("  ok: all 4 high-risk messages → risk='high' + operator:human")
 
     print("-- 4. NEGATIVE: medium-risk inputs → risk='medium' --")
     medium_msgs = [
@@ -88,7 +88,7 @@ def main() -> int:
         if d.risk != "medium":
             print(f"x message {msg!r} should be medium-risk; got {d.risk!r}")
             return 1
-    print(f"  ok: all 3 medium-risk messages classified correctly")
+    print("  ok: all 3 medium-risk messages classified correctly")
 
     print("-- 5. NEGATIVE: empty / whitespace-only input → conservative default --")
     for msg in ("", "   ", "\t\n"):

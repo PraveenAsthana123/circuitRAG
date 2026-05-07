@@ -31,7 +31,7 @@ def main() -> int:
         if not path.exists():
             print(f"x missing: {path}")
             return 1
-    print(f"  ok: 3 files present (rego + json + validator)")
+    print("  ok: 3 files present (rego + json + validator)")
 
     print("-- 2. POSITIVE: rego_sync_check.py --json runs cleanly --")
     proc = subprocess.run(
@@ -50,7 +50,7 @@ def main() -> int:
         if key not in report:
             print(f"x report missing key: {key}")
             return 1
-    print(f"  ok: report shape correct (5 documented fields)")
+    print("  ok: report shape correct (5 documented fields)")
 
     print("-- 3. POSITIVE: JSON has 12 rules + Rego has 12 rules --")
     if report["json_rule_count"] != 12:
@@ -85,7 +85,7 @@ def main() -> int:
             if key not in r:
                 print(f"x rego rule missing {key!r}: {r}")
                 return 1
-    print(f"  ok: parser handled nested braces; extracted 12 valid rules")
+    print("  ok: parser handled nested braces; extracted 12 valid rules")
 
     print("-- 6. NEGATIVE: Rego file uses 'default allow := false' (default-deny posture) --")
     rego_src = REGO_FILE.read_text(encoding="utf-8")
