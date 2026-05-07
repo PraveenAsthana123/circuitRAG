@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from documind_core.exceptions import ValidationError
 from documind_core.schemas import HealthResponse
 from fastapi import APIRouter, Depends, Query, Request
+
+log = logging.getLogger(__name__)
 
 from app.schemas import (
     BestConfigInfo,
@@ -88,8 +91,8 @@ async def health_best_config() -> HealthBestConfigResponse:
                     promoted_at_ts=cfg.promoted_at_ts,
                     eval_set_size=cfg.eval_set_size,
                 )
-    except Exception:  # noqa: BLE001 — visibility must never crash
-        pass
+    except Exception:  # noqa: BLE001,S110 — visibility must never crash
+        pass  # noqa: S110 — intentional fail-safe (see comment above)
 
     return HealthBestConfigResponse(
         service="retrieval-svc",
@@ -173,8 +176,8 @@ async def health_best_config_history(
             latest_decision = summary.latest_decision
             earliest_ts = summary.earliest_ts
             latest_ts = summary.latest_ts
-    except Exception:  # noqa: BLE001 — visibility never crashes
-        pass
+    except Exception:  # noqa: BLE001,S110 — visibility never crashes
+        pass  # noqa: S110 — intentional fail-safe (see comment above)
 
     return HealthBestConfigHistoryResponse(
         service="retrieval-svc",
@@ -209,6 +212,42 @@ async def retrieve(
     retriever: HybridRetriever = Depends(_retriever),
 ) -> RetrieveResponse:
     tenant_id = getattr(request.state, "tenant_id", "") or ""
+    correlation_id = getattr(request.state, "correlation_id", "") or ""
     if not tenant_id:
         raise ValidationError("X-Tenant-ID header is required")
-    return await retriever.retrieve(tenant_id=tenant_id, request=body)
+    response = await retriever.retrieve(tenant_id=tenant_id, request=body)
+    # Per CLAUDE.md §47.7 expand-phase application: iter-53 wired the
+    # lifespan; iter-54 wires the first retrieval-svc publish point.
+    # query.retrieved.v1 surfaces hit-counts + breaker state for
+    # downstream consumers (eval-svc, observability) without coupling
+    # at HTTP-call level. Per §47 fail-safe: a Kafka blink does NOT
+    # 5xx the user — they got their chunks; observability is best-effort.
+    producer = getattr(request.app.state, "event_producer", None)
+    if producer is not None:
+        try:
+            await producer.publish(
+                topic="query.lifecycle",
+                type="query.retrieved.v1",
+                tenant_id=tenant_id,
+                correlation_id=correlation_id,
+                key=tenant_id,
+                data={
+                    "query": (getattr(body, "query", "") or "")[:500],
+                    "strategy": getattr(response, "strategy", "")
+                    or getattr(body, "strategy", ""),
+                    "retrieved_chunks": len(getattr(response, "chunks", []) or []),
+                    "top_score": float(
+                        getattr(response, "top_score", 0.0) or 0.0,
+                    ),
+                    "latency_ms": int(
+                        getattr(response, "latency_ms", 0) or 0,
+                    ),
+                    "cached": bool(getattr(response, "cached", False)),
+                    "breaker_state": getattr(response, "breaker_state", "")
+                    or "",
+                    "degraded": bool(getattr(response, "degraded", False)),
+                },
+            )
+        except Exception as _exc:  # noqa: BLE001 — observability fail-safe
+            log.warning("query_retrieved_publish_failed err=%s", _exc)
+    return response

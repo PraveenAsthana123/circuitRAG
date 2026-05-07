@@ -387,6 +387,35 @@ def create_app() -> FastAPI:
             task_id=task.task_id,
             body_hash=body_hash,
         )
+        # Per CLAUDE.md §47.7 expand-phase application: iter-53 wired the
+        # lifespan; iter-54 wires the first agent-orchestrator publish
+        # point. agent.task.created.v1 surfaces task creation for
+        # downstream consumers (governance audit, observability) without
+        # coupling at HTTP-call level. Per §47 fail-safe: a Kafka blink
+        # does NOT 5xx the user — the task already created + persisted.
+        producer = getattr(app.state, "event_producer", None)
+        if producer is not None:
+            try:
+                await producer.publish(
+                    topic="agent.lifecycle",
+                    type="agent.task.created.v1",
+                    tenant_id=req.tenant_id,
+                    correlation_id=getattr(task, "correlation_id", "") or "",
+                    key=req.tenant_id,
+                    data={
+                        "task_id": task.task_id,
+                        "goal": (getattr(req, "goal", "") or "")[:500],
+                        "risk_level": getattr(req, "risk_level", None) or "",
+                        "tool_namespace": getattr(req, "tool_namespace", None) or "",
+                        "tool_name": getattr(req, "tool_name", None) or "",
+                        "require_human_approval": bool(
+                            getattr(req, "require_human_approval", False),
+                        ),
+                        "idempotent": idempotency_key is not None,
+                    },
+                )
+            except Exception as _exc:  # noqa: BLE001 — observability fail-safe
+                log.warning("agent_task_created_publish_failed err=%s", _exc)
         return task
 
     @app.post("/api/v1/agentic/projects", response_model=ProjectView)
