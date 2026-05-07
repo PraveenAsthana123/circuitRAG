@@ -311,3 +311,20 @@ drills-catalogs: ## Run all catalog-schema drills (tool / OSS / chunking / agent
 	$(PY) mcp/tests/drill_agentic_observability_catalog.py
 	$(PY) mcp/tests/drill_production_readiness_ui.py
 
+
+.PHONY: install-all install-quick install-heavy install-k8s install-check
+install-all: ## Install ALL OSS tools (phase 1+2+3+4) — heavy
+	bash scripts/install_all_oss_tools.sh --all
+
+install-quick: ## Install quick OSS tools only (pip + binary + npm) — ~10 min
+	bash scripts/install_all_oss_tools.sh --quick
+
+install-heavy: ## Install quick + docker-compose stacks (default phase 1+2)
+	bash scripts/install_all_oss_tools.sh --heavy
+
+install-k8s: ## Install quick + docker + k8s helm releases (requires Istio cluster)
+	bash scripts/install_all_oss_tools.sh --k8s
+
+install-check: ## Check which OSS tools from the catalog are installed
+	bash scripts/install_all_oss_tools.sh --check
+
