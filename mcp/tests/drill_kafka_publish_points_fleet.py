@@ -56,6 +56,13 @@ ROUTES = (
         "agent.task.created.v1",
         "goal",  # truncated field
     ),
+    (
+        "evaluation-svc /api/v1/evaluation/run",
+        REPO / "services" / "evaluation-svc" / "app" / "main.py",
+        "/api/v1/evaluation/run",
+        "eval.completed.v1",
+        None,  # no user-text field; metrics-only payload (no truncation needed)
+    ),
 )
 
 GREEN = "\033[32m"
@@ -155,7 +162,13 @@ def main() -> int:
     # Step 6 — NEGATIVE: each user-text field truncated (PII guard)
     # ------------------------------------------------------------------
     step("6. NEGATIVE: each user-text field truncated to ≤500 chars")
+    truncation_count = 0
     for label, _, _, _, field in ROUTES:
+        if field is None:
+            # Routes with metrics-only payloads (e.g. eval.completed.v1)
+            # have no user-text field to truncate — skip; the lock
+            # applies only to routes that pass through user-supplied text.
+            continue
         src = sources[label]
         if not re.search(rf"\b{field}.*\[:5\d\d\]", src):
             fail(
@@ -163,7 +176,9 @@ def main() -> int:
                 "user-supplied text may contain PII / be huge. Full payload "
                 "lives in governance.audit_log keyed by correlation_id."
             )
-    ok("both user-text fields truncated to ≤500 chars (PII + size guard)")
+        truncation_count += 1
+    ok(f"{truncation_count} user-text fields truncated to ≤500 chars; "
+       f"{len(ROUTES) - truncation_count} metrics-only routes exempt")
 
     # ------------------------------------------------------------------
     # Step 7 — NEGATIVE: each module imports logging + binds log

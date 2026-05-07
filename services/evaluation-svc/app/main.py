@@ -28,7 +28,7 @@ from documind_core.middleware import (
 )
 from documind_core.observability import instrument_fastapi, setup_observability
 from documind_core.schemas import HealthResponse
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
 from app.explain import register_explain
@@ -113,6 +113,7 @@ def create_app() -> FastAPI:
     setup_observability(
         service_name=settings.service_name,
         otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+        prometheus_port=settings.prometheus_port,
         environment=settings.env,
     )
 
@@ -177,7 +178,7 @@ def create_app() -> FastAPI:
         return HealthResponse(status="ok", service="evaluation-svc")
 
     @app.post("/api/v1/evaluation/run", response_model=RunResponse, tags=["scoring"])
-    async def run_scoring(body: RunRequest) -> RunResponse:
+    async def run_scoring(body: RunRequest, request: Request) -> RunResponse:
         p_at_k = PrecisionAtK(k=body.precision_k)
         recall = Recall()
         mrr = MRR()
@@ -207,7 +208,7 @@ def create_app() -> FastAPI:
             totals["f"] += faith.compute(answer=dp.predicted_answer, context=dp.retrieved_context)
             totals["rel"] += rel.compute(question=dp.question, answer=dp.predicted_answer)
 
-        return RunResponse(
+        response = RunResponse(
             n=n,
             precision_at_k=totals["p"] / n,
             recall=totals["r"] / n,
@@ -216,6 +217,43 @@ def create_app() -> FastAPI:
             faithfulness=totals["f"] / n,
             answer_relevance=totals["rel"] / n,
         )
+        # Per CLAUDE.md §47.7 expand-phase application: iter-53 wired the
+        # evaluation-svc lifespan; iter-55 wires the first publish point.
+        # eval.completed.v1 surfaces the aggregate metrics so dashboards +
+        # the regression-gate consumer can subscribe without per-batch
+        # HTTP polling. Per §47 fail-safe: a Kafka blink does NOT 5xx the
+        # caller — they got their metrics; the event is best-effort.
+        producer = getattr(request.app.state, "event_producer", None)
+        if producer is not None:
+            tenant_id = (
+                getattr(request.state, "tenant_id", "") or ""
+            )
+            correlation_id = (
+                getattr(request.state, "correlation_id", "") or ""
+            )
+            try:
+                await producer.publish(
+                    topic="eval.lifecycle",
+                    type="eval.completed.v1",
+                    tenant_id=tenant_id or "default",
+                    correlation_id=correlation_id,
+                    key=tenant_id or "default",
+                    data={
+                        "n_datapoints": int(n),
+                        "precision_k": int(body.precision_k),
+                        "metrics": {
+                            "precision_at_k": float(response.precision_at_k),
+                            "recall": float(response.recall),
+                            "mrr": float(response.mrr),
+                            "ndcg_at_10": float(response.ndcg_at_10),
+                            "faithfulness": float(response.faithfulness),
+                            "answer_relevance": float(response.answer_relevance),
+                        },
+                    },
+                )
+            except Exception as _exc:  # noqa: BLE001 — observability fail-safe
+                log.warning("eval_completed_publish_failed err=%s", _exc)
+        return response
 
     @app.post(
         "/api/v1/evaluation/regression-gate",
