@@ -1,0 +1,140 @@
+namespace: tests
+status_target: WORKING
+owner: platform-qa
+fallback:
+  on_unreachable: skip tests lookups; agent uses cached context if any; council notes 'tests unavailable'
+  on_failing: circuit-break 60s after 3 consecutive failures; emit tests_circuit_open metric; alert P3
+  on_not_installed: feature flag off (DOCUMIND_MCP_TESTS_URL unset); UI hides tests namespace
+io:
+- tool: tests.run_pytest
+  input_schema_ref: TestsRunPytestInput
+  process: '1. Validate input via _validate_query (regex + length cap).
+
+    2. _live_or_stub guard: return available:False if creds missing.
+
+    3. Issue upstream call via _live_or_stub HTTP path.
+
+    4. Map response to canonical output schema.
+
+    5. Emit OTel span mcp.tests.run_pytest + Prom counter.'
+  output_schema_ref: TestsRunPytestOutput
+  side_effects: read
+  avg_latency_ms: 300
+  p95_latency_ms: 1200
+  cost_per_call_usd: 0.0
+- tool: tests.run_jest
+  input_schema_ref: TestsRunJestInput
+  process: '1. Validate input via _validate_query (regex + length cap).
+
+    2. _live_or_stub guard: return available:False if creds missing.
+
+    3. Issue upstream call via _live_or_stub HTTP path.
+
+    4. Map response to canonical output schema.
+
+    5. Emit OTel span mcp.tests.run_jest + Prom counter.'
+  output_schema_ref: TestsRunJestOutput
+  side_effects: read
+  avg_latency_ms: 300
+  p95_latency_ms: 1200
+  cost_per_call_usd: 0.0
+- tool: tests.run_ruff
+  input_schema_ref: TestsRunRuffInput
+  process: '1. Validate input via _validate_query (regex + length cap).
+
+    2. _live_or_stub guard: return available:False if creds missing.
+
+    3. Issue upstream call via _live_or_stub HTTP path.
+
+    4. Map response to canonical output schema.
+
+    5. Emit OTel span mcp.tests.run_ruff + Prom counter.'
+  output_schema_ref: TestsRunRuffOutput
+  side_effects: read
+  avg_latency_ms: 300
+  p95_latency_ms: 1200
+  cost_per_call_usd: 0.0
+- tool: tests.run_mypy
+  input_schema_ref: TestsRunMypyInput
+  process: '1. Validate input via _validate_query (regex + length cap).
+
+    2. _live_or_stub guard: return available:False if creds missing.
+
+    3. Issue upstream call via _live_or_stub HTTP path.
+
+    4. Map response to canonical output schema.
+
+    5. Emit OTel span mcp.tests.run_mypy + Prom counter.'
+  output_schema_ref: TestsRunMypyOutput
+  side_effects: read
+  avg_latency_ms: 300
+  p95_latency_ms: 1200
+  cost_per_call_usd: 0.0
+integration:
+  upstream:
+  - inference-svc
+  - agent-orchestrator-svc
+  downstream: []
+  contracts:
+  - producer: inference-svc
+    consumer: tests
+    schema: McpToolCallRequest
+testing:
+  drill: mcp/tests/drill_mcp_sdlc_servers.py
+  smoke_cmd: curl -s $DOCUMIND_MCP_TESTS_URL/health
+  cadence: iter
+  scheduled_via: scripts/run_drills.py
+monitoring:
+  metrics:
+  - name: mcp_tests_requests_total
+    type: counter
+    alert_at: informational
+  - name: mcp_tests_request_duration_seconds
+    type: histogram
+    alert_at: p95 > 2s for 5m
+  - name: mcp_tests_circuit_open
+    type: gauge
+    alert_at: value == 1 for 5m
+  alerts:
+  - name: TestsCircuitOpen
+    severity: P3
+    route: '#oncall-platform-qa'
+visualization:
+  ui_page: /admin/mcp-fleet-health
+  embed_in:
+  - /admin/dashboard
+  - /admin/mcp-fleet-health
+  panels:
+  - status
+  - latency_p95
+  - error_rate
+  - qps
+policy:
+  opa_bundle: config/policies/agent_dispatch.rego
+  rules:
+  - council-tests-read
+  - council-tests-read
+  - council-tests-read
+  - council-tests-read
+  default: deny
+observability:
+  otel:
+    span_name: mcp.tests.tools_call
+    attrs:
+    - tenant_id
+    - request_id
+    - scopes_granted
+    - tool_name
+  jaeger:
+    query_template: service=mcp-tests&operation=mcp.tests.tools_call
+  kibana:
+    index: filebeat-mcp-*
+    query_template: kubernetes.labels.app:mcp-tests AND request_id:{request_id}
+  log_fields:
+  - request_id
+  - tenant_id
+  - actor
+  - tool
+  - latency_ms
+  - outcome
+runbook: ops/runbook/tests.md

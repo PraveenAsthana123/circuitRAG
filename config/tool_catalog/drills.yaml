@@ -1,0 +1,90 @@
+namespace: drills
+status_target: WORKING
+owner: platform-qa
+
+fallback:
+  on_unreachable: "drill orchestration falls back to direct CLI: scripts/run_drills.py; UI shows 'drill server offline'"
+  on_failing: "circuit-break 60s after 3 consecutive failures; alert P2"
+  on_not_installed: "feature flag off; CI/CD invokes scripts/run_drills.py directly"
+
+io:
+  - tool: drills.list
+    input_schema_ref: DrillsListInput
+    process: |
+      1. Validate optional scope filter.
+      2. Enforce scope drill:read.
+      3. Discover drill files via glob mcp/tests/drill_*.py + tests/drills/*.
+      4. Parse # RESOURCES: header to extract resource tags.
+      5. Return {drills: [{name, path, resources}]}.
+
+      Note: implemented as drill.list / drill.run in server_drills.py
+      (singular tool prefix, plural namespace) — historical asymmetry
+      preserved because tools/tests reference drill.* names. This
+      catalog entry tracks the namespace=drills for fleet-health
+      coverage.
+    output_schema_ref: DrillsListOutput
+    side_effects: read
+    avg_latency_ms: 50
+    p95_latency_ms: 200
+    cost_per_call_usd: 0.0
+  - tool: drills.run
+    input_schema_ref: DrillsRunInput
+    process: |
+      1. Validate name against ^drill_[A-Za-z0-9_]+$ regex.
+      2. Enforce scope drill:run.
+      3. Look up drill in discovered set; reject unknown.
+      4. Spawn subprocess with MCP_DRILL_MAX_CONCURRENT gate.
+      5. Capture stdout/stderr, exit_code, duration.
+      6. Append result to .loop/drill_history.jsonl (forensic trail).
+      7. Return {name, ok: bool, exit_code, stdout_tail, duration_ms}.
+    output_schema_ref: DrillsRunOutput
+    side_effects: write
+    avg_latency_ms: 5000
+    p95_latency_ms: 30000
+    cost_per_call_usd: 0.0
+
+integration:
+  upstream: [inference-svc, agent-orchestrator-svc, ci-runner]
+  downstream: [filesystem, postgres]
+  contracts:
+    - { producer: ci-runner, consumer: drills, schema: McpToolCallRequest }
+    - { producer: drills, consumer: filesystem, schema: drill_history.jsonl }
+
+testing:
+  drill: mcp/tests/drill_drill_server.py
+  smoke_cmd: "curl -s $DOCUMIND_MCP_DRILLS_URL/health"
+  cadence: iter
+  scheduled_via: scripts/run_drills.py
+
+monitoring:
+  metrics:
+    - { name: mcp_drills_runs_total, type: counter, alert_at: "informational" }
+    - { name: mcp_drills_run_duration_seconds, type: histogram, alert_at: "p95 > 60s for 5m" }
+    - { name: mcp_drills_failures_total, type: counter, alert_at: "rate > 0.1/s for 5m" }
+    - { name: mcp_drills_circuit_open, type: gauge, alert_at: "value == 1 for 5m" }
+  alerts:
+    - { name: DrillsFailureRateSpike, severity: P2, route: "#oncall-platform-qa" }
+    - { name: DrillsCircuitOpen, severity: P2, route: "#oncall-platform-qa" }
+
+visualization:
+  ui_page: /admin/mcp-fleet-health
+  embed_in: [/admin/dashboard, /admin/mcp-fleet-health, /admin/eval-harness]
+  panels: [status, runs_total, failure_rate, latency_p95]
+
+policy:
+  opa_bundle: config/policies/agent_dispatch.rego
+  rules: [council-author-drills-read, council-reviewer-drills-read, ci-runner-drills-run]
+  default: deny
+
+observability:
+  otel:
+    span_name: mcp.drills.tools_call
+    attrs: [tenant_id, request_id, scopes_granted, tool_name, drill_name]
+  jaeger:
+    query_template: "service=mcp-server-drills&operation=mcp.drills.tools_call"
+  kibana:
+    index: filebeat-mcp-*
+    query_template: "kubernetes.labels.app:mcp-drills AND request_id:{request_id}"
+  log_fields: [request_id, tenant_id, actor, tool, drill_name, exit_code, latency_ms, outcome]
+
+runbook: ops/runbook/drills.md

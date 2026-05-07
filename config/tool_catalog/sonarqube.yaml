@@ -1,0 +1,106 @@
+namespace: sonarqube
+status_target: OPTIONAL
+owner: platform-sdlc
+fallback:
+  on_unreachable: skip sonarqube lookups; agent uses cached context if any; council notes 'sonarqube unavailable'
+  on_failing: circuit-break 60s after 3 consecutive failures; emit sonarqube_circuit_open metric; alert P3
+  on_not_installed: feature flag off (DOCUMIND_MCP_SONARQUBE_URL unset); UI hides sonarqube namespace
+io:
+- tool: sonarqube.issues_search
+  input_schema_ref: SonarqubeIssuesSearchInput
+  process: '1. Validate input via _validate_query (regex + length cap).
+
+    2. _live_or_stub guard: return available:False if creds missing.
+
+    3. Issue upstream call via _live_or_stub HTTP path.
+
+    4. Map response to canonical output schema.
+
+    5. Emit OTel span mcp.sonarqube.issues_search + Prom counter.'
+  output_schema_ref: SonarqubeIssuesSearchOutput
+  side_effects: read
+  avg_latency_ms: 300
+  p95_latency_ms: 1200
+  cost_per_call_usd: 0.0
+- tool: sonarqube.measures_get
+  input_schema_ref: SonarqubeMeasuresGetInput
+  process: '1. Validate input via _validate_query (regex + length cap).
+
+    2. _live_or_stub guard: return available:False if creds missing.
+
+    3. Issue upstream call via _live_or_stub HTTP path.
+
+    4. Map response to canonical output schema.
+
+    5. Emit OTel span mcp.sonarqube.measures_get + Prom counter.'
+  output_schema_ref: SonarqubeMeasuresGetOutput
+  side_effects: read
+  avg_latency_ms: 300
+  p95_latency_ms: 1200
+  cost_per_call_usd: 0.0
+integration:
+  upstream:
+  - inference-svc
+  - agent-orchestrator-svc
+  downstream: []
+  contracts:
+  - producer: inference-svc
+    consumer: sonarqube
+    schema: McpToolCallRequest
+testing:
+  drill: mcp/tests/drill_mcp_sdlc_servers.py
+  smoke_cmd: curl -s $DOCUMIND_MCP_SONARQUBE_URL/health
+  cadence: iter
+  scheduled_via: scripts/run_drills.py
+monitoring:
+  metrics:
+  - name: mcp_sonarqube_requests_total
+    type: counter
+    alert_at: informational
+  - name: mcp_sonarqube_request_duration_seconds
+    type: histogram
+    alert_at: p95 > 2s for 5m
+  - name: mcp_sonarqube_circuit_open
+    type: gauge
+    alert_at: value == 1 for 5m
+  alerts:
+  - name: SonarqubeCircuitOpen
+    severity: P3
+    route: '#oncall-platform-sdlc'
+visualization:
+  ui_page: /admin/mcp-fleet-health
+  embed_in:
+  - /admin/dashboard
+  - /admin/mcp-fleet-health
+  panels:
+  - status
+  - latency_p95
+  - error_rate
+  - qps
+policy:
+  opa_bundle: config/policies/agent_dispatch.rego
+  rules:
+  - council-sonarqube-read
+  - council-sonarqube-read
+  default: deny
+observability:
+  otel:
+    span_name: mcp.sonarqube.tools_call
+    attrs:
+    - tenant_id
+    - request_id
+    - scopes_granted
+    - tool_name
+  jaeger:
+    query_template: service=mcp-sonarqube&operation=mcp.sonarqube.tools_call
+  kibana:
+    index: filebeat-mcp-*
+    query_template: kubernetes.labels.app:mcp-sonarqube AND request_id:{request_id}
+  log_fields:
+  - request_id
+  - tenant_id
+  - actor
+  - tool
+  - latency_ms
+  - outcome
+runbook: ops/runbook/sonarqube.md

@@ -1,0 +1,92 @@
+namespace: ollama
+status_target: WORKING
+owner: platform-ai
+
+fallback:
+  on_unreachable: "council halts; agent surfaces 'ollama unavailable'; UI shows degraded banner"
+  on_failing: "circuit-break 60s after 3 consecutive failures; emit ollama_circuit_open metric; alert P1"
+  on_not_installed: "feature flag off (DOCUMIND_MCP_OLLAMA_URL unset); UI hides ollama namespace; council nodes report not-installed"
+
+io:
+  - tool: ollama.generate
+    input_schema_ref: GenerateArgs
+    process: |
+      1. Validate model + prompt + options via GenerateArgs Pydantic.
+      2. Enforce scope ollama:generate.
+      3. POST $OLLAMA_URL/api/generate with model, prompt, options, keep_alive.
+      4. Return {response, eval_count, eval_duration, total_duration}.
+    output_schema_ref: GenerateOutput
+    side_effects: read
+    avg_latency_ms: 5000
+    p95_latency_ms: 49000
+    cost_per_call_usd: 0.0
+  - tool: ollama.list_models
+    input_schema_ref: ListModelsArgs
+    process: |
+      1. Validate args (none required).
+      2. Enforce scope ollama:read.
+      3. GET $OLLAMA_URL/api/tags + /api/ps.
+      4. Return {installed: [{name, size_gb}], loaded: [name]}.
+    output_schema_ref: ListModelsOutput
+    side_effects: read
+    avg_latency_ms: 100
+    p95_latency_ms: 500
+    cost_per_call_usd: 0.0
+  - tool: ollama.warm
+    input_schema_ref: WarmArgs
+    process: |
+      1. Validate model name.
+      2. Enforce scope ollama:warm.
+      3. POST $OLLAMA_URL/api/generate with prompt='' keep_alive=24h to load model into VRAM.
+      4. Return {warm: True, model, vram_gb}.
+    output_schema_ref: WarmOutput
+    side_effects: read
+    avg_latency_ms: 8000
+    p95_latency_ms: 60000
+    cost_per_call_usd: 0.0
+
+integration:
+  upstream: [inference-svc, agent-orchestrator-svc, council-author, council-reviewer, council-advisor, council-researcher]
+  downstream: []
+  contracts:
+    - { producer: inference-svc, consumer: ollama, schema: McpToolCallRequest }
+    - { producer: council, consumer: ollama, schema: GenerateArgs }
+
+testing:
+  drill: mcp/tests/drill_ollama_all_models_smoke.py
+  smoke_cmd: "curl -s $DOCUMIND_MCP_OLLAMA_URL/health/live"
+  cadence: iter
+  scheduled_via: scripts/run_drills.py
+
+monitoring:
+  metrics:
+    - { name: mcp_ollama_requests_total, type: counter, alert_at: "informational" }
+    - { name: mcp_ollama_request_duration_seconds, type: histogram, alert_at: "p95 > 60s for 5m" }
+    - { name: mcp_ollama_circuit_open, type: gauge, alert_at: "value == 1 for 5m" }
+    - { name: mcp_ollama_models_loaded, type: gauge, alert_at: "informational" }
+  alerts:
+    - { name: OllamaCircuitOpen, severity: P1, route: "#oncall-platform-ai" }
+    - { name: OllamaSlowGenerate, severity: P3, route: "#oncall-platform-ai" }
+
+visualization:
+  ui_page: /admin/mcp-fleet-health
+  embed_in: [/admin/dashboard, /admin/mcp-fleet-health, /admin/agent-readiness]
+  panels: [status, models_loaded, latency_p95, generate_qps]
+
+policy:
+  opa_bundle: config/policies/agent_dispatch.rego
+  rules: [council-author-ollama-generate, council-reviewer-ollama-generate, council-advisor-ollama-generate, council-researcher-ollama-generate]
+  default: deny
+
+observability:
+  otel:
+    span_name: mcp.ollama.tools_call
+    attrs: [tenant_id, request_id, scopes_granted, tool_name, model]
+  jaeger:
+    query_template: "service=mcp-ollama&operation=mcp.ollama.tools_call"
+  kibana:
+    index: filebeat-mcp-*
+    query_template: "kubernetes.labels.app:mcp-ollama AND request_id:{request_id}"
+  log_fields: [request_id, tenant_id, actor, tool, model, latency_ms, outcome]
+
+runbook: ops/runbook/ollama.md
