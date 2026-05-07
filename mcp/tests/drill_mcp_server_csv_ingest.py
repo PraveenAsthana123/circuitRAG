@@ -40,7 +40,6 @@ Locks (negative — ≥3 per §43):
 """
 from __future__ import annotations
 
-import importlib.util as _ilu
 import re
 import sys
 from pathlib import Path

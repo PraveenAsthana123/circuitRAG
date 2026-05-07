@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 """
 CSV ingest MCP server — approval-gated CSV-to-DB write surface.
 
@@ -55,7 +56,7 @@ mount_metrics_endpoint(app)
 
 _AUTH_REQUIRED, _VERIFIER = build_auth()
 
-ALLOWED_PATH_PREFIXES = ("/mnt/deepa/", "/tmp/", "/var/tmp/")
+ALLOWED_PATH_PREFIXES = ("/mnt/deepa/", "/tmp/", "/var/tmp/")  # noqa: S108 - ADR-028 local ingest allowlist
 MAX_FILE_BYTES = int(os.getenv("CSV_INGEST_MAX_FILE_BYTES", str(50 * 1024 * 1024)))
 IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 FORBIDDEN_SQL_RE = re.compile(
@@ -419,7 +420,9 @@ def _sqlite_apply(plan: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str,
     columns = list(plan["column_mapping"].values())
     placeholders = ", ".join("?" for _ in columns)
     col_sql = ", ".join(f'"{c}"' for c in columns)
-    sql = f'INSERT INTO "{plan["target_table"]}" ({col_sql}) VALUES ({placeholders})'
+    # target_table + columns are validated with IDENT_RE before this point;
+    # row values remain parameterized through executemany.
+    sql = f'INSERT INTO "{plan["target_table"]}" ({col_sql}) VALUES ({placeholders})'  # noqa: S608
     with sqlite3.connect(db_path) as conn:
         conn.executemany(sql, [[row.get(c, "") for c in columns] for row in rows])
         conn.commit()

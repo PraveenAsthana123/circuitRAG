@@ -127,11 +127,19 @@ def create_app() -> FastAPI:
         # set; otherwise stays inert (default-safe per §47.7 expand-phase).
         # 'csv_ingest' (iter-65): ADR-028 approval-gated CSV-to-DB write
         # surface. Activates only when DOCUMIND_MCP_CSV_INGEST_URL is set.
+        # iter-67 batch: jira / teams / whatsapp / gdrive / servicenow.
+        # All 5 default-empty (operator opt-in via env-flag); same
+        # DOCUMIND_MCP_<NS>_URL convention as the 4 above.
         mcp_spec = [
             ("hr", os.getenv("DOCUMIND_MCP_HR_URL", "")),
             ("itsm", os.getenv("DOCUMIND_MCP_ITSM_URL", "")),
             ("documents", os.getenv("DOCUMIND_MCP_DOCUMENTS_URL", "")),
             ("csv_ingest", os.getenv("DOCUMIND_MCP_CSV_INGEST_URL", "")),
+            ("jira", os.getenv("DOCUMIND_MCP_JIRA_URL", "")),
+            ("teams", os.getenv("DOCUMIND_MCP_TEAMS_URL", "")),
+            ("whatsapp", os.getenv("DOCUMIND_MCP_WHATSAPP_URL", "")),
+            ("gdrive", os.getenv("DOCUMIND_MCP_GDRIVE_URL", "")),
+            ("servicenow", os.getenv("DOCUMIND_MCP_SERVICENOW_URL", "")),
         ]
         clients: dict[str, MCPClient] = {}
         for namespace, url in mcp_spec:
