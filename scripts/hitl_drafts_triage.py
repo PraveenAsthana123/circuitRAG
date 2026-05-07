@@ -235,6 +235,64 @@ def build_report(drafts: list[dict[str, Any]], gap: str | None) -> str:
     return "\n".join(lines)
 
 
+def clean_drill_artifacts() -> tuple[int, str | None]:
+    """Bulk-mark drill-injected pending drafts as 'rejected'.
+
+    NOT a §38 governance violation: the rows have ``reason LIKE 'drill%'``
+    — they're test pollution from drill runs that injected synthetic
+    drafts to verify the HITL machinery. They have no real-world
+    originating user request behind them.
+
+    Per §42 brutal-honesty + operator's standing "complete all"
+    authorization: cleaning these helps the operator see REAL drafts.
+    Sets ``status='rejected'`` (not DELETE; preserves audit trail per
+    governance immutability — the rows still exist with audit context
+    showing they were drill-cleaned).
+
+    Returns (rows_affected, gap_reason). Drilled.
+    """
+    try:
+        import asyncio
+
+        import asyncpg
+    except ImportError:
+        return 0, "asyncpg not installed"
+
+    async def _clean() -> int:
+        conn = await asyncpg.connect(
+            host=PG_HOST, port=PG_PORT, user=PG_USER,
+            password=PG_PASSWORD, database=PG_DB, timeout=3.0,
+        )
+        try:
+            # Mark — NOT delete. Audit immutability per §38.
+            # Add JSONB context so future operator can see why the row
+            # was cleaned + when + by whom.
+            result = await conn.execute(
+                "UPDATE governance.action_drafts "
+                "   SET status = 'rejected', "
+                "       replayed_at = NOW(), "
+                "       replay_result = jsonb_build_object("
+                "         'reason', 'iter-21 drill-artifact bulk-clean', "
+                "         'cleaned_at', NOW()::text, "
+                "         'cleaned_by', 'hitl_drafts_triage.py --clean-drill-artifacts' "
+                "       ) "
+                " WHERE status = 'pending' "
+                "   AND (reason LIKE 'drill%' OR reason LIKE 'drill_%')"
+            )
+            # asyncpg execute() returns "UPDATE N"
+            try:
+                return int(result.split()[-1])
+            except (ValueError, AttributeError, IndexError):
+                return 0
+        finally:
+            await conn.close()
+
+    try:
+        return asyncio.run(_clean()), None
+    except Exception as exc:  # noqa: BLE001
+        return 0, f"postgres_unreachable: {type(exc).__name__}: {exc}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -245,7 +303,24 @@ def main() -> int:
         "--json", action="store_true",
         help="Emit JSON summary instead of markdown",
     )
+    parser.add_argument(
+        "--clean-drill-artifacts", action="store_true",
+        help=(
+            "Mark drill-tagged pending drafts as rejected. Per §38: "
+            "preserves audit row (status flips, no DELETE). Per §42 + "
+            "operator standing authorization: the drill-tagged rows are "
+            "test pollution, NOT real user requests. Drilled."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.clean_drill_artifacts:
+        n, gap = clean_drill_artifacts()
+        if gap:
+            print(f"clean failed: {gap}", file=sys.stderr)
+            return 1
+        print(f"cleaned {n} drill-artifact pending draft(s) → status='rejected'")
+        return 0
 
     drafts, gap = fetch_drafts()
 
