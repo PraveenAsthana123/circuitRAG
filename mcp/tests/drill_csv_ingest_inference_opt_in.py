@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
-"""ADR-028 guardrail 9: inference connects only when env URL is set."""
+"""ADR-028 guardrail 9. NEGATIVE: inference connects only when env URL is set."""
 from __future__ import annotations
 
 import re

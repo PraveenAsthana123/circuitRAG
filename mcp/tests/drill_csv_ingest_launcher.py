@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
-"""ADR-028 guardrail 8: launcher honors MCP_CSV_INGEST_PORT and uses no sudo."""
+"""ADR-028 guardrail 8. NEGATIVE: launcher honors MCP_CSV_INGEST_PORT and uses no sudo."""
 from __future__ import annotations
 
 from pathlib import Path

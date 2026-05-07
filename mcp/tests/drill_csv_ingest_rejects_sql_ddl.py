@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
 # ruff: noqa: E402,I001
-"""ADR-028 guardrail 6: raw SQL and DDL are rejected before DB access."""
+"""ADR-028 guardrail 6. NEGATIVE: raw SQL and DDL are rejected before DB access."""
 from __future__ import annotations
 
 import sys

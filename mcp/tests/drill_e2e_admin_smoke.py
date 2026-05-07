@@ -130,7 +130,8 @@ async def run() -> int:
     import urllib.error
     import urllib.request
     try:
-        urllib.request.urlopen(PROD_URL, timeout=2).close()
+        with urllib.request.urlopen(PROD_URL, timeout=2) as resp:
+            headers = {k.lower(): v for k, v in resp.headers.items()}
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         print(
             f"{YELLOW}skip runtime layer: cannot reach {PROD_URL}: "
@@ -139,6 +140,17 @@ async def run() -> int:
         if failures == 0:
             print(f"{GREEN}{BOLD}STATIC LAYER PASSED ({len(pages)} pages); "
                   f"runtime layer skipped (no dev server){NC}")
+        return failures
+    cache_control = headers.get("cache-control", "")
+    if headers.get("x-nextjs-cache") or "s-maxage=" in cache_control:
+        print(
+            f"{YELLOW}skip runtime layer: {PROD_URL} appears to be a "
+            "production `next start` server; run `npm run dev` to exercise "
+            f"browser checks{NC}"
+        )
+        if failures == 0:
+            print(f"{GREEN}{BOLD}STATIC LAYER PASSED ({len(pages)} pages); "
+                  f"runtime layer skipped (production server){NC}")
         return failures
 
     sample_size = min(4, len(pages))
@@ -200,14 +212,14 @@ async def run() -> int:
             #   - "TypeError: Failed to fetch" / "TypeError: network error"
             #     — same root cause, surfaced as the underlying network
             #     exception from the prefetch wrapper.
-            ENV_STATE_PATTERNS = (
+            env_state_patterns = (
                 "Failed to fetch RSC payload",
                 "TypeError: Failed to fetch",
                 "TypeError: network error",
             )
             page_errors = [
                 e for e in console_errors
-                if not any(p in e for p in ENV_STATE_PATTERNS)
+                if not any(p in e for p in env_state_patterns)
             ]
             env_filtered = len(console_errors) - len(page_errors)
 

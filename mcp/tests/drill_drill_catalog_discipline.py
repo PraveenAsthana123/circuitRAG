@@ -95,9 +95,6 @@ KNOWN_MOCK_OFFENDERS: set[str] = {
     # litellm Stage-1 adapter — opt-in via LITELLM_ENABLED=1; library
     # is NOT in requirements.txt by default. drill mocks the import.
     "drill_litellm_fallback.py",
-    # pydantic-ai Stage-1 adapter — opt-in via PYDANTICAI_ENABLED=1;
-    # drill mocks the import to test fallback when lib is absent.
-    "drill_pydanticai_validate_fallback.py",
     # agent_router Stage-2 — Ollama call gated by feature flag; drill
     # mocks the subprocess so it exercises routing logic without
     # requiring a live model.

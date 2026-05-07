@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
 # ruff: noqa: E402,I001
-"""ADR-028 guardrail 1: documents server still has zero write tools."""
+"""ADR-028 guardrail 1. NEGATIVE: documents server still has zero write tools."""
 from __future__ import annotations
 
 import sys

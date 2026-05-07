@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
 # ruff: noqa: E402,I001
-"""ADR-028 guardrail 5: duplicate Idempotency-Key returns original response."""
+"""ADR-028 guardrail 5. NEGATIVE: duplicate Idempotency-Key replays only original response."""
 from __future__ import annotations
 
 import sys

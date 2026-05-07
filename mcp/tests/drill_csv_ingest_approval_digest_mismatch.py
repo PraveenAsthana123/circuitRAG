@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
 # ruff: noqa: E402,I001
-"""ADR-028 guardrail 4: changing CSV after approval blocks apply."""
+"""ADR-028 guardrail 4. NEGATIVE: changing CSV after approval blocks apply."""
 from __future__ import annotations
 
 import os

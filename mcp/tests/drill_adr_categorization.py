@@ -79,6 +79,7 @@ DOMAIN_ADR_NUMBERS = frozenset({
     26,                                            # ADR-026 MLflow deliberate-not-now (Langfuse covers LLM obs) (2026-05-06)
     27,                                            # ADR-027 agent framework: LangGraph + custom council; CrewAI/Agno/PraisonAI rejected (2026-05-07)
     28,                                            # ADR-028 CSV-to-DB ingest write-surface contract (2026-05-07)
+    29,                                            # ADR-029 business usecase to docs framework (2026-05-07)
 })
 
 MIN_ADRS = 15
@@ -182,13 +183,13 @@ def main() -> int:
         )
     ok(f"all {len(adr_files)} ADRs match NNN-slug.md pattern")
 
-    LOOP_KEYWORDS = _import_loop_keywords()
+    loop_keywords = _import_loop_keywords()
 
     step("3. NEGATIVE: every ADR is categorisable (DOMAIN or LOOP-DISCIPLINE)")
     uncategorised: list[tuple[int, str]] = []
-    for num, slug, path in adr_files:
+    for num, slug, _path in adr_files:
         is_domain = num in DOMAIN_ADR_NUMBERS
-        is_loop = any(kw in slug for kw in LOOP_KEYWORDS)
+        is_loop = any(kw in slug for kw in loop_keywords)
         if not is_domain and not is_loop:
             uncategorised.append((num, slug))
     if uncategorised:
@@ -233,9 +234,9 @@ def main() -> int:
 
     step("4. NEGATIVE: no ADR is in both categories (defense-in-depth)")
     both: list[tuple[int, str]] = []
-    for num, slug, path in adr_files:
+    for num, slug, _path in adr_files:
         is_domain = num in DOMAIN_ADR_NUMBERS
-        is_loop = any(kw in slug for kw in LOOP_KEYWORDS)
+        is_loop = any(kw in slug for kw in loop_keywords)
         if is_domain and is_loop:
             both.append((num, slug))
     if both:
@@ -260,9 +261,9 @@ def main() -> int:
     )
 
     step("6. NEGATIVE: every LOOP_KEYWORDS entry matches at least one ADR")
-    coverage: dict[str, list[int]] = {kw: [] for kw in LOOP_KEYWORDS}
-    for num, slug, path in adr_files:
-        for kw in LOOP_KEYWORDS:
+    coverage: dict[str, list[int]] = {kw: [] for kw in loop_keywords}
+    for num, slug, _path in adr_files:
+        for kw in loop_keywords:
             if kw in slug:
                 coverage[kw].append(num)
     dead_keywords = [kw for kw, nums in coverage.items() if not nums]
@@ -273,7 +274,7 @@ def main() -> int:
             "the keyword was added speculatively. Remove or rename."
         )
     ok(
-        f"all {len(LOOP_KEYWORDS)} LOOP_KEYWORDS entries cover at least "
+        f"all {len(loop_keywords)} LOOP_KEYWORDS entries cover at least "
         "one ADR"
     )
 
@@ -287,7 +288,7 @@ def main() -> int:
     )
 
     step("8. POSITIVE: LOOP_KEYWORDS coverage map")
-    for kw in LOOP_KEYWORDS:
+    for kw in loop_keywords:
         covered = coverage.get(kw, [])
         if covered:
             adrs_repr = ", ".join(f"ADR-{n:03d}" for n in sorted(covered))

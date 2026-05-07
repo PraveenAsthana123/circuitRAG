@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # RESOURCES: readonly
 # ruff: noqa: E402,I001
-"""ADR-028 guardrail 2: CSV ingest catalog has 5 tools; only apply writes."""
+"""ADR-028 guardrail 2. NEGATIVE: CSV ingest catalog has 5 tools; only apply writes."""
 from __future__ import annotations
 
 import sys

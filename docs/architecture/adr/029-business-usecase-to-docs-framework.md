@@ -279,6 +279,7 @@ feedback).
 
 ## References
 
+- `2dab9a0` — `fix(iter-68): mcp/server_github.py + AI SDLC roadmap doc — close most-critical SDLC gap`
 - `docs/architecture/adr/027-agent-framework-langgraph-not-crewai-agno.md`
   (LangGraph is the orchestrator; this feature uses it)
 - `docs/architecture/adr/028-csv-to-db-ingest-write-surface-contract.md`
