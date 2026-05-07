@@ -1231,8 +1231,10 @@ def aggregate_ai_integrations() -> dict[str, Any]:
     present + the honest gaps an operator needs to fix.
 
     Surfaces:
-      - installed_libs: {name → version} for crewai, langchain_ollama,
-        langchain_xai (whichever are importable)
+      - installed_libs: {name → version} for langchain_ollama,
+        langchain_xai (whichever are importable). Per §56 (techstack-
+        additions), crewai is rejected — NOT probed here, so a future
+        accidental re-install doesn't silently get surfaced as healthy.
       - ollama: {reachable, model_count, models_loaded}
       - xai_api: {key_set} — whether XAI_API_KEY is present
       - honest_gaps: any blocking states (Grok not on Ollama registry;
@@ -1245,7 +1247,7 @@ def aggregate_ai_integrations() -> dict[str, Any]:
     libs: dict[str, str] = {}
     gaps: list[str] = []
 
-    for mod_name in ("crewai", "langchain_ollama", "langchain_xai"):
+    for mod_name in ("langchain_ollama", "langchain_xai"):
         try:
             mod = __import__(mod_name)
             ver = getattr(mod, "__version__", "unknown")

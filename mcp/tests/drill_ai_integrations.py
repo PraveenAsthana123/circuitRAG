@@ -1,14 +1,19 @@
 # RESOURCES: readonly
 """
-Drill: AI provider integrations — CrewAI / ChatOllama / ChatXAI.
+Drill: AI provider integrations — ChatOllama / ChatXAI.
 
 Per CLAUDE.md §38 (governance), §43 (drill discipline), §52 row 4
-(operator API gap), §55.3 (outcome-based contract).
+(operator API gap), §55.3 (outcome-based contract), §56 (techstack-
+additions: rejected verdict = NOT installed).
 
 Operator asked to "download grok model, crew AI, chatollama, chatxai"
-in a single instruction. Brutal-honesty translation:
+in a single instruction. Brutal-honesty translation (iter-27 update):
 
-  CrewAI:        pip-installable. Drill-locked here.
+  CrewAI:        REJECTED per §56. Drill below verifies it is NOT
+                 importable (rejected verdict respected). Originally
+                 drill-locked as installed; re-evaluation moved it
+                 to the rejected-frameworks list (CrewAI/Agno/PraisonAI)
+                 alongside drill_techstack_audit step 5.
   ChatOllama:    pip-installable as `langchain-ollama`. Drill-locked.
   ChatXAI:       pip-installable as `langchain-xai`. Requires
                  XAI_API_KEY to actually call. Drill verifies the
@@ -19,28 +24,34 @@ in a single instruction. Brutal-honesty translation:
                  so future operators don't re-attempt.
 
 Locks (positive):
-  L1. crewai is importable; Agent + Task + Crew classes accessible
-  L2. langchain_ollama is importable; ChatOllama + OllamaEmbeddings
+  L1. langchain_ollama is importable; ChatOllama + OllamaEmbeddings
       classes accessible
-  L3. langchain_xai is importable; ChatXAI class accessible
-  L4. Paperclip aggregate_ai_integrations() returns documented shape
-  L5. ai_integrations is a top-level key in paperclip snapshot v10+
+  L2. langchain_xai is importable; ChatXAI class accessible
+  L3. Paperclip aggregate_ai_integrations() returns documented shape
+      (installed_libs has the 2 LangChain integrations; NOT crewai)
+  L4. ai_integrations is a top-level key in paperclip snapshot v10+
 
 Locks (negative — ≥3 per §43):
-  N1. langchain_xai imported AND XAI_API_KEY unset → honest_gap
+  N1. crewai is NOT importable (§56 rejected verdict respected;
+      bit-rot prevention against silent re-adoption)
+
+  N2. langchain_xai imported AND XAI_API_KEY unset → honest_gap
       explicitly says ChatXAI instantiation will fail. Operator
       misconfig (forgot the key) MUST surface in the dashboard,
       not silently waste calls.
 
-  N2. Grok-not-on-Ollama-registry honest_gap is ALWAYS present
+  N3. Grok-not-on-Ollama-registry honest_gap is ALWAYS present
       regardless of integration state. Future change that drops
       this honest_gap would let operators re-discover it the hard
       way. The drill greps for the exact phrase.
 
-  N3. aggregate_ai_integrations does NOT make any actual API calls.
+  N4. aggregate_ai_integrations does NOT make any actual API calls.
       Drill greps the function source for forbidden invocations
       (.invoke, .ainvoke, .chat, ChatXAI(, ChatOllama(). Snapshot
       surfaces should be liveness probes, not paid-call generators.
+
+  N5. installed_libs MUST NOT contain 'crewai' (rejected verdict
+      respected at the snapshot level; §56 bit-rot prevention).
 """
 from __future__ import annotations
 
@@ -74,18 +85,17 @@ def fail(m: str) -> None:
 
 def main() -> int:
     # ===================================================================
-    # Step 1 — crewai importable + key classes accessible
+    # Step 1 — NEGATIVE: crewai NOT importable (§56 rejected respected)
     # ===================================================================
-    step("1. crewai importable (Agent + Task + Crew)")
+    step("1. NEGATIVE: crewai NOT importable (§56 rejected verdict respected)")
     try:
-        crewai = importlib.import_module("crewai")
-    except ImportError as exc:
-        fail(f"crewai not importable: {exc}")
-    for attr in ("Agent", "Task", "Crew"):
-        if not hasattr(crewai, attr):
-            fail(f"crewai.{attr} missing — install incomplete or version mismatch")
-    ver = getattr(crewai, "__version__", "unknown")
-    ok(f"crewai version={ver}; Agent/Task/Crew accessible")
+        importlib.import_module("crewai")
+        fail(
+            "crewai is importable — §56 rejected-verdict violated. Run "
+            "`/mnt/deepa/rag/.venv/bin/pip uninstall -y crewai` to restore."
+        )
+    except ImportError:
+        ok("crewai not importable; §56 rejected verdict respected")
 
     # ===================================================================
     # Step 2 — langchain_ollama importable
@@ -125,9 +135,13 @@ def main() -> int:
     expected_keys = {"installed_libs", "ollama", "xai_api", "honest_gaps"}
     if not expected_keys.issubset(set(result.keys())):
         fail(f"missing keys: {expected_keys - set(result.keys())}")
-    if "crewai" not in result["installed_libs"]:
-        fail(f"crewai missing from installed_libs: {result['installed_libs']}")
-    ok(f"shape OK: {len(result['installed_libs'])} libs, "
+    # §56 — crewai REJECTED → must NOT appear in installed_libs
+    if "crewai" in result["installed_libs"]:
+        fail(
+            f"crewai present in installed_libs despite §56 rejected verdict: "
+            f"{result['installed_libs']}"
+        )
+    ok(f"shape OK: {len(result['installed_libs'])} libs (no crewai), "
        f"{len(result['honest_gaps'])} honest_gaps")
 
     # ===================================================================
