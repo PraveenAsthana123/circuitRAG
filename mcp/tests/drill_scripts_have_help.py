@@ -81,7 +81,11 @@ def main() -> int:
         print(f"✗ pre-step: {SCRIPTS_DIR} missing")
         return 1
 
-    py_scripts = sorted(SCRIPTS_DIR.glob("*.py"))
+    # __init__.py is a Python package marker by convention, not a CLI script;
+    # excluded from the help contract.
+    py_scripts = sorted(
+        s for s in SCRIPTS_DIR.glob("*.py") if s.name != "__init__.py"
+    )
     sh_scripts = sorted(SCRIPTS_DIR.glob("*.sh"))
     all_scripts = py_scripts + sh_scripts
 

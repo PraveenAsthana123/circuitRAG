@@ -9,6 +9,38 @@
 
 set -uo pipefail   # NOT -e: each step independent
 
+# Per CLAUDE.md §43 drill_scripts_have_help: every script supports --help
+case "${1:-}" in
+    -h|--help)
+        cat <<'EOF'
+ollama_health_repair.sh — Ollama daemon health-repair diagnostic
+
+USAGE
+    bash scripts/ollama_health_repair.sh
+
+DESCRIPTION
+    Diagnoses Ollama daemon health and attempts non-interactive repair.
+    Per CLAUDE.md §42 (operational autonomy boundary): sudo is gated.
+    The script tries `sudo -n` (passwordless) first; on failure it prints
+    the exact sudo commands the operator runs manually.
+
+DIAGNOSTICS
+    1. /api/tags    — daemon listening + installed-models count
+    2. /api/ps      — daemon process-management endpoint
+    3. /api/pull    — pull subsystem smoke test (id_ed25519 detection)
+
+EXIT CODES
+    0   all green (or fix succeeded via sudo -n)
+    1   daemon unreachable
+    2   operator-action required (sudo password needed)
+
+OPTIONS
+    -h, --help      Print this help and exit
+EOF
+        exit 0
+        ;;
+esac
+
 color() { printf "\033[%sm%s\033[0m" "$1" "$2"; }
 ok()    { color "32" "OK"; }
 warn()  { color "33" "WARN"; }
