@@ -441,6 +441,7 @@ def cycle_one(args: argparse.Namespace) -> str:
             append_apply_audit({
                 "id": issue_id, "outcome": "rejected",
                 "reason": "council subprocess returned non-zero",
+                "lane": "council",
             })
             return "council_failed"
         diff = extract_council_diff(issue_id)
@@ -450,6 +451,7 @@ def cycle_one(args: argparse.Namespace) -> str:
         append_apply_audit({
             "id": issue_id, "outcome": "rejected",
             "reason": "no clean unified diff in author output (fence missing OR tokenizer artifact)",
+            "lane": "council",
         })
         return "diff_unparseable"
 
