@@ -179,14 +179,14 @@ tools:
     purpose: "Event-driven k8s autoscaling"
     license: Apache-2.0
     priority: P2
-    status: planned
+    status: shipped
     install_path: "helm install keda kedacore/keda -n keda"
   - name: argo_rollouts
     category: self_healing
     purpose: "Canary / blue-green / automatic rollback"
     license: Apache-2.0
     priority: P2
-    status: planned
+    status: shipped
     install_path: "kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml"
   - name: keptn
     category: self_healing
@@ -356,7 +356,7 @@ tools:
     purpose: "Lightweight Kubernetes-native log aggregation"
     license: AGPL-3.0
     priority: P3
-    status: planned
+    status: shipped
     install_path: "helm install loki grafana/loki-stack"
   - name: elastic_stack
     category: observability
@@ -377,7 +377,7 @@ tools:
     purpose: "Grafana traces backend (Jaeger alternative)"
     license: AGPL-3.0
     priority: P3
-    status: planned
+    status: shipped
     install_path: "helm install tempo grafana/tempo"
 
   # ───────── Runtime security ─────────
@@ -386,7 +386,7 @@ tools:
     purpose: "Runtime threat detection (k8s / container)"
     license: Apache-2.0
     priority: P1
-    status: planned
+    status: shipped
     install_path: "helm install falco falcosecurity/falco -n falco"
   - name: tracee
     category: runtime_security
@@ -487,7 +487,7 @@ tools:
     purpose: "Kubernetes policy engine (admission control)"
     license: Apache-2.0
     priority: P1
-    status: planned
+    status: shipped
     install_path: "helm install kyverno kyverno/kyverno -n kyverno"
   - name: opa_gatekeeper
     category: k8s_security
@@ -615,7 +615,7 @@ tools:
     purpose: "GitOps controller — Git desired state ↔ cluster live state"
     license: Apache-2.0
     priority: P1
-    status: planned
+    status: shipped
     install_path: "kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
   - name: helm
     category: workflow_orchestration
@@ -631,7 +631,7 @@ tools:
     purpose: "OSS Kubernetes cost allocation"
     license: Apache-2.0
     priority: P1
-    status: planned
+    status: shipped
     install_path: "helm install opencost opencost/opencost"
   - name: kubecost_oss
     category: observability
@@ -655,7 +655,7 @@ tools:
     purpose: "MPL-2.0 fork of Vault (true OSS for those who reject BSL)"
     license: MPL-2.0
     priority: P1
-    status: planned
+    status: shipped
     install_path: "kubectl apply -f openbao manifests"
 
   # ───────── BI / Reporting (iter-99 addendum) ─────────
