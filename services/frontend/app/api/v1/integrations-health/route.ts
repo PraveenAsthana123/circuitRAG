@@ -159,10 +159,14 @@ const PROBES: Probe[] = [
   {
     name: "MinIO Console",
     category: "storage",
-    ui_url: process.env.NEXT_PUBLIC_MINIO_URL ?? "http://localhost:9001",
-    health_url: "http://localhost:9000/minio/health/live",
+    // Per docker-compose.yml port mapping: container 9000/9001 → host
+    // 59000/59001 (the leading 5 namespaces this dev stack so it can
+    // coexist with other stacks on the same host). The BFF runs on the
+    // HOST so it must use the host-side ports.
+    ui_url: process.env.NEXT_PUBLIC_MINIO_URL ?? "http://localhost:59001",
+    health_url: "http://localhost:59000/minio/health/live",
     env_var: "NEXT_PUBLIC_MINIO_URL",
-    description: "S3-compatible object store + console",
+    description: "S3-compatible object store + console (host ports 59000/59001)",
   },
   {
     name: "Elasticsearch",
@@ -208,10 +212,16 @@ const PROBES: Probe[] = [
   {
     name: "OTel collector",
     category: "telemetry",
-    ui_url: process.env.NEXT_PUBLIC_OTEL_URL ?? "http://localhost:13133",
-    health_url: "http://localhost:13133/",
+    // The collector listens on:
+    //   :4317 (OTLP gRPC)  :4318 (OTLP HTTP)  :9464 (Prometheus exporter)
+    //   :13133 (health_check extension — but NOT exposed to host in
+    //   this docker-compose setup; only :4317/4318/9464 are mapped).
+    // Probing 9464/ is the right test: it's the exporter port, reachable
+    // from the host, returns 200 when the collector is alive.
+    ui_url: process.env.NEXT_PUBLIC_OTEL_URL ?? "http://localhost:9464",
+    health_url: "http://localhost:9464/",
     env_var: "NEXT_PUBLIC_OTEL_URL",
-    description: "OTLP ingest + Prometheus re-export",
+    description: "OTLP ingest + Prometheus re-export (probed on :9464)",
   },
   {
     name: "cAdvisor",
