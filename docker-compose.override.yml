@@ -58,14 +58,15 @@ services:
   # Elasticsearch 8.x refuses to run as root + the bind-mounted ./data/elasticsearch
   # gets root ownership which uid 1000 (the elasticsearch user) cannot write.
   # Workaround: use a docker-managed named volume (override the bind mount).
-  # Filebeat + Kibana can run as root.
+  # Filebeat CAN run as root. Kibana CANNOT — it refuses to start as
+  # root with "Kibana should not be run as root. Use --allow-root to
+  # continue." The base docker-compose.yml sets kibana user: "1000:1000"
+  # which is the correct fix; this override file does NOT touch kibana.
   elasticsearch:
     user: "1000:0"
     volumes: !override
       - es_data:/usr/share/elasticsearch/data
   filebeat:
-    user: "0:0"
-  kibana:
     user: "0:0"
 
 volumes:

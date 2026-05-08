@@ -197,7 +197,7 @@ def main() -> int:
         idx = bff.find(f'name: "{tcp_svc}"')
         if idx < 0:
             fail(f"BFF missing TCP-only service entry: {tcp_svc}")
-        block = bff[idx : idx + 400]
+        block = bff[idx : idx + 800]
         if "tcp://" not in block:
             fail(f"{tcp_svc} block does NOT use tcp:// ui_url scheme")
         if "health_url:" in block and "undefined" not in block:

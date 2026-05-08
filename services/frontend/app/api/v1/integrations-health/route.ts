@@ -32,6 +32,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { Socket } from "node:net";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,9 +59,13 @@ interface Probe {
   name: string;
   category: Category;
   ui_url: string; // operator's "Open" target
-  health_url?: string; // empty = TCP_ONLY
+  health_url?: string; // empty = TCP probe (if ui_url is tcp://) or skip
   env_var?: string; // optional override of ui_url
   description: string;
+  // forceStatus overrides probe behavior — used when a service is
+  // intentionally not installed (e.g. Kiali w/o Istio) so the launcher
+  // shows GRAY (NOT_CONFIGURED) instead of alarming RED.
+  forceStatus?: Status;
 }
 
 interface ProbeResult {
@@ -136,7 +141,12 @@ const PROBES: Probe[] = [
     ui_url: process.env.NEXT_PUBLIC_KIALI_URL ?? "http://localhost:20001",
     health_url: "http://localhost:20001/healthz",
     env_var: "NEXT_PUBLIC_KIALI_URL",
-    description: "Service-mesh visualization (Istio companion)",
+    description: "Service-mesh visualization (Istio companion — Istio not installed in this stack; status forced to NOT_CONFIGURED until install)",
+    // Istio control plane is not deployed locally. Without Istio, Kiali
+    // would always probe UNREACHABLE (RED), which is misleading — it's
+    // not "down", it's "not yet installed". forceStatus: NOT_CONFIGURED
+    // shows GRAY instead. Remove this when Istio install lands.
+    forceStatus: "NOT_CONFIGURED",
   },
 
   // ── Storage ────────────────────────────────────────────────────────
@@ -193,9 +203,14 @@ const PROBES: Probe[] = [
   {
     name: "Kafka",
     category: "storage",
-    ui_url: "tcp://localhost:9092",
+    // Per docker-compose: 9092 is the INTERNAL listener (in-cluster only),
+    // 9094 is the EXTERNAL listener (host-machine clients). The BFF runs
+    // on the host, so it must probe :9094. The 9092 internal listener IS
+    // mapped to host port 59092 for visibility, but it's the same wire —
+    // 9094 is the correct connect target for host-side clients.
+    ui_url: "tcp://localhost:9094",
     health_url: undefined,
-    description: "Event backbone (TCP only)",
+    description: "Event backbone (TCP only — external listener on :9094)",
   },
 
   // ── LLM ────────────────────────────────────────────────────────────
@@ -258,6 +273,26 @@ interface CacheEntry {
 
 let _cache: CacheEntry | null = null;
 
+function tcpProbe(host: string, port: number, timeoutMs = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = new Socket();
+    const timer = setTimeout(() => {
+      sock.destroy();
+      resolve(false);
+    }, timeoutMs);
+    sock.once("connect", () => {
+      clearTimeout(timer);
+      sock.destroy();
+      resolve(true);
+    });
+    sock.once("error", () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    sock.connect(port, host);
+  });
+}
+
 async function probeOne(p: Probe): Promise<ProbeResult> {
   const base: ProbeResult = {
     name: p.name,
@@ -267,6 +302,36 @@ async function probeOne(p: Probe): Promise<ProbeResult> {
     status: "NOT_CONFIGURED",
     latency_ms: null,
   };
+
+  // forceStatus override — used for services intentionally not installed
+  // (e.g., Kiali without Istio) so we show GRAY instead of alarming RED.
+  if (p.forceStatus) {
+    return { ...base, status: p.forceStatus };
+  }
+
+  // No health_url + tcp:// ui_url → TCP socket probe (Postgres/Redis/Kafka).
+  // Returns HEALTHY if the port accepts connections, UNREACHABLE if refused.
+  // Same green/red traffic-light semantics as HTTP-probed services.
+  if (!p.health_url && p.ui_url.startsWith("tcp://")) {
+    try {
+      const url = new URL(p.ui_url);
+      const host = url.hostname;
+      const port = parseInt(url.port, 10);
+      const started = Date.now();
+      const ok = await tcpProbe(host, port, PROBE_TIMEOUT_MS);
+      const elapsed = Date.now() - started;
+      return {
+        ...base,
+        status: ok ? "HEALTHY" : "UNREACHABLE",
+        latency_ms: elapsed,
+        error: ok ? undefined : "tcp connect refused",
+      };
+    } catch (e: unknown) {
+      const err = e as Error;
+      return { ...base, status: "UNREACHABLE", error: err.message };
+    }
+  }
+
   if (!p.health_url) {
     return { ...base, status: "TCP_ONLY" };
   }
