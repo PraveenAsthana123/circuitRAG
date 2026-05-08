@@ -230,6 +230,11 @@ services:
     depends_on:
       - jaeger
       - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:13133/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   node-exporter:
     image: prom/node-exporter:v1.8.2
@@ -302,6 +307,11 @@ services:
       - "--web.enable-lifecycle"
     depends_on:
       - alertmanager
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:9090/-/ready >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
@@ -344,6 +354,14 @@ services:
       - ./infra/observability/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
       - ./infra/observability/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
       - ./infra/observability/grafana-dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - jaeger
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   jaeger:
     image: jaegertracing/all-in-one:1.60
@@ -354,6 +372,11 @@ services:
       - "14250:14250"  # collector gRPC (internal)
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:16686/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   # ──────────────────────────────────────────────────────────────────────
   # NGINX edge — LB + CDN-edge cache + TLS termination + rate limit
@@ -532,7 +555,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3000/api/public/health"]
+      test: ["CMD-SHELL", "wget -q -O- \"http://$$(hostname -i):3000/api/public/health\""]
       interval: 10s
       timeout: 3s
       retries: 5
