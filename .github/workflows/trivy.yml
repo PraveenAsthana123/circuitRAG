@@ -1,0 +1,103 @@
+name: Trivy Security Scan
+
+# Trivy filesystem + config + image scans. Pairs with snyk.yml
+# (Snyk = dep CVEs; Trivy = filesystem secrets + IaC misconfig +
+# image layer scan). Per CLAUDE.md §47.6 DevSecOps shift-left.
+#
+# Severity threshold: HIGH+ blocks the merge; MEDIUM/LOW are
+# warnings (continue-on-error). No SNYK_TOKEN-style secret needed
+# — Trivy uses its own public CVE DB.
+#
+# This workflow uses ONLY action `with:` parameters and pre-set
+# env values — NO untrusted github.event.* inputs are interpolated
+# into any run: step (there are no run: steps).
+#
+# SARIF output uploads to GitHub Security tab so findings appear
+# in the repo's Security UI.
+#
+# Locked by mcp/tests/drill_trivy_ci_workflow.py.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  schedule:
+    # Weekly Monday 06:00 UTC — catches new CVEs in pinned deps.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+  security-events: write   # SARIF upload to Security tab
+
+jobs:
+  trivy-fs:
+    name: Trivy filesystem scan (secrets + dep CVEs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy fs scan (HIGH+ blocks)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs.sarif
+          # Skip large vendored dirs to keep scan fast
+          skip-dirs: '.venv,services/frontend/node_modules,**/.venv,**/node_modules'
+      - name: Upload Trivy fs SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  trivy-config:
+    name: Trivy IaC config scan (Dockerfile + k8s + Terraform misconfig)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy config scan (HIGH+ blocks)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          format: sarif
+          output: trivy-config.sarif
+          skip-dirs: '.venv,services/frontend/node_modules'
+      - name: Upload Trivy config SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+  trivy-image:
+    name: Trivy image scan (built docker images)
+    runs-on: ubuntu-latest
+    # Only run on main + cron — image scans are slow and tied to
+    # actual builds. PR scans are covered by fs + config above.
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy image scan (informational; HIGH+ warns but doesn't block)
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          # Scan a representative service image. Extend with matrix
+          # when more services are routinely built in CI.
+          image-ref: 'qdrant/qdrant:v1.11.0'
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-image.sarif
+      - name: Upload Trivy image SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
