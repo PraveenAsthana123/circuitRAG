@@ -66,7 +66,10 @@ services:
       QDRANT__SERVICE__API_KEY: ${DOCUMIND_QDRANT_API_KEY:-}
       QDRANT__LOG_LEVEL: INFO
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget -q -O- http://localhost:6333/readyz || exit 1"]
+      # qdrant 1.11 image lacks wget/curl; bash IS present and supports
+      # /dev/tcp. Pure TCP-port-up — sufficient for restart-on-crash;
+      # HTTP-level semantics still covered by drill_qdrant_ulimit.
+      test: ["CMD", "bash", "-c", "</dev/tcp/localhost/6333"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -372,6 +375,11 @@ services:
     image: docker.elastic.co/kibana/kibana:8.15.0
     container_name: documind-kibana
     restart: unless-stopped
+    # Kibana refuses to run as root ("Kibana should not be run as root.
+    # Use --allow-root to continue.") — without this user: line the
+    # container crashlooped silently every few seconds, hammering the
+    # disk + restart counter. Image's built-in kibana user is uid 1000.
+    user: "1000:1000"
     environment:
       ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
       SERVER_PUBLICBASEURL: "http://localhost:5601"

@@ -60,8 +60,8 @@ operator-territory (§42-gated) actions documented at the end.
 | Service Mesh | Kiali (docker-compose, secondary) | ✅ shipped | `docker compose --profile mesh up kiali` (legacy fallback path) |
 | Eval / Guardrails AI | Output filtering + jailbreak defense | ✅ shipped (iter-35) | `python3 mcp/tests/drill_eval_engines_stage2.py` (`GUARDRAILS_EVAL_ENABLED=1`) |
 | Eval / Ragas | RAG-specific eval (faithfulness, relevance) | ✅ shipped (iter-35) | `python3 mcp/tests/drill_eval_engines_stage2.py` (`RAGAS_EVAL_ENABLED=1`) |
-| Eval / Giskard | LLM red-team + bias scan | ✅ shipped (iter-37) | `python3 mcp/tests/drill_eval_lakera_giskard_scaffolds.py` (`GISKARD_SCAN_ENABLED=1`) |
-| Eval / Lakera + Rebuff | Prompt-injection defense | ✅ shipped (iter-37) | `python3 mcp/tests/drill_eval_lakera_giskard_scaffolds.py` (`LAKERA_API_KEY`/`REBUFF_ENABLED=1`) |
+| Eval / Giskard | LLM red-team + bias scan | 🟡 partial — iter-37 scaffold; `pip install giskard` + Stage-2 wire pending | `python3 mcp/tests/drill_eval_lakera_giskard_scaffolds.py` (`GISKARD_SCAN_ENABLED=1`) |
+| Eval / Lakera + Rebuff | Prompt-injection defense | ✅ shipped — iter-37 scaffold + `bad7b2d` Stage-2 runtime wire into `rag_inference.ask` (records signal; doesn't block on its own — defense-in-depth alongside regex `injection_detector`) | `python3 mcp/tests/drill_rebuff_detector_stage1.py` + `python3 mcp/tests/drill_rebuff_in_inference_stage2.py` (`REBUFF_ENABLED=1`) |
 | Eval / DeepEval | Alternative RAG eval | ✅ shipped (iter-35) | `python3 mcp/tests/drill_eval_engines_stage2.py` (`DEEPEVAL_ENABLED=1`) |
 | Security / Snyk | Dep vulnerability scan | 🟡 OPERATOR | `.snyk` + `.github/workflows/snyk.yml` shipped; needs `SNYK_TOKEN` repository secret (operator action: GitHub → Settings → Secrets → New repository secret) |
 | Security / Bandit | Python static security | ✅ shipped | CI workflow `.github/workflows/ci.yml` step `Bandit (security)` |
