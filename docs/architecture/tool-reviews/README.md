@@ -23,14 +23,15 @@
 | InMemoryTaskStore | [in-memory-task-store.md](in-memory-task-store.md) | 🔍 reviewed | 1 | 1 |
 | PostgresTaskStore | [postgres-task-store.md](postgres-task-store.md) | 🔍 reviewed | 1 | 3 |
 | LangGraph DAG | [langgraph-flow.md](langgraph-flow.md) | 🔍 reviewed | 0 | 4 |
+| Kiali integration (4-commit) | [kiali-integration.md](kiali-integration.md) | ✅ shipped | 0 | 1 |
 
 ## Aggregate gap counts (post-CB fixes)
 
 | Severity | Count across all reviewed tools |
 |---|---|
 | **P0 — will-break-prod** | **6** (mostly: timeouts, identity-boundary, idempotency-under-retry, memory-bounds) |
-| **P1 — silent-degradation** | **41** (caching, retries, body-limits, slow-call detection across most agents) |
-| **P2 — operational** | ~30 (mostly: operator overrides, dashboards, runbooks per tool) |
+| **P1 — silent-degradation** | **42** (was 41; +1 anonymous-auth on Kiali — fine for local dev, blocker for shared environments) |
+| **P2 — operational** | ~36 (was ~30; +6 from Kiali resilience/observability backlog: jitter, slow-call detect, transition counters, stuck-state gauge, port-forward auto-recover, Prom-CB) |
 | **P3 — polish** | ~50 (callbacks, OTel, persistent state on non-CB tools) |
 
 ## How to read each review file
