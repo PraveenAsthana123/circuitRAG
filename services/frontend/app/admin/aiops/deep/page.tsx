@@ -323,6 +323,95 @@ def build_narrative(artifacts: list[IncidentArtifact],
     ],
     finalScript: 'AIOps incident summarization is a citation-traced LLM applied to operational artifacts. The scaffolding (prompt registry, audit row, redaction) already exists; the missing piece is the prompt class + citation verifier. Hallucination is the failure mode; citation discipline is the defence. Three drills lock that contract: citation-resolver (no hallucinated commits), redaction (no secrets in prompt), idempotency (same trigger → same narrative). Without those, the narrative is just noise.',
   },
+  {
+    slug: 'otel-everywhere-tool-coverage',
+    title: '3. OpenTelemetry must link with every tool (per-tool span coverage)',
+    status: 'partial',
+    coreConcept:
+      'Every tool, MCP server, agent, and retrieval / inference call emits OTel spans tagged with the canonical request_id baggage. Spans land in the OTel collector and propagate to Jaeger + Langfuse so a single correlation_id traces the full execution graph: API Gateway → Coordinator (Hub) → Specialist Agent → Tool Call → Retrieve → LLM → Council Review → HITL. Without per-tool span coverage, the audit row is a tombstone — you can prove a decision happened but cannot reconstruct WHY it took the path it did.',
+    problem:
+      'Per §47.6 + §48, every AI decision must be reproducible from the trace alone. Today the OTel collector runs (helm release shipped), Jaeger renders the span tree, Langfuse covers the LLM-specific layer — but rag_inference.py has 0 direct OTel refs (verified empirically), most MCP servers do not emit per-tool-call spans, and the Hybrid Architect just shipped without per-step OTel spans (only Langfuse). Result: the trace tree on a real request is patchy. Some hops show as spans; others are inferred from logs. An auditor cannot reconstruct the full path in minutes.',
+    whyThisApproach:
+      'OTel as the unifying telemetry standard means one wire format for every emitter. Adding it tool-by-tool keeps each integration small (one decorator + one trace.start_as_current_span call) without rewriting the world. The request_id propagation contract means downstream services see the same span context the gateway saw. Langfuse and Jaeger consume the same OTLP stream — one wire, two views.',
+    whenToUse: [
+      'Every new tool added to the MCP fleet (instrument BEFORE merge)',
+      'Every new agent role added to the council',
+      'Every new retrieval path (vector / graph / hybrid / cache)',
+      'Every external API call from inside an agent',
+      'Every breaker / fallback path (so the audit shows why fallback fired)',
+    ],
+    whenNotToUse: [
+      'Pure-static utilities (formatters, validators) — span overhead exceeds work cost',
+      'Hot tight loops inside a single span (sample, do not span-per-iteration)',
+      'Already-spanned code paths (no double-instrumentation)',
+    ],
+    input:
+      'OTel SDK + collector endpoint (OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318) + the request_id baggage from the gateway',
+    process: [
+      '1. SDK init: each service registers the OTLP exporter at startup; service.name attribute set to the service name',
+      '2. Span emission: every public entrypoint opens a top-level span; nested calls open child spans via context propagation',
+      '3. Attribute discipline: each span MUST carry request_id, tenant_id, actor, tool, latency_ms, outcome (per §57.6 canonical fields)',
+      '4. Baggage propagation: request_id flows through HTTP headers + Kafka headers + gRPC metadata so the trace tree stays connected across service boundaries',
+      '5. Sampling policy: head-based sampling for normal traffic; tail-based always-keep for errors / outcome=failed',
+      '6. Drill: every new tool ships with a drill that asserts at least one span is emitted with the canonical attributes',
+    ],
+    output:
+      'A connected span tree per request, queryable by correlation_id in Jaeger AND Langfuse. The audit row references the trace_id; clicking it surfaces the full execution graph.',
+    flowchart: `flowchart LR
+  user[User Request] --> gw[API Gateway: open root span]
+  gw --> coord[Coordinator span: hybrid_architect.process]
+  coord --> hub[Hub span: agent_cli.run_council]
+  coord --> council[Council span: council_engine.run_council]
+  hub --> tool1[MCP tool span: kubectl.list_pods]
+  hub --> tool2[MCP tool span: github.search_issues]
+  council --> agent1[Agent span: primary_expert.run_role]
+  council --> agent2[Agent span: opponent.run_role]
+  tool1 --> ret[Retrieve span: vector + graph]
+  ret --> llm[LLM span: ollama.generate]
+  llm --> coll[OTel Collector]
+  coord --> coll
+  coll --> jg[Jaeger UI]
+  coll --> lf[Langfuse UI]
+  jg --> ops[Ops dashboard]
+  lf --> ops`,
+    alternatives: [
+      { name: 'Logs only', tradeoff: 'No span tree; correlation requires grep + timestamps; audit reconstruction takes hours not minutes' },
+      { name: 'Vendor APM (Datadog / New Relic)', tradeoff: 'Per-host pricing scales badly; vendor lock-in; closed wire format' },
+      { name: 'Per-tool custom telemetry', tradeoff: 'N tools × N tracking systems; nothing connects across tool boundaries' },
+    ],
+    challenges: [
+      'Bolting OTel onto a service that started without it (refactor cost)',
+      'Avoiding span explosion (one span per row in a list = useless)',
+      'Sampling that keeps errors but reduces volume (head sampling alone drops failures)',
+      'Cross-runtime baggage (Python ↔ Node ↔ Go all need correct context propagation)',
+      'Cost: every span = bytes through the collector + Jaeger storage',
+    ],
+    edgeCases: [
+      { case: 'Tool error before span open → no span at all', solution: 'Open the span in a context manager BEFORE the tool call; record exception on the span' },
+      { case: 'Async call leaks context across event-loop boundaries', solution: 'Use OTel async context propagators; never copy baggage manually' },
+      { case: 'Span attribute exceeds size limit', solution: 'Truncate to ≤256 bytes; log full value; reference log_id in span attribute' },
+    ],
+    failureModes: [
+      { mode: 'Spans drop because collector is unreachable', detect: 'Jaeger query returns empty for a known-active request_id', recover: 'OTel SDK has retry + buffer; add circuit-breaker around exporter so emitter survives collector outage' },
+      { mode: 'request_id baggage truncated by intermediate proxy', detect: 'Trace tree splits — root span has no children visible', recover: 'Verify trust list on every proxy + load balancer; add a drill that asserts cross-service propagation' },
+      { mode: 'Sampling too aggressive — error trace missing', detect: 'Audit row references trace_id that returns 404 in Jaeger', recover: 'Tail-based always-keep sampler for outcome ∈ {failed, denied, timeout}' },
+    ],
+    monitoring: [
+      'Live integrations panel (this page → /admin/monitoring → IntegrationsHealth shows OTel collector reachability)',
+      'Per-service span count rate in Grafana (sudden drop = emitter broken)',
+      'Span duration histogram per tool (regression detection)',
+      'Trace completeness rate (root spans / leaf spans ratio over a sample window)',
+    ],
+    testing: [
+      'drill_otel_actor_outcome_attrs.py — locks the canonical span attributes (request_id / tenant_id / actor / tool / outcome)',
+      'drill_guardrail_otel_attributes.py — locks span attributes for guardrail decisions',
+      'drill_circuit_breaker_observability.py — locks breaker → OTel emission path',
+      'drill_observability_stack_provisioning.py — locks the stack itself is up',
+      'drill_aiops_deep_otel_topic.py — this topic exists with status=partial + lists canonical tool inventory (locked)',
+    ],
+    finalScript:
+      'OTel coverage is a per-tool obligation, not a platform feature. Every new tool that lands without a drill asserting it emits the canonical span attributes is technical debt with a half-life of days — the day someone needs the trace, it will be gone. The infrastructure is ready (collector + Jaeger + Langfuse all running). What is missing is the discipline: every PR that adds a tool MUST also add the OTel emission and a drill that locks it. The status here is "partial" until that discipline is enforced at PR-review time.',
+  },
 ];
 
 export default function AiopsDeepPage() {
