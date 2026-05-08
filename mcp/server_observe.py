@@ -18,16 +18,17 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from mcp.server_common import mount_metrics_endpoint, setup_server_otel
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_observe")
-
-from contextlib import asynccontextmanager
 
 # P0 #34: graceful shutdown — close any retained httpx clients on
 # SIGTERM. Each /tools/call already uses a context-managed AsyncClient
@@ -39,6 +40,8 @@ async def _lifespan(app):
     yield
 
 app = FastAPI(title="DocuMind MCP — Observe server (E3)", lifespan=_lifespan)
+setup_server_otel(app, service_name="mcp-server-observe")
+mount_metrics_endpoint(app)
 
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://localhost:9090").rstrip("/")
 PROM_TIMEOUT_SEC = float(os.environ.get("PROMETHEUS_TIMEOUT_SEC", "10"))
@@ -355,4 +358,4 @@ if __name__ == "__main__":  # pragma: no cover
     import uvicorn
 
     port = int(os.environ.get("MCP_OBSERVE_PORT", "8097"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104

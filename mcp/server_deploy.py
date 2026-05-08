@@ -14,15 +14,16 @@ from __future__ import annotations
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from mcp.server_common import mount_metrics_endpoint, setup_server_otel
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_deploy")
-
-from contextlib import asynccontextmanager
 
 # P0 #34: graceful shutdown hook. Today the deploy stub has no
 # upstream connections to close (canned responses); the lifespan
@@ -34,6 +35,8 @@ async def _lifespan(app):
     yield
 
 app = FastAPI(title="DocuMind MCP — Deploy server (D3 stub)", lifespan=_lifespan)
+setup_server_otel(app, service_name="mcp-server-deploy")
+mount_metrics_endpoint(app)
 
 
 TOOLS: list[dict[str, Any]] = [
@@ -124,4 +127,4 @@ if __name__ == "__main__":  # pragma: no cover
     import uvicorn
 
     port = int(os.environ.get("MCP_DEPLOY_PORT", "8096"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104

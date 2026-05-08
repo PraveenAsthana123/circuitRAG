@@ -19,7 +19,7 @@
 | 2 | Cancellation safety | ⚠ | no explicit cancel — async tasks rely on framework |
 | 3 | Atomic state transitions | n/a | no DB writes (read-only namespace) |
 | 4 | Race-free state writes | n/a | no shared mutable state |
-| 5 | Narrowed exception scope | ✗ | BACKLOG: narrow bare `except Exception:` to specific types |
+| 5 | Narrowed exception scope | ✓ | malformed HTML parser fallback catches `AssertionError` / `ValueError`, not broad `Exception` |
 | 6 | No silent fallback to fake data | ⚠ | verify _live_or_stub returns honest stub |
 
 ## B. Resilience
@@ -61,7 +61,7 @@
 | 24 | Auto-rollback signal (§47.7) | ⚠ | rollback path documented in catalog runbook entry |
 | 25 | Audit row carries tool state (§48.4) | ⚠ | audit lives in caller (orchestrator); verify request_id propagated |
 | 26 | Per-tenant scope (§41.3) | ✓ | tenant_id propagated |
-| 27 | OTel propagation | ✗ | BACKLOG: setup_server_otel(app) |
+| 27 | OTel propagation | ✓ | `setup_server_otel(app, service_name="mcp-server-research")` + `/metrics` mounted |
 | 28 | Sync + async share one lock | n/a | all async; no sync path |
 | 29 | No dead code | ⚠ | operator follow-up: ruff/mypy clean run on this file |
 | 30 | Public API drilled | ✓ | drill present |
@@ -87,7 +87,7 @@
 
 | Severity | Count | Items |
 |---|---|---|
-| P0 (will-break-prod) | 2 | 5, 27 |
+| P0 (will-break-prod) | 0 | — |
 | P1 (silent-degradation) | 21 | 2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 19, 23, 24, 25, 29, 32, 33, 36, 37, 39 |
 | P2 (operational-hazard) | 0 | — |
 | P3 (polish) | 0 | — |
@@ -96,7 +96,7 @@
 
 | Lens | Status | Gap |
 |---|---|---|
-| Developer | ✗ | P0 rows |
+| Developer | ⚠ | P1 rows remain; P0 closed |
 | Architect | ✓ | C4 position locked via `config/tool_catalog/research.yaml`; ADR via SDLC ADR set |
 | Eng Manager | ⚠ | SLO threshold per catalog `monitoring.metrics`; on-call route per `monitoring.alerts` |
 | Business User (basic) | n/a | server-internal tool |
@@ -105,5 +105,4 @@
 
 ## Brutal one-liner
 
-> 2 P0 row(s) blocking; close before claiming production-grade for this namespace.
-
+> P0 blockers closed; P1 hardening remains before claiming full production-grade for this namespace.

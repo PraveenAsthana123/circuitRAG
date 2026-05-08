@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from contextlib import asynccontextmanager
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlparse
@@ -34,10 +35,10 @@ import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from mcp.server_common import mount_metrics_endpoint, setup_server_otel
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_research")
-
-from contextlib import asynccontextmanager
 
 # P0 #34: graceful shutdown — close any retained httpx clients on
 # SIGTERM. Today each /tools/call uses a context-managed AsyncClient
@@ -52,6 +53,8 @@ async def _lifespan(app):
     pass
 
 app = FastAPI(title="DocuMind MCP — Research server (E6)", lifespan=_lifespan)
+setup_server_otel(app, service_name="mcp-server-research")
+mount_metrics_endpoint(app)
 
 
 MAX_URLS_PER_CALL = int(os.environ.get("MCP_RESEARCH_MAX_URLS", "5"))
@@ -175,7 +178,7 @@ def _extract_metadata(content: bytes, content_type: str) -> dict[str, str]:
         parser = _MetaExtractor()
         try:
             parser.feed(text)
-        except Exception:  # noqa: BLE001 — malformed HTML; degrade gracefully
+        except (AssertionError, ValueError):  # malformed HTML; degrade gracefully
             pass
         body = " ".join(parser.text_parts)
         body = re.sub(r"\s+", " ", body).strip()
@@ -312,4 +315,4 @@ if __name__ == "__main__":  # pragma: no cover
     import uvicorn
 
     port = int(os.environ.get("MCP_RESEARCH_PORT", "8094"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104

@@ -36,6 +36,8 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from mcp.server_common import mount_metrics_endpoint, setup_server_otel
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("mcp.server_tests")
 
@@ -66,6 +68,8 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="DocuMind MCP — Tests server (E2)", lifespan=_lifespan)
+setup_server_otel(app, service_name="mcp-server-tests")
+mount_metrics_endpoint(app)
 
 
 # Where the operator allows tools to scan. Env override:
@@ -440,4 +444,4 @@ if __name__ == "__main__":  # pragma: no cover
     import uvicorn
 
     port = int(os.environ.get("MCP_TESTS_PORT", "8095"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104
