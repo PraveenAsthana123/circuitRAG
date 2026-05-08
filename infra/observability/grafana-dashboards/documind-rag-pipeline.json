@@ -1,0 +1,129 @@
+{
+  "title": "Documind / RAG Pipeline (LangChain + LangGraph)",
+  "uid": "documind-rag-pipeline",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "tags": [
+    "documind",
+    "rag",
+    "langchain",
+    "langgraph"
+  ],
+  "_generator": "scripts/generate-grafana-dashboards.py",
+  "_kiali_deep_link": "Documind / RAG Pipeline (LangChain + LangGraph)",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "RAG requests/s (forward-contract)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(documind_rag_requests_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "RAG latency p95 (ms) (forward-contract)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(documind_rag_latency_ms_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Retrieval hit rate (forward-contract)",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "avg(documind_retrieval_hit_rate)",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "LangGraph node executions/s (forward-contract)",
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (node) (rate(documind_langgraph_node_executions_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    }
+  ]
+}

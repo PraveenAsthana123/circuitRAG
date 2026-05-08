@@ -1,0 +1,128 @@
+{
+  "title": "Documind / Vector DB (Qdrant)",
+  "uid": "documind-vector-db",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "tags": [
+    "documind",
+    "vector-db",
+    "qdrant"
+  ],
+  "_generator": "scripts/generate-grafana-dashboards.py",
+  "_kiali_deep_link": "Documind / Vector DB (Qdrant)",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Vector queries/s (forward-contract)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(documind_qdrant_queries_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Recall@k (forward-contract)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "avg(documind_retrieval_recall_at_k)",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Qdrant collection points",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "qdrant_collection_points_count",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Qdrant request duration p95 (ms)",
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(qdrant_request_duration_seconds_bucket[5m]))) * 1000",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    }
+  ]
+}

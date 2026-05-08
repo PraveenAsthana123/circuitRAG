@@ -1,0 +1,110 @@
+{
+  "title": "Documind / Logs (Elasticsearch / Kibana link)",
+  "uid": "documind-logs",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "tags": [
+    "documind",
+    "logs",
+    "elasticsearch",
+    "kibana"
+  ],
+  "_generator": "scripts/generate-grafana-dashboards.py",
+  "_kiali_deep_link": "Documind / Logs (Elasticsearch / Kibana link)",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Elasticsearch index docs (count)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "elasticsearch_indices_docs",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Elasticsearch index size (bytes)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "elasticsearch_indices_store_size_in_bytes",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Filebeat harvested files (rate)",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(filebeat_harvester_running[5m]))",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "title": "Open Kibana",
+      "url": "http://localhost:5601",
+      "type": "link",
+      "targetBlank": true
+    }
+  ]
+}

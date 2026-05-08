@@ -1,0 +1,82 @@
+{
+  "title": "Documind / Tempo Traces (when deployed)",
+  "uid": "documind-tempo",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "tags": [
+    "documind",
+    "tempo",
+    "tracing"
+  ],
+  "_generator": "scripts/generate-grafana-dashboards.py",
+  "_kiali_deep_link": "Documind / Tempo Traces (when deployed)",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Spans ingested/s (Tempo) (forward-contract)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(tempo_distributor_spans_received_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tempo ingester traces stored (forward-contract)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "tempo_ingester_traces_created_total",
+          "refId": "A",
+          "legendFormat": "{{__name__}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "title": "Open Jaeger (current trace UI)",
+      "url": "http://localhost:16686",
+      "type": "link",
+      "targetBlank": true
+    }
+  ]
+}
