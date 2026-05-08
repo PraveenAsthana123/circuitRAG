@@ -168,6 +168,37 @@ class RagInferenceService:
             self._adversarial.inspect_or_raise(request.query)
             st.output("clean")
 
+        # -0.55. Rebuff Stage-2 wire (per libs/py/documind_core/rebuff_detector.py).
+        # Defense-in-depth complement to the regex injection_detector below.
+        # When REBUFF_ENABLED=1 + token set, classify() runs heuristic + LLM
+        # + vector-DB layers; result lands in trace + audit row but does NOT
+        # block on its own (regex layer below is still the gate). Promotion
+        # to a blocking signal is a future Stage-3 iteration once the false-
+        # positive baseline is calibrated.
+        # Fail-OPEN per §47.6 — detector errors NEVER block the request.
+        # Per §47.6 (A11 Prompt Injection), §48 (guardrails_triggered audit).
+        with trace.step("rebuff_check") as st:
+            st.input(f"query[{len(request.query)}c]")
+            try:
+                import sys as _sys_rb  # noqa: PLC0415
+                _sys_rb.path.insert(0, "/mnt/deepa/rag/libs/py")
+                from documind_core.rebuff_detector import classify as _rb_classify  # noqa: PLC0415
+                from documind_core.rebuff_detector import is_available as _rb_avail  # noqa: PLC0415
+                if _rb_avail():
+                    _rb = _rb_classify(request.query)
+                    st.output(
+                        f"is_attack={_rb.is_attack} score={_rb.score:.3f}"
+                    )
+                    st.meta(
+                        rebuff_is_attack=_rb.is_attack,
+                        rebuff_score=_rb.score,
+                        rebuff_layers=_rb.detection_layers,
+                    )
+                else:
+                    st.output("rebuff_disabled")
+            except Exception as _exc_rb:  # noqa: BLE001 — fail-OPEN per §47.6
+                st.output(f"rebuff_error: {_exc_rb!s}"[:200])
+
         # -0.5. Prompt-injection scan on the user's query.
         with trace.step("injection_scan") as st:
             st.input(f"query[{len(request.query)}c]")
