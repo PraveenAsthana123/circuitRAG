@@ -38,6 +38,12 @@ gap). The Council alone is rigorous but expensive on every request
 | `critical` | `hub_council_deep_hitl` | ✅ | ✅ (deep=True) | ✅ flag |
 | _unknown_ | `hub_council_deep_hitl` (safest) | ✅ | ✅ (deep=True) | ✅ flag |
 
+Low-risk requests use a deterministic fast hub by default
+(`HYBRID_ARCHITECT_FAST_LOW_RISK=1`). This keeps the audit/history row
+but skips the four local Ollama calls used by the full hub pipeline.
+Set `HYBRID_ARCHITECT_FAST_LOW_RISK=0` to force the full hub even for
+low-risk requests.
+
 ## Use it
 
 ```python
@@ -84,7 +90,7 @@ if decision.requires_hitl:
 
 ## Drill — `mcp/tests/drill_hybrid_architect.py`
 
-8 steps, **5 negative assertions**:
+9 steps, **6 negative assertions**:
 
 1. POSITIVE — `_pick_lane()` covers all 4 risk tiers
 2. NEGATIVE — empty input raises `ValueError` BEFORE any LLM call
@@ -95,6 +101,8 @@ if decision.requires_hitl:
 6. NEGATIVE — council `reject` overrides hub, answer suppressed
 7. POSITIVE — history row written + `HybridDecision` JSON-serializable
 8. NEGATIVE — unknown risk defaults to safest lane
+9. POSITIVE+NEGATIVE — fast low-risk path preserves audit and skips
+   injected hub/council LLM calls
 
 The drill uses dependency-injected stubs for the hub + council
 functions so it doesn't need Ollama. The hub and council each have
@@ -111,16 +119,18 @@ python3 mcp/tests/drill_hybrid_architect.py
 # ALL 8 STEPS PASSED
 ```
 
-## Composes with (per §49)
+## Composes with
 
-- [agent_cli.orchestrator](../../agent_cli/orchestrator.py) — the hub
-- [council_engine.orchestrator](../../council_engine/orchestrator.py) — the council
-- [risk_classifier](../../risk_classifier/__init__.py) — the lane gate
-- [approval_agent](../../approval_agent/__init__.py) — already integrated by hub
-- [safety_store](../../safety_store/__init__.py) — every run persists
-- [scripts/langfuse_tracer.py](../../scripts/langfuse_tracer.py) — trace emission
-- [docs/runbooks/langfuse.md](langfuse.md) — Langfuse runbook
-- [mcp/tests/drill_hybrid_architect.py](../../mcp/tests/drill_hybrid_architect.py) — 8-step contract
+Per §49:
+
+- [`agent_cli.orchestrator`](../../agent_cli/orchestrator.py) — the hub
+- [`council_engine.orchestrator`](../../council_engine/orchestrator.py) — the council
+- [`risk_classifier`](../../risk_classifier/__init__.py) — the lane gate
+- [`approval_agent`](../../approval_agent/__init__.py) — already integrated by hub
+- [`safety_store`](../../safety_store/__init__.py) — every run persists
+- [`scripts/langfuse_tracer.py`](../../scripts/langfuse_tracer.py) — trace emission
+- [`docs/runbooks/langfuse.md`](langfuse.md) — Langfuse runbook
+- [`mcp/tests/drill_hybrid_architect.py`](../../mcp/tests/drill_hybrid_architect.py) — 8-step contract
 
 ## Brutal rule
 

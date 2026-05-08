@@ -8,9 +8,21 @@ Upload documents → they get parsed, chunked, embedded, graphed, indexed → us
 
 ---
 
-## Snapshot (2026-05-07, UTC / 2026-05-06 MDT — praveen-dev-linux-x86_64; Linux x86_64)
+## Snapshot (2026-05-08, UTC / 2026-05-08 MDT — praveen-dev-linux-x86_64; Linux x86_64)
 
-**Latest session adds (17 iterations / 16 commits across 2026-05-06/07)**:
+**Latest session adds (2026-05-08 operator refresh)**:
+
+- **Kiali shared/SOC2 auth path** — local minikube remains explicit
+  single-operator anonymous auth, while shared environments now have
+  `infra/kiali/kiali-cluster-config.oidc.yaml.template` with
+  `auth.strategy=openid`, `Secret/kiali` `oidc-secret`, and
+  `secret:kiali-signing-key:key` for session signing.
+- **MCP P0 review closure** — deploy / observe / research / tests now
+  wire OpenTelemetry propagation plus `/metrics`; research narrowed its
+  malformed-HTML exception scope. The P0 closure subset is locked by
+  `drill_tool_review_p0_closure.py`.
+
+**Prior session adds (17 iterations / 16 commits across 2026-05-06/07)**:
 
 - **§52-row-4 operator API gap closure** — 9 ❌ rows in the catalog
   matrix → 0 ❌. Provider-comparison registry (commit `917d776`) +
@@ -61,9 +73,9 @@ Upload documents → they get parsed, chunked, embedded, graphed, indexed → us
 | Python LOC (services + libs) | **22,453** | `find services libs -name '*.py' \| xargs wc -l` |
 | TypeScript LOC (frontend) | **56,621** | `find services/frontend -name '*.ts' -o -name '*.tsx' \| xargs wc -l` |
 | Go LOC (api-gateway + identity-svc + others) | **1,527** | `find services -name '*.go' \| xargs wc -l` |
-| **Drills** (regression contracts) | **417** | `ls mcp/tests/drill_*.py \| wc -l` |
-| **ADRs** (architectural decisions) | **25** | `ls docs/architecture/adr/0*.md \| wc -l` |
-| **Runbooks** (operator paths) | **18** | `ls docs/runbooks/*.md \| wc -l` |
+| **Drills** (regression contracts) | **497** | `ls mcp/tests/drill_*.py \| wc -l` |
+| **ADRs** (architectural decisions) | **29** | `ls docs/architecture/adr/0*.md \| wc -l` |
+| **Runbooks** (operator paths) | **28** | `ls docs/runbooks/*.md \| wc -l` |
 | **Deep-dive pages** (`/admin/*/deep`) | **45** | `find services/frontend/app/admin -name page.tsx -path '*/deep/*' \| wc -l` |
 | **verify-stack checks** (Tier 1-6 trust signal) | **47** | `bash scripts/verify-stack.sh \| grep -c '\[PASS\|\[FAIL'` |
 | Commits this session (after `1a69cf4`) | **16** | `git log --oneline 1a69cf4..HEAD \| wc -l` |

@@ -33,6 +33,7 @@ Use:
 from __future__ import annotations
 
 import argparse
+import importlib
 import importlib.util
 import json
 import shutil
@@ -49,6 +50,15 @@ def _check_python_dep(name: str) -> bool:
         return importlib.util.find_spec(name) is not None
     except (ImportError, ValueError):
         return False
+
+
+def _check_python_import(name: str) -> bool:
+    """Check if a Python module can actually import, not just resolve."""
+    try:
+        importlib.import_module(name)
+    except Exception:
+        return False
+    return True
 
 
 def _check_binary(name: str) -> bool:
@@ -124,9 +134,9 @@ CHECKS: dict[str, list[dict[str, Any]]] = {
         {"name": "guardrails-ai",  "check": ("py", "guardrails"),     "criticality": "low"},
         {"name": "deepeval",       "check": ("py", "deepeval"),       "criticality": "low"},
         # NOT in our stack per tool-evaluation
-        {"name": "crewai",         "check": ("py", "crewai"),         "criticality": "rejected"},
-        {"name": "agno",           "check": ("py", "agno"),           "criticality": "rejected"},
-        {"name": "praisonai",      "check": ("py", "praisonai"),      "criticality": "rejected"},
+        {"name": "crewai",         "check": ("py_import", "crewai"),  "criticality": "rejected"},
+        {"name": "agno",           "check": ("py_import", "agno"),    "criticality": "rejected"},
+        {"name": "praisonai",      "check": ("py_import", "praisonai"), "criticality": "rejected"},
     ],
     "python_observability": [
         {"name": "opentelemetry-sdk",     "check": ("py", "opentelemetry"),               "criticality": "high"},
@@ -185,6 +195,8 @@ def _run_check(check_spec: tuple[str, str]) -> bool:
     kind, target = check_spec
     if kind == "py":
         return _check_python_dep(target)
+    if kind == "py_import":
+        return _check_python_import(target)
     if kind == "bin":
         return _check_binary(target)
     if kind == "file":

@@ -96,7 +96,9 @@ include Phi-3.5-mini, Qwen2.5-0.5B, Llama-3.2-3B (heavier).
 | Mobile (high-end) | 5-20 |
 | Mobile (budget) | usually unsupported |
 
-## Composes with (per §49)
+## Composes with
+
+Per §49:
 
 - [`services/frontend/app/admin/private-chat/page.tsx`](../../services/frontend/app/admin/private-chat/page.tsx) — page wrapper
 - [`services/frontend/app/admin/private-chat/WebLLMChat.tsx`](../../services/frontend/app/admin/private-chat/WebLLMChat.tsx) — component
