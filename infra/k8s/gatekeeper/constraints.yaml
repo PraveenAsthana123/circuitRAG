@@ -1,0 +1,219 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sdocumindrequiredlabels
+  annotations:
+    metadata.gatekeeper.sh/title: "DocuMind Required Labels"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Require ownership and traceability labels on workload objects."
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sDocuMindRequiredLabels
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            labels:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sdocumindrequiredlabels
+
+        violation[{"msg": msg}] {
+          required := {label | label := input.parameters.labels[_]}
+          provided := {label | input.review.object.metadata.labels[label]}
+          missing := required - provided
+          count(missing) > 0
+          msg := sprintf("missing required labels: %v", [missing])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDocuMindRequiredLabels
+metadata:
+  name: documind-workloads-require-labels
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "StatefulSet", "DaemonSet"]
+      - apiGroups: [""]
+        kinds: ["Pod", "Service", "ConfigMap"]
+    namespaces: ["documind"]
+  parameters:
+    labels:
+      - app.kubernetes.io/name
+      - app.kubernetes.io/part-of
+      - app.kubernetes.io/managed-by
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sdocumindnohostnamespace
+  annotations:
+    metadata.gatekeeper.sh/title: "DocuMind No Host Namespace"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Block pods that join host network, PID, or IPC namespaces."
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sDocuMindNoHostNamespace
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sdocumindnohostnamespace
+
+        violation[{"msg": "hostNetwork is forbidden"}] {
+          input.review.object.spec.hostNetwork == true
+        }
+
+        violation[{"msg": "hostPID is forbidden"}] {
+          input.review.object.spec.hostPID == true
+        }
+
+        violation[{"msg": "hostIPC is forbidden"}] {
+          input.review.object.spec.hostIPC == true
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDocuMindNoHostNamespace
+metadata:
+  name: documind-pods-no-host-namespace
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["documind"]
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sdocumindnonrootreadonly
+  annotations:
+    metadata.gatekeeper.sh/title: "DocuMind Non-root Read-only Runtime"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Require non-root containers, read-only root filesystem, and no privilege escalation."
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sDocuMindNonRootReadonly
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sdocumindnonrootreadonly
+
+        containers[c] {
+          c := input.review.object.spec.containers[_]
+        }
+
+        containers[c] {
+          c := input.review.object.spec.initContainers[_]
+        }
+
+        violation[{"msg": msg}] {
+          c := containers[_]
+          not c.securityContext.runAsNonRoot
+          msg := sprintf("container %q must set securityContext.runAsNonRoot=true", [c.name])
+        }
+
+        violation[{"msg": msg}] {
+          c := containers[_]
+          c.securityContext.allowPrivilegeEscalation != false
+          msg := sprintf("container %q must set allowPrivilegeEscalation=false", [c.name])
+        }
+
+        violation[{"msg": msg}] {
+          c := containers[_]
+          c.securityContext.readOnlyRootFilesystem != true
+          msg := sprintf("container %q must set readOnlyRootFilesystem=true", [c.name])
+        }
+
+        violation[{"msg": msg}] {
+          c := containers[_]
+          c.securityContext.privileged == true
+          msg := sprintf("container %q must not be privileged", [c.name])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDocuMindNonRootReadonly
+metadata:
+  name: documind-pods-nonroot-readonly
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["documind"]
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sdocumindallowedregistries
+  annotations:
+    metadata.gatekeeper.sh/title: "DocuMind Allowed Image Registries"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Allow only explicitly approved image registry prefixes."
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sDocuMindAllowedRegistries
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            prefixes:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sdocumindallowedregistries
+
+        containers[c] {
+          c := input.review.object.spec.containers[_]
+        }
+
+        containers[c] {
+          c := input.review.object.spec.initContainers[_]
+        }
+
+        allowed_image(image) {
+          prefix := input.parameters.prefixes[_]
+          startswith(image, prefix)
+        }
+
+        violation[{"msg": msg}] {
+          c := containers[_]
+          not allowed_image(c.image)
+          msg := sprintf("container %q image %q is not from an allowed registry", [c.name, c.image])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDocuMindAllowedRegistries
+metadata:
+  name: documind-pods-allowed-registries
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["documind"]
+  parameters:
+    prefixes:
+      - "ghcr.io/documind/"
+      - "docker.io/library/"
+      - "openpolicyagent/"
+      - "istio/"
