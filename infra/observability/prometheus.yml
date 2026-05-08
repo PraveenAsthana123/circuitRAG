@@ -45,6 +45,11 @@ scrape_configs:
     static_configs:
       - targets: ["otel-collector:9464"]
 
+  # Postgres exporter (postgresql connection / query / lock metrics)
+  - job_name: postgres-exporter
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
   # Application services.
   # api-gateway is a true app-port /metrics target.
   - job_name: api-gateway

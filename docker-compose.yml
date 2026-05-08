@@ -243,6 +243,29 @@ services:
     volumes:
       - "/:/host:ro,rslave"
 
+  # Postgres exporter — Prometheus metrics for the postgres container.
+  # Connects to documind-postgres via the docker network using the same
+  # credentials as the app services. Per CLAUDE.md §47.6 (observability
+  # is first-class) — without this, postgres latency / connection /
+  # query-cache metrics are invisible to Grafana.
+  # Locked by mcp/tests/drill_postgres_exporter.py.
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: documind-postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DOCUMIND_PG_USER:-documind}:${DOCUMIND_PG_PASSWORD:-documind}@postgres:5432/${DOCUMIND_PG_DB:-documind}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9187/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: documind-cadvisor
