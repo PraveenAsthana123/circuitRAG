@@ -2,12 +2,15 @@
 fastapi>=0.115,<0.116
 uvicorn[standard]>=0.30,<0.33
 httpx>=0.27,<0.28
-# LangGraph + langchain-core pinned to exact versions per global §16
-# (reproducible builds). Drift permits subtle agent-behaviour change
-# without code review. Bumps are deliberate one-line PRs with a Phase-N
-# note in the commit and locked by drill_langgraph_pin.
-langgraph==1.1.10
-langchain-core==1.3.2
+# langgraph + langchain-core were pinned here as future-readiness for
+# an orchestrator rewrite that never landed. Empirical: zero `import
+# langgraph` / `from langgraph` anywhere in services/ libs/ scripts/.
+# Per §57.7 honesty — future-readiness without a date is technical
+# debt that costs ~50 MB of wheel downloads per `pip install` for no
+# behavioural benefit. When/if the orchestrator actually adopts
+# langgraph, re-add the pins as a separate iteration with the
+# accompanying drill that empirically verifies an `import langgraph`
+# from production code.
 pydantic>=2.7,<3
 pytest>=8
 pytest-asyncio>=0.23
