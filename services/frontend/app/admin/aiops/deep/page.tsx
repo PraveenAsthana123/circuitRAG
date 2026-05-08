@@ -411,6 +411,17 @@ def build_narrative(artifacts: list[IncidentArtifact],
     ],
     finalScript:
       'OTel coverage is a per-tool obligation, not a platform feature. Every new tool that lands without a drill asserting it emits the canonical span attributes is technical debt with a half-life of days — the day someone needs the trace, it will be gone. The infrastructure is ready (collector + Jaeger + Langfuse all running). What is missing is the discipline: every PR that adds a tool MUST also add the OTel emission and a drill that locks it. The status here is "partial" until that discipline is enforced at PR-review time.',
+    // Empty arrays for optional Topic fields — UniversalDeepDive's
+    // .map() calls on these are unguarded at lines 438/525/608/681/698,
+    // so an undefined value crashes the render with
+    // "Cannot read properties of undefined (reading 'map')".
+    // Empty arrays are safe no-ops; a follow-up iteration will patch
+    // UniversalDeepDive to add the conditional guards directly.
+    limitations: [],
+    implementationSteps: [],
+    solutions: [],
+    testScenarios: [],
+    testData: [],
   },
 ];
 
