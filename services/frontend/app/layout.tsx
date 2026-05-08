@@ -7,6 +7,7 @@ import ClientErrorReporter from '../components/ClientErrorReporter';
 import ErrorBoundary from '../components/ErrorBoundary';
 import ErrorTrackerInit from '../components/ErrorTrackerInit';
 import PageDownloadBar from '../components/PageDownloadBar';
+import SentryInit from '../components/SentryInit';
 
 export const metadata: Metadata = {
   title: 'DocuMind',
@@ -25,6 +26,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             window.__errors with getSummary / getReport / clear. No-op
             in production. */}
         <ErrorTrackerInit />
+        {/* Sentry RUM — production-grade error + Web Vitals + release
+            tracking. Offline-safe: no-op when NEXT_PUBLIC_SENTRY_DSN
+            is unset. Composes with ClientErrorReporter (defense in
+            depth, both run in parallel). Per §47.6 / §57.1. */}
+        <SentryInit />
         <ErrorBoundary>
           <div className="app-shell">
             <aside className="sidebar" aria-label="Primary navigation">
