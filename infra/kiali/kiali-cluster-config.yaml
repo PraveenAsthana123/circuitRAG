@@ -1,0 +1,408 @@
+---
+# Kiali advanced cluster ConfigMap — overrides the default config installed
+# by the upstream Istio kiali addon (samples/addons/kiali.yaml). This file
+# wires Kiali to the FULL circuitRAG observability + tooling stack so the
+# Kiali console becomes the single pane of glass for:
+#
+#   • Istio mesh control plane (istiod / gateways / sidecars)
+#   • Prometheus metrics            (host.minikube.internal:9090)
+#   • Grafana dashboards            (host.minikube.internal:3001)
+#   • Jaeger distributed tracing    (host.minikube.internal:16686)
+#   • OpenTelemetry collector       (visible via OTel-exported metrics)
+#   • Custom dashboards for every circuitRAG component:
+#       — API gateway, load balancer (nginx/Istio ingress)
+#       — Circuit breaker (resilience4j-py + Istio outlier-detection)
+#       — Paperclip MCP, Polysai, hybrid-architect, council engine
+#       — LangChain / LangGraph orchestration
+#       — Vector DB (Qdrant), Cache DB (Redis), Chunking pipeline
+#       — Output evaluation: Ragas / Giskard / DeepEval
+#       — Kibana / Elasticsearch logs (linked, not embedded)
+#       — Tempo (when deployed; gracefully tolerated when absent)
+#
+# WHY THIS IS A CLUSTER CONFIGMAP, NOT A FILE-MOUNT (legacy infra/kiali/kiali.yaml):
+#   The legacy `infra/kiali/kiali.yaml` was designed for a docker-compose
+#   `--profile mesh` install of Kiali. That install path never worked
+#   (Kiali v1.86 hard-blocks startup on `unable to load in-cluster
+#   configuration` outside K8s). The canonical install — Kiali pod inside
+#   minikube via the official addon — uses an in-cluster ConfigMap. This
+#   file IS that ConfigMap and is the live source of truth.
+#
+# APPLY AFTER kubectl apply -f kiali-addon.yaml + minikube up:
+#   kubectl --context=$MINIKUBE_PROFILE apply -f infra/kiali/kiali-cluster-config.yaml
+#   kubectl --context=$MINIKUBE_PROFILE -n istio-system rollout restart deploy/kiali
+#
+# Drilled by mcp/tests/drill_kiali_advanced_integration.py.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kiali
+  namespace: istio-system
+  labels:
+    app: kiali
+    app.kubernetes.io/instance: kiali
+    app.kubernetes.io/name: kiali
+    app.kubernetes.io/part-of: kiali
+    app.kubernetes.io/version: v1.86.0
+data:
+  config.yaml: |
+    auth:
+      strategy: anonymous
+      openid: {}
+      openshift:
+        client_id_prefix: kiali
+
+    deployment:
+      accessible_namespaces:
+        - "**"
+      view_only_mode: false
+      logger:
+        log_format: json
+        log_level: info
+
+    server:
+      port: 20001
+      web_root: /kiali
+      observability:
+        metrics:
+          enabled: true
+          port: 9090
+
+    login_token:
+      # Dev-only signing key — production overrides via Secret. 32 hex
+      # chars = 16 bytes (Kiali requires exactly 16/24/32 byte length).
+      signing_key: "aed516789d7e2dd69b2edd366c1aa2c3"
+
+    istio_namespace: istio-system
+
+    kiali_feature_flags:
+      certificates_information_indicators:
+        enabled: true
+        secrets:
+          - cacerts
+          - istio-ca-secret
+      disabled_features: []
+      validations:
+        ignore:
+          - KIA1301
+
+    # ─── External services — wires Kiali to the docker-compose stack ─────
+    # All URLs resolve via minikube's `host.minikube.internal` DNS entry,
+    # which points at the host machine (192.168.99.1 on the dm-istio
+    # profile's KVM/Docker network). Verified reachable by:
+    #   kubectl run reachprobe --rm -i --image=curlimages/curl --command -- \
+    #     sh -c 'curl -sf http://host.minikube.internal:9090/-/healthy'
+    external_services:
+      istio:
+        config_map_name: istio
+        istio_sidecar_injector_config_map_name: istio-sidecar-injector
+        istiod_deployment_name: istiod
+        root_namespace: istio-system
+
+      prometheus:
+        url: http://host.minikube.internal:9090
+        # Prometheus aggregates metrics from:
+        #   - Istio sidecars + control plane (istio_* metrics)
+        #   - OTel collector exporter on :9464 (documind_* metrics)
+        #   - cAdvisor + node-exporter (container_* / node_* metrics)
+        # → Kiali charts read all three label families.
+
+      grafana:
+        enabled: true
+        in_cluster_url: http://host.minikube.internal:3001
+        url: http://localhost:3001
+        auth:
+          type: basic
+          username: "admin"
+          password: "admin"  # dev-only; prod overrides via Secret
+        # Dashboards Kiali links to from per-service deep-dives. Each
+        # entry's `name` MUST match a Grafana dashboard title exactly.
+        dashboards:
+          - name: "Documind / Istio Service"
+          - name: "Documind / Istio Workload"
+          - name: "Documind / RAG Pipeline (LangChain + LangGraph)"
+          - name: "Documind / Vector DB (Qdrant)"
+          - name: "Documind / Cache (Redis)"
+          - name: "Documind / Chunking Pipeline"
+          - name: "Documind / Output Evaluation (Ragas + Giskard + DeepEval)"
+          - name: "Documind / Circuit Breaker"
+          - name: "Documind / API Gateway + Load Balancer"
+          - name: "Documind / Hybrid Architect (Council Engine)"
+          - name: "Documind / Paperclip (MCP)"
+          - name: "Documind / Polysai"
+          - name: "Documind / OTel Collector"
+          - name: "Documind / Logs (Elasticsearch / Kibana link)"
+          - name: "Documind / Tempo Traces (when deployed)"
+
+      tracing:
+        enabled: true
+        provider: jaeger
+        in_cluster_url: http://host.minikube.internal:16686
+        url: http://localhost:16686
+        # OTLP grpc disabled here — Jaeger 1.56+ accepts OTLP on 4317
+        # but Kiali-1.86 reads Jaeger HTTP API for span lookups.
+        use_grpc: false
+        # Tag namespace=service.name lets Kiali link mesh graph nodes
+        # to trace lookups (Jaeger query string filter).
+        namespace_selector: true
+
+      custom_dashboards:
+        enabled: true
+
+    # ─── Custom dashboards for circuitRAG components ─────────────────────
+    # These appear in Kiali under each workload's "Custom Dashboards" tab.
+    # Dashboards are driven by Prometheus metrics emitted by the OTel
+    # collector (documind_* metric family). When a metric isn't yet
+    # exported, the dashboard renders empty — declared here as a
+    # FORWARD CONTRACT so service authors know what label namespace to
+    # adopt. Drilled by drill_kiali_advanced_integration.py step 6.
+    custom_dashboards:
+      - name: documind-rag-pipeline
+        title: "circuitRAG · RAG Pipeline (LangChain/LangGraph)"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "RAG requests (req/s)"
+              unit: "rps"
+              spans: 4
+              metric_name: "documind_rag_requests_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "RAG p95 latency"
+              unit: "ms"
+              spans: 4
+              metric_name: "documind_rag_latency_ms"
+              aggregator: p95
+              data_type: histogram
+          - chart:
+              name: "Retrieval hit rate"
+              unit: "ratio"
+              spans: 4
+              metric_name: "documind_retrieval_hit_rate"
+              aggregator: avg
+              data_type: raw
+
+      - name: documind-vector-db
+        title: "circuitRAG · Vector DB (Qdrant)"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "Vector queries"
+              unit: "rps"
+              spans: 4
+              metric_name: "documind_qdrant_queries_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "Vector recall@k"
+              unit: "ratio"
+              spans: 4
+              metric_name: "documind_retrieval_recall_at_k"
+              aggregator: avg
+              data_type: raw
+
+      - name: documind-cache-db
+        title: "circuitRAG · Cache (Redis)"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "Cache hits"
+              unit: "rps"
+              spans: 6
+              metric_name: "documind_cache_hits_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "Cache hit ratio"
+              unit: "ratio"
+              spans: 6
+              metric_name: "documind_cache_hit_ratio"
+              aggregator: avg
+              data_type: raw
+
+      - name: documind-chunking
+        title: "circuitRAG · Chunking Pipeline"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "Chunks produced"
+              unit: "rps"
+              spans: 6
+              metric_name: "documind_chunks_produced_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "Chunk size p95"
+              unit: "tokens"
+              spans: 6
+              metric_name: "documind_chunk_size_tokens"
+              aggregator: p95
+              data_type: histogram
+
+      - name: documind-output-eval
+        title: "circuitRAG · Output Evaluation (Ragas + Giskard + DeepEval)"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "Faithfulness (Ragas)"
+              unit: "score"
+              spans: 4
+              metric_name: "documind_eval_ragas_faithfulness"
+              aggregator: avg
+              data_type: raw
+          - chart:
+              name: "Answer relevance (Ragas)"
+              unit: "score"
+              spans: 4
+              metric_name: "documind_eval_ragas_answer_relevance"
+              aggregator: avg
+              data_type: raw
+          - chart:
+              name: "Hallucination (Giskard)"
+              unit: "score"
+              spans: 4
+              metric_name: "documind_eval_giskard_hallucination"
+              aggregator: avg
+              data_type: raw
+          - chart:
+              name: "Toxicity (DeepEval)"
+              unit: "score"
+              spans: 4
+              metric_name: "documind_eval_deepeval_toxicity"
+              aggregator: avg
+              data_type: raw
+
+      - name: documind-circuit-breaker
+        title: "circuitRAG · Circuit Breaker"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "Breaker state"
+              unit: "state"
+              spans: 4
+              metric_name: "documind_breaker_state"
+              aggregator: max
+              data_type: raw
+          - chart:
+              name: "Trips per minute"
+              unit: "rpm"
+              spans: 4
+              metric_name: "documind_breaker_trips_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "Half-open success ratio"
+              unit: "ratio"
+              spans: 4
+              metric_name: "documind_breaker_half_open_success_ratio"
+              aggregator: avg
+              data_type: raw
+
+      - name: documind-api-gateway
+        title: "circuitRAG · API Gateway + Load Balancer"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "Requests by status"
+              unit: "rps"
+              spans: 4
+              metric_name: "documind_gateway_requests_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "Upstream latency p95"
+              unit: "ms"
+              spans: 4
+              metric_name: "documind_gateway_upstream_latency_ms"
+              aggregator: p95
+              data_type: histogram
+          - chart:
+              name: "Active connections"
+              unit: "conns"
+              spans: 4
+              metric_name: "documind_gateway_active_connections"
+              aggregator: avg
+              data_type: raw
+
+      - name: documind-hybrid-architect
+        title: "circuitRAG · Hybrid Architect (Council Engine)"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "Council rounds completed"
+              unit: "rps"
+              spans: 6
+              metric_name: "documind_council_rounds_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "Apply rate (7d window)"
+              unit: "ratio"
+              spans: 6
+              metric_name: "documind_council_apply_rate"
+              aggregator: avg
+              data_type: raw
+
+      - name: documind-paperclip-mcp
+        title: "circuitRAG · Paperclip (MCP)"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "MCP tool invocations"
+              unit: "rps"
+              spans: 4
+              metric_name: "documind_mcp_invocations_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "Scope-deny events"
+              unit: "rps"
+              spans: 4
+              metric_name: "documind_mcp_scope_denied_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "MCP latency p95"
+              unit: "ms"
+              spans: 4
+              metric_name: "documind_mcp_latency_ms"
+              aggregator: p95
+              data_type: histogram
+
+      - name: documind-polysai
+        title: "circuitRAG · Polysai (Multi-LLM Router)"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "LLM requests by model"
+              unit: "rps"
+              spans: 6
+              metric_name: "documind_polysai_requests_total"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "Token cost p95"
+              unit: "usd"
+              spans: 6
+              metric_name: "documind_polysai_cost_usd"
+              aggregator: p95
+              data_type: histogram
+
+      - name: documind-otel-collector
+        title: "circuitRAG · OpenTelemetry Collector"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "OTel receive rate"
+              unit: "rps"
+              spans: 6
+              metric_name: "otelcol_receiver_accepted_spans"
+              aggregator: sum
+              data_type: rate
+          - chart:
+              name: "OTel export errors"
+              unit: "rps"
+              spans: 6
+              metric_name: "otelcol_exporter_send_failed_spans"
+              aggregator: sum
+              data_type: rate

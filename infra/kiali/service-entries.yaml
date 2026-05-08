@@ -1,0 +1,311 @@
+---
+# Istio ServiceEntries that expose the docker-compose services to the
+# minikube/dm-istio mesh so Kiali can graph them. Without these, Kiali
+# only sees in-cluster pods (istiod / gateways / kiali); compose
+# services like prometheus, grafana, jaeger, kibana, otel collector,
+# paperclip MCP, hybrid-architect, etc. are invisible to the mesh.
+#
+# RESOLUTION: DNS + endpoint host.minikube.internal — Istio resolves the
+# endpoint hostname via cluster CoreDNS on every request, then dispatches
+# to that IP. (`STATIC` rejects hostnames as endpoint addresses; only
+# IP literals are allowed there. `DNS` accepts hostnames AND tolerates
+# IP changes — important on dev hosts where the host IP can rotate.)
+# LOCATION: MESH_EXTERNAL since these services run outside the K8s mesh
+# proper.
+#
+# These entries are READ-ONLY from the mesh's perspective: the docker-
+# compose services don't have envoy sidecars and don't emit Istio mesh
+# telemetry, so Kiali's "graph" view shows them as external nodes
+# rather than mesh members. The CONSOLE links + dashboards configured
+# in kiali-cluster-config.yaml give the operator the full integration.
+#
+# Drilled by mcp/tests/drill_kiali_advanced_integration.py step 5.
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-prometheus
+  namespace: istio-system
+  labels:
+    app: prometheus
+    documind.tool: prometheus
+spec:
+  hosts:
+    - prometheus.documind.external
+  ports:
+    - number: 9090
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 9090
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-grafana
+  namespace: istio-system
+  labels:
+    app: grafana
+    documind.tool: grafana
+spec:
+  hosts:
+    - grafana.documind.external
+  ports:
+    - number: 3001
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 3001
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-jaeger
+  namespace: istio-system
+  labels:
+    app: jaeger
+    documind.tool: jaeger
+spec:
+  hosts:
+    - jaeger.documind.external
+  ports:
+    - number: 16686
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 16686
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-kibana
+  namespace: istio-system
+  labels:
+    app: kibana
+    documind.tool: kibana
+spec:
+  hosts:
+    - kibana.documind.external
+  ports:
+    - number: 5601
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 5601
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-elasticsearch
+  namespace: istio-system
+  labels:
+    app: elasticsearch
+    documind.tool: elasticsearch
+spec:
+  hosts:
+    - elasticsearch.documind.external
+  ports:
+    - number: 9200
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 9200
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-otel-collector
+  namespace: istio-system
+  labels:
+    app: otel-collector
+    documind.tool: opentelemetry
+spec:
+  hosts:
+    - otel.documind.external
+  ports:
+    - number: 4318
+      name: http
+      protocol: HTTP
+    - number: 9464
+      name: prometheus
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 4318
+        prometheus: 9464
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-qdrant
+  namespace: istio-system
+  labels:
+    app: qdrant
+    documind.tool: vector-db
+spec:
+  hosts:
+    - qdrant.documind.external
+  ports:
+    - number: 6333
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 6333
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-redis
+  namespace: istio-system
+  labels:
+    app: redis
+    documind.tool: cache-db
+spec:
+  hosts:
+    - redis.documind.external
+  ports:
+    - number: 56379
+      name: tcp
+      protocol: TCP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        tcp: 56379
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-postgres
+  namespace: istio-system
+  labels:
+    app: postgres
+    documind.tool: postgres
+spec:
+  hosts:
+    - postgres.documind.external
+  ports:
+    - number: 55432
+      name: tcp
+      protocol: TCP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        tcp: 55432
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-paperclip-mcp
+  namespace: istio-system
+  labels:
+    app: paperclip
+    documind.tool: paperclip-mcp
+spec:
+  hosts:
+    - paperclip.documind.external
+  ports:
+    - number: 8090
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 8090
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-hybrid-architect
+  namespace: istio-system
+  labels:
+    app: hybrid-architect
+    documind.tool: hybrid-architect
+spec:
+  hosts:
+    - hybrid-architect.documind.external
+  ports:
+    - number: 8095
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 8095
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-agent-orchestrator
+  namespace: istio-system
+  labels:
+    app: agent-orchestrator
+    documind.tool: agent-orchestrator
+spec:
+  hosts:
+    - agent-orchestrator.documind.external
+  ports:
+    - number: 8050
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 8050
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: documind-langfuse
+  namespace: istio-system
+  labels:
+    app: langfuse
+    documind.tool: langfuse
+spec:
+  hosts:
+    - langfuse.documind.external
+  ports:
+    - number: 3008
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+  endpoints:
+    - address: host.minikube.internal
+      ports:
+        http: 3008
