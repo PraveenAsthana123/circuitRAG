@@ -45,7 +45,17 @@ LOOP_DIR = REPO / ".loop"
 RESULTS_PATH = LOOP_DIR / "ollama_smoke_results.json"
 
 OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-DEFAULT_TIMEOUT = 60.0
+# Default 180s — empirically required for 7-8B models on the dev box.
+# Smoke runs with keep_alive=0 to release VRAM after each test, which
+# means EVERY smoke is a cold-load (disk→VRAM) plus inference. On CPU
+# inference for an 8B model this routinely hits 60-90s; with batch
+# loading from a slow disk it can hit 120s. 180s gives headroom while
+# still failing fast on genuinely-broken models.
+#
+# The prior 60.0 default tagged 5 of 15 models TIMEOUT for cold-load
+# reasons, not actual failure (commits d3ca211→eab8204 era).
+# Override via CLI: --timeout 60  (for warm-cache fast-fail scenarios).
+DEFAULT_TIMEOUT = 180.0
 EMBED_FAMILY_HINTS = ("embed", "embedding", "nomic-embed")
 
 
