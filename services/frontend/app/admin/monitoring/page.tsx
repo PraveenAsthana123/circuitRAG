@@ -14,6 +14,7 @@ import {
   type HealthUpstreamsResponse,
   type RuntimeStatusResponse,
 } from '../../../lib/api';
+import IntegrationsHealth from './IntegrationsHealth';
 
 const REFRESH_INTERVAL_MS = 10_000;
 const MONITORING_LINKS = [
@@ -374,6 +375,8 @@ export default function MonitoringPage() {
       </div>
 
       {error && <div className="error">{error}</div>}
+
+      <IntegrationsHealth />
 
       <div
         style={{
