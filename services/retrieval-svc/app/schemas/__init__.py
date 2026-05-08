@@ -12,7 +12,17 @@ class RetrieveRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     top_k: int = Field(default=10, ge=1, le=100)
     filters: dict[str, Any] = Field(default_factory=dict)
-    strategy: str = Field(default="hybrid", description="vector | graph | hybrid")
+    strategy: str = Field(
+        default="hybrid",
+        description=(
+            "vector | graph | hybrid | vectorless — Stage-1: 'vectorless' "
+            "suppresses vector+graph backends and returns the (currently "
+            "empty) ElasticSearcher BM25 result set. Stage-2 wires the "
+            "actual ES search call once the indexing pipeline lands. Per "
+            "/admin/vectorless-elasticsearch and "
+            "drill_vectorless_strategy_dispatch.py."
+        ),
+    )
     include_sources: tuple[str, ...] = Field(default=("vector", "graph"))
     # Per docs/architecture/rag-deep-test-2026-05-04.md — empirical RAG
     # test surfaced that retrieval returns top-K even with zero-match

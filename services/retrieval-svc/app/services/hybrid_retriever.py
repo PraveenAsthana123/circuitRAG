@@ -143,10 +143,18 @@ class HybridRetriever:
         # Parallel fetch.
         #
         # Strategy gating (matrix row: RAG / Vectorless option):
-        #   strategy='vector' → vector only (graph branch suppressed below)
-        #   strategy='graph'  → graph only  (vector branch suppressed here;
-        #                       the vectorless / graph-only retrieval path)
-        #   strategy='hybrid' (default) → both, fused by reranker
+        #   strategy='vector'     → vector only (graph + ES suppressed)
+        #   strategy='graph'      → graph only  (vector + ES suppressed)
+        #   strategy='hybrid'     → vector + graph, fused by reranker (default)
+        #   strategy='vectorless' → ES (BM25) only — vector + graph BOTH
+        #                           suppressed. Stage-1 returns degraded
+        #                           empty chunks because the ElasticSearcher
+        #                           wire is pending; Stage-2 will plumb
+        #                           self._elastic.search() here. Documented
+        #                           at /admin/vectorless-elasticsearch.
+        #                           Per CLAUDE.md §57.7 — strategy is
+        #                           selectable + drilled now; runtime
+        #                           result depth lands separately.
         #
         # Feature flag: DOCUMIND_VECTORLESS_DEFAULT=1 forces graph-only
         # for tenants that have not explicitly opted into vector. Per
@@ -154,14 +162,20 @@ class HybridRetriever:
         # toggle without redeploying.
         import os as _os  # noqa: PLC0415
         force_graph_only = _os.getenv("DOCUMIND_VECTORLESS_DEFAULT", "").strip() == "1"
+        is_vectorless = request.strategy == "vectorless"
         coros = []
         if (
             "vector" in request.include_sources
             and request.strategy != "graph"
+            and not is_vectorless
             and not force_graph_only
         ):
             coros.append(self._do_vector(tenant_id, request))
-        if "graph" in request.include_sources and request.strategy != "vector":
+        if (
+            "graph" in request.include_sources
+            and request.strategy != "vector"
+            and not is_vectorless
+        ):
             coros.append(self._do_graph(tenant_id, request))
         results = await asyncio.gather(*coros, return_exceptions=True)
 
