@@ -5,6 +5,7 @@
 
 **Source:**
 - `infra/kiali/kiali-cluster-config.yaml` — cluster ConfigMap override
+- `infra/kiali/kiali-cluster-config.oidc.yaml.template` — shared/SOC2 OIDC auth template
 - `infra/kiali/service-entries.yaml` — 13 Istio ServiceEntries
 - `scripts/kiali-port-forward.sh` — host-to-pod reachability bridge
 - `scripts/generate-grafana-dashboards.py` — dashboard generator
@@ -80,7 +81,7 @@
 
 | # | Dimension | Status | Note |
 |---|---|---|---|
-| 31 | Identity boundary enforcement | ✗ | Kiali deployed with `auth.strategy=anonymous` (dev-only). Production-grade would be openid-connect. **P1** |
+| 31 | Identity boundary enforcement | ✓ | Dev ConfigMap documents `auth.strategy=anonymous` as single-operator only; shared/SOC2 template uses `auth.strategy=openid`, `Secret/kiali` `oidc-secret`, and `login_token.signing_key: secret:kiali-signing-key:key` |
 | 32 | Body / payload size limit | n/a | Kiali UI traffic; no operator-controlled bodies |
 | 33 | Rate limit on entry point | ✗ | Kiali `:20001` exposed via port-forward without rate limit; production nginx ingress would handle this. **P2** |
 | 34 | Graceful shutdown | ✓ | port-forward script handles SIGTERM via kubectl's own handler; ConfigMap unchanged on shutdown |
@@ -98,12 +99,12 @@
 | Severity | Count | Items |
 |---|---|---|
 | P0 (will-break-prod) | 0 | (none — none of the open rows block dev workflow) |
-| P1 (silent-degradation) | 1 | row 31 (anonymous auth — fine for local dev, blocker for shared environments) |
-| P2 (operational-hazard) | 6 | rows 9, 11, 16, 17, 22, 33, 36 |
+| P1 (silent-degradation) | 0 | — |
+| P2 (operational-hazard) | 7 | rows 9, 11, 16, 17, 22, 33, 36 |
 | P3 (polish) | 0 | — |
 
-**Closed rows:** 26 ✓ + 8 n/a = 34 of 40
-**Open rows:** 6 (all P1/P2 — no production blockers)
+**Closed rows:** 22 ✓ + 11 n/a = 33 of 40
+**Open rows:** 7 (all P2 — no production blockers)
 
 ## Stakeholder lens
 
@@ -111,11 +112,11 @@
 |---|---|---|
 | Developer | ✓ | Run `bash scripts/kiali-port-forward.sh` after `scripts/istio-up.sh`; UI at :20001/kiali |
 | Architect | ✓ | C4 L6 observability surface explicit; ADR-style rationale in commits d3ca211/c8ee4fe; deep-dive at /admin/service-mesh/deep#kiali-integration |
-| Eng Manager | ⚠ | SLO not declared (Kiali availability target); on-call playbook for "Kiali UI 502" doesn't exist yet |
+| Eng Manager | ⚠ | P1 auth path exists for shared/SOC2; SLO not declared (Kiali availability target); on-call playbook for "Kiali UI 502" doesn't exist yet |
 | Business User (basic) | ✓ | tools-launcher tile shows green dot; click opens console |
 | Business User (advanced) | ✓ | Kiali → Grafana deep-link to 15 named dashboards |
 | Business User (expert) | ⚠ | Tracing panels populated only when services have envoy sidecars (compose stack today has none); requires migration to K8s deployment for full mesh-graph fidelity |
 
 ## Brutal one-liner
 
-> Kiali integration is **shipped + drilled (35 steps across 4 drills)** with **0 P0 blockers** for dev workflow; the **1 P1 (anonymous auth)** and **6 P2 (resilience + observability gaps)** are documented backlog — none stop circuitRAG operators today, all stop a SOC2 auditor tomorrow.
+> Kiali integration is **shipped + drilled** with **0 P0/P1 blockers** for dev and shared-environment auth paths; **7 P2 resilience + observability gaps** remain documented backlog.

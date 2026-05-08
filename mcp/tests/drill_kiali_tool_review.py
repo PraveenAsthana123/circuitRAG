@@ -16,17 +16,16 @@ its review file AND is referenced from the index.
   2. POSITIVE: review references all 4 commits that introduced the
               Kiali integration (forensic continuity)
   3. POSITIVE: README index lists kiali-integration.md
-  4. NEGATIVE: review does NOT claim 0 P1 (the anonymous-auth row
-              is a real P1 — claiming 0 P1 would hide it from the
-              aggregate count)
+  4. NEGATIVE: review does NOT leave the anonymous-auth P1 open after
+              the shared/SOC2 OpenID Connect template ships
   5. NEGATIVE: review does NOT skip stakeholder-lens table (every
               tool review must address all 6 stakeholders per §52.3)
 
 Per CLAUDE.md §43 (drill discipline; ≥3 negatives), §51 (forensic
 substrate — review file is the architectural artifact), §52 (the
 review is mandatory; without it, "shipped" is hollow), §57.7
-(honesty — the P1 must be present; aggregate counts must be
-truthful).
+(honesty — P1 closure must be backed by an actual shared/SOC2 auth
+template, not by hiding anonymous auth from the aggregate).
 """
 from __future__ import annotations
 
@@ -108,24 +107,31 @@ def main() -> int:
         fail("README index has no human-readable 'Kiali' label for the row")
     ok("README index references kiali-integration.md with Kiali label")
 
-    # ── 4. NEGATIVE: review reports the real P1 honestly ──────────────
-    step("4. NEGATIVE: review does NOT claim 0 P1 (anonymous auth IS a P1)")
+    # ── 4. NEGATIVE: review closes P1 only with OIDC evidence ─────────
+    step("4. NEGATIVE: review does NOT leave anonymous-auth P1 open")
     triage = re.search(r"P1.*?\|\s*(\d+)\s*\|", text)
     if not triage:
         fail("review missing P1 row in Triage summary table")
     p1_count = int(triage.group(1))
-    if p1_count == 0:
+    if p1_count != 0:
         fail(
-            "review claims P1 = 0 — but Kiali ships with auth.strategy=anonymous "
-            "which is a real P1 for shared environments. Claiming 0 hides it "
-            "from the aggregate count and lets it ship to prod silently."
+            "review still reports a P1 after the shared/SOC2 OIDC auth template "
+            "shipped. Keep dev anonymous documented, but close row 31 only when "
+            "OIDC + Secret-mounted signing key evidence is present."
         )
+    for needle in [
+        "kiali-cluster-config.oidc.yaml.template",
+        "auth.strategy=openid",
+        "secret:kiali-signing-key:key",
+    ]:
+        if needle not in text:
+            fail(f"review P1 closure missing evidence: {needle}")
     if "anonymous" not in text.lower():
         fail(
-            "review does not mention 'anonymous' — the auth.strategy=anonymous "
-            "P1 finding requires explicit naming so reviewers can grep for it"
+            "review does not mention 'anonymous' — dev-only anonymous auth "
+            "must remain explicit even after shared OIDC path ships"
         )
-    ok(f"review honestly reports P1 = {p1_count} (anonymous auth named)")
+    ok("review reports P1 = 0 with OIDC + Secret-mounted signing-key evidence")
 
     # ── 5. NEGATIVE: stakeholder-lens table covers all 6 stakeholders ─
     step("5. NEGATIVE: stakeholder-lens table is NOT skipped (all 6 present)")

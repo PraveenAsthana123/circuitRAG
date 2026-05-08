@@ -46,6 +46,10 @@ metadata:
 data:
   config.yaml: |
     auth:
+      # DEV-ONLY: anonymous is acceptable for single-operator local development.
+      # Shared/SOC2 environments must render and apply
+      # infra/kiali/kiali-cluster-config.oidc.yaml.template, which uses
+      # auth.strategy=openid and a Secret-mounted signing key.
       strategy: anonymous
       openid: {}
       openshift:
@@ -70,6 +74,7 @@ data:
     login_token:
       # Dev-only signing key — production overrides via Secret. 32 hex
       # chars = 16 bytes (Kiali requires exactly 16/24/32 byte length).
+      # Shared/SOC2 template uses secret:kiali-signing-key:key.
       signing_key: "aed516789d7e2dd69b2edd366c1aa2c3"
 
     istio_namespace: istio-system

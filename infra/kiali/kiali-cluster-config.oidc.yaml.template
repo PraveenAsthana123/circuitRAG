@@ -1,0 +1,176 @@
+---
+# Shared/SOC2 Kiali ConfigMap template.
+#
+# The default infra/kiali/kiali-cluster-config.yaml intentionally keeps
+# auth.strategy=anonymous for single-operator local development. Shared
+# environments must render and apply this template instead:
+#
+#   envsubst < infra/kiali/kiali-cluster-config.oidc.yaml.template \
+#     | kubectl --context="$MINIKUBE_PROFILE" apply -f -
+#   kubectl --context="$MINIKUBE_PROFILE" -n istio-system rollout restart deploy/kiali
+#
+# Required substitutions:
+#   KIALI_OIDC_CLIENT_ID              OIDC client id registered for Kiali
+#   KIALI_OIDC_ISSUER_URI             exact issuer URL from the identity provider
+#   KIALI_OIDC_CLIENT_SECRET          OIDC client secret, stored in Secret/kiali
+#   KIALI_SIGNING_KEY_16_24_OR_32_BYTES  16, 24, or 32 byte session signing key
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kiali-signing-key
+  namespace: istio-system
+  labels:
+    app: kiali
+    app.kubernetes.io/name: kiali
+type: Opaque
+stringData:
+  key: "${KIALI_SIGNING_KEY_16_24_OR_32_BYTES}"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kiali
+  namespace: istio-system
+  labels:
+    app: kiali
+    app.kubernetes.io/name: kiali
+type: Opaque
+stringData:
+  oidc-secret: "${KIALI_OIDC_CLIENT_SECRET}"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kiali
+  namespace: istio-system
+  labels:
+    app: kiali
+    app.kubernetes.io/instance: kiali
+    app.kubernetes.io/name: kiali
+    app.kubernetes.io/part-of: kiali
+    app.kubernetes.io/version: v1.86.0
+data:
+  config.yaml: |
+    auth:
+      strategy: openid
+      openid:
+        client_id: "${KIALI_OIDC_CLIENT_ID}"
+        issuer_uri: "${KIALI_OIDC_ISSUER_URI}"
+        disable_rbac: false
+        scopes:
+          - openid
+          - email
+          - profile
+          - groups
+        username_claim: email
+      openshift:
+        client_id_prefix: kiali
+
+    deployment:
+      accessible_namespaces:
+        - "**"
+      view_only_mode: false
+      logger:
+        log_format: json
+        log_level: info
+
+    server:
+      port: 20001
+      web_root: /kiali
+      observability:
+        metrics:
+          enabled: true
+          port: 9090
+
+    login_token:
+      signing_key: "secret:kiali-signing-key:key"
+
+    istio_namespace: istio-system
+
+    kiali_feature_flags:
+      certificates_information_indicators:
+        enabled: true
+        secrets:
+          - cacerts
+          - istio-ca-secret
+      disabled_features: []
+      validations:
+        ignore:
+          - KIA1301
+
+    external_services:
+      istio:
+        config_map_name: istio
+        istio_sidecar_injector_config_map_name: istio-sidecar-injector
+        istiod_deployment_name: istiod
+        root_namespace: istio-system
+
+      prometheus:
+        url: http://host.minikube.internal:9090
+
+      grafana:
+        enabled: true
+        in_cluster_url: http://host.minikube.internal:3001
+        url: http://localhost:3001
+        dashboards:
+          - name: "Documind / Istio Service"
+          - name: "Documind / Istio Workload"
+          - name: "Documind / RAG Pipeline (LangChain + LangGraph)"
+          - name: "Documind / Vector DB (Qdrant)"
+          - name: "Documind / Cache (Redis)"
+          - name: "Documind / Chunking Pipeline"
+          - name: "Documind / Output Evaluation (Ragas + Giskard + DeepEval)"
+          - name: "Documind / Circuit Breaker"
+          - name: "Documind / API Gateway + Load Balancer"
+          - name: "Documind / Hybrid Architect (Council Engine)"
+          - name: "Documind / Paperclip (MCP)"
+          - name: "Documind / Polysai"
+          - name: "Documind / OTel Collector"
+          - name: "Documind / Logs (Elasticsearch / Kibana link)"
+          - name: "Documind / Tempo Traces (when deployed)"
+
+      tracing:
+        enabled: true
+        provider: jaeger
+        in_cluster_url: http://host.minikube.internal:16686
+        url: http://localhost:16686
+        use_grpc: false
+        namespace_selector: true
+
+      custom_dashboards:
+        enabled: true
+
+    custom_dashboards:
+      - name: documind-rag-pipeline
+        title: "circuitRAG - RAG Pipeline (LangChain/LangGraph)"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "RAG requests (req/s)"
+              unit: "rps"
+              spans: 4
+              metric_name: "documind_rag_requests_total"
+              aggregator: sum
+              data_type: rate
+      - name: documind-hybrid-architect
+        title: "circuitRAG - Hybrid Architect"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "Council decisions"
+              unit: "ops"
+              spans: 4
+              metric_name: "documind_council_decisions_total"
+              aggregator: sum
+              data_type: rate
+      - name: documind-paperclip-mcp
+        title: "circuitRAG - Paperclip MCP"
+        runtime: "circuitRAG"
+        items:
+          - chart:
+              name: "Tool calls"
+              unit: "ops"
+              spans: 4
+              metric_name: "documind_mcp_tool_calls_total"
+              aggregator: sum
+              data_type: rate
