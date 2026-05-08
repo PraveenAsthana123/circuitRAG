@@ -138,15 +138,16 @@ const PROBES: Probe[] = [
   {
     name: "Kiali",
     category: "mesh",
-    ui_url: process.env.NEXT_PUBLIC_KIALI_URL ?? "http://localhost:20001",
-    health_url: "http://localhost:20001/healthz",
+    ui_url: process.env.NEXT_PUBLIC_KIALI_URL ?? "http://localhost:20001/kiali",
+    // Kiali deployed inside minikube (dm-istio profile) per
+    // scripts/istio-up.sh + canonical istio kiali addon. Reached on the
+    // host via `kubectl port-forward svc/kiali 20001:20001` (see
+    // scripts/kiali-port-forward.sh — auto-started by setup.sh). The
+    // server is configured with web_root: /kiali so health lives under
+    // /kiali/healthz, not /healthz.
+    health_url: "http://localhost:20001/kiali/healthz",
     env_var: "NEXT_PUBLIC_KIALI_URL",
-    description: "Service-mesh visualization (Istio companion — Istio not installed in this stack; status forced to NOT_CONFIGURED until install)",
-    // Istio control plane is not deployed locally. Without Istio, Kiali
-    // would always probe UNREACHABLE (RED), which is misleading — it's
-    // not "down", it's "not yet installed". forceStatus: NOT_CONFIGURED
-    // shows GRAY instead. Remove this when Istio install lands.
-    forceStatus: "NOT_CONFIGURED",
+    description: "Service-mesh visualization (Istio companion — runs in minikube/dm-istio, port-forwarded to host:20001)",
   },
 
   // ── Storage ────────────────────────────────────────────────────────

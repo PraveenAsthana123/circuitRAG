@@ -179,6 +179,11 @@ def main() -> int:
             "Kiali v1.86 does NOT serve HTTP without K8s. Update the comment "
             "to reflect the istio-up.sh requirement."
         )
+    if "serves /kiali/healthz under degraded" in kiali_yaml:
+        raise AssertionError(
+            "kiali.yaml still claims cache_enabled=false is a degraded "
+            "compose-mode serving path. Kiali v1.86 needs a responsive K8s API."
+        )
     if "scripts/istio-up.sh" not in kiali_yaml:
         raise AssertionError(
             "kiali.yaml comment must reference scripts/istio-up.sh as the "
@@ -186,12 +191,19 @@ def main() -> int:
         )
     print("  ok: kiali.yaml comment reflects reality; references istio-up.sh")
 
-    print("-- 15. POSITIVE: runbook documents kiali-via-profile-mesh workflow --")
+    print("-- 15. POSITIVE: Makefile exposes istio-status target used by scripts --")
+    makefile = (REPO / "Makefile").read_text(encoding="utf-8")
+    require(makefile, "istio-status:", "istio-status Makefile target")
+    require(makefile, "proxy-status", "istioctl proxy-status check")
+    require(makefile, "authorizationpolicy", "mesh policy status check")
+    print("  ok: Makefile has read-only istio-status target")
+
+    print("-- 16. POSITIVE: runbook documents kiali-via-profile-mesh workflow --")
     runbook = RUNBOOK.read_text(encoding="utf-8")
     require(runbook, "--profile mesh", "kiali profile-mesh instruction in runbook")
     print("  ok: runbook documents `docker compose --profile mesh up kiali`")
 
-    print("\nALL 15 STEPS PASSED")
+    print("\nALL 16 STEPS PASSED")
     return 0
 
 

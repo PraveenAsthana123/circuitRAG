@@ -35,12 +35,11 @@ deployment:
     log_format: json
     log_level: info
 
-# In docker-compose dev mode there's NO K8s cluster — bypass the
-# cluster cache that otherwise blocks Kiali's HTTP server until it
-# finishes a sync that can never complete. Drilled by step 12 of
-# drill_minikube_istio_setup.py: when cache_enabled=false AND
-# in_cluster_url is set, Kiali serves /kiali/healthz under degraded
-# mesh-graph mode (Prom + Jaeger panels remain functional).
+# In docker-compose dev mode there's NO K8s cluster. Kiali v1.86 still
+# requires a responsive Kubernetes API for useful startup, so this file
+# is applied after scripts/istio-up.sh brings up minikube + Istio. The
+# cache flag stays false to reduce local-dev overhead; it is NOT a
+# compose-only escape hatch.
 kubernetes_config:
   cache_enabled: false
   cluster_name: "compose-dev"
