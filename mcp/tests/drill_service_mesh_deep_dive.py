@@ -41,10 +41,11 @@ def main() -> int:
     require(page, "DeepDiveCrossRefs", "DeepDiveCrossRefs import")
     print("  ok: canonical infra imported")
 
-    print("-- 3. POSITIVE: page covers both mesh surfaces --")
+    print("-- 3. POSITIVE: page covers all three mesh surfaces --")
     require(page, "service-mesh-pattern", "service-mesh-pattern topic")
     require(page, "istio-this-codebase", "Istio-in-this-codebase topic")
-    print("  ok: both topics present")
+    require(page, "kiali-integration", "Kiali-integration topic (commits d3ca211 + c8ee4fe + eab8204)")
+    print("  ok: all three topics present (mesh pattern + Istio code + Kiali)")
 
     print("-- 4. POSITIVE: each topic includes the universal-framework canonical fields --")
     for needle, label in [
@@ -72,17 +73,30 @@ def main() -> int:
     require(sidebar, "/admin/service-mesh/deep", "sidebar /admin/service-mesh/deep link")
     print("  ok: sidebar entry registered")
 
-    print("-- 7. NEGATIVE: both topics must declare PARTIAL status honestly --")
-    # Mesh control plane not deployed yet; YAML is reference-only. Lying about
-    # this status would mislead operators about prod-readiness.
+    print("-- 7. NEGATIVE: mesh-pattern + istio-codebase topics must stay PARTIAL --")
+    # Mesh control plane is now actually deployed (kiali-integration topic
+    # is `shipped`), but the underlying mesh control plane on docker-compose
+    # is still NOT active — the kiali-integration uses a SEPARATE minikube
+    # cluster (dm-istio profile). The first two topics describe the
+    # docker-compose-mesh state which is still partial. Lying about this
+    # would mislead operators about which compose services are actually
+    # speaking mTLS.
     partial_count = page.count("status: 'partial'") + page.count("status: \"partial\"")
     if partial_count < 2:
         raise AssertionError(
-            f"expected both topics status='partial' (got {partial_count}); "
+            f"expected mesh-pattern + istio-codebase topics partial (got {partial_count}); "
             f"control plane not deployed in compose stack"
         )
     require(page, "PARTIAL", "explicit PARTIAL marker in body")
-    print(f"  ok: {partial_count} topics honestly marked partial")
+    # Additionally: kiali-integration MUST be `shipped` (commits d3ca211 +
+    # c8ee4fe + eab8204 already landed; claiming partial would be dishonest).
+    shipped_count = page.count("status: 'shipped'") + page.count("status: \"shipped\"")
+    if shipped_count < 1:
+        raise AssertionError(
+            "expected kiali-integration topic with status='shipped' "
+            "(per d3ca211 + c8ee4fe + eab8204); claiming partial would be dishonest"
+        )
+    print(f"  ok: {partial_count} topics partial · {shipped_count} shipped")
 
     print("-- 8. NEGATIVE: page must NOT carry placeholder language --")
     for forbidden in ["TODO", "TBD", "FIXME", "Lorem ipsum"]:

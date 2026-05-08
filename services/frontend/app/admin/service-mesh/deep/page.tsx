@@ -331,6 +331,93 @@ spec:
     ],
     finalScript: 'Istio in this codebase is documentation-as-code today, deploy-artifact tomorrow. The AuthorizationPolicy YAML names the trust boundary explicitly per service-pair. The naming convention makes review queries trivial. PeerAuthentication will flip mTLS from PERMISSIVE to STRICT after a soak period. The bet: when the k8s migration lands, the policy layer is already canonical — no scramble to write authz on day one.',
   },
+  {
+    slug: 'kiali-integration',
+    title: '3. Kiali integration (canonical addon + Grafana deep-links)',
+    status: 'shipped',
+    coreConcept: 'Kiali is the service-mesh visualization console. Two install paths: (a) docker-compose container — BROKEN by design (Kiali v1.86 hard-blocks outside K8s with "unable to load in-cluster configuration"), and (b) canonical install — pod inside minikube/dm-istio via the official Istio kiali addon, port-forwarded to host:20001 so the docker-compose frontend BFF can probe it. circuitRAG ships path (b) with a project ConfigMap override that wires Kiali to Prometheus (host:9090), Grafana (host:3001), Jaeger (host:16686), and 13 Istio ServiceEntries representing the docker-compose tool stack. 15 Grafana dashboards are auto-provisioned with titles matching Kiali deep-link names exactly.',
+    problem: 'Without Kiali wiring, mesh observability has three failure modes: (1) Kiali UI panels render empty because the addon default points at prometheus.istio-system which doesn\'t exist; (2) deep-links from Kiali to Grafana 404 because the dashboard names don\'t match; (3) docker-compose tool services (prometheus, grafana, jaeger, kibana, paperclip MCP, hybrid-architect, etc.) are invisible to Kiali because they\'re not K8s pods. Operators land on a "service mesh dashboard" that shows nothing useful.',
+    whyThisApproach: 'Cluster-side ConfigMap override + ServiceEntries for compose services + auto-provisioned Grafana dashboards + drill that locks the title-match contract bidirectionally. The drill catches both "Kiali deep-link without dashboard" AND "dashboard without Kiali link" — orphans clutter, missing dashboards 404. Forward-contract panels (e.g. documind_council_apply_rate) render empty until the metric is emitted, but they\'re labeled " (forward-contract)" so the empty state is HONEST per §57.7.',
+    whenToUse: ['Multi-service mesh deployment (>3 services with sidecars)', 'Operator needs single pane of glass for mesh + metrics + traces', 'Compliance asks for "show me who can call who"', 'Investigating tail-latency tied to a specific service pair'],
+    whenNotToUse: ['No mesh deployed (compose-only stack — Kiali has nothing to graph)', 'Sub-1ms latency budgets where Kiali polling adds load on Prometheus', 'Single-service deployments (mesh + Kiali both wasted)'],
+    input: 'minikube cluster (dm-istio profile) + Istio control plane + kubectl context + scripts/istio-up.sh executed',
+    process: [
+      'kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/kiali.yaml',
+      'kubectl apply -f infra/kiali/kiali-cluster-config.yaml (overrides addon default)',
+      'kubectl rollout restart deploy/kiali (loads new ConfigMap)',
+      'kubectl apply -f infra/kiali/service-entries.yaml (13 ServiceEntries for compose services)',
+      'bash scripts/kiali-port-forward.sh (idempotent; svc/kiali 20001:20001)',
+      'python3 scripts/generate-grafana-dashboards.py (writes 15 dashboards)',
+      'Grafana auto-picks up via 30s provisioning poll',
+      'BFF /api/v1/integrations-health probes http://localhost:20001/kiali/healthz → HEALTHY',
+    ],
+    output: 'Kiali console at http://localhost:20001/kiali with: live mesh graph (istiod + gateways + 13 SEs), Prometheus metrics (real Istio + forward-contract documind_*), Jaeger traces (in-cluster trace lookups), 15 Grafana deep-links (each click lands on a real dashboard).',
+    flowchart: `flowchart LR
+  op[Operator] -->|http://localhost:20001/kiali| pf[kubectl port-forward]
+  pf -->|svc/kiali 20001| ks[Kiali pod in minikube]
+  ks -->|external_services.prometheus| prom[(Prometheus on host:9090)]
+  ks -->|external_services.grafana| graf[(Grafana on host:3001)]
+  ks -->|external_services.tracing| jaeger[(Jaeger on host:16686)]
+  ks -->|reads| ic[(Istio control plane)]
+  se[(13 ServiceEntries)] -.MESH_EXTERNAL.- ks
+  se -.->|host.minikube.internal| compose[docker-compose tools]
+  graf -->|reads| prom
+  click ks "/admin/integrations-health" "BFF probe"`,
+    sequence: `sequenceDiagram
+  autonumber
+  participant Op as Operator
+  participant BFF as integrations-health BFF
+  participant K as Kiali pod
+  participant P as Prometheus (host)
+  participant G as Grafana (host)
+  participant J as Jaeger (host)
+  Op->>BFF: GET /api/v1/integrations-health
+  BFF->>K: GET http://localhost:20001/kiali/healthz
+  K-->>BFF: 200 (healthy)
+  BFF-->>Op: { Kiali: HEALTHY, latency_ms: 41 }
+  Op->>K: open /kiali console
+  K->>P: PromQL queries (host.minikube.internal:9090)
+  P-->>K: metric series
+  Op->>K: click "View in Grafana" deep-link
+  K->>G: redirect to dashboard with matching title
+  G->>P: render panels
+  Op->>K: click trace lookup
+  K->>J: GET /api/services
+  J-->>K: trace list`,
+    alternatives: [
+      { name: 'docker-compose Kiali container with kubeconfig mount', tradeoff: 'Tries to bypass in-cluster init; v1.86 still calls rest.InClusterConfig() and fatals; fragile' },
+      { name: 'Linkerd Viz (alternative mesh dashboard)', tradeoff: 'Tied to Linkerd, not Istio — different mesh; not applicable here' },
+      { name: 'Bare Grafana Istio dashboards without Kiali', tradeoff: 'Loses graph view; loses authz policy visualization; loses trace lookup integration' },
+      { name: 'No mesh visualization at all', tradeoff: 'Operators read sidecar access logs by hand; works for 1-2 services, breaks at fleet scale' },
+    ],
+    bestPractices: {
+      do: [
+        'Apply the cluster ConfigMap AFTER the addon manifest so the override wins',
+        'Use resolution: DNS for ServiceEntries pointing at host.minikube.internal (STATIC rejects hostnames)',
+        'Generate Grafana dashboards from a single source so titles stay in sync with Kiali deep-link names',
+        'Mark forward-contract metrics explicitly (suffix " (forward-contract)") so empty panels are honest',
+        'Drill the title-match contract bidirectionally (deep-link → dashboard AND dashboard → deep-link)',
+      ],
+      avoid: [
+        'docker-compose --profile mesh kiali (the broken container approach)',
+        'Hardcoding 192.168.99.1 instead of host.minikube.internal (subnet rotation breaks it)',
+        'Hand-writing 15 dashboard JSONs (drift inevitable; titles silently shift)',
+        'Bare /healthz path on Kiali probe (web_root is /kiali so bare /healthz 404s)',
+      ],
+      optimize: [
+        'Run the port-forward at boot via a systemd user-service or compose sidecar so manual restart isn\'t needed',
+        'Keep dashboard JSONs minimal — Grafana 11.x renders 2-4 panels faster than 12+',
+        'Use Grafana provisioning poll (updateIntervalSeconds: 30) instead of explicit reload calls in CI',
+      ],
+    },
+    interviewTraps: [
+      'Claiming Kiali "just works" via docker-compose (the v1.86 in-cluster requirement bites every first-time integrator)',
+      'Forgetting the ConfigMap rollout-restart step (Kiali keeps using the old config until pod recreates)',
+      'Confusing addon-default Prometheus URL (prometheus.istio-system) with the project\'s actual Prometheus location',
+      'Pointing Grafana deep-links at dashboard URLs (UID-based) instead of dashboard titles (Kiali looks up by title)',
+    ],
+    finalScript: 'Kiali integration in this codebase is the canonical Istio addon install + a project ConfigMap override that wires three host-side observability tools. The override is necessary because the addon\'s defaults assume an in-cluster Prometheus that doesn\'t exist here. 13 ServiceEntries make the docker-compose tools visible to the mesh as MESH_EXTERNAL nodes. 15 Grafana dashboards auto-generated to match Kiali\'s deep-link names exactly, with a drill that locks the title-match contract in both directions. The hard lesson: every Kiali default points at "what Istio installs by itself"; circuitRAG installs Istio next to docker-compose tools, so every default needs the override.',
+  },
 ];
 
 export default function ServiceMeshDeepPage() {
@@ -340,10 +427,11 @@ export default function ServiceMeshDeepPage() {
         <div className="page-header-copy">
           <h1 className="section-title">Service mesh deep dive</h1>
           <p className="page-subtitle">
-            Two surfaces — the service-mesh pattern (sidecar proxy + control
-            plane) and Istio in this codebase (AuthorizationPolicy YAML +
-            roadmap to active mesh) — explained through the universal
-            20-dimension framework.
+            Three surfaces — the service-mesh pattern (sidecar proxy + control
+            plane), Istio in this codebase (AuthorizationPolicy YAML + roadmap
+            to active mesh), and the canonical Kiali integration (in-cluster
+            addon + Grafana deep-links + 13 ServiceEntries) — explained
+            through the universal 20-dimension framework.
           </p>
         </div>
       </div>
@@ -365,6 +453,8 @@ export default function ServiceMeshDeepPage() {
           { href: '/admin/breakers/deep', label: 'Circuit breakers', why: 'app-level breakers and mesh-level outlier detection are complementary; mesh handles transport, app handles business logic' },
           { href: '/admin/tracing/deep#baggage-propagation', label: 'Baggage propagation', why: 'sidecars propagate traceparent + baggage automatically; tracing relies on this' },
           { href: '/admin/rollout/deep#rollback-strategy', label: 'Rollback strategy', why: 'PERMISSIVE → STRICT mTLS migration is a staged rollout the rollback playbook documents' },
+          { href: '/admin/monitoring', label: 'Integrations health monitor', why: 'Kiali appears as a HEALTHY entry in the 19-tool BFF probe — the cluster ConfigMap + port-forward make this work' },
+          { href: '/admin/tools-launcher', label: 'Tools launcher', why: 'Kiali traffic-light status surfaces here; clicking the tile opens the Kiali console' },
         ]}
       />
     </>
