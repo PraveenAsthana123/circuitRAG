@@ -32,12 +32,14 @@ class RagasEngine:
 
     def __init__(self) -> None:
         self._ragas: Any = None
+        self._import_error: str | None = None
         try:
             import ragas  # noqa: F401
             self._ragas = ragas
             logger.info("ragas %s available", getattr(ragas, "__version__", "?"))
-        except ImportError:
-            logger.warning("ragas not installed; eval scaffold returns dummy results")
+        except Exception as exc:  # noqa: BLE001
+            self._import_error = f"{type(exc).__name__}: {str(exc)[:200]}"
+            logger.warning("ragas unavailable; eval scaffold returns stub results: %s", self._import_error)
 
     def is_available(self) -> bool:
         return self._ragas is not None
@@ -58,7 +60,7 @@ class RagasEngine:
         if not self._ragas:
             return {
                 "available": False,
-                "reason": "ragas not installed",
+                "reason": self._import_error or "ragas not installed",
                 "stub": True,
             }
         # Stage-2 wire: delegate to scripts/ragas_eval_adapter.py so this
@@ -203,8 +205,8 @@ class GuardrailsEngine:
                     cls = getattr(gd, "validators", None)
                     if cls is not None and hasattr(cls, vname):
                         validator_objs.append(getattr(cls, vname)())
-                except Exception:  # noqa: BLE001 — version drift tolerant
-                    pass
+                except Exception as exc:  # noqa: BLE001 — version drift tolerant
+                    logger.debug("guardrails_validator_lookup_failed %s: %s", vname, exc)
             guard = gd.Guard.from_string(validators=validator_objs)
             outcome = guard.parse(text)
             violations = []
@@ -247,12 +249,21 @@ class DeepEvalEngine:
 
     def __init__(self) -> None:
         self._deepeval: Any = None
+        self._import_error: str | None = None
         try:
+            import ssl
+            if not hasattr(ssl, "wrap_socket"):
+                raise RuntimeError(
+                    "deepeval import stack requires ssl.wrap_socket in this environment",
+                )
             import deepeval  # noqa: F401
+            from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric  # noqa: F401
+            from deepeval.test_case import LLMTestCase  # noqa: F401
             self._deepeval = deepeval
             logger.info("deepeval %s available", getattr(deepeval, "__version__", "?"))
-        except ImportError:
-            logger.warning("deepeval not installed; eval scaffold returns dummy results")
+        except Exception as exc:  # noqa: BLE001
+            self._import_error = f"{type(exc).__name__}: {str(exc)[:200]}"
+            logger.warning("deepeval unavailable; eval scaffold returns stub results: %s", self._import_error)
 
     def is_available(self) -> bool:
         return self._deepeval is not None
@@ -275,7 +286,7 @@ class DeepEvalEngine:
         if not self._deepeval:
             return {
                 "available": False,
-                "reason": "deepeval not installed",
+                "reason": self._import_error or "deepeval not installed",
                 "stub": True,
             }
         import os as _os  # noqa: PLC0415
@@ -371,18 +382,30 @@ class LakeraRebuffEngine:
     def __init__(self) -> None:
         self._lakera: Any = None
         self._rebuff: Any = None
+        self._lakera_import_error: str | None = None
+        self._rebuff_import_error: str | None = None
         try:
             import lakera_guard as lk  # type: ignore[import-not-found]
             self._lakera = lk
             logger.info("lakera_guard available")
-        except ImportError:
-            logger.debug("lakera_guard not installed; detector stubbed")
+        except Exception as exc:  # noqa: BLE001
+            self._lakera_import_error = f"{type(exc).__name__}: {str(exc)[:200]}"
+            logger.debug("lakera_guard unavailable; detector stubbed: %s", self._lakera_import_error)
         try:
+            try:
+                from documind_core.rebuff_detector import (  # type: ignore[import-not-found]
+                    prepare_langchain_vectorstore_compat,
+                )
+
+                prepare_langchain_vectorstore_compat()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("rebuff compatibility shim unavailable: %s", exc)
             import rebuff as rb  # type: ignore[import-not-found]
             self._rebuff = rb
             logger.info("rebuff available")
-        except ImportError:
-            logger.debug("rebuff not installed; detector stubbed")
+        except Exception as exc:  # noqa: BLE001
+            self._rebuff_import_error = f"{type(exc).__name__}: {str(exc)[:200]}"
+            logger.debug("rebuff unavailable; detector stubbed: %s", self._rebuff_import_error)
 
     def is_available(self) -> bool:
         return self._lakera is not None or self._rebuff is not None
@@ -396,7 +419,8 @@ class LakeraRebuffEngine:
         """
         import os as _os  # noqa: PLC0415
         out: dict[str, Any] = {"detectors": {}, "is_attack": False, "input_len": len(prompt)}
-        if not self.is_available():
+        rebuff_enabled = _os.getenv("REBUFF_ENABLED", "").strip() == "1"
+        if not self.is_available() and not rebuff_enabled:
             out["available"] = False
             out["reason"] = "no detector library installed"
             out["stub"] = True
@@ -417,17 +441,25 @@ class LakeraRebuffEngine:
                 out["detectors"]["lakera"] = {
                     "is_attack": False, "score": None, "error": str(_e)[:120],
                 }
-        # Rebuff
-        if self._rebuff is not None and _os.getenv("REBUFF_ENABLED", "").strip() == "1":
+        # Rebuff: use the canonical runtime adapter so env handling,
+        # thresholds, package drift, and fail-open behavior stay aligned
+        # with inference.
+        if rebuff_enabled:
             try:
-                detector = self._rebuff.Rebuff()
-                result = detector.detect_injection(prompt)
-                is_attack = bool(getattr(result, "is_injection", False))
+                from documind_core.rebuff_detector import classify as _rebuff_classify  # type: ignore[import-not-found]
+                from documind_core.rebuff_detector import status as _rebuff_status  # type: ignore[import-not-found]
+
+                result = _rebuff_classify(prompt)
                 out["detectors"]["rebuff"] = {
-                    "is_attack": is_attack,
-                    "score": getattr(result, "max_score", None),
+                    "is_attack": result.is_attack,
+                    "score": result.score,
+                    "raw_score": result.raw_score,
+                    "available": result.available,
+                    "error": result.error,
+                    "layers": result.detection_layers,
+                    "status": _rebuff_status(),
                 }
-                out["is_attack"] = out["is_attack"] or is_attack
+                out["is_attack"] = out["is_attack"] or result.is_attack
             except Exception as _e:  # noqa: BLE001
                 out["detectors"]["rebuff"] = {
                     "is_attack": False, "score": None, "error": str(_e)[:120],
@@ -449,12 +481,14 @@ class GiskardEngine:
 
     def __init__(self) -> None:
         self._giskard: Any = None
+        self._import_error: str | None = None
         try:
             import giskard  # type: ignore[import-not-found]
             self._giskard = giskard
             logger.info("giskard %s available", getattr(giskard, "__version__", "?"))
-        except ImportError:
-            logger.debug("giskard not installed; scanner stubbed")
+        except Exception as exc:  # noqa: BLE001
+            self._import_error = f"{type(exc).__name__}: {str(exc)[:200]}"
+            logger.debug("giskard unavailable; scanner stubbed: %s", self._import_error)
 
     def is_available(self) -> bool:
         return self._giskard is not None
@@ -468,7 +502,7 @@ class GiskardEngine:
         if not self.is_available():
             return {
                 "available": False,
-                "reason": "giskard not installed",
+                "reason": self._import_error or "giskard not installed",
                 "stub": True,
             }
         import os as _os  # noqa: PLC0415
@@ -538,11 +572,15 @@ def eval_status() -> dict[str, Any]:
     return {
         "stage": 2,
         "engines": {
-            "ragas": {"available": ragas.is_available()},
+            "ragas": {"available": ragas.is_available(), "import_error": ragas._import_error},
             "guardrails": {"available": guardrails.is_available()},
-            "deepeval": {"available": deepeval.is_available()},
-            "lakera_rebuff": {"available": lakera_rebuff.is_available()},
-            "giskard": {"available": giskard.is_available()},
+            "deepeval": {"available": deepeval.is_available(), "import_error": deepeval._import_error},
+            "lakera_rebuff": {
+                "available": lakera_rebuff.is_available(),
+                "lakera_import_error": lakera_rebuff._lakera_import_error,
+                "rebuff_import_error": lakera_rebuff._rebuff_import_error,
+            },
+            "giskard": {"available": giskard.is_available(), "import_error": giskard._import_error},
         },
         "all_available": (
             ragas.is_available()

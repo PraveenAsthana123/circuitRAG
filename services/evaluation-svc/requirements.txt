@@ -11,8 +11,8 @@ pytest-asyncio>=0.23
 # Governance + evaluation layer — added 2026-05-03 per architecture
 # requirement (Layer 10 of the 11-layer stack). Each is opt-in via
 # service config — services that don't need them don't import them.
-ragas>=0.1.21,<0.3              # RAG-specific eval (faithfulness, relevance, context-precision)
+ragas>=0.4,<0.5                 # RAG-specific eval (faithfulness, relevance, context-precision)
 guardrails-ai>=0.5,<0.7         # output validation + jailbreak defense
-deepeval>=1.0,<2                # alternative RAG eval suite
-datasets>=2.20,<3               # eval-dataset loading for ragas
-
+deepeval>=3.9,<4                # alternative RAG eval suite (import-safe guarded on Python 3.12)
+giskard>=2.19,<3                # LLM red-team + bias scan
+datasets>=3.6,<5                # eval-dataset loading for ragas

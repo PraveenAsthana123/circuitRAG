@@ -118,7 +118,9 @@ the calibration data Stage-3 needs to promote Rebuff to a blocker.
 Stage-3 (future) flips the last row to a hard block — only after the
 false-positive rate is measured against the eval harness.
 
-## Composes with (per §49)
+## Composes with
+
+Per §49:
 
 - [`libs/py/documind_core/rebuff_detector.py`](../../libs/py/documind_core/rebuff_detector.py) — adapter
 - [`services/inference-svc/app/services/rag_inference.py`](../../services/inference-svc/app/services/rag_inference.py) — Stage-2 wire

@@ -45,6 +45,8 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+import types
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -79,6 +81,30 @@ class RebuffResult:
     detection_layers: dict[str, Any] = field(default_factory=dict)
 
 
+def prepare_langchain_vectorstore_compat() -> None:
+    """Bridge Rebuff 0.1.x to modern LangChain package layout.
+
+    Rebuff 0.1.x imports ``langchain.vectorstores.pinecone`` at module
+    import time. LangChain moved that integration to
+    ``langchain_community.vectorstores.pinecone``. Installing this alias
+    lets Rebuff import without downgrading the rest of the LangChain stack.
+    """
+    if "langchain.vectorstores.pinecone" in sys.modules:
+        return
+    try:
+        from langchain_community.vectorstores import pinecone as pinecone_mod  # type: ignore[import-not-found]
+    except Exception as exc:  # noqa: BLE001
+        log.debug("rebuff_langchain_compat_unavailable: %s", exc)
+        return
+    vectorstores_mod = sys.modules.get("langchain.vectorstores")
+    if vectorstores_mod is None:
+        vectorstores_mod = types.ModuleType("langchain.vectorstores")
+        vectorstores_mod.__path__ = []  # type: ignore[attr-defined]
+        sys.modules["langchain.vectorstores"] = vectorstores_mod
+    vectorstores_mod.pinecone = pinecone_mod  # type: ignore[attr-defined]
+    sys.modules["langchain.vectorstores.pinecone"] = pinecone_mod
+
+
 def is_available() -> bool:
     """True only if REBUFF_ENABLED=1 + token set + rebuff installable.
 
@@ -89,6 +115,7 @@ def is_available() -> bool:
     if not REBUFF_ENABLED or not REBUFF_API_TOKEN:
         return False
     try:
+        prepare_langchain_vectorstore_compat()
         import rebuff  # noqa: F401, PLC0415  — lazy + heavy
     except Exception:
         return False
@@ -125,6 +152,7 @@ def status() -> dict[str, Any]:
     }
     if is_available():
         try:
+            prepare_langchain_vectorstore_compat()
             import rebuff  # noqa: PLC0415
             out["rebuff_version"] = getattr(rebuff, "__version__", "unknown")
         except Exception as exc:
@@ -141,6 +169,7 @@ def _get_client() -> Any:
         return None
     if not hasattr(_get_client, "_cached"):
         try:
+            prepare_langchain_vectorstore_compat()
             from rebuff import Rebuff  # noqa: PLC0415
             _get_client._cached = Rebuff(  # type: ignore[attr-defined]
                 api_token=REBUFF_API_TOKEN,
@@ -224,6 +253,7 @@ __all__ = [
     "RebuffResult",
     "classify",
     "is_available",
+    "prepare_langchain_vectorstore_compat",
     "require_active",
     "status",
 ]
