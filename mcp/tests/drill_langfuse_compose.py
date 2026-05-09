@@ -56,7 +56,14 @@ def main() -> int:
     print("-- 3. POSITIVE: healthcheck on /api/public/health --")
     require(block, "healthcheck:", "healthcheck section")
     require(block, "/api/public/health", "langfuse health endpoint")
-    print("  ok: healthcheck on /api/public/health")
+    require(block, "CMD-SHELL", "shell healthcheck")
+    require(block, "$$(hostname -i)", "container-IP health target")
+    if "http://localhost:3000/api/public/health" in block:
+        raise AssertionError(
+            "langfuse healthcheck must not probe localhost:3000; "
+            "this image binds to the container IP in local compose",
+        )
+    print("  ok: healthcheck uses container IP + /api/public/health")
 
     print("-- 4. NEGATIVE: langfuse MUST be opt-in via profiles --")
     # Per file-header philosophy + the api-gateway precedent (commit
