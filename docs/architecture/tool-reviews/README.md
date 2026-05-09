@@ -20,7 +20,7 @@
 | Idempotency module | [idempotency.md](idempotency.md) | 🔍 reviewed | 1 | 2 |
 | Explainability module | [explainability.md](explainability.md) | 🔍 reviewed | 0 | 4 |
 | MCP server stub pattern | [mcp-server-stub.md](mcp-server-stub.md) | 🔍 reviewed | 1 | 3 |
-| InMemoryTaskStore | [in-memory-task-store.md](in-memory-task-store.md) | 🔍 reviewed | 1 | 1 |
+| InMemoryTaskStore | [in-memory-task-store.md](in-memory-task-store.md) | ✅ P0 closed (2026-05-08) | 0 | 1 |
 | PostgresTaskStore | [postgres-task-store.md](postgres-task-store.md) | 🔍 reviewed | 1 | 3 |
 | LangGraph DAG | [langgraph-flow.md](langgraph-flow.md) | 🔍 reviewed | 0 | 4 |
 | Kiali integration (4-commit) | [kiali-integration.md](kiali-integration.md) | ✅ shipped | 0 | 0 |
@@ -29,7 +29,7 @@
 
 | Severity | Count across all reviewed tools |
 |---|---|
-| **P0 — will-break-prod** | **6** (mostly: timeouts, identity-boundary, idempotency-under-retry, memory-bounds) |
+| **P0 — will-break-prod** | **5** (was 6; InMemoryTaskStore unbounded-memory P0 closed via OrderedDict + LRU eviction in store.py) |
 | **P1 — silent-degradation** | **41** (Kiali anonymous-auth P1 closed by shared/SOC2 OIDC template) |
 | **P2 — operational** | ~37 (was ~30; +7 from Kiali resilience/observability backlog: jitter, slow-call detect, transition counters, stuck-state gauge, port-forward auto-recover, rate limit, Prom-CB) |
 | **P3 — polish** | ~50 (callbacks, OTel, persistent state on non-CB tools) |

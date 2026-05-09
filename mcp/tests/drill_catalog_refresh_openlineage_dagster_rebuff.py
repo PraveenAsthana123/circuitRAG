@@ -2,7 +2,7 @@
 # RESOURCES: readonly
 """Drill: catalog refresh for OpenLineage, Dagster, RAGAS, Giskard, Rebuff.
 
-NEGATIVE: shipped catalog rows must not drift away from importable/runtime evidence.
+NEGATIVE: catalog rows must not claim shipped without importable/runtime evidence.
 """
 from __future__ import annotations
 
@@ -41,30 +41,40 @@ def main() -> int:
         return 1
     print("  ok: all target tools present")
 
-    print("-- 2. POSITIVE: target catalog rows are shipped --")
-    not_shipped = {name: tools[name].get("status") for name in targets if tools[name].get("status") != "shipped"}
-    if not_shipped:
-        print(f"x stale statuses: {not_shipped}")
+    print("-- 2. POSITIVE: target catalog rows use truthful statuses --")
+    expected_status = {
+        "openlineage": "planned",
+        "marquez": "planned",
+        "dagster": "planned",
+        "ragas": "planned",
+        "giskard": "planned",
+        "rebuff": "shipped",
+    }
+    stale = {
+        name: tools[name].get("status")
+        for name, expected in expected_status.items()
+        if tools[name].get("status") != expected
+    }
+    if stale:
+        print(f"x stale statuses: {stale}; expected={expected_status}")
         return 1
-    print("  ok: all target rows are shipped")
+    print("  ok: installed Rebuff remains shipped; not-installed rows are planned")
 
-    print("-- 3. POSITIVE: OpenLineage and Dagster packages import --")
-    if not importable("openlineage"):
-        print("x openlineage package is not importable")
+    print("-- 3. NEGATIVE: OpenLineage and Dagster are not marked shipped while absent --")
+    absent = [name for name, module in {"openlineage": "openlineage", "dagster": "dagster"}.items() if not importable(module)]
+    wrongly_shipped = [name for name in absent if tools[name].get("status") == "shipped"]
+    if wrongly_shipped:
+        print(f"x absent packages still marked shipped: {wrongly_shipped}")
         return 1
-    if not importable("dagster"):
-        print("x dagster package is not importable")
-        return 1
-    print("  ok: openlineage + dagster import")
+    print(f"  ok: absent packages are planned, not shipped: {absent}")
 
-    print("-- 4. POSITIVE: RAGAS and Giskard packages import --")
-    if not importable("ragas"):
-        print("x ragas package is not importable")
+    print("-- 4. NEGATIVE: RAGAS and Giskard are not marked shipped while absent --")
+    absent = [name for name, module in {"ragas": "ragas", "giskard": "giskard"}.items() if not importable(module)]
+    wrongly_shipped = [name for name in absent if tools[name].get("status") == "shipped"]
+    if wrongly_shipped:
+        print(f"x absent packages still marked shipped: {wrongly_shipped}")
         return 1
-    if not importable("giskard"):
-        print("x giskard package is not importable")
-        return 1
-    print("  ok: ragas + giskard import")
+    print(f"  ok: absent packages are planned, not shipped: {absent}")
 
     print("-- 5. NEGATIVE: Rebuff shipped via compatibility adapter, not raw import assumption --")
     from documind_core.rebuff_detector import prepare_langchain_vectorstore_compat
@@ -78,12 +88,12 @@ def main() -> int:
         return 1
     print("  ok: Rebuff package drift handled by adapter")
 
-    print("-- 6. NEGATIVE: shipped rows have evidence, not empty status flips --")
+    print("-- 6. NEGATIVE: target rows have evidence, not empty status flips --")
     for name in targets:
         if not tools[name].get("evidence"):
-            print(f"x shipped tool missing evidence: {name}")
+            print(f"x tool missing evidence: {name}")
             return 1
-    print("  ok: shipped rows carry evidence")
+    print("  ok: target rows carry evidence")
 
     print("\nALL 6 STEPS PASSED")
     return 0

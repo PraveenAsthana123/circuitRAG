@@ -110,13 +110,13 @@ def _advertised_negative_count(doc: str) -> int | None:
 def _actual_step_count(text: str) -> int:
     numbers: set[int] = set()
     # Convention 1: step("N. ...") helper-function style (~129 drills)
-    for m in re.finditer(r'step\("(\d+)\.', text):
+    for m in re.finditer(r'step\(\s*["\'](\d+)\.', text):
         numbers.add(int(m.group(1)))
     # Convention 2: "step N:" inline narrative
     for m in re.finditer(r'step\s+(\d+):', text, re.IGNORECASE):
         numbers.add(int(m.group(1)))
     # Convention 3: print("-- N. POSITIVE/NEGATIVE: ...") banner style (~149 drills)
-    for m in re.finditer(r'print\(f?["\']\s*--\s+(\d+)\.', text):
+    for m in re.finditer(r'print\(\s*f?["\']\s*--\s+(\d+)\.', text):
         numbers.add(int(m.group(1)))
     return len(numbers)
 

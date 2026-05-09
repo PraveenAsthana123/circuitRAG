@@ -5,8 +5,8 @@ that is NOT covered by the BFF /api/v1/integrations-health surface
 (which probes only 19 of 91 tools).
 
 Coverage:
-  - 54 shipped         → probe live state
-  - 30 planned         → report PLANNED (no probe; would-add when deployed)
+  - 16 shipped         → probe live state
+  - 68 planned         → report PLANNED (no probe; would-add when deployed)
   -  4 partial         → probe live state + tag PARTIAL
   -  3 not_applicable  → SKIP
 
@@ -311,6 +311,11 @@ def probe_one(tool: dict[str, Any]) -> dict[str, Any]:
         return {"name": name, "category": cat, "catalog_status": cat_status,
                 "probe_status": "BFF_PROBED",
                 "evidence": "covered by /api/v1/integrations-health",
+                "latency_ms": -1}
+
+    if cat_status == "planned":
+        return {"name": name, "category": cat, "catalog_status": cat_status,
+                "probe_status": "PLANNED", "evidence": "not deployed (catalog status=planned)",
                 "latency_ms": -1}
 
     pt, target = PROBE_OVERRIDES.get(name, ("manual", tool.get("install_path", "?")))

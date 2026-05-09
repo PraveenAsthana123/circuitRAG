@@ -122,6 +122,7 @@ def main() -> int:
     if py_test_dir.is_dir():
         env = os.environ.copy()
         env.setdefault("DOCUMIND_PROMETHEUS_PORT", "0")
+        env.setdefault("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
         result = subprocess.run(
             [
                 str(REPO / ".venv" / "bin" / "python"),

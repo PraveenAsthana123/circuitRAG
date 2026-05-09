@@ -10,7 +10,7 @@
 > footer), §51 (forensic substrate), §53 (enterprise maturity stack),
 > §57.1 (production-grade-by-default).
 
-**Snapshot:** 2026-05-08 · 19/19 BFF tools HEALTHY · 7/7 agent-readiness YES · 14/91 catalog-probed HEALTHY · 16/16 Ollama models WORKING
+**Snapshot:** 2026-05-08 · 19/19 BFF tools HEALTHY · 7/7 agent-readiness YES · 9/91 catalog-probed shipped tools HEALTHY · 16/16 Ollama models WORKING
 
 ---
 
@@ -18,8 +18,8 @@
 
 | Status | Count | Definition |
 |---|---:|---|
-| **shipped** | 54 | Installed/configured/wired in code OR live |
-| **planned** | 30 | Declared in catalog, NOT deployed (deliberate not-yet) |
+| **shipped** | 16 | Installed/configured/wired in code OR live |
+| **planned** | 68 | Declared in catalog, NOT deployed (deliberate not-yet) |
 | **partial** | 4 | Stage-1 adapter / env-gated / scaffold |
 | **not_applicable** | 3 | Decided NOT to use (`crewai`, `d3_js`, `kubernetes_operators`) |
 
@@ -47,21 +47,15 @@
 | 18 | OTel collector | telemetry | http://localhost:9464 | HEALTHY |
 | 19 | cAdvisor | telemetry | http://localhost:8089 | HEALTHY |
 
-### 1.2 The 47 shipped-but-not-BFF-probed (live in repo, status via `catalog_tools_probe.py`)
+### 1.2 The shipped-but-not-BFF-probed tools (live in repo, status via `catalog_tools_probe.py`)
 
-**HEALTHY today (14):** elastic_stack, gitleaks, helm, helm_benchmark, k6, kubescape, mermaid_js, opentelemetry, promptfoo, rebuff, resilience4j (=`documind_core.circuit_breaker`), trivy, mlflow, deepeval
+**HEALTHY shipped today (9):** elastic_stack, gitleaks, helm_benchmark, k6, kubescape, opentelemetry, rebuff, trivy, mlflow
 
-**Plus 9 from `.venv` (verified by direct import):** giskard, great_expectations, langgraph, openlineage, traceloop_openllmetry, trulens_eval, arize-phoenix, lm-eval, inspect_ai
+**Partial but probeable:** deepeval, helm, opa_gatekeeper, neo4j_bloom
 
-**Plus 2 isolated in `.venv-redteam`:** garak, pyrit
+**Demoted from shipped to planned after probe truth refresh:** argo_cd, argo_rollouts, bandit, checkov, counterfit, dagster, falco, garak, giskard, great_expectations, inspect_ai, keda, kube_hunter, kyverno, langgraph, lm_evaluation_harness, locust, loki, marquez, mermaid_js, openbao, opencost, openlineage, opensearch_dashboards, phoenix, promptfoo, pyrit, pyroscope, ragas, resilience4j, semgrep, soda_core, tetragon, tempo, tracee, traceloop_openllmetry, trulens, wazuh.
 
-**Currently NOT installed (for K8s helm releases — needs cluster ops):** argo_cd, argo_rollouts, falco, keda, kyverno, loki, openbao, opencost, tempo, wazuh
-
-**Not pip-installable on py3.12:** counterfit (h5py 3.1.0 ancient pin), vigil-llm (PyPI typo / project moved)
-
-**Linux runtime agents (need root + kernel headers):** tetragon, tracee
-
-### 1.3 The 30 planned (catalog-declared, not deployed)
+### 1.3 The 68 planned (catalog-declared, not deployed)
 
 Workflow / orchestration: `airflow`, `temporal`, `keptn`, `litmuschaos`
 BI / reporting: `apache_superset`, `birt`, `jaspersoft_community`, `knime`, `lightdash`, `metabase`, `pentaho_community`, `redash`

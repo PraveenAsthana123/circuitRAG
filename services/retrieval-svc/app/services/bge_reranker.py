@@ -64,8 +64,8 @@ def status() -> dict[str, Any]:
             "bge_reranker_protected + HybridRetriever flags"
         ),
         "next_stage": (
-            "Tune/evaluate through the protected hot path; do not call "
-            "this adapter directly from retrieval requests"
+            "Stage-2 wiring path: tune/evaluate through the protected hot "
+            "path; do not call this adapter directly from retrieval requests"
         ),
     }
 
