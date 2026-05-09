@@ -1,13 +1,13 @@
 # `TesterAgent` + `mcp_tests` — Brutal Tool Review
 
 **Source:** `services/agent-orchestrator-svc/app/tester.py` + `mcp/server_tests.py`
-**Date:** 2026-05-01
+**Date:** 2026-05-01 (review) · 2026-05-09 (P0 #34 closure verified)
 
 ## Triage
 
 | Severity | Count | Top items |
 |---|---|---|
-| **P0** | 1 | row #34 (subprocess kill on shutdown — orphaned ruff/mypy/pytest processes can outlive the server) |
+| **P0** | 0 | row #34 closed: `mcp/server_tests.py` lines 45-67 — `_ACTIVE_PROCS: set[asyncio.subprocess.Process]` tracks in-flight subprocesses; `_lifespan` shutdown handler kills + awaits all running children before allowing exit; 6 add/discard sites cover success+timeout paths × 3 runners (ruff/pytest/mypy). Drilled by `drill_p0_mcp_graceful_shutdown.py` 7/7 — empirical TestClient enter/exit + structural kill-wait-clear assertions. |
 | **P1** | 4 | rows #10 (no concurrent-subprocess cap; 100 simultaneous calls fork 100 ruff), #21 (no result cache), #36 (no breaker on tests subprocess), #38 (no deadletter for crashed subprocess) |
 | **P2** | 3 | rows #18, #19, #22 |
 

@@ -12,7 +12,7 @@
 | LlmClient Protocol + Pool | [llm-client.md](llm-client.md) | ✅ P0 closed (2026-05-08) | 0 | 3 |
 | StrategistAgent | [agents-strategist.md](agents-strategist.md) | ✅ P0 closed (2026-05-09) | 0 | 4 |
 | ResearchAgent + mcp_research | [agent-research.md](agent-research.md) | 🔍 reviewed | 0 | 5 |
-| TesterAgent + mcp_tests | [agent-tester.md](agent-tester.md) | 🔍 reviewed | 1 | 4 |
+| TesterAgent + mcp_tests | [agent-tester.md](agent-tester.md) | ✅ P0 closed (2026-05-09) | 0 | 4 |
 | DeployerAgent + mcp_deploy | [agent-deployer.md](agent-deployer.md) | 🔍 reviewed | 0 | 4 |
 | ObserverAgent + mcp_observe | [agent-observer.md](agent-observer.md) | 🔍 reviewed | 0 | 3 |
 | ReviewerAgent | [agent-reviewer.md](agent-reviewer.md) | 🔍 reviewed | 0 | 3 |
@@ -29,7 +29,7 @@
 
 | Severity | Count across all reviewed tools |
 |---|---|
-| **P0 — will-break-prod** | **3** (was 6; InMemoryTaskStore unbounded-memory + LlmClientPool no-breaker + StrategistAgent missing-timeout all closed 2026-05-08/09) |
+| **P0 — will-break-prod** | **2** (was 6; closed 2026-05-08/09: InMemoryTaskStore unbounded-memory · LlmClientPool no-breaker · StrategistAgent missing-timeout · TesterAgent subprocess-orphan) |
 | **P1 — silent-degradation** | **41** (Kiali anonymous-auth P1 closed by shared/SOC2 OIDC template) |
 | **P2 — operational** | ~37 (was ~30; +7 from Kiali resilience/observability backlog: jitter, slow-call detect, transition counters, stuck-state gauge, port-forward auto-recover, rate limit, Prom-CB) |
 | **P3 — polish** | ~50 (callbacks, OTel, persistent state on non-CB tools) |
