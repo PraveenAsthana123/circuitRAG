@@ -103,9 +103,16 @@ def main() -> int:
             return 1
     print("  ok: all tool names use the paperclip.* namespace")
 
-    print("-- 7. POSITIVE: /v1/tools and /v1/health endpoints registered --")
+    print("-- 7. POSITIVE: versioned + standard MCP endpoints registered --")
     routes = {r.path: r for r in server_paperclip.app.routes}
-    for required_path in ("/v1/tools", "/v1/tools/call", "/v1/health"):
+    for required_path in (
+        "/v1/tools",
+        "/v1/tools/call",
+        "/v1/health",
+        "/tools/list",
+        "/tools/call",
+        "/health",
+    ):
         if required_path not in routes:
             print(f"x route missing: {required_path!r}")
             return 1
@@ -118,7 +125,16 @@ def main() -> int:
     if "POST" not in call_methods:
         print(f"x /v1/tools/call must support POST; got {call_methods}")
         return 1
-    print("  ok: /v1/tools (GET) + /v1/tools/call (POST) + /v1/health (GET)")
+    if "GET" not in routes["/tools/list"].methods:
+        print(f"x /tools/list must support GET; got {routes['/tools/list'].methods}")
+        return 1
+    if "POST" not in routes["/tools/call"].methods:
+        print(f"x /tools/call must support POST; got {routes['/tools/call'].methods}")
+        return 1
+    if "GET" not in routes["/health"].methods:
+        print(f"x /health must support GET; got {routes['/health'].methods}")
+        return 1
+    print("  ok: v1 routes plus /tools/list, /tools/call, /health aliases")
 
     print("-- 8. NEGATIVE: importing module does NOT spawn paperclip subprocess --")
     # Stage-1 contract: module import must be cheap (<200ms) and must

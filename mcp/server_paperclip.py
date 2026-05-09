@@ -154,7 +154,7 @@ def _run_snapshot(window_days: int) -> dict[str, Any]:
     the metrics dashboard.
     """
     started = time.time()
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 - fixed Python script argv; read-only local aggregator
         [PY_BIN, str(PAPERCLIP_SCRIPT), "snapshot",
          "--window-days", str(window_days)],
         capture_output=True, text=True, timeout=DEFAULT_TIMEOUT_S, cwd=REPO,
@@ -249,6 +249,12 @@ async def list_tools(authorization: str | None = Header(None)) -> dict[str, Any]
     return {"tools": TOOLS}
 
 
+@app.get("/tools/list")
+async def list_tools_compat(authorization: str | None = Header(None)) -> dict[str, Any]:
+    """Compatibility alias for the standard fleet health probe."""
+    return await list_tools(authorization)
+
+
 @app.post("/v1/tools/call")
 async def call_tool(
     payload: ToolCallRequest,
@@ -287,6 +293,16 @@ async def call_tool(
     )
 
 
+@app.post("/tools/call")
+async def call_tool_compat(
+    payload: ToolCallRequest,
+    authorization: str | None = Header(None),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    """Compatibility alias for standard MCP clients."""
+    return await call_tool(payload, authorization, idempotency_key)
+
+
 @app.get("/v1/health")
 async def health() -> dict[str, Any]:
     """Liveness probe — does NOT call paperclip subprocess.
@@ -297,6 +313,12 @@ async def health() -> dict[str, Any]:
         "stage": 1,
         "script_present": PAPERCLIP_SCRIPT.exists(),
     }
+
+
+@app.get("/health")
+async def health_compat() -> dict[str, Any]:
+    """Compatibility alias for the standard fleet health probe."""
+    return await health()
 
 
 if __name__ == "__main__":
