@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "auto_approval_allowed": true,
+  "max_risk": "medium",
+  "requires_tests_passed": true,
+  "min_confidence": 0.7,
+
+  "blocked_actions": [
+    "delete_system_file",
+    "delete_history",
+    "delete_audit",
+    "modify_os_config",
+    "access_secret",
+    "run_destructive_command",
+    "force_push_main",
+    "modify_security_policy_without_approval"
+  ],
+
+  "human_required_actions": [
+    "code_merge",
+    "file_write",
+    "infrastructure_change",
+    "permission_change",
+    "deploy_production",
+    "delete_data",
+    "delete_file",
+    "modify_security_policy",
+    "send_external_email",
+    "modify_billing"
+  ],
+
+  "auto_approve_task_types": [
+    "documentation_update",
+    "plan_creation",
+    "research_summary",
+    "test_report",
+    "dashboard_update",
+    "recommendation",
+    "code_suggestion"
+  ],
+
+  "human_required_task_types": [
+    "code_merge",
+    "production_deploy",
+    "delete_file",
+    "secret_change",
+    "policy_change",
+    "external_communication"
+  ]
+}
