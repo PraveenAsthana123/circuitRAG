@@ -116,7 +116,7 @@ Run:
 
 ```bash
 python3 mcp/tests/drill_hybrid_architect.py
-# ALL 8 STEPS PASSED
+# ALL 9 STEPS PASSED
 ```
 
 ## Composes with
@@ -130,7 +130,7 @@ Per §49:
 - [`safety_store`](../../safety_store/__init__.py) — every run persists
 - [`scripts/langfuse_tracer.py`](../../scripts/langfuse_tracer.py) — trace emission
 - [`docs/runbooks/langfuse.md`](langfuse.md) — Langfuse runbook
-- [`mcp/tests/drill_hybrid_architect.py`](../../mcp/tests/drill_hybrid_architect.py) — 8-step contract
+- [`mcp/tests/drill_hybrid_architect.py`](../../mcp/tests/drill_hybrid_architect.py) — 9-step contract
 
 ## Brutal rule
 

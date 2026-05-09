@@ -8,7 +8,7 @@ each have their own LLM-touching drills; this drill validates the
 COMPOSITION logic via dependency-injected stubs — fast, deterministic,
 CI-able. LLM behaviour is out of scope here by design.
 
-Eight steps. Five negative.
+Nine steps. Six negative.
 
 Step coverage:
   1. POSITIVE: package imports + _pick_lane mapping covers all 4 tiers
@@ -19,6 +19,7 @@ Step coverage:
   6. NEGATIVE: council 'reject' overrides hub answer (final_decision=REJECT)
   7. POSITIVE: history row written, HybridDecision serializable to JSON
   8. NEGATIVE: unknown risk defaults to safest lane (hub_council_deep_hitl)
+  9. POSITIVE+NEG: fast low-risk path skips injected hub/council LLM calls
 """
 from __future__ import annotations
 
@@ -38,12 +39,10 @@ os.environ["SAFETY_STORE_DB"] = str(_TMPDB)
 
 from agent_cli.orchestrator import CouncilResult  # noqa: E402
 from agent_cli.schemas import CouncilDecision  # noqa: E402
-from council_engine.orchestrator import CouncilRun  # noqa: E402
 from council_engine.agents.roles import AgentResponse  # noqa: E402
-
-from hybrid_architect import HybridDecision, _pick_lane  # noqa: E402
+from council_engine.orchestrator import CouncilRun  # noqa: E402
+from hybrid_architect import _pick_lane  # noqa: E402
 from hybrid_architect.architect import _process, to_dict  # noqa: E402
-
 
 # ---------- stub builders ------------------------------------------------
 
@@ -303,7 +302,37 @@ def main() -> int:
         return 1
     print("  ok: unknown risk → safest lane + HITL escalation flag")
 
-    print("\nALL 8 STEPS PASSED")
+    print(
+        "-- 9. POSITIVE+NEG: fast low-risk path skips injected hub/council LLM calls --"
+    )
+    counter = _Counter()
+    decision = _process(
+        "what does a status check do?",
+        request_id="r9",
+        actor="drill",
+        skip_presenter=True,
+        hub_fn=counter.hub_fn,
+        council_fn=counter.council_fn,
+        fast_low_risk=True,
+    )
+    if decision.lane != "hub_only":
+        print(f"x fast path lane={decision.lane}, expected hub_only")
+        return 1
+    if counter.hub_calls != 0 or counter.council_calls != 0:
+        print(
+            f"x fast path invoked LLM stubs "
+            f"(hub={counter.hub_calls}, council={counter.council_calls})"
+        )
+        return 1
+    if decision.hub_approval != "AUTO_APPROVED":
+        print(f"x fast path hub_approval={decision.hub_approval}")
+        return 1
+    if "FAST-PATH LOW-RISK RESPONSE" not in decision.final_answer:
+        print("x fast path final answer missing marker")
+        return 1
+    print("  ok: fast low-risk path preserves audit while skipping LLM hub/council")
+
+    print("\nALL 9 STEPS PASSED")
     return 0
 
 

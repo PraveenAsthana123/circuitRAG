@@ -8,11 +8,14 @@ Internal entrypoint (for drills + DI):
 """
 from __future__ import annotations
 
+import os
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
+from agent_cli.orchestrator import CouncilResult
 from agent_cli.orchestrator import run_council as _run_hub
 from council_engine.orchestrator import run_council as _run_full_council
 from risk_classifier import classify
@@ -74,6 +77,60 @@ def _lane_to_council_risk(lane: Lane) -> str:
     }.get(lane, "high")
 
 
+def _env_truthy(name: str, default: str = "1") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _run_fast_low_risk_hub(
+    user_input: str,
+    *,
+    actor: str,
+    session_id: str,
+    skip_presenter: bool = False,
+) -> CouncilResult:
+    """Deterministic low-risk hub for status/explanation requests.
+
+    The normal hub spends four local model calls before approval. Low-risk
+    Hybrid Architect requests do not need that spend to preserve governance:
+    this path still records an agent_cli_session row and lets the outer
+    hybrid_decision row persist the lane decision.
+    """
+    del skip_presenter
+    record = save_history(
+        entity_type="agent_cli_session",
+        entity_id=session_id,
+        action="fast_low_risk_session",
+        old_value=None,
+        new_value={
+            "user_input": user_input,
+            "approval_decision": "AUTO_APPROVED",
+            "fast_path": "hybrid_low_risk",
+        },
+        actor=actor,
+        reason=f"hybrid low-risk fast path session id={session_id}",
+        approved_by="hybrid_architect",
+    )
+    final_answer = (
+        "FAST-PATH LOW-RISK RESPONSE\n"
+        f"Request: {user_input}\n"
+        "Decision: AUTO_APPROVED. The request was classified as low risk, "
+        "so Hybrid Architect skipped the multi-agent LLM hub and preserved "
+        "the audit trail through the fast-path history row."
+    )
+    return CouncilResult(
+        user_input=user_input,
+        final_answer=final_answer,
+        plan="low-risk fast path",
+        research="not required for low-risk status/explanation request",
+        advice="proceed",
+        critique="no high-risk action detected",
+        approval_decision="AUTO_APPROVED",
+        approval_reason="hybrid_low_risk_fast_path",
+        history_id=record.history_id,
+        session_id=session_id,
+    )
+
+
 def _maybe_open_trace(request_id: str):
     """Lazy + offline-safe Langfuse trace context.
 
@@ -115,6 +172,7 @@ def _process(
     skip_presenter: bool,
     hub_fn: Callable[..., Any],
     council_fn: Callable[..., Any],
+    fast_low_risk: bool = False,
 ) -> HybridDecision:
     if not user_input or not user_input.strip():
         raise ValueError("user_input must be non-empty")
@@ -132,9 +190,14 @@ def _process(
 
     with _maybe_open_trace(rid) as (ctx, span_fn):
         # 2. Hub always runs
+        selected_hub_fn = (
+            _run_fast_low_risk_hub
+            if fast_low_risk and lane == "hub_only"
+            else hub_fn
+        )
         if span_fn and ctx is not None:
             with span_fn(ctx, "hub.run", inputs={"user_input": user_input[:200]}) as sp:
-                hub = hub_fn(
+                hub = selected_hub_fn(
                     user_input,
                     actor=actor,
                     session_id=rid,
@@ -143,7 +206,7 @@ def _process(
                 sp.outputs["approval"] = hub.approval_decision
                 sp.outputs["history_id"] = hub.history_id
         else:
-            hub = hub_fn(
+            hub = selected_hub_fn(
                 user_input,
                 actor=actor,
                 session_id=rid,
@@ -247,6 +310,7 @@ def process(
     request_id: str | None = None,
     actor: str = "hybrid_architect",
     skip_presenter: bool = False,
+    fast_low_risk: bool | None = None,
 ) -> HybridDecision:
     """Public entrypoint — composes hub + council per risk tier."""
     return _process(
@@ -254,6 +318,11 @@ def process(
         request_id=request_id,
         actor=actor,
         skip_presenter=skip_presenter,
+        fast_low_risk=(
+            _env_truthy("HYBRID_ARCHITECT_FAST_LOW_RISK", "1")
+            if fast_low_risk is None
+            else fast_low_risk
+        ),
         hub_fn=_run_hub,
         council_fn=_run_full_council,
     )
