@@ -349,11 +349,11 @@ spec:
       'bash scripts/kiali-port-forward.sh (idempotent; svc/kiali 20001:20001)',
       'python3 scripts/generate-grafana-dashboards.py (writes 15 dashboards)',
       'Grafana auto-picks up via 30s provisioning poll',
-      'BFF /api/v1/integrations-health probes http://localhost:20001/kiali/healthz → HEALTHY',
+      'BFF /api/v1/integrations-health probes localhost:20001/kiali/healthz → HEALTHY',
     ],
-    output: 'Kiali console at http://localhost:20001/kiali with: live mesh graph (istiod + gateways + 13 SEs), Prometheus metrics (real Istio + forward-contract documind_*), Jaeger traces (in-cluster trace lookups), 15 Grafana deep-links (each click lands on a real dashboard).',
+    output: 'Kiali console at localhost:20001/kiali with: live mesh graph (istiod + gateways + 13 SEs), Prometheus metrics (real Istio + forward-contract documind_*), Jaeger traces (in-cluster trace lookups), 15 Grafana deep-links (each click lands on a real dashboard).',
     flowchart: `flowchart LR
-  op[Operator] -->|http://localhost:20001/kiali| pf[kubectl port-forward]
+  op[Operator] -->|localhost:20001/kiali| pf[kubectl port-forward]
   pf -->|svc/kiali 20001| ks[Kiali pod in minikube]
   ks -->|external_services.prometheus| prom[(Prometheus on host:9090)]
   ks -->|external_services.grafana| graf[(Grafana on host:3001)]
@@ -372,7 +372,7 @@ spec:
   participant G as Grafana (host)
   participant J as Jaeger (host)
   Op->>BFF: GET /api/v1/integrations-health
-  BFF->>K: GET http://localhost:20001/kiali/healthz
+  BFF->>K: GET localhost:20001/kiali/healthz
   K-->>BFF: 200 (healthy)
   BFF-->>Op: { Kiali: HEALTHY, latency_ms: 41 }
   Op->>K: open /kiali console

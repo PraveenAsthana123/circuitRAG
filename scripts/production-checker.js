@@ -132,6 +132,11 @@ const checks = [
           /@echo\s/,               // Makefile @echo lines in docs
           /\\t/,                    // pages embedding Makefile snippets render \t literals
           /<code/i,                // markdown/HTML code fences in deep-dive docs
+          /health_url\s*:/,        // BFF integrations-health probe targets — internal,
+                                   // not user-rendered. Probes hit host services from
+                                   // the Next.js process; localhost is the canonical
+                                   // form. ui_url already has process.env. fallback;
+                                   // health_url is BFF-only and stays direct.
         ],
       });
       return { pass: hits.length === 0, count: hits.length, sample: hits.slice(0, 3) };
