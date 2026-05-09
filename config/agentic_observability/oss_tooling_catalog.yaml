@@ -393,22 +393,22 @@ tools:
     purpose: "eBPF runtime syscall detection"
     license: Apache-2.0
     priority: P2
-    status: planned
-    install_path: "kubectl apply -f https://github.com/aquasecurity/tracee/releases/latest/download/tracee.yaml"
+    status: shipped
+    install_path: "kubectl apply -k infra/runtime-security && helm upgrade --install tracee aqua/tracee -n tracee -f infra/runtime-security/helm-values/tracee-values.yaml"
   - name: tetragon
     category: runtime_security
     purpose: "eBPF security observability + enforcement"
     license: Apache-2.0
     priority: P2
-    status: planned
-    install_path: "helm install tetragon cilium/tetragon -n kube-system"
+    status: shipped
+    install_path: "kubectl apply -k infra/runtime-security && helm upgrade --install tetragon cilium/tetragon -n tetragon -f infra/runtime-security/helm-values/tetragon-values.yaml"
   - name: wazuh
     category: runtime_security
     purpose: "OSS SIEM/XDR + endpoint security"
     license: GPL-2.0
     priority: P2
-    status: planned
-    install_path: "docker compose up wazuh"
+    status: shipped
+    install_path: "docker compose -f infra/runtime-security/wazuh-compose.yml up -d"
   - name: suricata
     category: runtime_security
     purpose: "IDS/IPS network packet inspection"

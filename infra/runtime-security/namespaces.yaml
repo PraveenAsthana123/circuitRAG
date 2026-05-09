@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tetragon
+  labels:
+    app.kubernetes.io/name: tetragon
+    app.kubernetes.io/part-of: documind-runtime-security
+    app.kubernetes.io/managed-by: kustomize
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tracee
+  labels:
+    app.kubernetes.io/name: tracee
+    app.kubernetes.io/part-of: documind-runtime-security
+    app.kubernetes.io/managed-by: kustomize
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wazuh
+  labels:
+    app.kubernetes.io/name: wazuh
+    app.kubernetes.io/part-of: documind-runtime-security
+    app.kubernetes.io/managed-by: kustomize

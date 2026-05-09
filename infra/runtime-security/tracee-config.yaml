@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tracee-documind-rules
+  namespace: tracee
+  labels:
+    app.kubernetes.io/name: tracee
+    app.kubernetes.io/part-of: documind-runtime-security
+    app.kubernetes.io/managed-by: kustomize
+data:
+  documind-rules.rego: |
+    package tracee.documind
+
+    import rego.v1
+
+    default allow := true
+
+    suspicious_binaries := {
+      "nc", "netcat", "ncat", "socat", "bash", "sh",
+      "curl", "wget", "nsenter", "unshare", "chmod", "chown",
+    }
+
+    sensitive_paths := {
+      "/etc/kubernetes/",
+      "/var/run/secrets/kubernetes.io/",
+      "/mnt/deepa/rag/.env",
+      "/mnt/deepa/rag/data/secrets/",
+    }
+
+    finding contains {"severity": "critical", "rule": "container_escape_attempt", "event": input.eventName} if {
+      input.eventName == "container_escape"
+    }
+
+    finding contains {"severity": "high", "rule": "sensitive_file_access", "path": path} if {
+      path := input.args.pathname
+      some prefix in sensitive_paths
+      startswith(path, prefix)
+    }
+
+    finding contains {"severity": "medium", "rule": "suspicious_binary_exec", "binary": binary} if {
+      input.eventName == "execve"
+      path := input.args.pathname
+      parts := split(path, "/")
+      binary := parts[count(parts) - 1]
+      suspicious_binaries[parts[count(parts) - 1]]
+    }
+
+    finding contains {"severity": "medium", "rule": "unexpected_outbound_connect", "event": input.eventName} if {
+      input.eventName == "connect"
+    }
+
+    allow := false if {
+      count(finding) > 0
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tracee-documind-values
+  namespace: tracee
+  labels:
+    app.kubernetes.io/name: tracee
+    app.kubernetes.io/part-of: documind-runtime-security
+    app.kubernetes.io/managed-by: kustomize
+data:
+  values.yaml: |
+    tracee:
+      output:
+        json: true
+        option:
+          parseArguments: true
+          parseArgumentsFDs: true
+      rules:
+        enabled: true
+      metrics:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+      securityContext:
+        privileged: true
+      tolerations:
+        - operator: Exists
+      nodeSelector:
+        kubernetes.io/os: linux

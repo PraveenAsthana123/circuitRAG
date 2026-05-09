@@ -1,0 +1,18 @@
+tetragon:
+  enabled: true
+  export:
+    mode: stdout
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+  enableProcessCred: true
+  enableProcessNs: true
+  enableK8sAPI: true
+  fieldFilters:
+    - "event_set=PROCESS_EXEC,PROCESS_EXIT,PROCESS_KPROBE"
+    - "namespace!=kube-system"
+  nodeSelector:
+    kubernetes.io/os: linux
+  tolerations:
+    - operator: Exists

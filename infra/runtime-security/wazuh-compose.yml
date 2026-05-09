@@ -1,0 +1,58 @@
+services:
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:4.9.2
+    container_name: documind-wazuh-indexer
+    restart: unless-stopped
+    environment:
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+    ports:
+      - "9201:9200"
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 20
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.9.2
+    container_name: documind-wazuh-manager
+    restart: unless-stopped
+    ports:
+      - "1514:1514/udp"
+      - "1515:1515"
+      - "55000:55000"
+    environment:
+      INDEXER_URL: http://wazuh-indexer:9200
+      FILEBEAT_SSL_VERIFICATION_MODE: none
+    volumes:
+      - wazuh-manager-data:/var/ossec/data
+      - ./wazuh/ossec.conf:/wazuh-config-mount/etc/ossec.conf:ro
+    depends_on:
+      wazuh-indexer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:55000 >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 20
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.9.2
+    container_name: documind-wazuh-dashboard
+    restart: unless-stopped
+    ports:
+      - "5602:5601"
+    environment:
+      INDEXER_URL: http://wazuh-indexer:9200
+      WAZUH_API_URL: http://wazuh-manager:55000
+    depends_on:
+      wazuh-manager:
+        condition: service_healthy
+
+volumes:
+  wazuh-indexer-data:
+  wazuh-manager-data:
