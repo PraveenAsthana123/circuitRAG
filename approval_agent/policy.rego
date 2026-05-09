@@ -1,10 +1,10 @@
 # Approval policy — Rego mirror of approval_agent/rules.json.
 #
 # When DOCUMIND_APPROVAL_ENGINE=opa is set, approval_agent.decide()
-# delegates to `opa eval` against this file. The Python evaluator stays
-# the default — drill_opa_approval_parity.py asserts both backends
-# produce the same decision for the same input. Flipping the default
-# requires the parity drill green over a configurable sample size.
+# delegates to `opa eval` against this file. OPA is the default engine;
+# the Python evaluator stays as the fallback and explicit override path.
+# drill_opa_approval_parity.py asserts both backends produce the same
+# decision for the same input.
 #
 # Inputs (passed via stdin):
 #   {
