@@ -235,7 +235,10 @@ const PROBES: Probe[] = [
     // Probing 9464/ is the right test: it's the exporter port, reachable
     // from the host, returns 200 when the collector is alive.
     ui_url: process.env.NEXT_PUBLIC_OTEL_URL ?? "http://localhost:9464",
-    health_url: "http://localhost:9464/",
+    // Prometheus exporter on :9464 only serves /metrics. Bare /
+    // returns 404 → BFF reports DEGRADED. Probe /metrics for the
+    // 200 + non-empty body that confirms the exporter is up.
+    health_url: "http://localhost:9464/metrics",
     env_var: "NEXT_PUBLIC_OTEL_URL",
     description: "OTLP ingest + Prometheus re-export (probed on :9464)",
   },
