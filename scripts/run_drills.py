@@ -52,20 +52,23 @@ DRILL_DIR = REPO / "mcp" / "tests"
 
 # Interpreter resolution: prefer the venv that actually has all drill
 # runtime deps. Currently /tmp/documind-venv has them (httpx, asyncpg,
-# etc); the project-resident $REPO/.venv exists but doesn't yet carry
-# every drill dep. Operator flips the order via PYTHON_BIN env once
-# .venv is fully populated.
-# Order: PYTHON_BIN env → /tmp/documind-venv → .venv → sys.executable.
+# etc); the project-resident $REPO/.venv carries the canonical drill
+# dep set as of 2026-05-08 (giskard / langchain / openlineage / rebuff /
+# inspect_ai / phoenix / etc all installed there). The legacy
+# /tmp/documind-venv is kept as a fallback for environments without
+# the repo venv but is no longer the preferred source — it carries
+# stale langchain pins that fail current drill imports.
+# Order: PYTHON_BIN env → .venv → /tmp/documind-venv → sys.executable.
 def _resolve_py_bin() -> str:
     override = os.environ.get("PYTHON_BIN")
     if override and Path(override).exists():
         return override
-    legacy = Path("/tmp/documind-venv/bin/python")
-    if legacy.exists():
-        return str(legacy)
     repo_venv = REPO / ".venv" / "bin" / "python"
     if repo_venv.exists():
         return str(repo_venv)
+    legacy = Path("/tmp/documind-venv/bin/python")
+    if legacy.exists():
+        return str(legacy)
     return sys.executable
 
 
