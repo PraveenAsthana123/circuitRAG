@@ -31,11 +31,15 @@ $ python3 scripts/scenario_batch_and_inference.py --only batch
 from __future__ import annotations
 
 import argparse
+import base64
 import json
+import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -47,6 +51,8 @@ DOCUMENTS_MCP_URL = "http://localhost:8094"
 OLLAMA_URL = "http://localhost:11434"
 QDRANT_URL = "http://localhost:6333"
 NEO4J_URL = "http://localhost:7474"
+NEO4J_USER = os.getenv("DOCUMIND_NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("DOCUMIND_NEO4J_PASSWORD", "documind")
 OPENSEARCH_URL = "http://localhost:59200"
 ELASTICSEARCH_URL = "http://localhost:9200"  # iter-92: spun up via docker compose with named volume
 TEST_CSV_PATH = "/tmp/batch_scenario_test.csv"
@@ -58,12 +64,20 @@ GEN_MODEL = "llama3.2:3b"
 # but /healthz remains open. Tests are best-effort against unauthenticated paths.
 
 
-def _http_post(url: str, body: dict, timeout: float = 60.0) -> tuple[int, bytes, float]:
+def _http_post(
+    url: str,
+    body: dict,
+    timeout: float = 60.0,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, bytes, float]:
     started = time.monotonic()
+    request_headers = {"Content-Type": "application/json"}
+    if headers:
+        request_headers.update(headers)
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=request_headers,
         method="POST",
     )
     try:
@@ -186,26 +200,75 @@ def scenario_inference() -> dict:
 
 
 def scenario_graph_db() -> dict:
-    """C. Graph DB scenario — Neo4j health + Cypher schema query."""
+    """C. Graph DB scenario — authenticated Neo4j Cypher write/read."""
     started = datetime.now(UTC).isoformat()
+    tenant = f"scenario-graph-{int(time.time() * 1000)}"
+    auth = base64.b64encode(f"{NEO4J_USER}:{NEO4J_PASSWORD}".encode()).decode("ascii")
     code, body, latency = _http_post(
         f"{NEO4J_URL}/db/neo4j/tx/commit",
-        {"statements": [{"statement": "RETURN 1 AS smoke"}]},
+        {
+            "statements": [
+                {
+                    "statement": """
+                    MERGE (d:Document {tenant_id: $tenant, id: $doc})
+                    SET d.title = $title
+                    MERGE (ch:Chunk {tenant_id: $tenant, id: $chunk})
+                    SET ch.text = $text, ch.page = 1
+                    MERGE (d)-[:HAS_CHUNK]->(ch)
+                    MERGE (ent:Entity {tenant_id: $tenant, name: $entity})
+                    SET ent.type = $entity_type
+                    MERGE (ch)-[:MENTIONS]->(ent)
+                    WITH ent
+                    MATCH (ent)-[:MENTIONS]-(ch:Chunk {tenant_id: $tenant})
+                    WITH ch, count(ent) AS mentions
+                    MATCH (d:Document {tenant_id: $tenant})-[:HAS_CHUNK]->(ch)
+                    RETURN ch.id AS chunk_id, d.id AS document_id, ch.text AS text, mentions
+                    """,
+                    "parameters": {
+                        "tenant": tenant,
+                        "doc": "doc-1",
+                        "chunk": "chunk-1",
+                        "title": "Neo4j Scenario Smoke",
+                        "text": "Alice works on Neo4j graph retrieval.",
+                        "entity": "Alice",
+                        "entity_type": "Person",
+                    },
+                },
+                {
+                    "statement": "MATCH (n {tenant_id: $tenant}) DETACH DELETE n",
+                    "parameters": {"tenant": tenant},
+                },
+            ]
+        },
         timeout=5.0,
+        headers={"Authorization": f"Basic {auth}"},
     )
     parsed = json.loads(body) if body else {}
-    has_results = bool(parsed.get("results"))
-    # Neo4j returns 401 unauth without basic auth — that's still a healthy probe
-    reachable = code in (200, 401)
+    errors = parsed.get("errors") or []
+    rows = (
+        parsed.get("results", [{}])[0]
+        .get("data", [])
+        if parsed.get("results")
+        else []
+    )
+    row = rows[0].get("row", []) if rows else []
+    smoke_query_passed = (
+        code == 200
+        and not errors
+        and row[:4] == ["chunk-1", "doc-1", "Alice works on Neo4j graph retrieval.", 1]
+    )
     return {
         "scenario": "graph_db",
         "started_at": started,
-        "status": "PASS" if reachable else "FAIL",
+        "status": "PASS" if smoke_query_passed else "FAIL",
         "latency_ms": int(latency * 1000),
         "http_status": code,
-        "reachable": reachable,
-        "smoke_query_passed": has_results,
-        "note": "Neo4j 401 expected without auth header; reachability still verified",
+        "reachable": code == 200,
+        "smoke_query_passed": smoke_query_passed,
+        "rows_returned": len(rows),
+        "errors": errors[:3],
+        "tenant_cleaned_up": True,
+        "note": "Authenticated Neo4j write/read/cleanup smoke via transactional Cypher API.",
     }
 
 
@@ -373,12 +436,11 @@ def scenario_opa() -> dict:
 
 
 def scenario_telemetry() -> dict:
-    """H. OTel/Jaeger/Prometheus telemetry scenario — pipeline reachable."""
+    """H. OTel/Jaeger/Prometheus telemetry scenario — trace path verified."""
     started = datetime.now(UTC).isoformat()
     pipeline = {}
-    # OTel collector :4318 is OTLP HTTP — accept 405 for GET as 'reachable'
+    pipeline["otel_to_jaeger_trace"] = _otel_trace_smoke()
     for name, url in (
-        ("otel_collector_v1_traces", "http://localhost:4318/v1/traces"),
         ("jaeger_ui", "http://localhost:16686/api/services"),
         ("prometheus_query", "http://localhost:9090/api/v1/query?query=up"),
         ("grafana", "http://localhost:3001/api/health"),
@@ -388,13 +450,11 @@ def scenario_telemetry() -> dict:
         try:
             with urllib.request.urlopen(url, timeout=3.0) as r:  # noqa: S310
                 code = r.status
-                body_bytes = r.read()
+                r.read()
         except urllib.error.HTTPError as e:
             code = e.code
-            body_bytes = b""
         except Exception:  # noqa: BLE001
             code = 0
-            body_bytes = b""
         latency_ms = int((time.monotonic() - s) * 1000)
         pipeline[name] = {
             "url": url,
@@ -413,8 +473,8 @@ def scenario_telemetry() -> dict:
             for s in d.get("data", {}).get("result", []):
                 if s.get("value", [None, "0"])[1] == "1":
                     up_count += 1
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            pipeline["prometheus_query"]["error"] = str(exc)
     all_reachable = all(v["reachable"] for v in pipeline.values())
     return {
         "scenario": "telemetry",
@@ -423,11 +483,107 @@ def scenario_telemetry() -> dict:
         "pipeline": pipeline,
         "prometheus_targets_up": up_count,
         "note": (
-            "OTel→Jaeger→Prometheus→Grafana→Alertmanager reachable"
+            "OTel trace export verified in Jaeger; Prometheus/Grafana/Alertmanager reachable"
             if all_reachable
             else "telemetry pipeline has unreachable hops"
         ),
     }
+
+
+def _otel_trace_smoke() -> dict:
+    """Export a real span through OTLP HTTP and verify it is queryable in Jaeger."""
+    otlp_endpoint = os.getenv(
+        "DOCUMIND_OTEL_HTTP_TRACES_ENDPOINT",
+        "http://localhost:4318/v1/traces",
+    )
+    jaeger_api = os.getenv("DOCUMIND_JAEGER_API_URL", "http://localhost:16686")
+    service = "scenario-otel-smoke"
+    operation = "scenario.otel_smoke"
+    correlation_id = uuid.uuid4().hex
+    started = time.monotonic()
+    export_error = ""
+    trace_found = False
+    jaeger_status = 0
+
+    try:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # type: ignore[import-not-found]
+            OTLPSpanExporter,
+        )
+        from opentelemetry.sdk.resources import Resource  # type: ignore[import-not-found]
+        from opentelemetry.sdk.trace import TracerProvider  # type: ignore[import-not-found]
+        from opentelemetry.sdk.trace.export import (  # type: ignore[import-not-found]
+            SimpleSpanProcessor,
+        )
+
+        provider = TracerProvider(
+            resource=Resource.create(
+                {
+                    "service.name": service,
+                    "service.namespace": "documind",
+                    "deployment.environment": "local",
+                },
+            ),
+        )
+        provider.add_span_processor(
+            SimpleSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, timeout=3)),
+        )
+        tracer = provider.get_tracer("scripts.scenario_batch_and_inference")
+        with tracer.start_as_current_span(operation) as span:
+            span.set_attribute("documind.scenario", "telemetry")
+            span.set_attribute("documind.correlation_id", correlation_id)
+        provider.shutdown()
+
+        params = urllib.parse.urlencode(
+            {"service": service, "operation": operation, "limit": "20"},
+        )
+        url = f"{jaeger_api.rstrip('/')}/api/traces?{params}"
+        for _ in range(8):
+            time.sleep(0.5)
+            with urllib.request.urlopen(url, timeout=3.0) as r:  # noqa: S310
+                jaeger_status = r.status
+                payload = json.loads(r.read())
+            trace_found = _jaeger_trace_has_correlation(
+                payload,
+                operation=operation,
+                correlation_id=correlation_id,
+            )
+            if trace_found:
+                break
+    except Exception as exc:  # noqa: BLE001
+        export_error = str(exc)
+
+    latency_ms = int((time.monotonic() - started) * 1000)
+    return {
+        "url": otlp_endpoint,
+        "jaeger_api": jaeger_api,
+        "service": service,
+        "operation": operation,
+        "correlation_id": correlation_id,
+        "jaeger_http_status": jaeger_status,
+        "trace_found_in_jaeger": trace_found,
+        "reachable": trace_found,
+        "latency_ms": latency_ms,
+        "error": export_error,
+    }
+
+
+def _jaeger_trace_has_correlation(
+    payload: dict,
+    *,
+    operation: str,
+    correlation_id: str,
+) -> bool:
+    for trace_row in payload.get("data", []):
+        for span in trace_row.get("spans", []):
+            if span.get("operationName") != operation:
+                continue
+            if any(
+                tag.get("key") == "documind.correlation_id"
+                and tag.get("value") == correlation_id
+                for tag in span.get("tags", [])
+            ):
+                return True
+    return False
 
 
 def scenario_paperclip() -> dict:
@@ -442,10 +598,9 @@ def scenario_paperclip() -> dict:
     try:
         with urllib.request.urlopen("http://localhost:8093/v1/health", timeout=2.0) as r:  # noqa: S310
             code = r.status
-            body = r.read()
+            r.read()
     except Exception:  # noqa: BLE001
         code = 0
-        body = b""
     latency_ms = int((time.monotonic() - s) * 1000)
     return {
         "scenario": "paperclip",
@@ -499,7 +654,7 @@ def scenario_openclaw() -> dict:
 
 
 def scenario_langgraph() -> dict:
-    """K. LangGraph scenario — orchestrator flow file + node graph integrity."""
+    """K. LangGraph scenario — orchestrator flow file + runtime compile integrity."""
     started = datetime.now(UTC).isoformat()
     flow_file = REPO / "services" / "agent-orchestrator-svc" / "app" / "langgraph_flow.py"
     if not flow_file.exists():
@@ -517,20 +672,106 @@ def scenario_langgraph() -> dict:
     # Count nodes
     import re
     node_count = len(re.findall(r"add_node\(", src))
+    runtime_compile = _langgraph_runtime_compile_smoke()
+    static_ok = has_state_graph and has_add_node and has_compile
+    passed = static_ok and runtime_compile["runtime_compile_passed"]
     return {
         "scenario": "langgraph",
         "started_at": started,
-        "status": "PASS" if (has_state_graph and has_add_node and has_compile) else "FAIL",
+        "status": "PASS" if passed else "FAIL",
         "flow_file": str(flow_file.relative_to(REPO)),
         "has_state_graph": has_state_graph,
         "has_add_node": has_add_node,
-        "compiles": has_compile,
+        "has_compile_call": has_compile,
+        "runtime_compile_passed": runtime_compile["runtime_compile_passed"],
+        "runtime_compile": runtime_compile,
         "node_count": node_count,
         "note": (
             f"LangGraph flow present at {flow_file.relative_to(REPO)}; "
-            f"{node_count} nodes; runs inside agent-orchestrator-svc (port 8087)"
+            f"{node_count} declared nodes; runtime compile "
+            f"{'passed' if runtime_compile['runtime_compile_passed'] else 'failed'}"
         ),
     }
+
+
+def _langgraph_runtime_compile_smoke() -> dict:
+    """Import the production builder and compile the full optional-node graph."""
+    started = time.monotonic()
+    service_path = REPO / "services" / "agent-orchestrator-svc"
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    if str(service_path) not in sys.path:
+        sys.path.insert(0, str(service_path))
+    try:
+        from app.agents import ManagerAgent, ReviewerAgent, SecurityAdvisor, WorkerAgent
+        from app.langgraph_flow import build_graph
+        from app.models import AgenticPolicyView
+
+        class _Strategist:
+            async def classify(self, _goal: str) -> dict:
+                return {
+                    "overall_complexity": "medium",
+                    "overall_novelty": "routine",
+                    "needs_research": False,
+                    "summary": "runtime compile smoke",
+                    "source": "drill",
+                }
+
+        class _Researcher:
+            async def research(self, *_args, **_kwargs) -> dict:
+                return {"summary": "not called during compile", "sources": [], "risks": []}
+
+        class _Tester:
+            async def run_tests(self, **_kwargs) -> dict:
+                return {"passed": True, "failed": [], "runner": "compile-smoke"}
+
+        class _Deployer:
+            async def preflight(self, **_kwargs) -> dict:
+                return {
+                    "deploy_safety": "safe",
+                    "summary": "not called during compile",
+                    "auto_applied": False,
+                    "approval_required": True,
+                }
+
+        compiled = build_graph(
+            manager=ManagerAgent(),
+            worker=WorkerAgent(),
+            reviewer=ReviewerAgent(),
+            advisor=SecurityAdvisor(),
+            default_policy=AgenticPolicyView(approval_mode="policy_auto"),
+            strategist=_Strategist(),
+            researcher=_Researcher(),
+            tester=_Tester(),
+            deployer=_Deployer(),
+        )
+        graph_nodes: list[str] = []
+        try:
+            drawable = compiled.get_graph()
+            graph_nodes = sorted(str(node) for node in getattr(drawable, "nodes", {}))
+        except Exception:  # noqa: BLE001
+            graph_nodes = []
+        return {
+            "runtime_compile_passed": True,
+            "compiled_type": type(compiled).__name__,
+            "has_invoke": hasattr(compiled, "invoke"),
+            "has_ainvoke": hasattr(compiled, "ainvoke"),
+            "compiled_node_count": len(graph_nodes),
+            "compiled_nodes_sample": graph_nodes[:8],
+            "latency_ms": int((time.monotonic() - started) * 1000),
+            "error": "",
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "runtime_compile_passed": False,
+            "compiled_type": "",
+            "has_invoke": False,
+            "has_ainvoke": False,
+            "compiled_node_count": 0,
+            "compiled_nodes_sample": [],
+            "latency_ms": int((time.monotonic() - started) * 1000),
+            "error": str(exc),
+        }
 
 
 def main() -> int:
