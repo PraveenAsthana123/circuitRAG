@@ -18,6 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from documind_core.circuit_breaker import CircuitBreaker, CircuitOpenError
+
 from .protocol import LlmCallResult, LlmClient, LlmClientUnavailable
 
 
@@ -51,8 +53,37 @@ class LlmClientPool:
     a missing entry just means the router's fallback chain skips that tier
     transparently. Empty pool → no LLM calls succeed (drill case)."""
 
-    def __init__(self, clients: dict[str, LlmClient]) -> None:
+    def __init__(
+        self,
+        clients: dict[str, LlmClient],
+        *,
+        # P0 #36 closure: each backend call goes through a CircuitBreaker.
+        # When a backend fails `failure_threshold` times consecutively, the
+        # pool stops trying it for `recovery_timeout` seconds (then probes
+        # in HALF_OPEN). This stops a hung Claude CLI from monopolising
+        # the request loop — which §52 review row #36 named as the P0.
+        # Operator-overridable via constructor for tests / per-deploy
+        # tuning. CircuitOpenError is treated as a backend-skip event
+        # (same fallback semantics as LlmClientUnavailable + records
+        # `kind: 'breaker_open'` in fallback_log for explainability).
+        breaker_failure_threshold: int = 3,
+        breaker_recovery_timeout: float = 30.0,
+    ) -> None:
         self._clients: dict[str, LlmClient] = dict(clients)
+        # Per-backend CB. Name = backend; metric cardinality bounded by
+        # the small fixed set ('ollama', 'claude_cli', 'codex_cli').
+        # expected_exception=LlmClientUnavailable means only client-level
+        # failures count toward the breaker; bugs (TypeError etc.)
+        # propagate without flipping the breaker.
+        self._breakers: dict[str, CircuitBreaker] = {
+            name: CircuitBreaker(
+                name=f"llm_pool_{name}",
+                failure_threshold=breaker_failure_threshold,
+                recovery_timeout=breaker_recovery_timeout,
+                expected_exception=LlmClientUnavailable,
+            )
+            for name in self._clients
+        }
 
     def has(self, backend: str) -> bool:
         return backend in self._clients
@@ -96,17 +127,39 @@ class LlmClientPool:
                     "step": idx,
                 })
                 continue
+            breaker = self._breakers.get(handle.backend)
             try:
-                result = await client.generate(
-                    model=handle.model,
-                    prompt=prompt,
-                    timeout_seconds=timeout_seconds,
-                )
+                # P0 #36: route through the CB. CircuitOpenError when
+                # the backend is in OPEN state (recently failed enough);
+                # treated as an explicit backend-skip with kind=
+                # 'breaker_open' so the audit row + explainability
+                # surface can distinguish it from a regular failure.
+                async def _do_call(_client=client, _handle=handle):
+                    return await _client.generate(
+                        model=_handle.model,
+                        prompt=prompt,
+                        timeout_seconds=timeout_seconds,
+                    )
+
+                if breaker is not None:
+                    result = await breaker.call_async(_do_call)
+                else:
+                    result = await _do_call()
+
                 return RouteOutcome(
                     result=result,
                     handle_used=handle.to_dict(),
                     fallback_log=fallback_log,
                 )
+            except CircuitOpenError as exc:
+                attempts.append((handle.to_dict(), f"breaker open: {exc}"))
+                fallback_log.append({
+                    "handle": handle.to_dict(),
+                    "error": str(exc),
+                    "kind": "breaker_open",
+                    "step": idx,
+                })
+                continue
             except LlmClientUnavailable as exc:
                 attempts.append((handle.to_dict(), str(exc)))
                 fallback_log.append({

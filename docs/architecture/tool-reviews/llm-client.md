@@ -1,13 +1,13 @@
 # `LlmClient` Protocol + `LlmClientPool` — Brutal Tool Review
 
 **Source:** `services/agent-orchestrator-svc/app/llm_clients/`
-**Date:** 2026-05-01
+**Date:** 2026-05-01 (review) · 2026-05-08 (P0 #36 closure verified)
 
 ## Triage
 
 | Severity | Count | Top items |
 |---|---|---|
-| **P0 — will-break-prod** | **1** | row #36 (no breaker around the pool itself; CB on the underlying CLI process is missing) |
+| **P0 — will-break-prod** | **0** | row #36 closed: per-backend `CircuitBreaker` wired into `LlmClientPool.__init__` with `expected_exception=LlmClientUnavailable`; `execute()` routes via `breaker.call_async`; `CircuitOpenError` caught + logged with `kind='breaker_open'` in fallback_log. Drilled by `mcp/tests/drill_llm_pool_breaker.py` (8 steps, 4 negative — empirical trip + per-backend isolation). |
 | **P1 — silent-degradation** | **3** | rows #11 (no slow-call), #12 (no sliding window), #34 (no graceful shutdown of subprocess clients) |
 | **P2 — operational** | 4 | rows #19 (no force-flip backend), #20 (no on-call hooks), #21 (no persistent backend-health), #22 (no health probe) |
 | **P3** | several | metrics, audit hooks |
