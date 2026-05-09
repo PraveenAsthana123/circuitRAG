@@ -101,8 +101,8 @@ class ToolCallRequest(BaseModel):
 # ---------------------------------------------------------------------
 
 def _curl_post(url: str, payload: dict, timeout: float) -> dict:
-    proc = subprocess.run(
-        ["curl", "-s", "--max-time", str(int(timeout)),
+    proc = subprocess.run(  # noqa: S603 - fixed curl argv; URL is service config
+        ["curl", "-s", "--max-time", str(int(timeout)),  # noqa: S607
          "-X", "POST", url,
          "-H", "Content-Type: application/json",
          "-d", json.dumps(payload)],
@@ -126,8 +126,8 @@ def _curl_post(url: str, payload: dict, timeout: float) -> dict:
 
 
 def _curl_get(url: str, timeout: float) -> dict:
-    proc = subprocess.run(
-        ["curl", "-s", "--max-time", str(int(timeout)), url],
+    proc = subprocess.run(  # noqa: S603 - fixed curl argv; URL is service config
+        ["curl", "-s", "--max-time", str(int(timeout)), url],  # noqa: S607
         capture_output=True, text=True, timeout=timeout + 5,
     )
     if proc.returncode != 0:
@@ -219,11 +219,15 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
 def create_app() -> FastAPI:
     app = FastAPI(title="mcp-server-ollama", version="0.1.0")
     setup_server_otel(app, service_name="mcp-server-ollama")
-    AUTH_REQUIRED, VERIFIER = build_auth()
+    auth_required, verifier = build_auth()
 
     @app.get("/health/live")
     async def live() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok", "service": "mcp-server-ollama"}
 
     @app.get("/health/ready")
     async def ready() -> dict[str, str]:
@@ -232,7 +236,10 @@ def create_app() -> FastAPI:
             _curl_get(f"{OLLAMA_URL}/api/tags", timeout=3.0)
             return {"status": "ready"}
         except HTTPException:
-            raise HTTPException(status_code=503, detail={"error": "ollama_unreachable"})
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "ollama_unreachable"},
+            ) from None
 
     @app.get("/tools/list")
     async def list_tools() -> dict[str, Any]:
@@ -249,15 +256,15 @@ def create_app() -> FastAPI:
         if meta is None:
             raise HTTPException(status_code=404,
                                 detail={"error": "unknown_tool", "tool": req.tool})
-        if AUTH_REQUIRED:
+        if auth_required:
             for scope in meta["required_scopes"]:
-                enforce_scope(VERIFIER, authorization, scope)
+                enforce_scope(verifier, authorization, scope)
         try:
             args = meta["args_schema"].model_validate(req.arguments)
         except ValidationError as ve:
             raise HTTPException(status_code=400,
                                 detail={"error": "invalid_args",
-                                        "errors": [str(e) for e in ve.errors()[:3]]})
+                                        "errors": [str(e) for e in ve.errors()[:3]]}) from ve
         return meta["handler"](args)
 
     return app

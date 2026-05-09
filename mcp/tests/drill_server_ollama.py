@@ -98,13 +98,13 @@ def main() -> int:
                 return 1
     print("  ok: all scopes namespaced under 'ollama:*'")
 
-    print("-- 8. POSITIVE: FastAPI app exposes /health/live, /health/ready, /tools/list, /tools/call --")
+    print("-- 8. POSITIVE: FastAPI app exposes standard MCP health/tool routes --")
     routes = {r.path for r in so.app.routes if hasattr(r, "path")}
-    for required in ("/health/live", "/health/ready", "/tools/list", "/tools/call"):
+    for required in ("/health", "/health/live", "/health/ready", "/tools/list", "/tools/call"):
         if required not in routes:
             print(f"x step 8: missing route {required}; got {sorted(routes)}")
             return 1
-    print("  ok: 4 standard MCP routes present")
+    print("  ok: 5 standard MCP routes present")
 
     print()
     print("ALL 8 STEPS PASSED")
