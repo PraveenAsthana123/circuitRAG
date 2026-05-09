@@ -34,7 +34,7 @@ COMPOSES WITH (per §49):
     services/retrieval-svc/app/services/reranker.py — RRF (RRF order
         preserved on fallback path)
     services/retrieval-svc/app/services/hybrid_retriever.py — caller
-        site (Stage-2 wiring lands here in next iteration)
+        site (optional hot-path wiring via BGE_RERANKER_IN_HOT_PATH)
     docs/architecture/llvm-mlir-circuit-breaker-2026-05-04.md — design
     §43 — drill discipline
     §47 — fallback path is § rule
@@ -171,12 +171,13 @@ def status() -> dict[str, Any]:
         "threshold": BGE_WRAPPER_THRESHOLD,
         "recovery_s": BGE_WRAPPER_RECOVERY_S,
         "wiring_status": (
-            "stage-2 protected wrapper; Stage-3 wires it into "
-            "HybridRetriever.retrieve as a post-RRF stage"
+            "stage-2 protected wrapper; HybridRetriever can invoke it "
+            "as an opt-in post-RRF stage via BGE_RERANKER_IN_HOT_PATH"
         ),
         "next_stage": (
-            "Stage-3 — wire protected_rerank() into HybridRetriever after "
-            "RRF + min_score; opt-in via BGE_RERANKER_IN_HOT_PATH=1"
+            "Stage-4 — empirical promotion: run protected hot path against "
+            "RAG-test queries, compare precision/latency, then decide "
+            "whether to default-enable per environment"
         ),
     }
     wrapper = _get_wrapper()

@@ -59,8 +59,14 @@ def status() -> dict[str, Any]:
         "enabled_env": BGE_RERANKER_ENABLED,
         "model": BGE_RERANKER_MODEL,
         "available": is_available(),
-        "wiring_status": "stage-1 adapter only; not wired into HybridRetriever yet",
-        "next_stage": "Stage-2 — wire after RRF in HybridRetriever; drill empirically vs RAG-test queries",
+        "wiring_status": (
+            "stage-1 adapter; optional hot-path use is mediated by "
+            "bge_reranker_protected + HybridRetriever flags"
+        ),
+        "next_stage": (
+            "Tune/evaluate through the protected hot path; do not call "
+            "this adapter directly from retrieval requests"
+        ),
     }
 
 

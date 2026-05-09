@@ -12,6 +12,7 @@ Locks the Stage-2 promotion that:
     breaker-open (NEVER raises — silent pass-through preserves caller pipeline)
   - Wrapper instance cached at module level (per-process breaker state)
   - status() reports stage=2 + composed snapshot from both Stage-1 adapters
+    and truthful Stage-4 empirical next step after hot-path wiring exists
   - Drill imports module top-level cleanly without crashing
 
 Eight steps. Six negative.
@@ -51,8 +52,12 @@ def main() -> int:
     print("-- 2. NEGATIVE: BGE Stage-1 + NativeComputeWrapper sources UNCHANGED --")
     bge_src = BGE.read_text(encoding="utf-8")
     wrap_src = WRAPPER.read_text(encoding="utf-8")
-    if "bge_reranker_protected" in bge_src or "protected_rerank" in bge_src:
-        print("x bge_reranker.py has Stage-2 leakage — must be a separate module")
+    if (
+        "from app.services.bge_reranker_protected" in bge_src
+        or "import bge_reranker_protected" in bge_src
+        or "protected_rerank(" in bge_src
+    ):
+        print("x bge_reranker.py has Stage-2 wiring leakage — must be a separate module")
         return 1
     if "bge_reranker_protected" in wrap_src or "protected_rerank" in wrap_src:
         print("x native_compute_wrapper.py has Stage-2 leakage")
@@ -135,7 +140,7 @@ def main() -> int:
         return 1
     print("  ok: 3 wrapper params all env-overridable")
 
-    print("-- 8. POSITIVE: status() reports stage=2 + Stage-3 next path --")
+    print("-- 8. POSITIVE: status() reports stage=2 + Stage-4 empirical next path --")
     s = mod.status()
     if s.get("stage") != 2:
         print(f"x stage must be 2; got {s.get('stage')}")
@@ -145,13 +150,16 @@ def main() -> int:
         if key not in s:
             print(f"x status missing key: {key}")
             return 1
-    if "Stage-3" not in s["next_stage"]:
-        print("x next_stage must reference Stage-3 wiring path")
+    if "Stage-4" not in s["next_stage"]:
+        print("x next_stage must reference Stage-4 empirical promotion path")
         return 1
-    if "HybridRetriever" not in s["next_stage"] and "hybrid" not in s["next_stage"].lower():
-        print("x next_stage must mention HybridRetriever (where Stage-3 wires)")
+    if "RAG-test" not in s["next_stage"] and "precision" not in s["next_stage"].lower():
+        print("x next_stage must mention empirical RAG-test/precision evaluation")
         return 1
-    print("  ok: status reports stage=2 + Stage-3 path mentions HybridRetriever")
+    if "BGE_RERANKER_IN_HOT_PATH" not in s["wiring_status"]:
+        print("x wiring_status must mention the hot-path opt-in flag")
+        return 1
+    print("  ok: status reports stage=2 + Stage-4 empirical next step")
 
     print()
     print("ALL 8 STEPS PASSED")
