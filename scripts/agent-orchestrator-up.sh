@@ -1,5 +1,10 @@
 #!/bin/bash
 # Idempotent boot for agent-orchestrator-svc on port 8050.
+case "${1:-}" in
+  -h|--help)
+    sed -n '2,30p' "$0" | sed 's/^# \?//'
+    exit 0 ;;
+esac
 #
 # Why this script exists:
 #   The service has a Dockerfile but isn't in docker-compose.yml yet
