@@ -1,13 +1,13 @@
 # `StrategistAgent` — Brutal Tool Review
 
 **Source:** `services/agent-orchestrator-svc/app/agents.py::StrategistAgent`
-**Date:** 2026-05-01
+**Date:** 2026-05-01 (review) · 2026-05-09 (P0 #1 closure verified)
 
 ## Triage
 
 | Severity | Count | Top items |
 |---|---|---|
-| **P0** | 1 | row #1 (no per-call timeout when LLM hangs — relies on caller's `call_timeout_s`) |
+| **P0** | 0 | row #1 closed: `classify()` wraps `_classify_unbounded()` in `asyncio.wait_for(timeout=classify_timeout_s)` (default 30s); on `TimeoutError` returns heuristic with `llm_unavailable` field. Drilled by `drill_p0_memory_and_strategist_timeout.py` step 6 — empirical "hung pool → heuristic returned in 201ms (timeout=200ms)". |
 | **P1** | 4 | rows #5 (broad except), #11 (no slow-call), #18 (no drill on JSON parse edge cases), #25 (no audit field) |
 | **P2** | 3 | rows #19, #20, #22 |
 
@@ -15,7 +15,7 @@
 
 | # | Dimension | Status | Note |
 |---|---|---|---|
-| 1 | Per-call timeout | ⚠ | **P0** — relies on `_routed_generate` → `pool.execute` → `call_timeout_s`; if pool was constructed without it, strategist hangs |
+| 1 | Per-call timeout | ✅ | **P0 CLOSED** — `classify(classify_timeout_s=30.0)` adds an outer `asyncio.wait_for` deadline regardless of pool config. Strategist's heuristic fallback is the safety net. See agents.py lines 160-173. |
 | 2 | Cancellation safety | ✅ | `_routed_generate` propagates Cancelled correctly |
 | 3 | Atomic state | n/a | Stateless |
 | 4 | Race-free | n/a | — |
