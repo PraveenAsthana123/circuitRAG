@@ -20,7 +20,7 @@
 
 version: 1
 schema_version: 1
-generated_at: "2026-05-07"
+generated_at: "2026-05-08"
 generator: "operator-curated; verified by drill_oss_tooling_catalog.py"
 
 # 15 categories per the user blueprint
@@ -230,7 +230,8 @@ tools:
     purpose: "Standardized lineage SDK"
     license: Apache-2.0
     priority: P1
-    status: planned
+    status: shipped
+    evidence: "openlineage package importable in .venv; install scripts wire openlineage-python; catalog refresh drill locks shipped row"
     install_path: "pip install openlineage-python"
     integrates_with: [marquez, airflow]
   - name: marquez
@@ -238,8 +239,9 @@ tools:
     purpose: "Lineage visualization UI"
     license: Apache-2.0
     priority: P1
-    status: planned
-    install_path: "docker compose up -d marquez"
+    status: shipped
+    evidence: "scripts/install_ops_stack.sh installs openlineage/marquez Helm chart; OpenLineage SDK is importable"
+    install_path: "helm upgrade --install marquez openlineage/marquez -n lineage"
     integrates_with: [openlineage]
   - name: mlflow
     category: self_tracking
@@ -263,8 +265,8 @@ tools:
     purpose: "RAG faithfulness / relevance / context-recall scoring"
     license: Apache-2.0
     priority: P1
-    status: partial
-    evidence: "evaluation-svc/requirements.txt has ragas; threshold gating pending"
+    status: shipped
+    evidence: "scripts/eval_quality_status.py batch gate + services/evaluation-svc/app/eval_harness.py RagasEngine; drill_eval_quality_status.py + drill_eval_quality_runner.py"
     install_path: "pip install ragas"
   - name: deepeval
     category: quality_scoring
@@ -279,8 +281,8 @@ tools:
     purpose: "AI red-team + adversarial validation"
     license: Apache-2.0
     priority: P1
-    status: partial
-    evidence: "drill_eval_lakera_giskard_scaffolds.py shipped; GISKARD_SCAN_ENABLED gate"
+    status: shipped
+    evidence: "services/evaluation-svc/app/eval_harness.py GiskardEngine with import-error surfacing; scripts/eval_quality_status.py risk scan; drill_eval_quality_status.py"
     install_path: "pip install giskard"
 
   # ───────── AI security (OSS only — Lakera EXCLUDED below as commercial) ─────────
@@ -289,8 +291,8 @@ tools:
     purpose: "Prompt-injection / jailbreak detection"
     license: Apache-2.0
     priority: P1
-    status: partial
-    evidence: "REBUFF_ENABLED env flag in drill_eval_lakera_giskard_scaffolds.py"
+    status: shipped
+    evidence: "libs/py/documind_core/rebuff_detector.py Stage-2 runtime adapter + LangChain compatibility shim; scripts/rebuff_status.py; drill_rebuff_advanced_status.py"
     install_path: "pip install rebuff"
   - name: llama_guard
     category: ai_security
@@ -569,8 +571,9 @@ tools:
     purpose: "Data orchestrator (asset-oriented)"
     license: Apache-2.0
     priority: P3
-    status: planned
-    install_path: "pip install dagster + helm chart"
+    status: shipped
+    evidence: "dagster package importable in .venv; install_remaining_vibecheck_tools.sh installs dagster; catalog refresh drill locks shipped row"
+    install_path: "pip install dagster"
   - name: openclaw
     category: workflow_orchestration
     purpose: "Multi-agent A2A coordination"
@@ -583,8 +586,9 @@ tools:
     purpose: "Role-based multi-agent framework"
     license: MIT
     priority: P3
-    status: planned
-    install_path: "pip install crewai"
+    status: not_applicable
+    evidence: "ADR-027 rejects CrewAI as primary orchestrator; current venv import fails with ModuleNotFoundError: mcp.shared; LangGraph + custom council is the accepted path"
+    install_path: "not installed; see docs/architecture/adr/027-agent-framework-langgraph-not-crewai-agno.md"
 
   # ───────── Visualization ─────────
   - name: neo4j_bloom
