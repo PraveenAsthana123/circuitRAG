@@ -2,15 +2,8 @@
 fastapi>=0.115,<0.116
 uvicorn[standard]>=0.30,<0.33
 httpx>=0.27,<0.28
-# langgraph + langchain-core were pinned here as future-readiness for
-# an orchestrator rewrite that never landed. Empirical: zero `import
-# langgraph` / `from langgraph` anywhere in services/ libs/ scripts/.
-# Per §57.7 honesty — future-readiness without a date is technical
-# debt that costs ~50 MB of wheel downloads per `pip install` for no
-# behavioural benefit. When/if the orchestrator actually adopts
-# langgraph, re-add the pins as a separate iteration with the
-# accompanying drill that empirically verifies an `import langgraph`
-# from production code.
+langgraph>=1.1,<2
+langchain-core>=1.2.21,<2
 pydantic>=2.7,<3
 pytest>=8
 pytest-asyncio>=0.23
