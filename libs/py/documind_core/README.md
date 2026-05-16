@@ -1,6 +1,6 @@
 # 📦 `documind_core` — Advanced README
 
-📚 **Library**  ·  **Path:** `libs/py/documind_core`  ·  **Generated:** 2026-05-16 19:57 UTC
+📚 **Library**  ·  **Path:** `libs/py/documind_core`  ·  **Generated:** 2026-05-16 20:24 UTC
 
 > documind_core
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `45	PraveenAsthana123`, `6	Praveen` |
+| Top git contributors | `46	PraveenAsthana123`, `6	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -70,13 +70,122 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 > _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
 
 
+## ⚡ Quick Start (library)
+
+This is a shared library — not a runnable service. Use it from any service like:
+
+```python
+from documind_core import <symbol>
+```
+
+Run tests against the library:
+
+```bash
+cd libs/py/documind_core
+pytest -q
+```
+
+
+## 🗺 How to Read This Folder (Guided Tour)
+
+Read these files in order — by the end, you'll understand 80% of this folder's behavior. Click any path to jump straight to the source.
+
+1. **`logging_config.py`** (⚙ config / settings, 201 LOC) — Every env var the service reads. Read this BEFORE running locally.
+2. **`config.py`** (⚙ config / settings, 182 LOC) — Every env var the service reads. Read this BEFORE running locally.
+3. **`agent_board.py`** (🤖 agent / tool, 616 LOC) — AgentBoard — multi-agent task / review / advise pattern with bounded
+4. **`agentic_framework.py`** (🤖 agent / tool, 260 LOC) — Agentic engineering framework — meta-template for every agent.
+5. **`kafka_client.py`** (🔌 external service adapter, 335 LOC) — Wraps an external API (LLM / vector DB / message bus). Look for circuit breakers + retries.
+6. **`db_client.py`** (🔌 external service adapter, 149 LOC) — Wraps an external API (LLM / vector DB / message bus). Look for circuit breakers + retries.
+7. **`middleware.py`** (🪝 middleware / interceptor, 391 LOC) — FastAPI middleware stack (Design Areas 62 — Observability, 5 — Tenant,
+8. **`circuit_breaker.py`** (📄 module, 1072 LOC) — Circuit Breaker (Design Area 4 — Failure Boundary, Extra — Circuit Breaker).
+
+Click absolute paths for direct `cat`-ability in the §2 File Inventory above.
+
+
+## ⚙ Environment Variables
+
+All env vars this folder reads, auto-extracted from `BaseSettings` field declarations and `os.environ.get` calls.
+
+### Pydantic BaseSettings fields
+
+| Variable | Default | Source location |
+|---|---|---|
+| `DOCUMIND_ENV` | `'development'` | `config.py:53` |
+| `DOCUMIND_LOG_LEVEL` | `'INFO'` | `config.py:54` |
+| `DOCUMIND_LOG_JSON` | `True` | `config.py:55` |
+| `DOCUMIND_REGION` | `'local'` | `config.py:56` |
+| `DOCUMIND_SERVICE_NAME` | `Field(default='documind-service', description='Overridden per service')` | `config.py:57` |
+| `DOCUMIND_JWT_PUBLIC_KEY_PATH` | `'./scripts/dev-keys/jwt-public.pem'` | `config.py:62` |
+| `DOCUMIND_JWT_ISSUER` | `'documind-local'` | `config.py:63` |
+| `DOCUMIND_JWT_AUDIENCE` | `'documind-services'` | `config.py:64` |
+| `DOCUMIND_JWT_ACCESS_TTL` | `900` | `config.py:65` |
+| `DOCUMIND_JWT_REFRESH_TTL` | `604800` | `config.py:66` |
+| `DOCUMIND_ENCRYPTION_KEY` | `None` | `config.py:68` |
+| `DOCUMIND_ADMIN_API_KEY` | `None` | `config.py:69` |
+| `DOCUMIND_CORS_ORIGINS` | `'http://localhost:3000,http://localhost:5173'` | `config.py:70` |
+| `DOCUMIND_PG_HOST` | `'localhost'` | `config.py:75` |
+| `DOCUMIND_PG_PORT` | `5432` | `config.py:76` |
+| `DOCUMIND_PG_DB` | `'documind'` | `config.py:77` |
+| `DOCUMIND_PG_USER` | `'documind'` | `config.py:78` |
+| `DOCUMIND_PG_PASSWORD` | `SecretStr('documind')` | `config.py:79` |
+| `DOCUMIND_PG_MAX_CONNS` | `20` | `config.py:80` |
+| `DOCUMIND_PG_MIN_CONNS` | `2` | `config.py:81` |
+| `DOCUMIND_REDIS_URL` | `'redis://localhost:6379/0'` | `config.py:83` |
+| `DOCUMIND_REDIS_POOL_SIZE` | `20` | `config.py:84` |
+| `DOCUMIND_QDRANT_URL` | `'http://localhost:6333'` | `config.py:86` |
+| `DOCUMIND_QDRANT_API_KEY` | `None` | `config.py:87` |
+| `DOCUMIND_QDRANT_COLLECTION` | `'chunks'` | `config.py:88` |
+| `DOCUMIND_NEO4J_URI` | `'bolt://localhost:7687'` | `config.py:90` |
+| `DOCUMIND_NEO4J_USER` | `'neo4j'` | `config.py:91` |
+| `DOCUMIND_NEO4J_PASSWORD` | `SecretStr('documind')` | `config.py:92` |
+| `DOCUMIND_KAFKA_BOOTSTRAP` | `'localhost:9094'` | `config.py:101` |
+| `DOCUMIND_KAFKA_CLIENT_ID` | `'documind'` | `config.py:102` |
+| `DOCUMIND_KAFKA_CONSUMER_GROUP_PREFIX` | `'documind-'` | `config.py:103` |
+| `DOCUMIND_MINIO_ENDPOINT` | `'localhost:9000'` | `config.py:105` |
+| `DOCUMIND_MINIO_ACCESS_KEY` | `SecretStr('documind')` | `config.py:106` |
+| `DOCUMIND_MINIO_SECRET_KEY` | `SecretStr('documind-secret')` | `config.py:107` |
+| `DOCUMIND_MINIO_BUCKET` | `'documents'` | `config.py:108` |
+| `DOCUMIND_MINIO_USE_SSL` | `False` | `config.py:109` |
+| `DOCUMIND_OLLAMA_URL` | `'http://localhost:11434'` | `config.py:114` |
+| `DOCUMIND_OLLAMA_LLM_MODEL` | `'llama3.1:8b'` | `config.py:115` |
+| `DOCUMIND_OLLAMA_EMBED_MODEL` | `'nomic-embed-text'` | `config.py:116` |
+| `DOCUMIND_OLLAMA_TIMEOUT_SECONDS` | `60` | `config.py:117` |
+| `DOCUMIND_OTEL_EXPORTER_OTLP_ENDPOINT` | `'http://localhost:4317'` | `config.py:122` |
+| `DOCUMIND_OTEL_SERVICE_NAMESPACE` | `'documind'` | `config.py:123` |
+| `DOCUMIND_PROMETHEUS_PORT` | `9464` | `config.py:124` |
+| `DOCUMIND_RATE_LIMIT_API_PER_MIN` | `100` | `config.py:129` |
+| `DOCUMIND_RATE_LIMIT_UPLOAD_PER_MIN` | `10` | `config.py:130` |
+| `DOCUMIND_RATE_LIMIT_ADMIN_PER_MIN` | `50` | `config.py:131` |
+| `DOCUMIND_RATE_LIMIT_INFERENCE_PER_MIN` | `20` | `config.py:132` |
+| `DOCUMIND_CHUNK_SIZE` | `512` | `config.py:137` |
+| `DOCUMIND_CHUNK_OVERLAP` | `50` | `config.py:138` |
+| `DOCUMIND_RETRIEVAL_TOP_K` | `10` | `config.py:139` |
+| `DOCUMIND_RERANK_TOP_K` | `5` | `config.py:140` |
+| `DOCUMIND_MAX_CONTEXT_TOKENS` | `4000` | `config.py:141` |
+
+### Runtime `os.environ.get` / `os.getenv` calls
+
+| Variable | Default | Source location |
+|---|---|---|
+| `REBUFF_ENABLED` | **required** | `rebuff_detector.py:55` |
+| `REBUFF_API_TOKEN` | **required** | `rebuff_detector.py:56` |
+| `REBUFF_API_URL` | `https://www.rebuff.ai` | `rebuff_detector.py:57` |
+| `REBUFF_PI_THRESHOLD` | `0.5` | `rebuff_detector.py:67` |
+| `DOCUMIND_RATE_LIMIT_DISABLED` | **required** | `middleware.py:325` |
+| `SENTRY_DSN` | **required** | `error_tracking.py:65` |
+| `DOCUMIND_ENV` | `development` | `error_tracking.py:76` |
+| `DOCUMIND_RELEASE` | `dev` | `error_tracking.py:87` |
+
+_Variables marked **required** must be set — missing values may raise on startup or silently default to empty strings._
+
+
 ## 2. File Inventory
 
 Every Python file in this folder, with role / classes / functions / LOC / first docstring line. Full absolute paths listed below the table for easy `cat`-ability.
 
 | Relative path | Role (inferred) | Classes | Functions | LOC | Summary |
 |---|---|---|---|---|---|
-| `__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 134 | documind_core |
+| `__init__.py` | 📦 package marker | 0 | 0 | 134 | documind_core |
 | `a2a_protocol.py` | 📄 module | 6 | 3 | 333 | Agent-to-Agent (A2A) protocol — registry + message bus + connector + delegation. |
 | `agent_board.py` | 🤖 agent / tool | 5 | 5 | 616 | AgentBoard — multi-agent task / review / advise pattern with bounded |
 | `agentic_framework.py` | 🤖 agent / tool | 2 | 2 | 260 | Agentic engineering framework — meta-template for every agent. |
@@ -102,7 +211,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `fusion.py` | 📄 module | 1 | 2 | 145 | Hybrid retrieval fusion — RRF + heap-based top-K (§16.5 of the |
 | `governance_os.py` | 📄 module | 8 | 1 | 363 | AI Governance OS — unified policy / decision / risk / compliance / audit surface. |
 | `idempotency.py` | 📄 module | 2 | 0 | 65 | HTTP idempotency (Design Area 20). |
-| `idempotency_middleware.py` | 🪝 middleware / interceptor | 1 | 0 | 113 | FastAPI middleware for the ``X-Idempotency-Key`` pattern (Design Area 20). |
+| `idempotency_middleware.py` | 📄 module | 1 | 0 | 113 | FastAPI middleware for the ``X-Idempotency-Key`` pattern (Design Area 20). |
 | `kafka_client.py` | 🔌 external service adapter | 2 | 2 | 335 | Kafka client (Design Areas 17 — Event-Driven, 19 — Compensation, |
 | `logging_config.py` | ⚙ config / settings | 0 | 8 | 201 | Structured logging (Design Area 62 — Observability by Design). |
 | `middleware.py` | 🪝 middleware / interceptor | 6 | 1 | 391 | FastAPI middleware stack (Design Areas 62 — Observability, 5 — Tenant, |
@@ -112,7 +221,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `query_rewriter.py` | 📄 module | 2 | 0 | 133 | Pre-retrieval query processing (§16.4 of the playbook). |
 | `rate_limiter.py` | 📄 module | 2 | 2 | 191 | Rate limiting (Design Areas 42 — Tenant-Aware Cache, 45 — Backpressure). |
 | `rebuff_detector.py` | 📄 module | 2 | 7 | 272 | Rebuff detector — Stage-1 runtime PI-defense adapter (per §47.6, §48, §56). |
-| `schemas.py` | 📋 data model / schema | 4 | 0 | 49 | Shared response schemas (Global CLAUDE.md §6 — API Design Standards). |
+| `schemas.py` | 📄 module | 4 | 0 | 49 | Shared response schemas (Global CLAUDE.md §6 — API Design Standards). |
 | `tokens.py` | 📄 module | 2 | 2 | 99 | Token counting + budget helpers (§16.1 / §16.2 of the playbook). |
 
 ### Absolute paths (clickable)
@@ -157,6 +266,18 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/libs/py/documind_core/tokens.py`
 
 
+## 🧭 Where Does X Live? (cheat sheet)
+
+Use this table when you're modifying this folder and need to know where new code goes.
+
+| I want to... | Role | Touch these files |
+|---|---|---|
+| Add a new env var | ⚙ config / settings | `config.py`, `logging_config.py` |
+| Wrap a new external API | 🔌 external service adapter | `db_client.py`, `kafka_client.py` |
+| Add a new middleware (auth / logging / tracing) | 🪝 middleware / interceptor | `middleware.py` |
+| Add a new agent / tool | 🤖 agent / tool | `agent_board.py`, `agentic_framework.py` |
+
+
 ## 3. C4 Model — Context / Container / Component / Code
 
 ### Level 1 — System Context
@@ -192,7 +313,7 @@ _Internal files grouped by inferred role._
 
 ```mermaid
 flowchart TB
-    subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
+    subgraph __package_marker["📦 package marker"]
         __init___py["__init__.py"]
     end
     subgraph __module["📄 module"]
@@ -202,7 +323,7 @@ flowchart TB
         auth_py["auth.py"]
         bm25_py["bm25.py"]
         body_limit_py["body_limit.py"]
-        more___module["... +22 more"]
+        more___module["... +24 more"]
     end
     subgraph __agent___tool["🤖 agent / tool"]
         agent_board_py["agent_board.py"]
@@ -217,11 +338,7 @@ flowchart TB
         kafka_client_py["kafka_client.py"]
     end
     subgraph __middleware___interceptor["🪝 middleware / interceptor"]
-        idempotency_middleware_py["idempotency_middleware.py"]
         middleware_py["middleware.py"]
-    end
-    subgraph __data_model___schema["📋 data model / schema"]
-        schemas_py["schemas.py"]
     end
 ```
 
@@ -237,6 +354,79 @@ flowchart TB
     drift_detection_py_167_compare_windows["compare_windows (82 lines)<br/>drift_detection.py:167"]
     breakers_py_249_check["check (69 lines)<br/>breakers.py:249"]
 ```
+
+
+## 📐 Class Diagram (UML-style)
+
+Top classes by method count, with inheritance arrows. Common framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) use dotted lines.
+
+```mermaid
+classDiagram
+    class CircuitBreaker {
+        +37 methods
+        ~circuit_breaker.py:329
+    }
+    class AgentBoard {
+        +9 methods
+        ~agent_board.py:231
+    }
+    class AgentLoopCircuitBreaker {
+        +9 methods
+        ~breakers.py:426
+    }
+    class Cache {
+        +7 methods
+        ~cache.py:30
+    }
+    class EmbeddingCache {
+        +7 methods
+        ~embedding_cache.py:75
+    }
+    class _StepContext {
+        +6 methods
+        ~ai_governance.py:640
+    }
+    class _BreakerGuardedMetricExporter {
+        +6 methods
+        ~observability.py:203
+    }
+    MetricExporter <|-- _BreakerGuardedMetricExporter
+    class AgentRegistry {
+        +6 methods
+        ~a2a_protocol.py:125
+    }
+    class PIIScanner {
+        +6 methods
+        ~pii.py:104
+    }
+    class ObservabilityCircuitBreaker {
+        +6 methods
+        ~breakers.py:574
+    }
+    class CognitiveCircuitBreaker {
+        +6 methods
+        ~breakers.py:906
+    }
+    class DbClient {
+        +6 methods
+        ~db_client.py:36
+    }
+    class InterpretabilityTrace {
+        +5 methods
+        ~ai_governance.py:592
+    }
+    class IdempotentConsumer {
+        +5 methods
+        ~kafka_client.py:218
+    }
+    class TokenCircuitBreaker {
+        +5 methods
+        ~breakers.py:216
+    }
+```
+
+
+_Showing top 15 of 134 classes (ranked by method count)._
 
 
 ## 4. Code Sequence — How Files Link to Each Other
@@ -321,6 +511,70 @@ flowchart TD
 ## 6. API Endpoints — Input / Process / Output
 
 _No HTTP endpoints detected via `@app.*` / `@router.*` decorators._
+
+
+## 🏗 Input/Process/Output + Integration + Design Principles
+
+### Input / Process / Output per endpoint
+
+| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |
+|---|---|---|---|
+| _(no endpoints)_ | — | — | — |
+
+### Integration sequence (ordered by import volume)
+
+Other folders this one calls into, ordered by how heavily it depends on each:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant This as documind_core
+```
+
+### SOLID principles applied here
+
+| Principle | Where it shows up in this folder |
+|---|---|
+| **S — Single Responsibility** | Each file has ONE role — routers route, services orchestrate, repos query, schemas describe. The §2 File Inventory shows the role per file; any file with multiple roles violates SRP. |
+| **O — Open/Closed** | New endpoints add new router functions; new business cases add new service methods. Existing methods stay closed for modification. |
+| **L — Liskov Substitution** | All adapter clients (Ollama / OpenAI / Anthropic) implement the same LLM-client protocol — they're interchangeable behind the circuit breaker. |
+| **I — Interface Segregation** | Pydantic models split request, response, and internal state into separate schemas — no client gets a fat model with fields it doesn't use. |
+| **D — Dependency Inversion** | Services receive their dependencies via FastAPI `Depends()` — they depend on abstractions (factories), not concrete repos. Swap implementations in tests via the `app.dependency_overrides` dict. |
+
+### Microservice principles applied here
+
+| Principle | Application |
+|---|---|
+| **Single business capability** | `documind_core` owns ONE capability (see §1 Purpose). Cross-capability logic lives in other services. |
+| **Bounded context** | Schemas + repositories are scoped to this service's bounded context — no shared DB tables with other services. |
+| **DB per service** | Each service owns its tables. Cross-service reads go through HTTP or Kafka — never a direct DB join. |
+| **Independent deploy** | Service is independently deployable — its container is built + released without coupling to other services. |
+| **Resilience patterns** | Circuit breakers (`documind_core/breakers/`), retries with exponential backoff, bulkheads, timeouts on every external call. |
+| **Observability** | Every request has a `request_id` propagated via OTel baggage; every external call emits a trace span. |
+
+### Design-principle stack (how the principles compose)
+
+Reading bottom-to-top — earlier principles enable later ones:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 7. AI Governance (§38 + §48): decision audit + explainability│
+├─────────────────────────────────────────────────────────────┤
+│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │
+├─────────────────────────────────────────────────────────────┤
+│ 5. Resilience: CB + retry + bulkhead + timeout              │
+├─────────────────────────────────────────────────────────────┤
+│ 4. Microservice: single capability, bounded context, DB/svc │
+├─────────────────────────────────────────────────────────────┤
+│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │
+├─────────────────────────────────────────────────────────────┤
+│ 2. 12-factor: stateless, deps in venv, config in env        │
+├─────────────────────────────────────────────────────────────┤
+│ 1. KISS / YAGNI / DRY: every line earns its place           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -609,6 +863,33 @@ _No `test_*` functions parsed via AST. Either tests live elsewhere or names don'
 | `asyncpg` | 1 |
 
 
+## 📖 Domain Glossary
+
+Project-wide vocabulary a new developer needs. If you see a term in code you don't recognize, check here first.
+
+| Term | Definition |
+|---|---|
+| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |
+| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |
+| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |
+| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |
+| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |
+| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |
+| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |
+| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |
+| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |
+| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |
+| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |
+| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |
+| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |
+| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |
+| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |
+| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |
+| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |
+| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |
+| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |
+
+
 ## 18. Debugging Guide
 
 ### Step-by-step when something breaks
@@ -632,6 +913,31 @@ _No `test_*` functions parsed via AST. Either tests live elsewhere or names don'
 | 5xx spike | downstream dep down | check `/health/upstreams` |
 | Memory growth | unbounded cache or closure leak | Section 11 |
 | Wrong-tenant data | RLS bypass | tenant isolation drill |
+
+
+## 📅 Recent Activity & Open TODOs
+
+### Last 8 commits touching this folder
+
+| Hash | Date | Subject |
+|---|---|---|
+| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
+| `4e2ec04` | 2026-05-08 | fix(rebuff): bridge langchain vectorstore import |
+| `bad7b2d` | 2026-05-07 | feat(rebuff): runtime PI defense — Stage-1 adapter + Stage-2 inference wire (16/16 drill green) |
+| `ec1f7b4` | 2026-05-07 | fix(iter-88): bulk lint cleanup across services/ libs/ mcp/ scripts/ (1139 ruff fixes; drill suite still green) |
+| `b208d3d` | 2026-05-02 | fix(lint): close 85 ruff issues across 25 files (autofix 68 + manual 17) |
+| `fcc7b5d` | 2026-05-02 | feat(a2a): Tier 5 #5.9 + #5.10 — agent registry + A2A bus + connector + delegate |
+| `b586c3e` | 2026-05-02 | feat(agentic): Tier 1 #1.0 — agentic engineering framework (AgentSpec meta-template) |
+| `25d6b3e` | 2026-05-01 | feat(gov): §48 AI Governance OS L1→L2 — unified facade wired into create_task |
+
+```bash
+git log --oneline -- libs/py/documind_core    # see all commits
+git blame <file>                       # who wrote what
+```
+
+### Open TODO / FIXME / HACK markers
+
+_No TODO / FIXME markers found — folder is hygienic._
 
 
 ## 19. Production Gates (hard pass/fail)

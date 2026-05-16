@@ -1,6 +1,6 @@
 # 📦 `personalization` — Advanced README
 
-  ·  **Path:** `personalization`  ·  **Generated:** 2026-05-16 19:57 UTC
+  ·  **Path:** `personalization`  ·  **Generated:** 2026-05-16 20:26 UTC
 
 > Personalization pipeline — Levels 1-5 of the safe-first plan.
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | (no commits) |
+| Top git contributors | `1	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -71,15 +71,49 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 > _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
 
 
+## 🗺 How to Read This Folder (Guided Tour)
+
+Read these files in order — by the end, you'll understand 80% of this folder's behavior. Click any path to jump straight to the source.
+
+1. **`cli.py`** (📄 module, 233 LOC) — Personalization CLI — orchestrates levels 1-5.
+2. **`vector_memory.py`** (📄 module, 203 LOC) — Vector memory for personalization — Ollama embeddings → Qdrant.
+3. **`prompt_logger.py`** (📄 module, 190 LOC) — Prompt logger — captures metadata + REDACTED prompt only.
+4. **`redactor.py`** (📄 module, 180 LOC) — PII / secret / credential redactor.
+5. **`style_profile.py`** (📄 module, 146 LOC) — Style profile builder — analyzes redacted prompt history → JSON profile.
+6. **`modelfile_builder.py`** (📄 module, 140 LOC) — Modelfile builder — turns a StyleProfile into an Ollama Modelfile.
+7. **`__init__.py`** (📦 package marker, 26 LOC) — Personalization pipeline — Levels 1-5 of the safe-first plan.
+
+Click absolute paths for direct `cat`-ability in the §2 File Inventory above.
+
+
+## ⚙ Environment Variables
+
+All env vars this folder reads, auto-extracted from `BaseSettings` field declarations and `os.environ.get` calls.
+
+### Runtime `os.environ.get` / `os.getenv` calls
+
+| Variable | Default | Source location |
+|---|---|---|
+| `PERSONALIZATION_RAW_PROMPTS` | **required** | `prompt_logger.py:96` |
+| `REDACTOR_EXTRA_PATTERNS` | **required** | `redactor.py:122` |
+| `OLLAMA_URL` | `http://localhost:11434` | `vector_memory.py:32` |
+| `DOCUMIND_QDRANT_URL` | `http://localhost:6333` | `vector_memory.py:33` |
+| `DOCUMIND_QDRANT_API_KEY` | `dev-qdrant-key` | `vector_memory.py:34` |
+| `PERSONALIZATION_EMBED_MODEL` | `nomic-embed-text:latest` | `vector_memory.py:35` |
+| `PERSONALIZATION_COLLECTION` | `personalization_v1` | `vector_memory.py:36` |
+
+_Variables marked **required** must be set — missing values may raise on startup or silently default to empty strings._
+
+
 ## 2. File Inventory
 
 Every Python file in this folder, with role / classes / functions / LOC / first docstring line. Full absolute paths listed below the table for easy `cat`-ability.
 
 | Relative path | Role (inferred) | Classes | Functions | LOC | Summary |
 |---|---|---|---|---|---|
-| `__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 26 | Personalization pipeline — Levels 1-5 of the safe-first plan. |
+| `__init__.py` | 📦 package marker | 0 | 0 | 26 | Personalization pipeline — Levels 1-5 of the safe-first plan. |
 | `cli.py` | 📄 module | 0 | 9 | 233 | Personalization CLI — orchestrates levels 1-5. |
-| `modelfile_builder.py` | 📋 data model / schema | 1 | 4 | 140 | Modelfile builder — turns a StyleProfile into an Ollama Modelfile. |
+| `modelfile_builder.py` | 📄 module | 1 | 4 | 140 | Modelfile builder — turns a StyleProfile into an Ollama Modelfile. |
 | `prompt_logger.py` | 📄 module | 1 | 5 | 190 | Prompt logger — captures metadata + REDACTED prompt only. |
 | `redactor.py` | 📄 module | 2 | 2 | 180 | PII / secret / credential redactor. |
 | `style_profile.py` | 📄 module | 1 | 4 | 146 | Style profile builder — analyzes redacted prompt history → JSON profile. |
@@ -126,18 +160,16 @@ _Internal files grouped by inferred role._
 
 ```mermaid
 flowchart TB
-    subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
+    subgraph __package_marker["📦 package marker"]
         __init___py["__init__.py"]
     end
     subgraph __module["📄 module"]
         cli_py["cli.py"]
+        modelfile_builder_py["modelfile_builder.py"]
         prompt_logger_py["prompt_logger.py"]
         redactor_py["redactor.py"]
         style_profile_py["style_profile.py"]
         vector_memory_py["vector_memory.py"]
-    end
-    subgraph __data_model___schema["📋 data model / schema"]
-        modelfile_builder_py["modelfile_builder.py"]
     end
 ```
 
@@ -152,6 +184,39 @@ flowchart TB
     style_profile_py_75_build_profile["build_profile (45 lines)<br/>style_profile.py:75"]
     modelfile_builder_py_32_render["render (44 lines)<br/>modelfile_builder.py:32"]
     vector_memory_py_99_upsert_prompt["upsert_prompt (36 lines)<br/>vector_memory.py:99"]
+```
+
+
+## 📐 Class Diagram (UML-style)
+
+Top classes by method count, with inheritance arrows. Common framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) use dotted lines.
+
+```mermaid
+classDiagram
+    class RedactionResult {
+        +2 methods
+        ~redactor.py:144
+    }
+    class CreateResult {
+        +1 methods
+        ~modelfile_builder.py:87
+    }
+    class StyleProfile {
+        +0 methods
+        ~style_profile.py:61
+    }
+    class PromptLogEntry {
+        +0 methods
+        ~prompt_logger.py:80
+    }
+    class RedactionRule {
+        +0 methods
+        ~redactor.py:34
+    }
+    class StoredPrompt {
+        +0 methods
+        ~vector_memory.py:90
+    }
 ```
 
 
@@ -207,6 +272,70 @@ flowchart TD
 ## 6. API Endpoints — Input / Process / Output
 
 _No HTTP endpoints detected via `@app.*` / `@router.*` decorators._
+
+
+## 🏗 Input/Process/Output + Integration + Design Principles
+
+### Input / Process / Output per endpoint
+
+| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |
+|---|---|---|---|
+| _(no endpoints)_ | — | — | — |
+
+### Integration sequence (ordered by import volume)
+
+Other folders this one calls into, ordered by how heavily it depends on each:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant This as personalization
+```
+
+### SOLID principles applied here
+
+| Principle | Where it shows up in this folder |
+|---|---|
+| **S — Single Responsibility** | Each file has ONE role — routers route, services orchestrate, repos query, schemas describe. The §2 File Inventory shows the role per file; any file with multiple roles violates SRP. |
+| **O — Open/Closed** | New endpoints add new router functions; new business cases add new service methods. Existing methods stay closed for modification. |
+| **L — Liskov Substitution** | All adapter clients (Ollama / OpenAI / Anthropic) implement the same LLM-client protocol — they're interchangeable behind the circuit breaker. |
+| **I — Interface Segregation** | Pydantic models split request, response, and internal state into separate schemas — no client gets a fat model with fields it doesn't use. |
+| **D — Dependency Inversion** | Services receive their dependencies via FastAPI `Depends()` — they depend on abstractions (factories), not concrete repos. Swap implementations in tests via the `app.dependency_overrides` dict. |
+
+### Microservice principles applied here
+
+| Principle | Application |
+|---|---|
+| **Single business capability** | `personalization` owns ONE capability (see §1 Purpose). Cross-capability logic lives in other services. |
+| **Bounded context** | Schemas + repositories are scoped to this service's bounded context — no shared DB tables with other services. |
+| **DB per service** | Each service owns its tables. Cross-service reads go through HTTP or Kafka — never a direct DB join. |
+| **Independent deploy** | Service is independently deployable — its container is built + released without coupling to other services. |
+| **Resilience patterns** | Circuit breakers (`documind_core/breakers/`), retries with exponential backoff, bulkheads, timeouts on every external call. |
+| **Observability** | Every request has a `request_id` propagated via OTel baggage; every external call emits a trace span. |
+
+### Design-principle stack (how the principles compose)
+
+Reading bottom-to-top — earlier principles enable later ones:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 7. AI Governance (§38 + §48): decision audit + explainability│
+├─────────────────────────────────────────────────────────────┤
+│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │
+├─────────────────────────────────────────────────────────────┤
+│ 5. Resilience: CB + retry + bulkhead + timeout              │
+├─────────────────────────────────────────────────────────────┤
+│ 4. Microservice: single capability, bounded context, DB/svc │
+├─────────────────────────────────────────────────────────────┤
+│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │
+├─────────────────────────────────────────────────────────────┤
+│ 2. 12-factor: stateless, deps in venv, config in env        │
+├─────────────────────────────────────────────────────────────┤
+│ 1. KISS / YAGNI / DRY: every line earns its place           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -479,6 +608,33 @@ _No `test_*` functions parsed via AST. Either tests live elsewhere or names don'
 | `requests` | 1 |
 
 
+## 📖 Domain Glossary
+
+Project-wide vocabulary a new developer needs. If you see a term in code you don't recognize, check here first.
+
+| Term | Definition |
+|---|---|
+| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |
+| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |
+| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |
+| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |
+| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |
+| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |
+| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |
+| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |
+| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |
+| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |
+| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |
+| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |
+| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |
+| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |
+| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |
+| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |
+| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |
+| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |
+| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |
+
+
 ## 18. Debugging Guide
 
 ### Step-by-step when something breaks
@@ -502,6 +658,24 @@ _No `test_*` functions parsed via AST. Either tests live elsewhere or names don'
 | 5xx spike | downstream dep down | check `/health/upstreams` |
 | Memory growth | unbounded cache or closure leak | Section 11 |
 | Wrong-tenant data | RLS bypass | tenant isolation drill |
+
+
+## 📅 Recent Activity & Open TODOs
+
+### Last 8 commits touching this folder
+
+| Hash | Date | Subject |
+|---|---|---|
+| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
+
+```bash
+git log --oneline -- personalization    # see all commits
+git blame <file>                       # who wrote what
+```
+
+### Open TODO / FIXME / HACK markers
+
+_No TODO / FIXME markers found — folder is hygienic._
 
 
 ## 19. Production Gates (hard pass/fail)

@@ -1,6 +1,6 @@
 # 📦 `hybrid_architect` — Advanced README
 
-  ·  **Path:** `hybrid_architect`  ·  **Generated:** 2026-05-16 19:57 UTC
+  ·  **Path:** `hybrid_architect`  ·  **Generated:** 2026-05-16 20:26 UTC
 
 > hybrid_architect — Hub-and-Spoke + Council composition (CLAUDE.md §47).
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `2	PraveenAsthana123` |
+| Top git contributors | `3	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -68,13 +68,28 @@ _(no smells detected by grep)_
 > _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
 
 
+## 🗺 How to Read This Folder (Guided Tour)
+
+Read these files in order — by the end, you'll understand 80% of this folder's behavior. Click any path to jump straight to the source.
+
+1. **`architect.py`** (📄 module, 337 LOC) — Hybrid Architect — composes Hub-and-Spoke + Council (CLAUDE.md §47).
+2. **`__init__.py`** (📦 package marker, 27 LOC) — hybrid_architect — Hub-and-Spoke + Council composition (CLAUDE.md §47).
+
+Click absolute paths for direct `cat`-ability in the §2 File Inventory above.
+
+
+## ⚙ Environment Variables
+
+_No env-var references detected via `BaseSettings`, `os.environ.get`, or `os.getenv`._
+
+
 ## 2. File Inventory
 
 Every Python file in this folder, with role / classes / functions / LOC / first docstring line. Full absolute paths listed below the table for easy `cat`-ability.
 
 | Relative path | Role (inferred) | Classes | Functions | LOC | Summary |
 |---|---|---|---|---|---|
-| `__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 27 | hybrid_architect — Hub-and-Spoke + Council composition (CLAUDE.md §47). |
+| `__init__.py` | 📦 package marker | 0 | 0 | 27 | hybrid_architect — Hub-and-Spoke + Council composition (CLAUDE.md §47). |
 | `architect.py` | 📄 module | 1 | 8 | 337 | Hybrid Architect — composes Hub-and-Spoke + Council (CLAUDE.md §47). |
 
 ### Absolute paths (clickable)
@@ -116,7 +131,7 @@ _Internal files grouped by inferred role._
 
 ```mermaid
 flowchart TB
-    subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
+    subgraph __package_marker["📦 package marker"]
         __init___py["__init__.py"]
     end
     subgraph __module["📄 module"]
@@ -135,6 +150,19 @@ flowchart TB
     architect_py_134__maybe_open_trace["_maybe_open_trace (31 lines)<br/>architect.py:134"]
     architect_py_307_process["process (22 lines)<br/>architect.py:307"]
     architect_py_55__pick_lane["_pick_lane (14 lines)<br/>architect.py:55"]
+```
+
+
+## 📐 Class Diagram (UML-style)
+
+Top classes by method count, with inheritance arrows. Common framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) use dotted lines.
+
+```mermaid
+classDiagram
+    class HybridDecision {
+        +1 methods
+        ~architect.py:33
+    }
 ```
 
 
@@ -176,6 +204,85 @@ flowchart TD
 ## 6. API Endpoints — Input / Process / Output
 
 _No HTTP endpoints detected via `@app.*` / `@router.*` decorators._
+
+
+## 🏗 Input/Process/Output + Integration + Design Principles
+
+### Input / Process / Output per endpoint
+
+| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |
+|---|---|---|---|
+| _(no endpoints)_ | — | — | — |
+
+### Integration sequence (ordered by import volume)
+
+Other folders this one calls into, ordered by how heavily it depends on each:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant This as hybrid_architect
+  participant agent_cli as agent_cli
+  participant council_engine as council_engine
+  participant risk_classifier as risk_classifier
+  participant safety_store as safety_store
+  participant scripts_langfuse_tracer as scripts/langfuse_tracer
+  This->>agent_cli: call (~2 import sites)
+  agent_cli-->>This: response
+  This->>council_engine: call (~1 import sites)
+  council_engine-->>This: response
+  This->>risk_classifier: call (~1 import sites)
+  risk_classifier-->>This: response
+  This->>safety_store: call (~1 import sites)
+  safety_store-->>This: response
+  This->>scripts_langfuse_tracer: call (~1 import sites)
+  scripts_langfuse_tracer-->>This: response
+```
+
+### SOLID principles applied here
+
+| Principle | Where it shows up in this folder |
+|---|---|
+| **S — Single Responsibility** | Each file has ONE role — routers route, services orchestrate, repos query, schemas describe. The §2 File Inventory shows the role per file; any file with multiple roles violates SRP. |
+| **O — Open/Closed** | New endpoints add new router functions; new business cases add new service methods. Existing methods stay closed for modification. |
+| **L — Liskov Substitution** | All adapter clients (Ollama / OpenAI / Anthropic) implement the same LLM-client protocol — they're interchangeable behind the circuit breaker. |
+| **I — Interface Segregation** | Pydantic models split request, response, and internal state into separate schemas — no client gets a fat model with fields it doesn't use. |
+| **D — Dependency Inversion** | Services receive their dependencies via FastAPI `Depends()` — they depend on abstractions (factories), not concrete repos. Swap implementations in tests via the `app.dependency_overrides` dict. |
+
+### Microservice principles applied here
+
+| Principle | Application |
+|---|---|
+| **Single business capability** | `hybrid_architect` owns ONE capability (see §1 Purpose). Cross-capability logic lives in other services. |
+| **Bounded context** | Schemas + repositories are scoped to this service's bounded context — no shared DB tables with other services. |
+| **DB per service** | Each service owns its tables. Cross-service reads go through HTTP or Kafka — never a direct DB join. |
+| **Independent deploy** | Service is independently deployable — its container is built + released without coupling to other services. |
+| **Resilience patterns** | Circuit breakers (`documind_core/breakers/`), retries with exponential backoff, bulkheads, timeouts on every external call. |
+| **Observability** | Every request has a `request_id` propagated via OTel baggage; every external call emits a trace span. |
+
+### Design-principle stack (how the principles compose)
+
+Reading bottom-to-top — earlier principles enable later ones:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 7. AI Governance (§38 + §48): decision audit + explainability│
+├─────────────────────────────────────────────────────────────┤
+│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │
+├─────────────────────────────────────────────────────────────┤
+│ 5. Resilience: CB + retry + bulkhead + timeout              │
+├─────────────────────────────────────────────────────────────┤
+│ 4. Microservice: single capability, bounded context, DB/svc │
+├─────────────────────────────────────────────────────────────┤
+│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │
+├─────────────────────────────────────────────────────────────┤
+│ 2. 12-factor: stateless, deps in venv, config in env        │
+├─────────────────────────────────────────────────────────────┤
+│ 1. KISS / YAGNI / DRY: every line earns its place           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -382,6 +489,33 @@ _No AI / LLM dependencies detected — section not applicable._
 | `architect` | 2 |
 
 
+## 📖 Domain Glossary
+
+Project-wide vocabulary a new developer needs. If you see a term in code you don't recognize, check here first.
+
+| Term | Definition |
+|---|---|
+| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |
+| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |
+| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |
+| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |
+| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |
+| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |
+| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |
+| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |
+| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |
+| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |
+| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |
+| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |
+| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |
+| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |
+| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |
+| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |
+| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |
+| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |
+| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |
+
+
 ## 18. Debugging Guide
 
 ### Step-by-step when something breaks
@@ -405,6 +539,26 @@ _No AI / LLM dependencies detected — section not applicable._
 | 5xx spike | downstream dep down | check `/health/upstreams` |
 | Memory growth | unbounded cache or closure leak | Section 11 |
 | Wrong-tenant data | RLS bypass | tenant isolation drill |
+
+
+## 📅 Recent Activity & Open TODOs
+
+### Last 8 commits touching this folder
+
+| Hash | Date | Subject |
+|---|---|---|
+| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
+| `3063c94` | 2026-05-08 | fix(hybrid-architect): add low-risk fast path |
+| `bdef9c7` | 2026-05-07 | feat(hybrid_architect): hub-and-spoke + council composition (8/8 drill green) |
+
+```bash
+git log --oneline -- hybrid_architect    # see all commits
+git blame <file>                       # who wrote what
+```
+
+### Open TODO / FIXME / HACK markers
+
+_No TODO / FIXME markers found — folder is hygienic._
 
 
 ## 19. Production Gates (hard pass/fail)

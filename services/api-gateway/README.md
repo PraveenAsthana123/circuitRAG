@@ -1,8 +1,8 @@
-# 📦 `risk_classifier` — Advanced README
+# 📦 `api-gateway` — Advanced README
 
-  ·  **Path:** `risk_classifier`  ·  **Generated:** 2026-05-16 20:26 UTC
+🧩 **Service**  ·  **Path:** `services/api-gateway`  ·  **Generated:** 2026-05-16 20:26 UTC
 
-> risk_classifier — pure-function classification over (action, type, text).
+> Command api-gateway is the DocuMind edge service.
 
 This README is **auto-generated** by [`scripts/generate_folder_report.py`](../../scripts/generate_folder_report.py). It explains what this folder does, every file inside it, how the files link to each other, every API endpoint, every database call, every test case, and the production controls (security / reliability / performance / observability). Re-run after major changes.
 
@@ -12,51 +12,48 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 
 | Metric | Value |
 |---|---|
-| Folder | `risk_classifier` |
-| Total files | 3 |
-| Python files | 2 |
+| Folder | `services/api-gateway` |
+| Total files | 11 |
+| Python files | 0 |
 | TypeScript/JS files | 0 |
-| Go files | 0 |
+| Go files | 8 |
 | Shell scripts | 0 |
-| Lines of code | 186 |
-| Python classes | 1 |
-| Python functions | 4 |
+| Lines of code | 738 |
+| Python classes | 0 |
+| Python functions | 0 |
 | Async functions | 0 |
 | Total API endpoints | 0 |
 | Total DB call sites | 0 |
-| DB / Storage libs | _(none)_ |
+| DB / Storage libs | Redis |
 | Concurrency primitives | _(none)_ |
-| Caching primitives | _(none)_ |
+| Caching primitives | redis |
 | Input validation | _(NONE — flag risk)_ |
 | AI / LLM deps | _(none)_ |
-| Test files | 0 |
+| Test files | 1 |
 | Detected test cases | 0 |
 | Tests dir present | ❌ — flag |
-| Dockerfile | ❌ |
+| Dockerfile | ✅ |
 | pyproject.toml | ❌ |
-| go.mod | ❌ |
+| go.mod | ✅ |
 | package.json | ❌ |
-| Top git contributors | `2	PraveenAsthana123` |
+| Top git contributors | `3	Praveen`, `3	PraveenAsthana123` |
 
-#### Longest functions (top 5)
+#### Longest functions
 
-| Location | Name | Lines |
-|---|---|---|
-| `classifier.py:129` | `classify` | 45 |
-| `classifier.py:109` | `_scan_patterns` | 18 |
-| `classifier.py:176` | `classify_task` | 8 |
-| `classifier.py:104` | `_max_level` | 3 |
+_(no Python functions found)_
 
-#### Smells detected
+#### Smells detected (grep heuristics — verify manually)
 
-_(no smells detected by grep)_
+| Smell | Count |
+|---|---|
+| hardcoded localhost URL | 8 |
 
 
 ## 1. Purpose — Business + Technical
 
 ### Business problem this folder solves
 
-> _Reviewer to fill: risk_classifier — pure-function classification over (action, type, text)._
+> _Reviewer to fill: Command api-gateway is the DocuMind edge service._
 
 ### Technical contract this folder exposes
 
@@ -67,14 +64,33 @@ _(no smells detected by grep)_
 > _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
 
 
-## 🗺 How to Read This Folder (Guided Tour)
+## ⚡ Quick Start (5 commands)
 
-Read these files in order — by the end, you'll understand 80% of this folder's behavior. Click any path to jump straight to the source.
+```bash
+# 1. From repo root, activate venv
+source .venv/bin/activate
 
-1. **`classifier.py`** (📄 module, 194 LOC) — Risk classifier — pure function over (action, type, description).
-2. **`__init__.py`** (📦 package marker, 31 LOC) — risk_classifier — pure-function classification over (action, type, text).
+# 2. Bring up backends this service depends on (Postgres / Redis / Kafka / etc.)
+docker compose -f infra/docker-compose.yml up -d postgres redis kafka
 
-Click absolute paths for direct `cat`-ability in the §2 File Inventory above.
+# 3. Set the env vars (see §C below for the full list)
+export DOCUMIND_POSTGRES_URL='postgresql://...'
+export DOCUMIND_REDIS_URL='redis://localhost:56379/0'
+
+# 4. Start the service
+cd services/api-gateway
+uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+
+# 5. Verify
+curl http://localhost:8080/health
+```
+
+If `/health` returns `{"status": "ok"}` you're up. Full health matrix: `python3 scripts/advanced_healthcheck.py --layer app`.
+
+
+## 🗺 How to Read This Folder
+
+_No clear entry points — start with whichever file has `main.py` or `__init__.py` in its name._
 
 
 ## ⚙ Environment Variables
@@ -84,17 +100,7 @@ _No env-var references detected via `BaseSettings`, `os.environ.get`, or `os.get
 
 ## 2. File Inventory
 
-Every Python file in this folder, with role / classes / functions / LOC / first docstring line. Full absolute paths listed below the table for easy `cat`-ability.
-
-| Relative path | Role (inferred) | Classes | Functions | LOC | Summary |
-|---|---|---|---|---|---|
-| `__init__.py` | 📦 package marker | 0 | 0 | 31 | risk_classifier — pure-function classification over (action, type, text). |
-| `classifier.py` | 📄 module | 1 | 4 | 194 | Risk classifier — pure function over (action, type, description). |
-
-### Absolute paths (clickable)
-
-- `/mnt/deepa/rag/risk_classifier/__init__.py`
-- `/mnt/deepa/rag/risk_classifier/classifier.py`
+_No Python files detected._
 
 
 ## 3. C4 Model — Context / Container / Component / Code
@@ -105,7 +111,7 @@ _Where does this folder sit in the broader system?_
 
 ```mermaid
 flowchart LR
-    Caller([External Caller]) --> This["risk_classifier"]
+    Caller([External Caller]) --> This["api-gateway"]
 ```
 
 ### Level 2 — Container
@@ -114,9 +120,10 @@ _What external dependencies does this folder talk to?_
 
 ```mermaid
 flowchart TB
-    subgraph risk_classifier
+    subgraph api-gateway
         Code[Source Code]
     end
+    Code --> DB_0[("Redis")]
 ```
 
 ### Level 3 — Component
@@ -125,12 +132,6 @@ _Internal files grouped by inferred role._
 
 ```mermaid
 flowchart TB
-    subgraph __package_marker["📦 package marker"]
-        __init___py["__init__.py"]
-    end
-    subgraph __module["📄 module"]
-        classifier_py["classifier.py"]
-    end
 ```
 
 ### Level 4 — Code (top hotspots)
@@ -139,40 +140,18 @@ _Longest functions — these are the most likely refactor candidates._
 
 ```mermaid
 flowchart TB
-    classifier_py_129_classify["classify (45 lines)<br/>classifier.py:129"]
-    classifier_py_109__scan_patterns["_scan_patterns (18 lines)<br/>classifier.py:109"]
-    classifier_py_176_classify_task["classify_task (8 lines)<br/>classifier.py:176"]
-    classifier_py_104__max_level["_max_level (3 lines)<br/>classifier.py:104"]
+    none[No Python functions detected]
 ```
 
 
-## 📐 Class Diagram (UML-style)
+## 📐 Class Diagram
 
-Top classes by method count, with inheritance arrows. Common framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) use dotted lines.
-
-```mermaid
-classDiagram
-    class RiskAssessment {
-        +0 methods
-        ~classifier.py:97
-    }
-```
+_No Python classes detected._
 
 
-## 4. Code Sequence — How Files Link to Each Other
+## 4. Code Sequence — How Files Link
 
-**Import graph for files in this folder.** Reading order: start at any entry-point file (look for `🚀 entry point` role in the inventory above), then follow the arrows.
-
-```mermaid
-flowchart LR
-    __init___py["__init__.py"] --> classifier_py["classifier.py"]
-```
-
-### Edge list
-
-| From file | To file | Import-count |
-|---|---|---|
-| `__init__.py` | `classifier.py` | 1 |
+_No Python files detected._
 
 
 ## 5. Request Flowchart
@@ -186,7 +165,11 @@ flowchart TD
     Validate -- ok --> Auth{{Auth + RBAC check}}
     Auth -- denied --> Err401[401/403]
     Auth -- ok --> Logic[Business logic]
-    Logic --> Compute[Compute / fetch]
+    Logic --> CacheCheck{{Cache hit?}}
+    CacheCheck -- yes --> Return[Return cached]
+    CacheCheck -- no --> Compute[Compute / fetch]
+    Compute --> DB[(Database)]
+    DB --> Compute
     Compute --> Log[Emit log + metric + trace span]
     Log --> Return2[Return response]
     Err400 --> Log
@@ -199,70 +182,6 @@ flowchart TD
 _No HTTP endpoints detected via `@app.*` / `@router.*` decorators._
 
 
-## 🏗 Input/Process/Output + Integration + Design Principles
-
-### Input / Process / Output per endpoint
-
-| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |
-|---|---|---|---|
-| _(no endpoints)_ | — | — | — |
-
-### Integration sequence (ordered by import volume)
-
-Other folders this one calls into, ordered by how heavily it depends on each:
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant This as risk_classifier
-```
-
-### SOLID principles applied here
-
-| Principle | Where it shows up in this folder |
-|---|---|
-| **S — Single Responsibility** | Each file has ONE role — routers route, services orchestrate, repos query, schemas describe. The §2 File Inventory shows the role per file; any file with multiple roles violates SRP. |
-| **O — Open/Closed** | New endpoints add new router functions; new business cases add new service methods. Existing methods stay closed for modification. |
-| **L — Liskov Substitution** | All adapter clients (Ollama / OpenAI / Anthropic) implement the same LLM-client protocol — they're interchangeable behind the circuit breaker. |
-| **I — Interface Segregation** | Pydantic models split request, response, and internal state into separate schemas — no client gets a fat model with fields it doesn't use. |
-| **D — Dependency Inversion** | Services receive their dependencies via FastAPI `Depends()` — they depend on abstractions (factories), not concrete repos. Swap implementations in tests via the `app.dependency_overrides` dict. |
-
-### Microservice principles applied here
-
-| Principle | Application |
-|---|---|
-| **Single business capability** | `risk_classifier` owns ONE capability (see §1 Purpose). Cross-capability logic lives in other services. |
-| **Bounded context** | Schemas + repositories are scoped to this service's bounded context — no shared DB tables with other services. |
-| **DB per service** | Each service owns its tables. Cross-service reads go through HTTP or Kafka — never a direct DB join. |
-| **Independent deploy** | Service is independently deployable — its container is built + released without coupling to other services. |
-| **Resilience patterns** | Circuit breakers (`documind_core/breakers/`), retries with exponential backoff, bulkheads, timeouts on every external call. |
-| **Observability** | Every request has a `request_id` propagated via OTel baggage; every external call emits a trace span. |
-
-### Design-principle stack (how the principles compose)
-
-Reading bottom-to-top — earlier principles enable later ones:
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ 7. AI Governance (§38 + §48): decision audit + explainability│
-├─────────────────────────────────────────────────────────────┤
-│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │
-├─────────────────────────────────────────────────────────────┤
-│ 5. Resilience: CB + retry + bulkhead + timeout              │
-├─────────────────────────────────────────────────────────────┤
-│ 4. Microservice: single capability, bounded context, DB/svc │
-├─────────────────────────────────────────────────────────────┤
-│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │
-├─────────────────────────────────────────────────────────────┤
-│ 2. 12-factor: stateless, deps in venv, config in env        │
-├─────────────────────────────────────────────────────────────┤
-│ 1. KISS / YAGNI / DRY: every line earns its place           │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
-
-
 ## 7. Sequence Diagrams per Endpoint
 
 _No endpoints detected; sequence-diagram template intentionally omitted._
@@ -270,7 +189,37 @@ _No endpoints detected; sequence-diagram template intentionally omitted._
 
 ## 8. Database Layer
 
-_No DB libraries or call sites detected._
+**DB / storage libraries:** Redis
+
+**Total DB call sites:** 0
+
+| Pattern | Count |
+|---|---|
+
+
+### Query Optimization checklist
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Indexes on every WHERE / ORDER BY column | — | EXPLAIN ANALYZE hot paths |
+| Full table scans avoided | — | — |
+| Batch operations used (not N writes in a loop) | — | — |
+| Parameterized queries (NEVER f-string SQL) | — | — |
+
+### Transactions (ACID)
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Transaction boundaries narrow (no HTTP / LLM inside) | — | — |
+| Rollback on exception | — | — |
+| Isolation level documented (READ COMMITTED / SERIALIZABLE) | — | — |
+| Deadlock prevention strategy | — | — |
+
+### N+1 Query Findings (reviewer to fill)
+
+| Endpoint / Function | Suspect Loop | Est. Queries / Request | Fix |
+|---|---|---|---|
+| — | — | — | — |
 
 
 ## 9. Code Quality + Complexity
@@ -290,7 +239,7 @@ _No DB libraries or call sites detected._
 |---|---|---|
 | No dead / commented-out code | — | — |
 | No `print()` — use logger | — | — |
-| No hardcoded values | — | smell count: 0 |
+| No hardcoded values | — | smell count: 8 |
 | Constants extracted to a settings module | — | — |
 
 ### Complexity
@@ -317,7 +266,7 @@ _No DB libraries or call sites detected._
 | Check | Status (✓/✗/⚠) | Notes |
 |---|---|---|
 | Request validation present | — | sanitization: NONE |
-| SQL injection prevention | — | DB libs: n/a — parameterized queries only |
+| SQL injection prevention | — | DB libs: Redis — parameterized queries only |
 | XSS / CSRF prevention | — | output encoding / CSP / SameSite |
 | Path traversal prevention | — | no user input concatenated to file paths |
 | Prompt injection prevention | — | n/a — no AI deps |
@@ -348,7 +297,7 @@ _No DB libraries or call sites detected._
 |---|---|---|
 | Large object retention avoided | — | — |
 | Streaming for large files / data | — | — |
-| Caches bounded (LRU / TTL) | — | caching: none |
+| Caches bounded (LRU / TTL) | — | caching: redis |
 
 ### Concurrency
 
@@ -397,7 +346,7 @@ _No DB libraries or call sites detected._
 
 ## 13. Test Cases
 
-**Test files detected:** 0
+**Test files detected:** 1
 _No `test_*` functions parsed via AST. Either tests live elsewhere or names don't match the `test_*` convention._
 
 
@@ -450,17 +399,7 @@ _No AI / LLM dependencies detected — section not applicable._
 
 ## 17. Integration with Other Folders
 
-### Internal — other folders in this repo
-
-| Folder / Module | Import-count | Purpose |
-|---|---|---|
-| _(none)_ | — | — |
-
-### External — third-party packages
-
-| Package | Import-count |
-|---|---|
-| `classifier` | 1 |
+_No internal cross-folder imports or external deps detected. This folder appears to be a leaf node._
 
 
 ## 📖 Domain Glossary
@@ -495,13 +434,13 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 ### Step-by-step when something breaks
 
 ```
-1. Tail logs:        tail -50 /tmp/risk_classifier.log   (if host-side)
-                     docker logs documind-risk_classifier --tail=50   (if container)
+1. Tail logs:        tail -50 /tmp/api-gateway.log   (if host-side)
+                     docker logs documind-api-gateway --tail=50   (if container)
 2. Health probe:     curl http://localhost:<PORT>/health
 3. Fleet probe:      python3 scripts/advanced_healthcheck.py --layer app
 4. Trace:            Open Jaeger → search request_id → see span tree
 5. Metrics:          Open Grafana → service dashboard → look for spike
-6. Drill:            ls mcp/tests/drill_*risk_classifier*.py and run
+6. Drill:            ls mcp/tests/drill_*api-gateway*.py and run
 ```
 
 ### Common failure modes
@@ -521,11 +460,15 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
-| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
-| `fa35b08` | 2026-05-08 | feat(agent): add council safety foundation |
+| `13d368f` | 2026-04-30 | test(svc): §8 smoke tests for 6 services flagged in 2026-04-30 audit (iter 16/N) |
+| `09f8ac0` | 2026-04-30 | fix(go-ci): commit go.sum + tidy'd go.mod + identity-svc vet error |
+| `5dfeb9c` | 2026-04-29 | feat(agentic): add ollama-backed orchestrator service |
+| `ae9f95d` | 2026-04-23 | fix(remediation): close the brutal-feedback gap — real wiring, Dockerfiles, CI, poisoning defense, outbox, JWT, re-embed |
+| `6732b02` | 2026-04-23 | feat(infra): fill production-base gaps — nginx, hardened gateway, gRPC, Istio, K8s, ELK, Kiali, vLLM, AIops |
+| `d98e305` | 2026-04-23 | feat: scaffold DocuMind advanced-RAG platform per 67-area spec |
 
 ```bash
-git log --oneline -- risk_classifier    # see all commits
+git log --oneline -- services/api-gateway    # see all commits
 git blame <file>                       # who wrote what
 ```
 
@@ -542,7 +485,7 @@ _No TODO / FIXME markers found — folder is hygienic._
 | Naming convention enforced | ruff / eslint | — | — |
 | Zero critical CVEs | Trivy / Bandit | — | — |
 | No hardcoded secrets | gitleaks | — | — |
-| No memory leaks | bounded caches | — | smells: 0 |
+| No memory leaks | bounded caches | — | smells: 8 |
 | No N+1 queries | hot paths reviewed | — | 0 DB call sites |
 | All APIs validated | Pydantic / Zod | — | sanitization: NONE |
 | Duplicate logic eliminated | DRY check | — | — |

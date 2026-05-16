@@ -1,162 +1,821 @@
-# DocuMind Frontend — Next.js 14 + vanilla CSS
+# 📦 `frontend` — Advanced README
 
-Next.js (App Router) with plain vanilla CSS. No Tailwind, no CSS-in-JS, no Material/Chakra.
+🧩 **Service**  ·  **Path:** `services/frontend`  ·  **Generated:** 2026-05-16 20:26 UTC
 
-## Layout
+> _Purpose not detected from docstrings — reviewer to fill._
 
-- **Left sidebar** (dark, 240px, fixed) — nav
-- **Right content** (white bg, flex-fill, scrollable)
-- **Topbar** (dark, tenant pill + admin link)
+This README is **auto-generated** by [`scripts/generate_folder_report.py`](../../scripts/generate_folder_report.py). It explains what this folder does, every file inside it, how the files link to each other, every API endpoint, every database call, every test case, and the production controls (security / reliability / performance / observability). Re-run after major changes.
 
-Design tokens live in `styles/variables.css`. Components reference them; no hardcoded hex / px for layout.
+---
 
-## Routes
+## 🔎 Section 0 — Auto-Detected Facts
 
+| Metric | Value |
+|---|---|
+| Folder | `services/frontend` |
+| Total files | 1925 |
+| Python files | 0 |
+| TypeScript/JS files | 346 |
+| Go files | 0 |
+| Shell scripts | 0 |
+| Lines of code | 150,632 |
+| Python classes | 0 |
+| Python functions | 0 |
+| Async functions | 0 |
+| Total API endpoints | 0 |
+| Total DB call sites | 1649 |
+| DB / Storage libs | Elasticsearch, Kafka (aiokafka), Neo4j, Prisma, Qdrant, Redis, SQLAlchemy, asyncpg, psycopg |
+| Concurrency primitives | Lock / RLock, asyncio (async/await), concurrent.futures, multiprocessing, threading |
+| Caching primitives | redis |
+| Input validation | Manual escape, Pydantic BaseModel, Zod (TS) |
+| AI / LLM deps | Anthropic SDK, DeepEval, LangChain, LangGraph, Ollama, OpenAI SDK, OpenTelemetry GenAI, Ragas |
+| Test files | 0 |
+| Detected test cases | 0 |
+| Tests dir present | ✅ |
+| Dockerfile | ✅ |
+| pyproject.toml | ❌ |
+| go.mod | ❌ |
+| package.json | ✅ |
+| Top git contributors | `189	PraveenAsthana123`, `4	Praveen` |
+
+#### Longest functions
+
+_(no Python functions found)_
+
+#### Smells detected (grep heuristics — verify manually)
+
+| Smell | Count |
+|---|---|
+| hardcoded localhost URL | 110 |
+| hardcoded password literal | 2 |
+| TODO/FIXME marker | 1061 |
+
+
+## 1. Purpose — Business + Technical
+
+### Business problem this folder solves
+
+> _Reviewer to fill: one paragraph describing the business need_
+
+### Technical contract this folder exposes
+
+> _Reviewer to fill: API surface, events emitted, data persisted, downstream consumers._
+
+### Out-of-scope (what this folder does NOT do)
+
+> _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
+
+
+## ⚡ Quick Start (5 commands)
+
+```bash
+# 1. From repo root, activate venv
+source .venv/bin/activate
+
+# 2. Bring up backends this service depends on (Postgres / Redis / Kafka / etc.)
+docker compose -f infra/docker-compose.yml up -d postgres redis kafka
+
+# 3. Set the env vars (see §C below for the full list)
+export DOCUMIND_POSTGRES_URL='postgresql://...'
+export DOCUMIND_REDIS_URL='redis://localhost:56379/0'
+
+# 4. Start the service
+cd services/frontend
+uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
+
+# 5. Verify
+curl http://localhost:3000/health
 ```
+
+If `/health` returns `{"status": "ok"}` you're up. Full health matrix: `python3 scripts/advanced_healthcheck.py --layer app`.
+
+
+## 🗺 How to Read This Folder
+
+_No clear entry points — start with whichever file has `main.py` or `__init__.py` in its name._
+
+
+## ⚙ Environment Variables
+
+_No env-var references detected via `BaseSettings`, `os.environ.get`, or `os.getenv`._
+
+
+## 2. File Inventory
+
+_No Python files detected._
+
+
+## 3. C4 Model — Context / Container / Component / Code
+
+### Level 1 — System Context
+
+_Where does this folder sit in the broader system?_
+
+```mermaid
+flowchart LR
+    Caller([External Caller]) --> This["frontend"]
+```
+
+### Level 2 — Container
+
+_What external dependencies does this folder talk to?_
+
+```mermaid
+flowchart TB
+    subgraph frontend
+        Code[Source Code]
+    end
+    Code --> DB_0[("Elasticsearch")]
+    Code --> DB_1[("Kafka (aiokafka)")]
+    Code --> DB_2[("Neo4j")]
+    Code --> DB_3[("Prisma")]
+    Code --> DB_4[("Qdrant")]
+    Code --> DB_5[("Redis")]
+    Code --> DB_6[("SQLAlchemy")]
+    Code --> DB_7[("asyncpg")]
+    Code --> DB_8[("psycopg")]
+    Code --> AI_0{{LLM: Anthropic SDK}}
+    Code --> AI_1{{LLM: DeepEval}}
+    Code --> AI_2{{LLM: LangChain}}
+    Code --> AI_3{{LLM: LangGraph}}
+    Code --> AI_4{{LLM: Ollama}}
+    Code --> AI_5{{LLM: OpenAI SDK}}
+    Code --> AI_6{{LLM: OpenTelemetry GenAI}}
+    Code --> AI_7{{LLM: Ragas}}
+```
+
+### Level 3 — Component
+
+_Internal files grouped by inferred role._
+
+```mermaid
+flowchart TB
+```
+
+### Level 4 — Code (top hotspots)
+
+_Longest functions — these are the most likely refactor candidates._
+
+```mermaid
+flowchart TB
+    none[No Python functions detected]
+```
+
+
+## 📐 Class Diagram
+
+_No Python classes detected._
+
+
+## 4. Code Sequence — How Files Link
+
+_No Python files detected._
+
+
+## 5. Request Flowchart
+
+Generic request lifecycle for this folder. Branches that don't apply are auto-removed based on detected dependencies (DB / cache / LLM).
+
+```mermaid
+flowchart TD
+    Start([Request arrives]) --> Validate{{Validate input}}
+    Validate -- invalid --> Err400[400 Bad Request]
+    Validate -- ok --> Auth{{Auth + RBAC check}}
+    Auth -- denied --> Err401[401/403]
+    Auth -- ok --> Logic[Business logic]
+    Logic --> CacheCheck{{Cache hit?}}
+    CacheCheck -- yes --> Return[Return cached]
+    CacheCheck -- no --> Compute[Compute / fetch]
+    Compute --> DB[(Database)]
+    DB --> Compute
+    Compute --> LLM{{LLM / RAG call}}
+    LLM --> Compute
+    Compute --> Log[Emit log + metric + trace span]
+    Log --> Return2[Return response]
+    Err400 --> Log
+    Err401 --> Log
+```
+
+
+## 6. API Endpoints — Input / Process / Output
+
+_No HTTP endpoints detected via `@app.*` / `@router.*` decorators._
+
+
+## 7. Sequence Diagrams per Endpoint
+
+_No endpoints detected; sequence-diagram template intentionally omitted._
+
+
+## 🎨 Frontend Architecture, State, Routing, Validation, Optimization
+
+**Detected framework:** Next.js (App Router)
+**Components dir:** ✅
+**TS / TSX files:** 346
+
+### Architecture pattern
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│              Browser (F12 console + DevTools)               │
+└───────────────────────────┬─────────────────────────────────┘
+                            │                                  
+                            ▼                                  
+┌─────────────────────────────────────────────────────────────┐
+│  Server Components (app/.../page.tsx) — default in Next.js  │
+│  - SSR / RSC, NO browser-side JS for these                  │
+│  - Data fetched on server, streamed to client               │
+└───────────────────────────┬─────────────────────────────────┘
+                            │                                  
+                            ▼                                  
+┌─────────────────────────────────────────────────────────────┐
+│  Client Components ('use client' directive)                 │
+│  - Interactivity: state (useState), effects (useEffect),    │
+│    event handlers, browser-only APIs                        │
+└───────────────────────────┬─────────────────────────────────┘
+                            │                                  
+                            ▼                                  
+┌─────────────────────────────────────────────────────────────┐
+│  BFF route (app/api/.../route.ts) — Next.js route handler   │
+│  - Validates input (Zod), injects auth headers              │
+│  - Calls backend service                                    │
+└───────────────────────────┬─────────────────────────────────┘
+                            │                                  
+                            ▼                                  
+┌─────────────────────────────────────────────────────────────┐
+│  Backend FastAPI / Go service                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### State management
+
+| Layer | Tool | When to use |
+|---|---|---|
+| **Local state** | `useState` / `useReducer` | Form inputs, toggles, in-component state |
+| **Server state** | RSC (Server Components) | Data fetched on server — no client cache needed |
+| **Cross-component state** | React Context | Theme, auth, locale — rarely changes |
+| **Persistent cache** | `localStorage` / SWR | Returning users, optimistic updates |
+| **Global mutable** | `zustand` (only if context too coarse) | Avoid Redux unless legacy demands it |
+
+### Routing
+
+Next.js App Router conventions used here:
+
+```text
 app/
-├── layout.tsx          # shell: sidebar + topbar + content
-├── page.tsx            # / → redirects to /ask
-├── error.tsx           # route-level error boundary
-├── loading.tsx         # default suspense fallback
-├── upload/page.tsx     # upload a PDF/DOCX/TXT/MD/HTML
-├── documents/page.tsx  # list tenant's documents
-├── ask/page.tsx        # query the RAG pipeline
-├── admin/page.tsx      # operator dashboard (live health, prompts, tools, upstreams)
-├── admin/monitoring    # monitoring + runtime status + operations map
-├── admin/techstack     # installed vs pending tool catalog
-├── admin/sidecar       # sidecar advisor events + ratings + drill-down
-├── admin/sidecar/telemetry  # council telemetry surface
-├── admin/forensics     # trace → draft → audit → HITL reconstruction
-├── admin/agentic       # agentic task submission + policy simulation
-├── admin/agentic/control-plane # normalized project/task/approval/memory chain
-└── app-meta/           # frontend-owned local routes (not proxied to gateway)
+├── layout.tsx             # Root layout (rendered once per session)
+├── page.tsx               # Root route (/)
+├── loading.tsx            # Suspense boundary fallback
+├── error.tsx              # Error boundary
+├── not-found.tsx          # 404 page
+├── admin/
+│   ├── layout.tsx         # /admin/* layout
+│   ├── page.tsx           # /admin
+│   └── [section]/         # Dynamic segment
+│       └── page.tsx       # /admin/<section>
+└── api/                   # BFF endpoints (server-side only)
+    └── v1/<resource>/route.ts
 ```
 
-## Operator/admin surfaces
+### API building + UI binding
 
-These are the main operational routes exposed by the frontend today:
+Standard pattern for fetching backend data from a client component:
 
-- `/admin`
-  - primary operator dashboard
-  - health, breakers, prompts, tools, upstreams, build info, trace-link panel
-- `/admin/monitoring`
-  - monitoring + technical operations map
-  - live service/runtime status
-  - running/unhealthy services
-  - resource consumers from local Docker stats
-  - observability links for Grafana / Prometheus / Alertmanager / Jaeger
-  - local stack inventory including node-exporter and cAdvisor
-  - agent activity summary
-- `/admin/techstack`
-  - installed vs pending tool inventory
-- `/admin/sidecar`
-  - advisor events, live ratings, search/filter/pagination
-- `/admin/sidecar/[eventId]`
-  - event drill-down with reviewer metadata
-- `/admin/sidecar/telemetry`
-  - council histogram / telemetry surface
-- `/admin/forensics`
-  - trace → draft → audit → HITL reconstruction
-- `/admin/agentic`
-  - bounded task/project creation and policy simulation
-- `/admin/agentic/control-plane`
-  - normalized plan rows, task runs, approvals, memories
+```tsx
+// app/some-page/page.tsx (Server Component — preferred)
+async function Page() {
+  const data = await fetch('http://backend:port/api/v1/resource', {
+    headers: { Authorization: `Bearer ${process.env.SERVER_TOKEN}` },
+    next: { revalidate: 60 },  // ISR cache for 60s
+  }).then(r => r.json());
+  return <Display data={data} />;
+}
 
-## Frontend-owned local routes
+// components/SomeComponent.tsx (Client Component — for interactivity)
+'use client';
+import { useEffect, useState } from 'react';
+export default function SomeComponent() {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch('/api/v1/resource', { signal: ctrl.signal })
+      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+      .then(setData)
+      .catch(e => e.name !== 'AbortError' && setErr(e.message));
+    return () => ctrl.abort();  // cleanup
+  }, []);
+  if (err) return <div role='alert'>Failed: {err}</div>;
+  if (!data) return <div role='status'>Loading…</div>;
+  return <pre>{JSON.stringify(data, null, 2)}</pre>;
+}
+```
 
-Not every route in this app should proxy to the backend gateway.
+### UI-level validation (Zod + react-hook-form)
 
-Current local runtime routes:
+```tsx
+import { z } from 'zod';
+const Schema = z.object({
+  email: z.string().email('Invalid email'),
+  age: z.number().int().min(18, 'Must be 18+').max(120),
+});
+type FormData = z.infer<typeof Schema>;
+// Use with react-hook-form: useForm({ resolver: zodResolver(Schema) })
+```
 
-- `/app-meta/build-info`
-  - current frontend build identity
-- `/app-meta/runtime-status`
-  - local compose/runtime status
-  - Docker service states
-  - Docker stats resource usage
-  - Ollama systemd status
+Always validate **at the boundary** — never trust client input even if you have client-side validation. Server validates again.
 
-Also kept local under App Router APIs:
+### Optimization
 
-- `/api/v1/tts`
-- `/api/v1/sidecar/*`
+| Optimization | Tool / Pattern |
+|---|---|
+| **Bundle size** | `next/dynamic` for code splitting; `source-map-explorer` to audit |
+| **Image LCP** | `next/image` (auto srcset + lazy loading) |
+| **Font CLS** | `next/font` (zero layout shift) |
+| **Streaming HTML** | RSC + `<Suspense>` boundaries |
+| **Memoization** | `React.memo`, `useMemo`, `useCallback` only when profiling shows need |
+| **Virtualization** | `react-window` for lists > 100 items |
+| **Caching** | `next: { revalidate: N }` on fetch; SWR for client cache |
+| **Prefetch** | `<Link prefetch>` on visible above-the-fold links |
+| **Web Vitals** | `web-vitals` lib + Lighthouse CI in pipeline |
 
-Everything else under `/api/*` is still rewritten to the gateway.
+### F12 Console — debugging guide
 
-## Run
+When the UI breaks, walk these in order:
+
+1. **Console tab** — JS errors. Filter by Error level. Look for `Uncaught` exceptions + React warnings.
+2. **Network tab** — failing requests. Filter by `XHR`/`Fetch`. Look for 4xx/5xx, slow responses (Timing → Waiting), CORS errors.
+3. **Performance tab** — Slow page? Click Record → reload → stop. Look for long tasks (>50ms) in flame chart.
+4. **React DevTools (extension)** — component tree, props, state. Profiler tab → record interaction → see which components re-rendered.
+5. **Application tab** — `localStorage`, `sessionStorage`, cookies, IndexedDB. Verify auth tokens present + valid.
+6. **Sources tab** — drop a `debugger;` statement in TSX; browser pauses on next render. Inspect closures.
+7. **Lighthouse** — full page audit: perf, a11y, SEO, best practices. Run in incognito to avoid extension noise.
+
+Quick console commands (paste in F12 console):
+
+```javascript
+// Inspect React Query / SWR cache (if used)
+window.__REACT_QUERY_DEVTOOLS_GLOBAL_HOOK__
+
+// Force re-render every interval (smoke test for memory leaks)
+let i = 0; setInterval(() => console.log('tick', ++i), 1000);
+
+// Watch all network requests
+const orig = fetch; window.fetch = (...a) => { console.log('fetch', a); return orig(...a); };
+
+// Inspect ErrorTracker (per §26.4 of CLAUDE.md)
+window.__errors?.getSummary()
+window.__errors?.getReport()
+```
+
+### Microfrontend pattern (when this folder splits)
+
+If this app grows past ~150K LOC or multiple teams own different routes, consider Module Federation (Webpack 5) or `@module-federation/nextjs-mf`:
+
+```text
+  ┌─ Shell App ──────────────────────────┐
+  │   Top-level layout + shared chrome   │
+  │   ┌─────────┐  ┌─────────┐  ┌──────┐ │
+  │   │ Admin MF│  │ Search  │  │ Ops  │ │
+  │   │ (team A)│  │ MF (B)  │  │ MF(C)│ │
+  │   └─────────┘  └─────────┘  └──────┘ │
+  └──────────────────────────────────────┘
+```
+
+**Today's status in this folder:** single Next.js app (not microfronted). Track at: `docs/architecture/adr/` if/when this changes.
+
+
+## 8. Database Layer
+
+**DB / storage libraries:** Elasticsearch, Kafka (aiokafka), Neo4j, Prisma, Qdrant, Redis, SQLAlchemy, asyncpg, psycopg
+
+**Total DB call sites:** 1649
+
+| Pattern | Count |
+|---|---|
+| `execute` | 79 |
+| `fetch/fetchall/fetchrow` | 132 |
+| `ORM query` | 5 |
+| `ORM CRUD` | 816 |
+| `MongoDB` | 617 |
+
+### Query Optimization checklist
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Indexes on every WHERE / ORDER BY column | — | EXPLAIN ANALYZE hot paths |
+| Full table scans avoided | — | — |
+| Batch operations used (not N writes in a loop) | — | — |
+| Parameterized queries (NEVER f-string SQL) | — | — |
+
+### Transactions (ACID)
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Transaction boundaries narrow (no HTTP / LLM inside) | — | — |
+| Rollback on exception | — | — |
+| Isolation level documented (READ COMMITTED / SERIALIZABLE) | — | — |
+| Deadlock prevention strategy | — | — |
+
+### N+1 Query Findings (reviewer to fill)
+
+| Endpoint / Function | Suspect Loop | Est. Queries / Request | Fix |
+|---|---|---|---|
+| — | — | — | — |
+
+
+## 9. Code Quality + Complexity
+
+### Readability
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Clear variable / function / class names | — | — |
+| No misleading naming (no `tmp` / `xyz` / `foo`) | — | — |
+| Small focused functions (≤ 50 lines) | — | 0 > 50 lines (see Section 0) |
+| Avoid deeply nested conditions (≤ 4 levels) | — | — |
+
+### Clean code
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| No dead / commented-out code | — | — |
+| No `print()` — use logger | — | — |
+| No hardcoded values | — | smell count: 1173 |
+| Constants extracted to a settings module | — | — |
+
+### Complexity
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Long methods broken down | — | — |
+| No overengineering (premature abstractions) | — | — |
+| Cyclomatic complexity ≤ 15 per function | — | run `ruff complexity` or `radon` |
+
+
+## 10. Security Review
+
+### Authentication & Authorization
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Authentication implemented correctly | — | Bearer / JWT / session |
+| Authorization (RBAC / ABAC) checks | — | no client-side trust |
+| Tokens validated server-side every request | — | rotate, expire, revoke |
+
+### OWASP Top 10
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Request validation present | — | sanitization: Manual escape, Pydantic BaseModel, Zod (TS) |
+| SQL injection prevention | — | DB libs: Elasticsearch, Kafka (aiokafka), Neo4j, Prisma, Qdrant, Redis, SQLAlchemy, asyncpg, psycopg — parameterized queries only |
+| XSS / CSRF prevention | — | output encoding / CSP / SameSite |
+| Path traversal prevention | — | no user input concatenated to file paths |
+| Prompt injection prevention | — | Rebuff / output filter |
+
+### Secret Management
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| No secrets in code | — | smell count: 2 password literals, 0 api key literals |
+| Env vars / Vault used | — | Pydantic BaseSettings or env reader |
+| Secret rotation strategy | — | documented in runbook |
+
+### Sensitive Data
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| PII masked in logs | — | structured logger with field redaction |
+| Encryption in transit (TLS) | — | — |
+| Encryption at rest (DB / object store) | — | — |
+| GDPR — retention + right-to-be-forgotten | — | — |
+
+
+## 11. Performance Review
+
+### Memory
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Large object retention avoided | — | — |
+| Streaming for large files / data | — | — |
+| Caches bounded (LRU / TTL) | — | caching: redis |
+
+### Concurrency
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Thread safety validated | — | primitives: Lock / RLock, asyncio (async/await), concurrent.futures, multiprocessing, threading |
+| Race conditions prevented | — | — |
+| Deadlocks avoided (lock ordering) | — | — |
+| Parallel processing where beneficial | — | 0 async fns |
+
+### Latency
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| External API calls batched / cached | — | — |
+| Timeouts on every external call | — | — |
+| No blocking I/O inside async functions | — | — |
+
+
+## 12. Reliability & Observability
+
+### Failure Handling
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Retry (bounded + exp backoff + jitter) | — | — |
+| Circuit breaker around external deps | — | — |
+| Graceful degradation | — | — |
+
+### Timeout Handling
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Timeout on every external call (HTTP / DB / subprocess) | — | — |
+| No infinite waits | — | — |
+
+### Observability
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Structured (JSON) logging | — | correlation_id + tenant_id + request_id |
+| Metrics (RED: rate / errors / duration) | — | — |
+| Tracing (OpenTelemetry → Jaeger / Tempo) | — | — |
+| Baggage propagation across services | — | — |
+
+
+## 13. Test Cases
+
+**Test files detected:** 0
+_No `test_*` functions parsed via AST. Either tests live elsewhere or names don't match the `test_*` convention._
+
+
+## 14. Logging & Monitoring
+
+### Logging
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Structured (JSON) logs | — | — |
+| Correlation ID present | — | — |
+| No PII / secrets in log lines | — | — |
+| No excessive logging (no logs in hot loops) | — | — |
+
+### Monitoring
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Alerts defined (SLO-burn aware) | — | — |
+| Dashboards exist (Grafana) | — | — |
+| On-call playbook references | — | — |
+
+
+## 15. LLM / GenAI / RAG
+
+**Detected AI deps:** Anthropic SDK, DeepEval, LangChain, LangGraph, Ollama, OpenAI SDK, OpenTelemetry GenAI, Ragas
+
+### Prompt Safety
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Prompt injection handling (input filter) | — | — |
+| Output sanitization | — | — |
+| Prompt versioning in registry | — | — |
+| Toxicity / bias filtering | — | — |
+
+### RAG Quality
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Chunking strategy validated (size + overlap) | — | — |
+| Embedding model versioned (re-embed on bump) | — | — |
+| Vector DB query optimized (recall@k measured) | — | — |
+| Metadata filtering exists (per-tenant) | — | — |
+
+### Cost
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Model fallback strategy defined | — | — |
+| Token usage minimized (cache / truncation) | — | — |
+| Per-tenant cost ceiling enforced | — | — |
+
+### Explainability / Responsible AI
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Citation / source grounding (every claim cited) | — | — |
+| Confidence scoring (Ragas / DeepEval) | — | Ragas |
+| Decision audit row per prediction (§48) | — | — |
+| Fairness / bias checks | — | — |
+
+
+## 16. SOLID + Microservice Principles
+
+### SOLID
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| S — Single Responsibility (one reason to change per class) | — | — |
+| O — Open/Closed (extend via composition, not modification) | — | — |
+| L — Liskov Substitution (subclasses honor contracts) | — | — |
+| I — Interface Segregation (no fat interfaces) | — | — |
+| D — Dependency Inversion (depend on abstractions) | — | — |
+
+### Microservice
+
+| Check | Status (✓/✗/⚠) | Notes |
+|---|---|---|
+| Single business capability | — | — |
+| Bounded context (no domain bleed) | — | — |
+| Independent deploy (no coupled releases) | — | — |
+| Resilience patterns (CB / retry / bulkhead) | — | — |
+
+
+## 17. Integration with Other Folders
+
+_No internal cross-folder imports or external deps detected. This folder appears to be a leaf node._
+
+
+## 📖 Domain Glossary
+
+Project-wide vocabulary a new developer needs. If you see a term in code you don't recognize, check here first.
+
+| Term | Definition |
+|---|---|
+| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |
+| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |
+| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |
+| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |
+| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |
+| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |
+| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |
+| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |
+| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |
+| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |
+| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |
+| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |
+| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |
+| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |
+| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |
+| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |
+| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |
+| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |
+| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |
+
+
+## 18. Debugging Guide
+
+### Step-by-step when something breaks
+
+```
+1. Tail logs:        tail -50 /tmp/frontend.log   (if host-side)
+                     docker logs documind-frontend --tail=50   (if container)
+2. Health probe:     curl http://localhost:<PORT>/health
+3. Fleet probe:      python3 scripts/advanced_healthcheck.py --layer app
+4. Trace:            Open Jaeger → search request_id → see span tree
+5. Metrics:          Open Grafana → service dashboard → look for spike
+6. Drill:            ls mcp/tests/drill_*frontend*.py and run
+```
+
+### Common failure modes
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| 502 / connection refused | service down | check `circuitrag-status.sh` |
+| Slow p95 latency | DB N+1 or LLM throttle | Section 8 + Section 15 |
+| 5xx spike | downstream dep down | check `/health/upstreams` |
+| Memory growth | unbounded cache or closure leak | Section 11 |
+| Wrong-tenant data | RLS bypass | tenant isolation drill |
+
+
+## 📅 Recent Activity & Open TODOs
+
+### Last 8 commits touching this folder
+
+| Hash | Date | Subject |
+|---|---|---|
+| `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
+| `3c24119` | 2026-05-08 | fix(production-checker): skip BFF health_url + drop http:// from doc-string URLs |
+| `6004a31` | 2026-05-08 | fix(integrations-health): OTel collector probe /metrics not / |
+| `e8a6142` | 2026-05-08 | feat(service-mesh-deep): add Kiali-integration topic — closes §49 gap (3 surfaces) |
+| `d3ca211` | 2026-05-08 | feat(kiali): canonical Istio addon install — Kiali joins all-green (19/19 HEALTHY) |
+| `7959e6d` | 2026-05-08 | fix(integrations-health): all-green achieved — TCP probe + Kafka URL + Kibana override fix |
+| `8c169a5` | 2026-05-08 | fix(integrations-health): correct MinIO + OTel probe URLs + restart Kibana with user fix |
+| `f1898f1` | 2026-05-08 | feat(tools-launcher): traffic-light tool launcher page (8/8 drill, 4 negative) |
 
 ```bash
-# from /mnt/deepa/rag/services/frontend
-cp .env.local.example .env.local
-npm install          # pnpm i also works
-npm run dev          # http://localhost:3000
+git log --oneline -- services/frontend    # see all commits
+git blame <file>                       # who wrote what
 ```
 
-The dev server proxies most `/api/*` traffic to the API gateway (default `http://localhost:8080`), so the browser stays same-origin.
+### Open TODO / FIXME / HACK markers
 
-Exception:
+#### TODO (196)
 
-- frontend-owned routes stay local:
-  - `/api/v1/tts`
-  - `/api/v1/sidecar/*`
-  - `/app-meta/*`
+| Location | Note |
+|---|---|
+| `public/mermaid.min.js:660` | make this a vec3, simplifies some code below |
+| `public/mermaid.min.js:2999` | We should probably remove this in a future release. |
+| `.next-dev/static/webpack/_app-pages-browser_node_modules_sentry_nextjs_build_esm_index_client_js.4e801cbcf003efc4.hot-update.js:18` | Change the status code in the handler.\n             */ if (hasMiddleware && [\n                        301,\n                        302,\n |
+| `.next-dev/static/chunks/react-refresh.js:19` | remove this key from page config instead of allow listing it\n        key === 'config');\n}\nfunction registerExportsForReactRefresh(moduleE |
+| `.next-dev/static/chunks/react-refresh.js:41` | rename these fields to something more meaningful.\n\n    var update = {\n      updatedFamilies: updatedFamilies,\n      // Families that wil |
+| `.next-dev/static/chunks/main-app.js:160` | Compose default with user-configureable (e.g. nprogress)\n    // TODO: Use React's default once we figure out hanging indicators: https://co |
+| `.next-dev/static/chunks/main-app.js:237` | This stuff could just go into the reducer. Leaving as-is for now\n    // since we're about to rewrite all the router reducer stuff anyway.\n |
+| `.next-dev/static/chunks/main-app.js:248` | Does this need to throw or can we just console.error instead? Does\n        // anyone rely on this throwing? (Seems unlikely.)\n        thro |
+| `.next-dev/static/chunks/main-app.js:314` | Add `forbidden` docs\n/**\n * @experimental\n * This function allows you to render the [forbidden.js file](https://nextjs.org/docs/app/api-r |
+| `.next-dev/static/chunks/main-app.js:369` | Consider removing the throw from the inner function, or change it\n        // to reportError. Or maybe the error isn't even necessary for au |
+| `.next-dev/static/chunks/main-app.js:589` | In output: \"export\" mode, the headers do nothing. Omit them (and the\n    // cache busting search param) from the request so they're\n     |
+| `.next-dev/static/chunks/main-app.js:611` | We should traverse the cacheNodeSeedData tree instead of the router\n        // state tree. Ideally, they would always be the same shape, bu |
+| `.next-dev/static/chunks/main-app.js:677` | We currently retain all the inactive segments indefinitely, until\n    // there's an explicit refresh, or a parent layout is lazily refreshe |
+| `.next-dev/static/chunks/main-app.js:688` | `fetchServerResponse` should be more tighly coupled to these prefetch cache operations\n            // to avoid drift between this cache key |
+| `.next-dev/static/chunks/main-app.js:743` | This matches the current behavior but we need to do something\n                // better here if the network fails.\n                ()=>{\n |
 
-## Environment
+_(181 more not shown)_
 
-- `NEXT_PUBLIC_API_BASE_URL` — gateway origin (browser-visible, public)
-- `NEXT_PUBLIC_DEMO_TENANT_ID` — inserted as `X-Tenant-ID` on every request
+#### FIXME (3)
 
-Never put secrets under `NEXT_PUBLIC_*` — those ship to the browser.
+| Location | Note |
+|---|---|
+| `.next-dev/static/chunks/main.js:303` | let's make this recoverable (error in GIP client-transition)\n        devClient.onUnrecoverableError();\n        // We need to render an emp |
+| `.next-dev/static/chunks/_app-pages-browser_node_modules_sentry_nextjs_build_esm_index_client_js.js:1052` | This function is problematic, because despite always returning a valid Carrier,\n * it has an optional `__SENTRY__` property, which then in  |
+| `.next-dev/server/vendor-chunks/@sentry.js:69` | This function is problematic, because despite always returning a valid Carrier,\n * it has an optional `__SENTRY__` property, which then in  |
 
-## API client
+#### XXX (8)
 
-`lib/api.ts` is the ONE place any code makes HTTP calls. It:
+| Location | Note |
+|---|---|
+| `public/mermaid.min.js:570` | ",r,": ",W0.get(r)),Wr.get(r).externalConnections=!0)})):Q.debug("Not a cluster ",r,W0)});for(let r of Wr.keys()){let i=Wr.get(r).id,n=t.par |
+| `.next-dev/static/chunks/_app-pages-browser_node_modules_mlc-ai_web-llm_lib_index_js.js:18` | to store data.\n\t\t     * - Calls into ptrFromOffset, no further allocation(as ptrFromOffset can change),\n\t\t     *   can still call into |
+| `.next-dev/static/chunks/_app-pages-browser_node_modules_sentry_nextjs_build_esm_index_client_js.js:458` | Temp fix for our debounce logic where `maxWait` would never occur if it\n// was the same as `wait`\nconst DEFAULT_FLUSH_MAX_DELAY = 5500;\n\ |
+| `.next-dev/server/vendor-chunks/@sentry.js:329` | the isLayerPathStored guard here is *not* present in the\n      // original @opentelemetry/instrumentation-express impl, but was\n      // s |
+| `.next-dev/server/vendor-chunks/@mlc-ai.js:20` | to store data.\n\t\t     * - Calls into ptrFromOffset, no further allocation(as ptrFromOffset can change),\n\t\t     *   can still call into |
+| `.next-dev/server/vendor-chunks/@opentelemetry.js:1780` | constants rather than the SemanticResourceAttributes.XXXXX for bundle minification\n */\nconst SemanticResourceAttributes = \n/*#__PURE__*/  |
+| `.next-dev/server/vendor-chunks/@opentelemetry.js:1830` | constants rather than the SemanticAttributes.XXXXX for bundle minification\n */\nconst SemanticAttributes = \n/*#__PURE__*/ (0,_internal_uti |
+| `.next-dev/server/vendor-chunks/@fastify.js:273` | is this necessary? Can't seem to hit it in tests.\n                /* c8 ignore start */\n                if (n.length === 1) {\n            |
 
-- Attaches `X-Tenant-ID` + `X-Correlation-ID` per request
-- Parses the standard error envelope (`{detail, error_code, correlation_id}`) into `ApiError`
-- Enforces a 30s default timeout (120s for upload / ask)
-- Accepts an external `AbortSignal` so components can cancel in-flight calls on unmount
 
-Don't fetch from components directly.
+## 19. Production Gates (hard pass/fail)
 
-It also now wraps local runtime/operator surfaces such as:
+| Gate | Target | Status | Evidence |
+|---|---|---|---|
+| Code coverage ≥ 80% | statements + branches | — | — |
+| Naming convention enforced | ruff / eslint | — | — |
+| Zero critical CVEs | Trivy / Bandit | — | — |
+| No hardcoded secrets | gitleaks | — | — |
+| No memory leaks | bounded caches | — | smells: 1173 |
+| No N+1 queries | hot paths reviewed | — | 1649 DB call sites |
+| All APIs validated | Pydantic / Zod | — | sanitization: Manual escape, Pydantic BaseModel, Zod (TS) |
+| Duplicate logic eliminated | DRY check | — | — |
+| Structured logging with correlation_id | — | — | — |
+| Distributed tracing wired | OpenTelemetry | — | — |
+| For AI: prompt injection tested | Rebuff / Garak | — | AI deps present |
+| For AI: hallucination scoring ≥ 0.85 | Ragas faithfulness | — | yes |
 
-- `frontendBuildInfo()`
-- `frontendRuntimeStatus()`
-- `healthDetailed()`
-- `healthTools()`
-- `healthPrompts()`
-- `healthUpstreams()`
-- `healthTechstack()`
-- agentic read/write endpoints
 
-## Scripts
+## 20. Final Production Readiness Score
 
-```bash
-npm run dev     # dev server
-npm run build   # production build
-npm run start   # run production bundle
-npm run lint    # next lint (zero warnings)
-npm run test    # vitest
-```
+| Area | Score (/10) |
+|---|---|
+| Architecture | — |
+| Security | — |
+| Performance | — |
+| Reliability | — |
+| Observability | — |
+| Testing | — |
+| Scalability | — |
+| AI Safety | — |
+| DevOps | — |
+| Maintainability | — |
+| **Total** | **— / 100** |
 
-## Current-state notes
+### Decision
 
-Be explicit about these:
+- [ ] **GO** — Production-ready (≥80, no failed gates)
+- [ ] **CONDITIONAL GO** — Ship with documented follow-ups (≥60)
+- [ ] **NO-GO** — Block release (any critical-red gate, or <60)
 
-- this frontend is no longer just upload/documents/ask
-- it now acts as the main operator shell for monitoring, sidecar, forensics, and agentic control-plane work
-- several admin/deep-dive pages are educational/reference surfaces
-- several other admin pages are live operational surfaces
+### Critical blockers
 
-Practical split:
+1. _TBD_
 
-- **live operational UI:** `/admin*`, `/app-meta/*`, sidecar routes, monitoring, techstack, agentic control-plane
-- **reference/explainer UI:** many `admin/*/deep` routes and `tools/*` routes
+### Follow-ups (post-ship)
 
-## Why Next.js + vanilla CSS (and not Vite+React / Tailwind / CRA)
+| ID | Description | Owner | Due |
+|---|---|---|---|
+| — | — | — | — |
 
-- Per global CLAUDE.md §14.1: Next.js is the default frontend stack.
-- Server Components + file-system routing remove boilerplate.
-- Vanilla CSS keeps the design tokens first-class and the dependency tree small.
-- No Tailwind class soup — every layout decision has a named variable.
+### Sign-off
+
+| Role | Name | Date | Signature |
+|---|---|---|---|
+| Tech Lead | — | — | — |
+| Security | — | — | — |
+| SRE | — | — | — |
+
+---
+
+_Generated by `scripts/generate_folder_report.py`. Re-run after major folder changes:_
+_`python3 scripts/generate_folder_report.py --folder <this-folder> --force`_

@@ -1,6 +1,6 @@
 # 🔵 circuitRAG — Enterprise RAG Platform
 
-> **Branch:** `main`  ·  **Commits:** 806  ·  **Generated:** 2026-05-16 20:01 UTC
+> **Branch:** `main`  ·  **Commits:** 807  ·  **Generated:** 2026-05-16 20:31 UTC
 
 > An end-to-end retrieval-augmented-generation (RAG) platform built around production-grade controls: governance, observability, tenant-isolation, MCP tooling, multi-model routing, decision-audit, and a brutal-tool-review backlog driven by drilled invariants.
 
@@ -130,7 +130,7 @@ All application services. Click any path to browse; click README to read the aut
 | Path | Role | Purpose | LOC | README | Endpoints | Tests | Docker |
 |---|---|---|---|---| --- | --- | --- |
 | [`services/agent-orchestrator-svc/`](services/agent-orchestrator-svc/) | Python FastAPI service | Agent orchestrator FastAPI service. | 5,759 | [`services/agent-orchestrator-svc/README.md`](services/agent-orchestrator-svc/README.md) | 20 | 1 | 🐳 |
-| [`services/api-gateway/`](services/api-gateway/) | Go microservice | Command api-gateway is the DocuMind edge service. | 738 | _(no README yet)_ | 0 | 1 | 🐳 |
+| [`services/api-gateway/`](services/api-gateway/) | Go microservice | Command api-gateway is the DocuMind edge service. | 738 | [`services/api-gateway/README.md`](services/api-gateway/README.md) | 0 | 1 | 🐳 |
 | [`services/evaluation-svc/`](services/evaluation-svc/) | Python FastAPI service | Evaluation service (Design Areas 26, 59, 60, 61). | 1,109 | [`services/evaluation-svc/README.md`](services/evaluation-svc/README.md) | 5 | 0 | 🐳 |
 | [`services/finops-svc/`](services/finops-svc/) | Go microservice | finops-svc — token counting, per-tenant cost attribution, budgets. | 133 | _(no README yet)_ | 0 | 1 | 🐳 |
 | [`services/frontend/`](services/frontend/) | Web UI (Next.js) | _no docstring_ | 150,632 | [`services/frontend/README.md`](services/frontend/README.md) | 0 | 0 | 🐳 |
@@ -167,7 +167,7 @@ Model-Context-Protocol servers expose drill / namespace / tool catalog operation
 
 | Path | Role | Purpose | LOC | README |
 |---|---|---|---|---|
-| [`scripts/`](scripts/) | CLI scripts | _no docstring_ | 41,005 | [`scripts/README.md`](scripts/README.md) |
+| [`scripts/`](scripts/) | CLI scripts | _no docstring_ | 42,101 | [`scripts/README.md`](scripts/README.md) |
 
 ### 🏗 Infrastructure
 
@@ -230,7 +230,7 @@ python3 scripts/generate_folder_report.py --batch all --force
 ### Services
 
 - [`services/agent-orchestrator-svc/README.md`](services/agent-orchestrator-svc/README.md) — Python FastAPI service
-- `services/api-gateway/` — _no README yet (run `python3 scripts/generate_folder_report.py --folder services/api-gateway`)_
+- [`services/api-gateway/README.md`](services/api-gateway/README.md) — Go microservice
 - [`services/evaluation-svc/README.md`](services/evaluation-svc/README.md) — Python FastAPI service
 - `services/finops-svc/` — _no README yet (run `python3 scripts/generate_folder_report.py --folder services/finops-svc`)_
 - [`services/frontend/README.md`](services/frontend/README.md) — Web UI (Next.js)
@@ -288,8 +288,8 @@ python3 scripts/generate_folder_report.py --batch all --force
 
 ## 📊 Project metrics (live snapshot)
 
-- **Total LOC (code only):** 5,887,527
-- **Commits on this branch:** 806
+- **Total LOC (code only):** 5,888,623
+- **Commits on this branch:** 807
 - **Drills in regression catalog:** see `mcp/tests/drill_*.py` + `scripts/run_drills.py --list`
 - **ADRs:** see `docs/architecture/adr/`
 - **Brutal tool reviews:** see `docs/architecture/tool-reviews/`
@@ -298,6 +298,7 @@ python3 scripts/generate_folder_report.py --batch all --force
 ### Recent commits
 
 ```
+c6e58b8 docs(readme): advanced auto-generated READMEs (project + per-folder)
 90a8860 fix(prometheus): scrape FastAPI side-channel ports (9465-9470), add orchestrator
 b4c9e00 feat(ops): advanced 7-layer health-check + troubleshoot tool — 46 probes parallel
 e078437 docs(tool-review): close TesterAgent P0 #34 — subprocess-orphan kill already shipped
@@ -305,7 +306,6 @@ e078437 docs(tool-review): close TesterAgent P0 #34 — subprocess-orphan kill a
 7451179 fix(llm-pool): close P0 #36 — per-backend CircuitBreaker; drill locks 8 invariants
 e22a1c4 docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix
 11c51b5 fix(run_drills): prefer repo .venv over /tmp/documind-venv — closes 2 drills
-3c24119 fix(production-checker): skip BFF health_url + drop http:// from doc-string URLs
 ```
 
 

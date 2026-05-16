@@ -1,6 +1,6 @@
 # 📦 `retrieval-svc` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/retrieval-svc`  ·  **Generated:** 2026-05-16 20:03 UTC
+🧩 **Service**  ·  **Path:** `services/retrieval-svc`  ·  **Generated:** 2026-05-16 20:24 UTC
 
 > Retrieval service FastAPI application.
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `30	PraveenAsthana123`, `4	Praveen` |
+| Top git contributors | `31	PraveenAsthana123`, `4	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -70,6 +70,73 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 > _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
 
 
+## ⚡ Quick Start (5 commands)
+
+```bash
+# 1. From repo root, activate venv
+source .venv/bin/activate
+
+# 2. Bring up backends this service depends on (Postgres / Redis / Kafka / etc.)
+docker compose -f infra/docker-compose.yml up -d postgres redis kafka
+
+# 3. Set the env vars (see §C below for the full list)
+export DOCUMIND_POSTGRES_URL='postgresql://...'
+export DOCUMIND_REDIS_URL='redis://localhost:56379/0'
+
+# 4. Start the service
+cd services/retrieval-svc
+uvicorn app.main:app --host 0.0.0.0 --port 8083 --reload
+
+# 5. Verify
+curl http://localhost:8083/health
+```
+
+If `/health` returns `{"status": "ok"}` you're up. Full health matrix: `python3 scripts/advanced_healthcheck.py --layer app`.
+
+
+## 🗺 How to Read This Folder (Guided Tour)
+
+Read these files in order — by the end, you'll understand 80% of this folder's behavior. Click any path to jump straight to the source.
+
+1. **`app/main.py`** (🚀 entry point / app bootstrap, 157 LOC) — App boot wiring — middleware stack, router registration, lifespan startup, DI container setup.
+2. **`app/core/config.py`** (⚙ config / settings, 20 LOC) — Every env var the service reads. Read this BEFORE running locally.
+3. **`app/routers/__init__.py`** (🌐 HTTP router / API endpoints, 254 LOC) — All HTTP routes. Most lines here are decorators + Pydantic models — the actual logic delegates to services.
+4. **`app/schemas/__init__.py`** (📋 data model / schema, 144 LOC) — Pydantic request/response models. Read alongside the router.
+5. **`app/services/hybrid_retriever.py`** (🧠 business service / use-case, 415 LOC) — Where business logic lives. Most of the interesting code is here.
+6. **`app/services/bge_reranker_protected.py`** (🧠 business service / use-case, 187 LOC) — Where business logic lives. Most of the interesting code is here.
+7. **`app/services/elastic_searcher.py`** (🧠 business service / use-case, 132 LOC) — Where business logic lives. Most of the interesting code is here.
+8. **`app/services/bge_reranker.py`** (🧠 business service / use-case, 127 LOC) — Where business logic lives. Most of the interesting code is here.
+
+Click absolute paths for direct `cat`-ability in the §2 File Inventory above.
+
+
+## ⚙ Environment Variables
+
+All env vars this folder reads, auto-extracted from `BaseSettings` field declarations and `os.environ.get` calls.
+
+### Runtime `os.environ.get` / `os.getenv` calls
+
+| Variable | Default | Source location |
+|---|---|---|
+| `DOCUMIND_KAFKA_BOOTSTRAP` | **required** | `app/main.py:93` |
+| `BGE_RERANKER_ENABLED` | **required** | `app/services/bge_reranker.py:31` |
+| `BGE_RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | `app/services/bge_reranker.py:32` |
+| `BGE_WRAPPER_TIMEOUT_MS` | `1500` | `app/services/bge_reranker_protected.py:57` |
+| `BGE_WRAPPER_THRESHOLD` | `5` | `app/services/bge_reranker_protected.py:58` |
+| `BGE_WRAPPER_RECOVERY_S` | `60` | `app/services/bge_reranker_protected.py:59` |
+| `BGE_RERANKER_ENABLED` | **required** | `app/services/bge_reranker_protected.py:73` |
+| `NATIVE_COMPUTE_WRAPPER_ENABLED` | **required** | `app/services/bge_reranker_protected.py:74` |
+| `CACHE_FINGERPRINT_ENABLED` | **required** | `app/services/hybrid_retriever.py:106` |
+| `PROMPT_VERSION` | `rag_v1` | `app/services/hybrid_retriever.py:114` |
+| `LLM_MODEL_VERSION` | `gemma2:9b` | `app/services/hybrid_retriever.py:115` |
+| `EMBED_MODEL_VERSION` | `nomic-embed-text:latest` | `app/services/hybrid_retriever.py:116` |
+| `DOCUMIND_VECTORLESS_DEFAULT` | **required** | `app/services/hybrid_retriever.py:164` |
+| `HYDE_ENABLED` | **required** | `app/services/hybrid_retriever.py:255` |
+| `BGE_RERANKER_IN_HOT_PATH` | **required** | `app/services/hybrid_retriever.py:299` |
+
+_Variables marked **required** must be set — missing values may raise on startup or silently default to empty strings._
+
+
 ## 2. File Inventory
 
 Every Python file in this folder, with role / classes / functions / LOC / first docstring line. Full absolute paths listed below the table for easy `cat`-ability.
@@ -84,7 +151,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `app/services/bge_reranker.py` | 🧠 business service / use-case | 1 | 3 | 127 | BGE cross-encoder reranker — Stage-1 adapter (per CLAUDE.md §56). |
 | `app/services/bge_reranker_protected.py` | 🧠 business service / use-case | 0 | 5 | 187 | BGE reranker WITH circuit breaker — Stage-2 wiring. |
 | `app/services/elastic_searcher.py` | 🧠 business service / use-case | 1 | 0 | 132 | Vectorless retrieval over Elasticsearch (BM25 keyword search). |
-| `app/services/embedder_client.py` | 🧠 business service / use-case | 1 | 0 | 32 | Thin embedder for queries — reuses the same Ollama API as ingestion. |
+| `app/services/embedder_client.py` | 🔌 external service adapter | 1 | 0 | 32 | Thin embedder for queries — reuses the same Ollama API as ingestion. |
 | `app/services/graph_searcher.py` | 🧠 business service / use-case | 1 | 0 | 85 | Graph search over Neo4j (Design Area 48). |
 | `app/services/hybrid_retriever.py` | 🧠 business service / use-case | 1 | 0 | 415 | Hybrid retriever (Design Areas 24 — Retrieval, 40 — Cache, 13 — Read Path). |
 | `app/services/reranker.py` | 🧠 business service / use-case | 1 | 0 | 72 | Reciprocal Rank Fusion (RRF) reranker. |
@@ -96,8 +163,8 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `scripts/autonomous_fix_daemon.py` | 📄 module | 0 | 0 | 2 | _(no docstring)_ |
 | `scripts/bug_manager.py` | 📄 module | 0 | 1 | 35 | _(no docstring)_ |
 | `scripts/council_agent.py` | 🤖 agent / tool | 0 | 6 | 103 | _(no docstring)_ |
-| `scripts/delegation_router.py` | 🌐 HTTP router / API endpoints | 0 | 0 | 33 | _(no docstring)_ |
-| `scripts/guardrails_wrapper.py` | 🚀 entry point / app bootstrap | 0 | 1 | 11 | _(no docstring)_ |
+| `scripts/delegation_router.py` | 📄 module | 0 | 0 | 33 | _(no docstring)_ |
+| `scripts/guardrails_wrapper.py` | 📄 module | 0 | 1 | 11 | _(no docstring)_ |
 | `scripts/intelligent_auto_fix_agent.py` | 🤖 agent / tool | 0 | 6 | 117 | _(no docstring)_ |
 | `scripts/mcp_agent_council_status.py` | 🤖 agent / tool | 0 | 0 | 20 | _(no docstring)_ |
 | `scripts/mlflow_tracker.py` | 📄 module | 0 | 0 | 9 | _(no docstring)_ |
@@ -151,6 +218,21 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/services/retrieval-svc/scripts/warm_council_pool.py`
 
 
+## 🧭 Where Does X Live? (cheat sheet)
+
+Use this table when you're modifying this folder and need to know where new code goes.
+
+| I want to... | Role | Touch these files |
+|---|---|---|
+| Add a new HTTP endpoint | 🌐 HTTP router / API endpoints | `app/routers/__init__.py` |
+| Add a new Pydantic request/response model | 📋 data model / schema | `app/schemas/__init__.py` |
+| Add a new business-logic method | 🧠 business service / use-case | `app/services/__init__.py`, `app/services/bge_reranker.py`, `app/services/bge_reranker_protected.py` (+5 more) |
+| Add a new env var | ⚙ config / settings | `app/core/config.py` |
+| Wrap a new external API | 🔌 external service adapter | `app/services/embedder_client.py` |
+| Add a new agent / tool | 🤖 agent / tool | `scripts/agent_monitor.py`, `scripts/agent_task_board.py`, `scripts/agent_trace.py` (+7 more) |
+| Boot a background worker | 🚀 entry point / app bootstrap | `app/main.py` |
+
+
 ## 3. C4 Model — Context / Container / Component / Code
 
 ### Level 1 — System Context
@@ -196,11 +278,9 @@ flowchart TB
     end
     subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
         app_main_py["app/main.py"]
-        scripts_guardrails_wrapper_py["scripts/guardrails_wrapper.py"]
     end
     subgraph __HTTP_router___API_endpoints["🌐 HTTP router / API endpoints"]
         app_routers___init___py["app/routers/__init__.py"]
-        scripts_delegation_router_py["scripts/delegation_router.py"]
     end
     subgraph __data_model___schema["📋 data model / schema"]
         app_schemas___init___py["app/schemas/__init__.py"]
@@ -210,9 +290,12 @@ flowchart TB
         app_services_bge_reranker_py["app/services/bge_reranker.py"]
         app_services_bge_reranker_protected_py["app/services/bge_reranker_protected.py"]
         app_services_elastic_searcher_py["app/services/elastic_searcher.py"]
-        app_services_embedder_client_py["app/services/embedder_client.py"]
         app_services_graph_searcher_py["app/services/graph_searcher.py"]
-        more___business_service___use_case["... +3 more"]
+        app_services_hybrid_retriever_py["app/services/hybrid_retriever.py"]
+        more___business_service___use_case["... +2 more"]
+    end
+    subgraph __external_service_adapter["🔌 external service adapter"]
+        app_services_embedder_client_py["app/services/embedder_client.py"]
     end
     subgraph __agent___tool["🤖 agent / tool"]
         scripts_agent_monitor_py["scripts/agent_monitor.py"]
@@ -226,11 +309,11 @@ flowchart TB
     subgraph __module["📄 module"]
         scripts_autonomous_fix_daemon_py["scripts/autonomous_fix_daemon.py"]
         scripts_bug_manager_py["scripts/bug_manager.py"]
+        scripts_delegation_router_py["scripts/delegation_router.py"]
+        scripts_guardrails_wrapper_py["scripts/guardrails_wrapper.py"]
         scripts_mlflow_tracker_py["scripts/mlflow_tracker.py"]
         scripts_monitoring_summary_py["scripts/monitoring_summary.py"]
-        scripts_outcome_eval_py["scripts/outcome_eval.py"]
-        scripts_policy_gate_py["scripts/policy_gate.py"]
-        more___module["... +4 more"]
+        more___module["... +6 more"]
     end
 ```
 
@@ -245,6 +328,79 @@ flowchart TB
     app_routers___init___py_119_health_best_["health_best_config_history (80 lines)<br/>app/routers/__init__.py:119"]
     app_routers___init___py_37_health_best_c["health_best_config (74 lines)<br/>app/routers/__init__.py:37"]
     app_services_elastic_searcher_py_70_sear["search (57 lines)<br/>app/services/elastic_searcher.py:70"]
+```
+
+
+## 📐 Class Diagram (UML-style)
+
+Top classes by method count, with inheritance arrows. Common framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) use dotted lines.
+
+```mermaid
+classDiagram
+    class HybridRetriever {
+        +5 methods
+        ~app/services/hybrid_retriever.py:36
+    }
+    class ElasticSearcher {
+        +4 methods
+        ~app/services/elastic_searcher.py:25
+    }
+    class GraphSearcher {
+        +4 methods
+        ~app/services/graph_searcher.py:22
+    }
+    class OllamaEmbedderClient {
+        +3 methods
+        ~app/services/embedder_client.py:10
+    }
+    class VectorSearcher {
+        +3 methods
+        ~app/services/vector_searcher.py:20
+    }
+    class ReciprocalRankFusion {
+        +2 methods
+        ~app/services/reranker.py:33
+    }
+    class RetrievalSettings {
+        +0 methods
+        ~app/core/config.py:8
+    }
+    BaseServiceSettings <|-- RetrievalSettings
+    class RetrieveRequest {
+        +0 methods
+        ~app/schemas/__init__.py:11
+    }
+    BaseModel <|.. RetrieveRequest
+    class RetrievedChunk {
+        +0 methods
+        ~app/schemas/__init__.py:45
+    }
+    BaseModel <|.. RetrievedChunk
+    class RetrieveResponse {
+        +0 methods
+        ~app/schemas/__init__.py:55
+    }
+    BaseModel <|.. RetrieveResponse
+    class BestConfigInfo {
+        +0 methods
+        ~app/schemas/__init__.py:83
+    }
+    BaseModel <|.. BestConfigInfo
+    class HealthBestConfigResponse {
+        +0 methods
+        ~app/schemas/__init__.py:96
+    }
+    BaseModel <|.. HealthBestConfigResponse
+    class HealthBestConfigHistoryResponse {
+        +0 methods
+        ~app/schemas/__init__.py:125
+    }
+    BaseModel <|.. HealthBestConfigHistoryResponse
+    class BGERerankerDisabled {
+        +0 methods
+        ~app/services/bge_reranker.py:35
+    }
+    RuntimeError <|-- BGERerankerDisabled
 ```
 
 
@@ -315,6 +471,246 @@ flowchart TD
 _Reviewer fills the last three columns from the Pydantic models in the handler. Auto-extraction of Pydantic schemas is on the roadmap._
 
 
+## 🏗 Input/Process/Output + Integration + Design Principles
+
+### Input / Process / Output per endpoint
+
+| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |
+|---|---|---|---|
+| `GET /health` | Pydantic schema validated at middleware | Router `app/routers/__init__.py:26` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `POST /api/v1/retrieve` | Pydantic schema validated at middleware | Router `app/routers/__init__.py:208` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+
+### Integration sequence (ordered by import volume)
+
+Other folders this one calls into, ordered by how heavily it depends on each:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant This as retrieval-svc
+  participant app_services as app/services
+  participant documind_core_config as documind_core/config
+  participant documind_core_cache as documind_core/cache
+  participant documind_core_exceptions as documind_core/exceptions
+  participant app_schemas as app/schemas
+  participant documind_core_circuit_breaker as documind_core/circuit_breaker
+  This->>app_services: call (~5 import sites)
+  app_services-->>This: response
+  This->>documind_core_config: call (~2 import sites)
+  documind_core_config-->>This: response
+  This->>documind_core_cache: call (~2 import sites)
+  documind_core_cache-->>This: response
+  This->>documind_core_exceptions: call (~2 import sites)
+  documind_core_exceptions-->>This: response
+  This->>app_schemas: call (~2 import sites)
+  app_schemas-->>This: response
+  This->>documind_core_circuit_breaker: call (~2 import sites)
+  documind_core_circuit_breaker-->>This: response
+```
+
+### SOLID principles applied here
+
+| Principle | Where it shows up in this folder |
+|---|---|
+| **S — Single Responsibility** | Each file has ONE role — routers route, services orchestrate, repos query, schemas describe. The §2 File Inventory shows the role per file; any file with multiple roles violates SRP. |
+| **O — Open/Closed** | New endpoints add new router functions; new business cases add new service methods. Existing methods stay closed for modification. |
+| **L — Liskov Substitution** | All adapter clients (Ollama / OpenAI / Anthropic) implement the same LLM-client protocol — they're interchangeable behind the circuit breaker. |
+| **I — Interface Segregation** | Pydantic models split request, response, and internal state into separate schemas — no client gets a fat model with fields it doesn't use. |
+| **D — Dependency Inversion** | Services receive their dependencies via FastAPI `Depends()` — they depend on abstractions (factories), not concrete repos. Swap implementations in tests via the `app.dependency_overrides` dict. |
+
+### Microservice principles applied here
+
+| Principle | Application |
+|---|---|
+| **Single business capability** | `retrieval-svc` owns ONE capability (see §1 Purpose). Cross-capability logic lives in other services. |
+| **Bounded context** | Schemas + repositories are scoped to this service's bounded context — no shared DB tables with other services. |
+| **DB per service** | Each service owns its tables. Cross-service reads go through HTTP or Kafka — never a direct DB join. |
+| **Independent deploy** | Service is independently deployable — its container is built + released without coupling to other services. |
+| **Resilience patterns** | Circuit breakers (`documind_core/breakers/`), retries with exponential backoff, bulkheads, timeouts on every external call. |
+| **Observability** | Every request has a `request_id` propagated via OTel baggage; every external call emits a trace span. |
+
+### Design-principle stack (how the principles compose)
+
+Reading bottom-to-top — earlier principles enable later ones:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 7. AI Governance (§38 + §48): decision audit + explainability│
+├─────────────────────────────────────────────────────────────┤
+│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │
+├─────────────────────────────────────────────────────────────┤
+│ 5. Resilience: CB + retry + bulkhead + timeout              │
+├─────────────────────────────────────────────────────────────┤
+│ 4. Microservice: single capability, bounded context, DB/svc │
+├─────────────────────────────────────────────────────────────┤
+│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │
+├─────────────────────────────────────────────────────────────┤
+│ 2. 12-factor: stateless, deps in venv, config in env        │
+├─────────────────────────────────────────────────────────────┤
+│ 1. KISS / YAGNI / DRY: every line earns its place           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
+
+
+## 🔬 Execution Sequence + Debug Tap Points
+
+For each phase a request goes through, this section shows: **(1)** the file:line where it happens, **(2)** the log line you'll see, **(3)** the command to inspect that phase's output in real time. Use this as your debug-flow chart — start at Phase 0, move down until output stops matching the expected log line; that's where the failure is.
+
+**Worked example:** `GET /health` (app/routers/__init__.py:26)
+
+### Phase-by-phase debug tap table
+
+| # | Phase | Code location | Log line to grep | Command to inspect |
+|---|---|---|---|---|
+| 0 | **TCP connect** | OS / docker network | `client_connected` | `curl -v http://localhost:8083/health 2>&1 \| head -15` |
+| 1 | **Middleware: request_id assign** | `documind_core/middleware.py` | `request_id=...` | `docker logs documind-retrieval-svc -f \| grep request_id` |
+| 2 | **Middleware: auth** | `documind_core/auth.py` | `auth_ok` or `auth_denied` | `docker logs documind-retrieval-svc -f \| grep auth_` |
+| 3 | **Middleware: tenant resolution** | `documind_core/middleware.py` | `tenant_id=<id>` | `docker logs documind-retrieval-svc -f \| grep tenant_id` |
+| 4 | **Pydantic validation** | `app/schemas/*.py` | `422 Unprocessable` (on fail) | `docker logs documind-retrieval-svc -f \| grep -E 'validation\|422'` |
+| 5 | **Router dispatch** | `app/routers/__init__.py:26` | `GET /health` | `docker logs documind-retrieval-svc -f \| grep '/health'` |
+| 6 | **Business service call** | `app/services/*.py` | `service_method_start` | `docker logs documind-retrieval-svc -f \| grep service_` |
+| 7 | **DB query** | `app/repositories/*.py` or `documind_core/db_client.py` | `asyncpg.execute` or `SELECT...` | `docker logs documind-postgres -f \| grep -E 'duration:'` |
+| 8 | **External call (LLM / vector)** | `app/services/*_client.py` | `llm_call_start` / `vector_search_start` | `docker logs documind-retrieval-svc -f \| grep -E 'llm_\|vector_'` |
+| 9 | **Decision audit log** | `documind_core/ai_governance.py` | `decision_audit:` | `psql -p 55432 -U documind -c "SELECT * FROM decision_audit ORDER BY ts DESC LIMIT 1;"` |
+| 10 | **Response shaping** | `app/schemas/*.py` (response model) | `response_ms=` | `docker logs documind-retrieval-svc -f \| grep response_ms` |
+| 11 | **Trace span flush** | OTel exporter | _(async)_ | Open Jaeger UI: `http://localhost:16686/search?service=retrieval-svc` |
+
+### Reproducible end-to-end trace
+
+Use this script to fire ONE request and see every phase's output in a single terminal:
+
+```bash
+REQ_ID=$(uuidgen)
+echo "=== Issuing GET /health with request_id=$REQ_ID ==="
+
+# Phase 0-2: tail logs in background
+docker logs documind-retrieval-svc --tail=0 -f 2>&1 | grep --line-buffered "$REQ_ID" &
+TAIL_PID=$!
+sleep 0.5
+
+# Phase 3-10: fire the request
+curl -X GET http://localhost:8083/health \
+  -H "X-Correlation-ID: $REQ_ID" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{}' -w "\nTOTAL=%{time_total}s\n"
+
+sleep 2  # let logs flush
+kill $TAIL_PID
+
+# Phase 9: pull the decision audit row
+psql -h localhost -p 55432 -U documind -d documind \
+  -c "SELECT request_id, model_version, prompt_version, decision, confidence FROM decision_audit WHERE request_id='$REQ_ID';"
+
+# Phase 11: pull the trace span tree
+open "http://localhost:16686/search?service=retrieval-svc&tags=%7B%22request_id%22%3A%22$REQ_ID%22%7D"
+```
+
+### Debug-order checklist (when something breaks)
+
+Walk the phases IN ORDER — first phase with missing/wrong output is the failure point. Don't skip ahead:
+
+1. **Phase 0 fail?** Service not running → `bash scripts/circuitrag-status.sh`
+2. **Phase 1-3 fail?** Middleware misconfigured → check env vars + middleware order in `main.py`
+3. **Phase 4 fail (422)?** Request body doesn't match schema → check Pydantic model in `app/schemas/`
+4. **Phase 5 fail (404)?** Route not registered → check router import in `main.py`
+5. **Phase 6 fail (500)?** Business logic exception → tail logs for stack trace
+6. **Phase 7 fail?** DB unreachable → `psql -p 55432 -U documind -c "SELECT 1;"`
+7. **Phase 8 fail?** External dep down → check `/health/upstreams` + circuit breaker state
+8. **Phase 9 missing?** Decision audit not persisted → check Kafka consumer lag
+9. **Phase 10 slow?** Response shaping bottleneck → profile the response model
+10. **Phase 11 empty Jaeger?** OTel exporter misconfigured → check `OTEL_EXPORTER_OTLP_ENDPOINT`
+
+
+## 🧠 Business Logic — How It's Written + Logical Step Sequence
+
+### Where business logic lives
+
+Business logic is **separated from HTTP** — routers receive validated requests and immediately delegate to a service class. Services hold the state machines, calling repositories for I/O and external clients for LLM / vector / Kafka.
+
+**Primary business-logic file in this folder:** `app/services/hybrid_retriever.py` (415 LOC, 1 classes, 0 functions)
+
+**Hottest function:** `retrieve` at `app/services/hybrid_retriever.py:129` (260 lines)
+
+### The canonical logical step sequence
+
+Every business-service method in this folder follows this 11-step skeleton (some steps are skipped if not applicable):
+
+```python
+async def some_service_method(self, request: RequestSchema) -> ResponseSchema:
+    # ── Step 1: Pre-conditions / argument check ─────────────────
+    if not request.is_valid():
+        raise BadRequest('reason')
+
+    # ── Step 2: Idempotency check (X-Idempotency-Key) ──────────
+    cached = await self.cache.get(request.idempotency_key)
+    if cached:
+        return cached  # short-circuit duplicate request
+
+    # ── Step 3: Authorization (RBAC / tenant scope) ────────────
+    self.authz.require(request.actor, 'resource:action')
+
+    # ── Step 4: Load context (DB / cache / config) ─────────────
+    context = await self.repo.load_context(request.tenant_id)
+
+    # ── Step 5: Apply business rules ───────────────────────────
+    decision = self.rules.evaluate(request, context)
+
+    # ── Step 6: External calls (LLM / vector / 3rd-party) ──────
+    async with self.breaker:  # circuit breaker wrap
+        llm_response = await self.llm.call(...)
+
+    # ── Step 7: Post-processing / output validation ────────────
+    self.guardrails.check(llm_response)
+
+    # ── Step 8: Persist state (DB write + Kafka emit) ──────────
+    async with self.repo.transaction():
+        await self.repo.save(record)
+        await self.kafka.publish('topic', event)
+
+    # ── Step 9: Decision audit row (§38 + §48) ─────────────────
+    await self.audit.log_decision({
+        'request_id': request.id,
+        'model_version': self.model.version,
+        'prompt_version': self.prompt.version,
+        'decision': decision,
+        'confidence': llm_response.confidence,
+    })
+
+    # ── Step 10: Cache the response (if idempotent) ────────────
+    await self.cache.set(request.idempotency_key, response, ttl=3600)
+
+    # ── Step 11: Return + emit metric ──────────────────────────
+    self.metrics.observe('request_latency', elapsed_ms)
+    return ResponseSchema(...)
+```
+
+### How to map a real method to this skeleton
+
+1. Open `app/services/hybrid_retriever.py` in your editor
+2. Find the longest function (likely `retrieve`)
+3. Walk it line by line; tag each block with the corresponding step number from the skeleton above
+4. Steps that are missing are opportunities (e.g. missing idempotency check, missing audit row) — file as P1/P2 in the brutal-tool-review for this folder
+
+### Inspecting each step at runtime
+
+| Step | What to inspect | How |
+|---|---|---|
+| 1 | Pre-condition rejects | grep `BadRequest` in logs |
+| 2 | Idempotency cache hits | grep `cache_hit=true` in logs |
+| 3 | Authz denials | grep `authz_denied` in logs |
+| 4 | Context load latency | `pg_stat_statements` slow-query log |
+| 5 | Rule evaluation | trace span `business.rules.evaluate` |
+| 6 | External call latency | trace span `llm.call` / `vector.search` |
+| 7 | Guardrail rejections | grep `guardrail_triggered` in logs |
+| 8 | Transaction commits | grep `tx_commit` in logs |
+| 9 | Decision audit rows | `SELECT * FROM decision_audit ORDER BY ts DESC LIMIT 5;` |
+| 10 | Cache writes | `redis-cli -p 56379 MONITOR` |
+| 11 | Latency histogram | Grafana panel: `histogram_quantile(0.95, ...)` |
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 ### Generic flow (all endpoints)
@@ -372,6 +768,79 @@ sequenceDiagram
   D-->>S: result
   S-->>H: domain object
   H-->>C: response
+```
+
+
+## 🔬 Annotated Example Request
+
+Walk through what happens when a client calls **`GET /health`** (app/routers/__init__.py:26).
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. Client sends HTTP request                                        │
+│    GET /health                                                     │
+│    Headers: Authorization, X-Correlation-ID, X-Tenant-ID            │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 2. Middleware stack (auth → logging → tracing → rate-limit)         │
+│    - Validate JWT / API key                                         │
+│    - Resolve tenant_id from token                                   │
+│    - Start span; inject request_id into baggage                     │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 3. Pydantic validation                                              │
+│    - Parse request body against schema                              │
+│    - 422 on validation error (with field-level details)             │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 4. Router handler                                                   │
+│    app/routers/__init__.py:26
+│    - Receive validated request + injected Depends()                 │
+│    - Delegate to business service                                   │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 5. Business service                                                 │
+│    - Apply rules / orchestrate multi-step logic                     │
+│    - Call repositories for DB I/O                                   │
+│    - Call external services (LLM / vector DB / etc.)             │
+│    - Emit metrics + log decision audit row                          │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 6. Response shaping                                                 │
+│    - Build response Pydantic model                                  │
+│    - Serialize to JSON                                              │
+│    - Add correlation_id, latency_ms to headers                      │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+                       Client
+```
+
+### Inspecting this in real time
+
+```bash
+# 1. Tail the service log
+docker logs documind-retrieval-svc --tail=20 -f &
+
+# 2. Issue the request with a fresh correlation_id
+REQ_ID=$(uuidgen)
+curl -X GET http://localhost:<PORT>/health \
+  -H "X-Correlation-ID: $REQ_ID" \
+  -H "Authorization: Bearer <token>" \
+  -d '{}'
+
+# 3. Find the trace in Jaeger
+open http://localhost:16686/search?service=retrieval-svc&tags=%7B%22request_id%22%3A%22$REQ_ID%22%7D
 ```
 
 
@@ -668,6 +1137,33 @@ _No `test_*` functions parsed via AST. Either tests live elsewhere or names don'
 | `mlflow` | 1 |
 
 
+## 📖 Domain Glossary
+
+Project-wide vocabulary a new developer needs. If you see a term in code you don't recognize, check here first.
+
+| Term | Definition |
+|---|---|
+| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |
+| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |
+| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |
+| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |
+| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |
+| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |
+| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |
+| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |
+| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |
+| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |
+| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |
+| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |
+| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |
+| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |
+| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |
+| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |
+| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |
+| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |
+| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |
+
+
 ## 18. Debugging Guide
 
 ### Step-by-step when something breaks
@@ -691,6 +1187,31 @@ _No `test_*` functions parsed via AST. Either tests live elsewhere or names don'
 | 5xx spike | downstream dep down | check `/health/upstreams` |
 | Memory growth | unbounded cache or closure leak | Section 11 |
 | Wrong-tenant data | RLS bypass | tenant isolation drill |
+
+
+## 📅 Recent Activity & Open TODOs
+
+### Last 8 commits touching this folder
+
+| Hash | Date | Subject |
+|---|---|---|
+| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
+| `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
+| `a305d45` | 2026-05-08 | fix(reranker): refresh bge promotion status |
+| `c87fe4f` | 2026-05-07 | feat(vectorless): strategy=vectorless selectable in HybridRetriever (Stage-1, 8/8 drill green) |
+| `1e9dd7b` | 2026-05-07 | iter-78: harden AI coding governance and frontend checks (§55.3 outcome) |
+| `ec1f7b4` | 2026-05-07 | fix(iter-88): bulk lint cleanup across services/ libs/ mcp/ scripts/ (1139 ruff fixes; drill suite still green) |
+| `65f8855` | 2026-05-06 | fix(iter-54): retrieval-svc + agent-orchestrator-svc Kafka publish points (§47.7 application) |
+| `9fd04bb` | 2026-05-06 | fix(iter-51): inference-svc /api/v1/ask publishes query.generated.v1 events (§47.7 expand-application) |
+
+```bash
+git log --oneline -- services/retrieval-svc    # see all commits
+git blame <file>                       # who wrote what
+```
+
+### Open TODO / FIXME / HACK markers
+
+_No TODO / FIXME markers found — folder is hygienic._
 
 
 ## 19. Production Gates (hard pass/fail)

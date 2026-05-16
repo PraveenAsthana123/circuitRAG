@@ -1,6 +1,6 @@
 # 📦 `agent-orchestrator-svc` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/agent-orchestrator-svc`  ·  **Generated:** 2026-05-16 20:02 UTC
+🧩 **Service**  ·  **Path:** `services/agent-orchestrator-svc`  ·  **Generated:** 2026-05-16 20:22 UTC
 
 > Agent orchestrator FastAPI service.
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `47	PraveenAsthana123` |
+| Top git contributors | `48	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -71,46 +71,111 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 > _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
 
 
+## ⚡ Quick Start (5 commands)
+
+```bash
+# 1. From repo root, activate venv
+source .venv/bin/activate
+
+# 2. Bring up backends this service depends on (Postgres / Redis / Kafka / etc.)
+docker compose -f infra/docker-compose.yml up -d postgres redis kafka
+
+# 3. Set the env vars (see §C below for the full list)
+export DOCUMIND_POSTGRES_URL='postgresql://...'
+export DOCUMIND_REDIS_URL='redis://localhost:56379/0'
+
+# 4. Start the service
+cd services/agent-orchestrator-svc
+uvicorn app.main:app --host 0.0.0.0 --port 8090 --reload
+
+# 5. Verify
+curl http://localhost:8090/health
+```
+
+If `/health` returns `{"status": "ok"}` you're up. Full health matrix: `python3 scripts/advanced_healthcheck.py --layer app`.
+
+
+## 🗺 How to Read This Folder (Guided Tour)
+
+Read these files in order — by the end, you'll understand 80% of this folder's behavior. Click any path to jump straight to the source.
+
+1. **`app/main.py`** (🚀 entry point / app bootstrap, 543 LOC) — App boot wiring — middleware stack, router registration, lifespan startup, DI container setup.
+2. **`app/core/config.py`** (⚙ config / settings, 37 LOC) — Every env var the service reads. Read this BEFORE running locally.
+3. **`app/models.py`** (📋 data model / schema, 248 LOC) — Pydantic request/response models. Read alongside the router.
+4. **`app/agents.py`** (🤖 agent / tool, 544 LOC) — Agentic role implementations.
+5. **`app/agent_registry.py`** (🤖 agent / tool, 292 LOC) — _(no docstring)_
+6. **`app/agent_schemas.py`** (🤖 agent / tool, 157 LOC) — Pydantic schemas for agent structured output.
+7. **`app/postgres_store.py`** (💾 repository / data access, 663 LOC) — All SQL / vector / Redis queries. If you're chasing a perf issue, look here.
+8. **`app/store.py`** (💾 repository / data access, 182 LOC) — All SQL / vector / Redis queries. If you're chasing a perf issue, look here.
+
+Click absolute paths for direct `cat`-ability in the §2 File Inventory above.
+
+
+## ⚙ Environment Variables
+
+All env vars this folder reads, auto-extracted from `BaseSettings` field declarations and `os.environ.get` calls.
+
+### Runtime `os.environ.get` / `os.getenv` calls
+
+| Variable | Default | Source location |
+|---|---|---|
+| `DOCUMIND_KAFKA_BOOTSTRAP` | **required** | `app/main.py:176` |
+| `DOCUMIND_POSTGRES_DSN` | **required** | `scripts/bootstrap.py:19` |
+| `DOCUMIND_PG_HOST` | `localhost` | `scripts/bootstrap.py:22` |
+| `DOCUMIND_PG_PORT` | `5432` | `scripts/bootstrap.py:23` |
+| `DOCUMIND_PG_DB` | `documind` | `scripts/bootstrap.py:24` |
+| `DOCUMIND_PG_USER` | `documind` | `scripts/bootstrap.py:25` |
+| `DOCUMIND_PG_PASSWORD` | `documind` | `scripts/bootstrap.py:26` |
+| `CLAUDE_RATE_INPUT_PER_MTOK` | `3.0` | `app/llm_clients/claude_cli_client.py:27` |
+| `CLAUDE_RATE_OUTPUT_PER_MTOK` | `15.0` | `app/llm_clients/claude_cli_client.py:28` |
+| `CLAUDE_CLI_PATH` | **required** | `app/llm_clients/claude_cli_client.py:32` |
+| `CODEX_RATE_INPUT_PER_MTOK` | `1.0` | `app/llm_clients/codex_cli_client.py:23` |
+| `CODEX_RATE_OUTPUT_PER_MTOK` | `4.0` | `app/llm_clients/codex_cli_client.py:24` |
+| `CODEX_CLI_PATH` | **required** | `app/llm_clients/codex_cli_client.py:30` |
+
+_Variables marked **required** must be set — missing values may raise on startup or silently default to empty strings._
+
+
 ## 2. File Inventory
 
 Every Python file in this folder, with role / classes / functions / LOC / first docstring line. Full absolute paths listed below the table for easy `cat`-ability.
 
 | Relative path | Role (inferred) | Classes | Functions | LOC | Summary |
 |---|---|---|---|---|---|
-| `app/__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 2 | Agent orchestrator service skeleton. |
-| `app/agent_registry.py` | 🚀 entry point / app bootstrap | 1 | 1 | 292 | _(no docstring)_ |
-| `app/agent_schemas.py` | 📋 data model / schema | 2 | 3 | 157 | Pydantic schemas for agent structured output. |
-| `app/agents.py` | 🚀 entry point / app bootstrap | 6 | 2 | 544 | Agentic role implementations. |
-| `app/core/__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 2 | Core config package for agent orchestrator service. |
+| `app/__init__.py` | 📦 package marker | 0 | 0 | 2 | Agent orchestrator service skeleton. |
+| `app/agent_registry.py` | 🤖 agent / tool | 1 | 1 | 292 | _(no docstring)_ |
+| `app/agent_schemas.py` | 🤖 agent / tool | 2 | 3 | 157 | Pydantic schemas for agent structured output. |
+| `app/agents.py` | 🤖 agent / tool | 6 | 2 | 544 | Agentic role implementations. |
+| `app/core/__init__.py` | 📦 package marker | 0 | 0 | 2 | Core config package for agent orchestrator service. |
 | `app/core/config.py` | ⚙ config / settings | 1 | 0 | 37 | _(no docstring)_ |
-| `app/db_circuit_breaker.py` | 🚀 entry point / app bootstrap | 1 | 0 | 136 | Circuit breaker around the Postgres data layer. |
-| `app/deployer.py` | 🚀 entry point / app bootstrap | 1 | 0 | 94 | DeployerAgent (Phase B5 scaffold). |
-| `app/explainability.py` | 🚀 entry point / app bootstrap | 0 | 3 | 199 | §48 explainability — assemble per-task decision audit rows (Phase C4). |
-| `app/idempotency.py` | 🚀 entry point / app bootstrap | 4 | 3 | 114 | Idempotency-key helpers for POST /api/v1/agentic/tasks (Phase C2). |
-| `app/idempotency_postgres.py` | 🚀 entry point / app bootstrap | 1 | 0 | 72 | PostgresIdempotencyStore — multi-pod-safe IdempotencyStore. |
-| `app/langgraph_flow.py` | 🚀 entry point / app bootstrap | 1 | 5 | 530 | _(no docstring)_ |
-| `app/llm_clients/__init__.py` | 🔌 external service adapter | 0 | 0 | 24 | LLM client backends — uniform Protocol over Ollama / Claude CLI / Codex CLI. |
+| `app/db_circuit_breaker.py` | 📄 module | 1 | 0 | 136 | Circuit breaker around the Postgres data layer. |
+| `app/deployer.py` | 📄 module | 1 | 0 | 94 | DeployerAgent (Phase B5 scaffold). |
+| `app/explainability.py` | 📄 module | 0 | 3 | 199 | §48 explainability — assemble per-task decision audit rows (Phase C4). |
+| `app/idempotency.py` | 📄 module | 4 | 3 | 114 | Idempotency-key helpers for POST /api/v1/agentic/tasks (Phase C2). |
+| `app/idempotency_postgres.py` | 📄 module | 1 | 0 | 72 | PostgresIdempotencyStore — multi-pod-safe IdempotencyStore. |
+| `app/langgraph_flow.py` | 📄 module | 1 | 5 | 530 | _(no docstring)_ |
+| `app/llm_clients/__init__.py` | 📦 package marker | 0 | 0 | 24 | LLM client backends — uniform Protocol over Ollama / Claude CLI / Codex CLI. |
 | `app/llm_clients/claude_cli_client.py` | 🔌 external service adapter | 1 | 2 | 156 | Claude CLI client — shell-out to local Claude Code binary in JSON mode. |
 | `app/llm_clients/codex_cli_client.py` | 🔌 external service adapter | 1 | 2 | 125 | Codex CLI client — shell-out to local Codex binary. |
 | `app/llm_clients/ollama_client.py` | 🔌 external service adapter | 1 | 0 | 66 | Ollama HTTP client adapted to the LlmClient Protocol. |
-| `app/llm_clients/pool.py` | 🔌 external service adapter | 3 | 0 | 174 | LlmClientPool — dispatch-by-backend with fallback-chain execution. |
-| `app/llm_clients/protocol.py` | 🔌 external service adapter | 3 | 0 | 47 | LlmClient Protocol — uniform interface for Ollama / Claude CLI / Codex CLI. |
+| `app/llm_clients/pool.py` | 📄 module | 3 | 0 | 174 | LlmClientPool — dispatch-by-backend with fallback-chain execution. |
+| `app/llm_clients/protocol.py` | 📄 module | 3 | 0 | 47 | LlmClient Protocol — uniform interface for Ollama / Claude CLI / Codex CLI. |
 | `app/main.py` | 🚀 entry point / app bootstrap | 0 | 1 | 543 | Agent orchestrator FastAPI service. |
-| `app/migrations.py` | 🚀 entry point / app bootstrap | 0 | 1 | 88 | Idempotent migration runner for agent-orchestrator-svc. |
-| `app/model_catalog.py` | 📋 data model / schema | 1 | 3 | 163 | Curated catalog of models per role, with tier mapping for the routing layer. |
-| `app/model_router.py` | 🌐 HTTP router / API endpoints | 3 | 6 | 234 | Deterministic model router — picks (model, tier, backend) per role. |
+| `app/migrations.py` | 📄 module | 0 | 1 | 88 | Idempotent migration runner for agent-orchestrator-svc. |
+| `app/model_catalog.py` | 📄 module | 1 | 3 | 163 | Curated catalog of models per role, with tier mapping for the routing layer. |
+| `app/model_router.py` | 📄 module | 3 | 6 | 234 | Deterministic model router — picks (model, tier, backend) per role. |
 | `app/models.py` | 📋 data model / schema | 19 | 0 | 248 | _(no docstring)_ |
-| `app/observer.py` | 🚀 entry point / app bootstrap | 1 | 0 | 110 | ObserverAgent (Phase B6 scaffold). |
+| `app/observer.py` | 📄 module | 1 | 0 | 110 | ObserverAgent (Phase B6 scaffold). |
 | `app/ollama_client.py` | 🔌 external service adapter | 1 | 0 | 23 | _(no docstring)_ |
-| `app/policy.py` | 🚀 entry point / app bootstrap | 0 | 3 | 56 | _(no docstring)_ |
+| `app/policy.py` | 📄 module | 0 | 3 | 56 | _(no docstring)_ |
 | `app/postgres_store.py` | 💾 repository / data access | 1 | 6 | 663 | _(no docstring)_ |
-| `app/rate_limit.py` | 🚀 entry point / app bootstrap | 2 | 0 | 111 | In-memory rate limiter for the orchestrator (P1 #33). |
-| `app/research.py` | 🚀 entry point / app bootstrap | 1 | 0 | 244 | ResearchAgent (Phase B2 scaffold). |
-| `app/service.py` | 🧠 business service / use-case | 1 | 0 | 779 | _(no docstring)_ |
+| `app/rate_limit.py` | 📄 module | 2 | 0 | 111 | In-memory rate limiter for the orchestrator (P1 #33). |
+| `app/research.py` | 📄 module | 1 | 0 | 244 | ResearchAgent (Phase B2 scaffold). |
+| `app/service.py` | 📄 module | 1 | 0 | 779 | _(no docstring)_ |
 | `app/store.py` | 💾 repository / data access | 1 | 0 | 182 | _(no docstring)_ |
-| `app/tester.py` | 🚀 entry point / app bootstrap | 1 | 0 | 129 | TesterAgent (Phase B4 scaffold). |
+| `app/tester.py` | 📄 module | 1 | 0 | 129 | TesterAgent (Phase B4 scaffold). |
 | `scripts/bootstrap.py` | 📄 module | 0 | 4 | 65 | Bootstrap Postgres objects for agent-orchestrator-svc. |
-| `tests/conftest.py` | 📄 module | 0 | 1 | 35 | pytest config for agent-orchestrator-svc tests. |
+| `tests/conftest.py` | 🧪 test | 0 | 1 | 35 | pytest config for agent-orchestrator-svc tests. |
 | `tests/test_smoke.py` | 🧪 test | 0 | 4 | 73 | §8 smoke tests for agent-orchestrator-svc. |
 
 ### Absolute paths (clickable)
@@ -152,6 +217,21 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/services/agent-orchestrator-svc/tests/test_smoke.py`
 
 
+## 🧭 Where Does X Live? (cheat sheet)
+
+Use this table when you're modifying this folder and need to know where new code goes.
+
+| I want to... | Role | Touch these files |
+|---|---|---|
+| Add a new Pydantic request/response model | 📋 data model / schema | `app/models.py` |
+| Add a new SQL query or DB call | 💾 repository / data access | `app/postgres_store.py`, `app/store.py` |
+| Add a new env var | ⚙ config / settings | `app/core/config.py` |
+| Wrap a new external API | 🔌 external service adapter | `app/llm_clients/claude_cli_client.py`, `app/llm_clients/codex_cli_client.py`, `app/llm_clients/ollama_client.py` (+1 more) |
+| Add a new agent / tool | 🤖 agent / tool | `app/agent_registry.py`, `app/agent_schemas.py`, `app/agents.py` |
+| Add a new test | 🧪 test | `tests/conftest.py`, `tests/test_smoke.py` |
+| Boot a background worker | 🚀 entry point / app bootstrap | `app/main.py` |
+
+
 ## 3. C4 Model — Context / Container / Component / Code
 
 ### Level 1 — System Context
@@ -191,47 +271,46 @@ _Internal files grouped by inferred role._
 
 ```mermaid
 flowchart TB
-    subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
+    subgraph __package_marker["📦 package marker"]
         app___init___py["app/__init__.py"]
-        app_agent_registry_py["app/agent_registry.py"]
-        app_agents_py["app/agents.py"]
         app_core___init___py["app/core/__init__.py"]
-        app_db_circuit_breaker_py["app/db_circuit_breaker.py"]
-        app_deployer_py["app/deployer.py"]
-        more___entry_point___app_bootstrap["... +11 more"]
+        app_llm_clients___init___py["app/llm_clients/__init__.py"]
     end
-    subgraph __data_model___schema["📋 data model / schema"]
+    subgraph __agent___tool["🤖 agent / tool"]
+        app_agent_registry_py["app/agent_registry.py"]
         app_agent_schemas_py["app/agent_schemas.py"]
-        app_model_catalog_py["app/model_catalog.py"]
-        app_models_py["app/models.py"]
+        app_agents_py["app/agents.py"]
     end
     subgraph __config___settings["⚙ config / settings"]
         app_core_config_py["app/core/config.py"]
     end
+    subgraph __module["📄 module"]
+        app_db_circuit_breaker_py["app/db_circuit_breaker.py"]
+        app_deployer_py["app/deployer.py"]
+        app_explainability_py["app/explainability.py"]
+        app_idempotency_py["app/idempotency.py"]
+        app_idempotency_postgres_py["app/idempotency_postgres.py"]
+        app_langgraph_flow_py["app/langgraph_flow.py"]
+        more___module["... +12 more"]
+    end
     subgraph __external_service_adapter["🔌 external service adapter"]
-        app_llm_clients___init___py["app/llm_clients/__init__.py"]
         app_llm_clients_claude_cli_client_py["app/llm_clients/claude_cli_client.py"]
         app_llm_clients_codex_cli_client_py["app/llm_clients/codex_cli_client.py"]
         app_llm_clients_ollama_client_py["app/llm_clients/ollama_client.py"]
-        app_llm_clients_pool_py["app/llm_clients/pool.py"]
-        app_llm_clients_protocol_py["app/llm_clients/protocol.py"]
-        more___external_service_adapter["... +1 more"]
+        app_ollama_client_py["app/ollama_client.py"]
     end
-    subgraph __HTTP_router___API_endpoints["🌐 HTTP router / API endpoints"]
-        app_model_router_py["app/model_router.py"]
+    subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
+        app_main_py["app/main.py"]
+    end
+    subgraph __data_model___schema["📋 data model / schema"]
+        app_models_py["app/models.py"]
     end
     subgraph __repository___data_access["💾 repository / data access"]
         app_postgres_store_py["app/postgres_store.py"]
         app_store_py["app/store.py"]
     end
-    subgraph __business_service___use_case["🧠 business service / use-case"]
-        app_service_py["app/service.py"]
-    end
-    subgraph __module["📄 module"]
-        scripts_bootstrap_py["scripts/bootstrap.py"]
-        tests_conftest_py["tests/conftest.py"]
-    end
     subgraph __test["🧪 test"]
+        tests_conftest_py["tests/conftest.py"]
         tests_test_smoke_py["tests/test_smoke.py"]
     end
 ```
@@ -248,6 +327,78 @@ flowchart TB
     app_explainability_py_56_assemble_explan["assemble_explanation (114 lines)<br/>app/explainability.py:56"]
     app_model_router_py_126_route["route (108 lines)<br/>app/model_router.py:126"]
 ```
+
+
+## 📐 Class Diagram (UML-style)
+
+Top classes by method count, with inheritance arrows. Common framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) use dotted lines.
+
+```mermaid
+classDiagram
+    class AgentOrchestratorService {
+        +35 methods
+        ~app/service.py:45
+    }
+    class InMemoryTaskStore {
+        +19 methods
+        ~app/store.py:28
+    }
+    class PostgresTaskStore {
+        +18 methods
+        ~app/postgres_store.py:22
+    }
+    class ResearchAgent {
+        +8 methods
+        ~app/research.py:32
+    }
+    class DbCircuitBreaker {
+        +7 methods
+        ~app/db_circuit_breaker.py:36
+    }
+    class StrategistAgent {
+        +5 methods
+        ~app/agents.py:90
+    }
+    class LlmClientPool {
+        +5 methods
+        ~app/llm_clients/pool.py:51
+    }
+    class TesterAgent {
+        +4 methods
+        ~app/tester.py:21
+    }
+    class DeployerAgent {
+        +4 methods
+        ~app/deployer.py:16
+    }
+    class ObserverAgent {
+        +3 methods
+        ~app/observer.py:23
+    }
+    class OllamaGenerateClient {
+        +3 methods
+        ~app/ollama_client.py:6
+    }
+    class InMemoryIdempotencyStore {
+        +3 methods
+        ~app/idempotency.py:57
+    }
+    class PostgresIdempotencyStore {
+        +3 methods
+        ~app/idempotency_postgres.py:29
+    }
+    class OllamaHttpClient {
+        +3 methods
+        ~app/llm_clients/ollama_client.py:18
+    }
+    class ClaudeCliClient {
+        +3 methods
+        ~app/llm_clients/claude_cli_client.py:50
+    }
+```
+
+
+_Showing top 15 of 59 classes (ranked by method count)._
 
 
 ## 4. Code Sequence — How Files Link to Each Other
@@ -319,6 +470,165 @@ flowchart TD
 | `GET` | `/api/v1/agentic/memories` | `app/main.py:532` | _TBD_ | _TBD_ | _TBD_ |
 
 _Reviewer fills the last three columns from the Pydantic models in the handler. Auto-extraction of Pydantic schemas is on the roadmap._
+
+
+## 🏗 Input/Process/Output + Integration + Design Principles
+
+### Input / Process / Output per endpoint
+
+| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |
+|---|---|---|---|
+| `GET /health/live` | Pydantic schema validated at middleware | Router `app/main.py:224` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `GET /health/ready` | Pydantic schema validated at middleware | Router `app/main.py:228` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `GET /api/v1/admin/dr-targets` | Pydantic schema validated at middleware | Router `app/main.py:262` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `GET /api/v1/admin/governance/audit` | Pydantic schema validated at middleware | Router `app/main.py:302` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `POST /api/v1/agentic/tasks` | Pydantic schema validated at middleware | Router `app/main.py:320` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `POST /api/v1/agentic/projects` | Pydantic schema validated at middleware | Router `app/main.py:421` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `GET /api/v1/agentic/projects` | Pydantic schema validated at middleware | Router `app/main.py:425` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `GET /api/v1/agentic/projects/{project_id}/plan-items` | Pydantic schema validated at middleware | Router `app/main.py:429` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+
+### Integration sequence (ordered by import volume)
+
+Other folders this one calls into, ordered by how heavily it depends on each:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant This as agent-orchestrator-svc
+  participant documind_core_db_client as documind_core/db_client
+  participant app_main as app/main
+  participant mcp as mcp
+  participant documind_core_config as documind_core/config
+  participant documind_core_circuit_breaker as documind_core/circuit_breaker
+  participant documind_core_body_limit as documind_core/body_limit
+  This->>documind_core_db_client: call (~4 import sites)
+  documind_core_db_client-->>This: response
+  This->>app_main: call (~4 import sites)
+  app_main-->>This: response
+  This->>mcp: call (~3 import sites)
+  mcp-->>This: response
+  This->>documind_core_config: call (~2 import sites)
+  documind_core_config-->>This: response
+  This->>documind_core_circuit_breaker: call (~2 import sites)
+  documind_core_circuit_breaker-->>This: response
+  This->>documind_core_body_limit: call (~1 import sites)
+  documind_core_body_limit-->>This: response
+```
+
+### SOLID principles applied here
+
+| Principle | Where it shows up in this folder |
+|---|---|
+| **S — Single Responsibility** | Each file has ONE role — routers route, services orchestrate, repos query, schemas describe. The §2 File Inventory shows the role per file; any file with multiple roles violates SRP. |
+| **O — Open/Closed** | New endpoints add new router functions; new business cases add new service methods. Existing methods stay closed for modification. |
+| **L — Liskov Substitution** | All adapter clients (Ollama / OpenAI / Anthropic) implement the same LLM-client protocol — they're interchangeable behind the circuit breaker. |
+| **I — Interface Segregation** | Pydantic models split request, response, and internal state into separate schemas — no client gets a fat model with fields it doesn't use. |
+| **D — Dependency Inversion** | Services receive their dependencies via FastAPI `Depends()` — they depend on abstractions (factories), not concrete repos. Swap implementations in tests via the `app.dependency_overrides` dict. |
+
+### Microservice principles applied here
+
+| Principle | Application |
+|---|---|
+| **Single business capability** | `agent-orchestrator-svc` owns ONE capability (see §1 Purpose). Cross-capability logic lives in other services. |
+| **Bounded context** | Schemas + repositories are scoped to this service's bounded context — no shared DB tables with other services. |
+| **DB per service** | Each service owns its tables. Cross-service reads go through HTTP or Kafka — never a direct DB join. |
+| **Independent deploy** | Service is independently deployable — its container is built + released without coupling to other services. |
+| **Resilience patterns** | Circuit breakers (`documind_core/breakers/`), retries with exponential backoff, bulkheads, timeouts on every external call. |
+| **Observability** | Every request has a `request_id` propagated via OTel baggage; every external call emits a trace span. |
+
+### Design-principle stack (how the principles compose)
+
+Reading bottom-to-top — earlier principles enable later ones:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 7. AI Governance (§38 + §48): decision audit + explainability│
+├─────────────────────────────────────────────────────────────┤
+│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │
+├─────────────────────────────────────────────────────────────┤
+│ 5. Resilience: CB + retry + bulkhead + timeout              │
+├─────────────────────────────────────────────────────────────┤
+│ 4. Microservice: single capability, bounded context, DB/svc │
+├─────────────────────────────────────────────────────────────┤
+│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │
+├─────────────────────────────────────────────────────────────┤
+│ 2. 12-factor: stateless, deps in venv, config in env        │
+├─────────────────────────────────────────────────────────────┤
+│ 1. KISS / YAGNI / DRY: every line earns its place           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
+
+
+## 🔬 Execution Sequence + Debug Tap Points
+
+For each phase a request goes through, this section shows: **(1)** the file:line where it happens, **(2)** the log line you'll see, **(3)** the command to inspect that phase's output in real time. Use this as your debug-flow chart — start at Phase 0, move down until output stops matching the expected log line; that's where the failure is.
+
+**Worked example:** `GET /health/live` (app/main.py:224)
+
+### Phase-by-phase debug tap table
+
+| # | Phase | Code location | Log line to grep | Command to inspect |
+|---|---|---|---|---|
+| 0 | **TCP connect** | OS / docker network | `client_connected` | `curl -v http://localhost:8090/health 2>&1 \| head -15` |
+| 1 | **Middleware: request_id assign** | `documind_core/middleware.py` | `request_id=...` | `docker logs documind-agent-orchestrator-svc -f \| grep request_id` |
+| 2 | **Middleware: auth** | `documind_core/auth.py` | `auth_ok` or `auth_denied` | `docker logs documind-agent-orchestrator-svc -f \| grep auth_` |
+| 3 | **Middleware: tenant resolution** | `documind_core/middleware.py` | `tenant_id=<id>` | `docker logs documind-agent-orchestrator-svc -f \| grep tenant_id` |
+| 4 | **Pydantic validation** | `app/schemas/*.py` | `422 Unprocessable` (on fail) | `docker logs documind-agent-orchestrator-svc -f \| grep -E 'validation\|422'` |
+| 5 | **Router dispatch** | `app/main.py:224` | `GET /health/live` | `docker logs documind-agent-orchestrator-svc -f \| grep '/health/live'` |
+| 6 | **Business service call** | `app/services/*.py` | `service_method_start` | `docker logs documind-agent-orchestrator-svc -f \| grep service_` |
+| 7 | **DB query** | `app/repositories/*.py` or `documind_core/db_client.py` | `asyncpg.execute` or `SELECT...` | `docker logs documind-postgres -f \| grep -E 'duration:'` |
+| 8 | **External call (LLM / vector)** | `app/services/*_client.py` | `llm_call_start` / `vector_search_start` | `docker logs documind-agent-orchestrator-svc -f \| grep -E 'llm_\|vector_'` |
+| 9 | **Decision audit log** | `documind_core/ai_governance.py` | `decision_audit:` | `psql -p 55432 -U documind -c "SELECT * FROM decision_audit ORDER BY ts DESC LIMIT 1;"` |
+| 10 | **Response shaping** | `app/schemas/*.py` (response model) | `response_ms=` | `docker logs documind-agent-orchestrator-svc -f \| grep response_ms` |
+| 11 | **Trace span flush** | OTel exporter | _(async)_ | Open Jaeger UI: `http://localhost:16686/search?service=agent-orchestrator-svc` |
+
+### Reproducible end-to-end trace
+
+Use this script to fire ONE request and see every phase's output in a single terminal:
+
+```bash
+REQ_ID=$(uuidgen)
+echo "=== Issuing GET /health/live with request_id=$REQ_ID ==="
+
+# Phase 0-2: tail logs in background
+docker logs documind-agent-orchestrator-svc --tail=0 -f 2>&1 | grep --line-buffered "$REQ_ID" &
+TAIL_PID=$!
+sleep 0.5
+
+# Phase 3-10: fire the request
+curl -X GET http://localhost:8090/health/live \
+  -H "X-Correlation-ID: $REQ_ID" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{}' -w "\nTOTAL=%{time_total}s\n"
+
+sleep 2  # let logs flush
+kill $TAIL_PID
+
+# Phase 9: pull the decision audit row
+psql -h localhost -p 55432 -U documind -d documind \
+  -c "SELECT request_id, model_version, prompt_version, decision, confidence FROM decision_audit WHERE request_id='$REQ_ID';"
+
+# Phase 11: pull the trace span tree
+open "http://localhost:16686/search?service=agent-orchestrator-svc&tags=%7B%22request_id%22%3A%22$REQ_ID%22%7D"
+```
+
+### Debug-order checklist (when something breaks)
+
+Walk the phases IN ORDER — first phase with missing/wrong output is the failure point. Don't skip ahead:
+
+1. **Phase 0 fail?** Service not running → `bash scripts/circuitrag-status.sh`
+2. **Phase 1-3 fail?** Middleware misconfigured → check env vars + middleware order in `main.py`
+3. **Phase 4 fail (422)?** Request body doesn't match schema → check Pydantic model in `app/schemas/`
+4. **Phase 5 fail (404)?** Route not registered → check router import in `main.py`
+5. **Phase 6 fail (500)?** Business logic exception → tail logs for stack trace
+6. **Phase 7 fail?** DB unreachable → `psql -p 55432 -U documind -c "SELECT 1;"`
+7. **Phase 8 fail?** External dep down → check `/health/upstreams` + circuit breaker state
+8. **Phase 9 missing?** Decision audit not persisted → check Kafka consumer lag
+9. **Phase 10 slow?** Response shaping bottleneck → profile the response model
+10. **Phase 11 empty Jaeger?** OTel exporter misconfigured → check `OTEL_EXPORTER_OTLP_ENDPOINT`
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -432,6 +742,79 @@ sequenceDiagram
 ```
 
 _(+15 more endpoints — diagrams omitted for brevity.)_
+
+
+## 🔬 Annotated Example Request
+
+Walk through what happens when a client calls **`GET /health/live`** (app/main.py:224).
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. Client sends HTTP request                                        │
+│    GET /health/live                                                │
+│    Headers: Authorization, X-Correlation-ID, X-Tenant-ID            │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 2. Middleware stack (auth → logging → tracing → rate-limit)         │
+│    - Validate JWT / API key                                         │
+│    - Resolve tenant_id from token                                   │
+│    - Start span; inject request_id into baggage                     │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 3. Pydantic validation                                              │
+│    - Parse request body against schema                              │
+│    - 422 on validation error (with field-level details)             │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 4. Router handler                                                   │
+│    app/main.py:224
+│    - Receive validated request + injected Depends()                 │
+│    - Delegate to business service                                   │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 5. Business service                                                 │
+│    - Apply rules / orchestrate multi-step logic                     │
+│    - Call repositories for DB I/O                                   │
+│    - Call external services (LLM / vector DB / etc.)             │
+│    - Emit metrics + log decision audit row                          │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 6. Response shaping                                                 │
+│    - Build response Pydantic model                                  │
+│    - Serialize to JSON                                              │
+│    - Add correlation_id, latency_ms to headers                      │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+                       Client
+```
+
+### Inspecting this in real time
+
+```bash
+# 1. Tail the service log
+docker logs documind-agent-orchestrator-svc --tail=20 -f &
+
+# 2. Issue the request with a fresh correlation_id
+REQ_ID=$(uuidgen)
+curl -X GET http://localhost:<PORT>/health/live \
+  -H "X-Correlation-ID: $REQ_ID" \
+  -H "Authorization: Bearer <token>" \
+  -d '{}'
+
+# 3. Find the trace in Jaeger
+open http://localhost:16686/search?service=agent-orchestrator-svc&tags=%7B%22request_id%22%3A%22$REQ_ID%22%7D
+```
 
 
 ## 8. Database Layer
@@ -744,6 +1127,33 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 | `pool` | 1 |
 
 
+## 📖 Domain Glossary
+
+Project-wide vocabulary a new developer needs. If you see a term in code you don't recognize, check here first.
+
+| Term | Definition |
+|---|---|
+| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |
+| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |
+| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |
+| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |
+| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |
+| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |
+| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |
+| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |
+| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |
+| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |
+| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |
+| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |
+| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |
+| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |
+| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |
+| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |
+| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |
+| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |
+| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |
+
+
 ## 18. Debugging Guide
 
 ### Step-by-step when something breaks
@@ -767,6 +1177,35 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 | 5xx spike | downstream dep down | check `/health/upstreams` |
 | Memory growth | unbounded cache or closure leak | Section 11 |
 | Wrong-tenant data | RLS bypass | tenant isolation drill |
+
+
+## 📅 Recent Activity & Open TODOs
+
+### Last 8 commits touching this folder
+
+| Hash | Date | Subject |
+|---|---|---|
+| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
+| `7451179` | 2026-05-08 | fix(llm-pool): close P0 #36 — per-backend CircuitBreaker; drill locks 8 invariants |
+| `502da93` | 2026-05-08 | feat(lang): add compatibility status gates |
+| `4665fa6` | 2026-05-08 | chore(deps): delete dead langgraph pin + its lock drill (§57.7 cleanup) |
+| `ec1f7b4` | 2026-05-07 | fix(iter-88): bulk lint cleanup across services/ libs/ mcp/ scripts/ (1139 ruff fixes; drill suite still green) |
+| `0c22973` | 2026-05-07 | fix(iter-87): §55 Tier-3 rule-aware routing + 32 real lint fixes (E402 in main.py + routers/__init__.py; F841 in eval_ha |
+| `65f8855` | 2026-05-06 | fix(iter-54): retrieval-svc + agent-orchestrator-svc Kafka publish points (§47.7 application) |
+| `9fd04bb` | 2026-05-06 | fix(iter-51): inference-svc /api/v1/ask publishes query.generated.v1 events (§47.7 expand-application) |
+
+```bash
+git log --oneline -- services/agent-orchestrator-svc    # see all commits
+git blame <file>                       # who wrote what
+```
+
+### Open TODO / FIXME / HACK markers
+
+#### TODO (1)
+
+| Location | Note |
+|---|---|
+| `app/explainability.py:29` | hash the canonicalised goal+args |
 
 
 ## 19. Production Gates (hard pass/fail)

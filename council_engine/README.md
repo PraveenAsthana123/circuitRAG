@@ -1,6 +1,6 @@
 # 📦 `council_engine` — Advanced README
 
-  ·  **Path:** `council_engine`  ·  **Generated:** 2026-05-16 19:57 UTC
+  ·  **Path:** `council_engine`  ·  **Generated:** 2026-05-16 20:26 UTC
 
 > council_engine — multi-agent debate + judge with 6-dim scoring.
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `1	PraveenAsthana123` |
+| Top git contributors | `2	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -70,13 +70,45 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 > _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
 
 
+## 🗺 How to Read This Folder (Guided Tour)
+
+Read these files in order — by the end, you'll understand 80% of this folder's behavior. Click any path to jump straight to the source.
+
+1. **`agents/roles.py`** (🤖 agent / tool, 90 LOC) — Council agent roles — each is a one-shot Ollama call with a specific lens.
+2. **`rounds.py`** (📄 module, 256 LOC) — Council Phases 3-5: cross-critique → revision → evidence-check.
+3. **`orchestrator.py`** (📄 module, 177 LOC) — Council orchestrator — runs Phase 1 (independent answers) + Phase 2 (judge).
+4. **`judge.py`** (📄 module, 168 LOC) — Judge engine — synthesizes agent responses into a CouncilDecision.
+5. **`__init__.py`** (📦 package marker, 47 LOC) — council_engine — multi-agent debate + judge with 6-dim scoring.
+
+Click absolute paths for direct `cat`-ability in the §2 File Inventory above.
+
+
+## ⚙ Environment Variables
+
+All env vars this folder reads, auto-extracted from `BaseSettings` field declarations and `os.environ.get` calls.
+
+### Runtime `os.environ.get` / `os.getenv` calls
+
+| Variable | Default | Source location |
+|---|---|---|
+| `COUNCIL_AGGREGATION` | `trimmed_mean` | `rounds.py:42` |
+| `COUNCIL_EVIDENCE_POLICY` | `demote` | `rounds.py:43` |
+| `COUNCIL_DISSENT_POLICY` | `surface` | `rounds.py:44` |
+| `OLLAMA_URL` | `http://localhost:11434/api/chat` | `judge.py:27` |
+| `COUNCIL_JUDGE_MODEL` | `llama3.1:8b` | `judge.py:28` |
+| `OLLAMA_URL` | `http://localhost:11434/api/chat` | `agents/roles.py:15` |
+| `COUNCIL_MODEL` | `llama3.1:8b` | `agents/roles.py:16` |
+
+_Variables marked **required** must be set — missing values may raise on startup or silently default to empty strings._
+
+
 ## 2. File Inventory
 
 Every Python file in this folder, with role / classes / functions / LOC / first docstring line. Full absolute paths listed below the table for easy `cat`-ability.
 
 | Relative path | Role (inferred) | Classes | Functions | LOC | Summary |
 |---|---|---|---|---|---|
-| `__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 47 | council_engine — multi-agent debate + judge with 6-dim scoring. |
+| `__init__.py` | 📦 package marker | 0 | 0 | 47 | council_engine — multi-agent debate + judge with 6-dim scoring. |
 | `agents/roles.py` | 🤖 agent / tool | 1 | 2 | 90 | Council agent roles — each is a one-shot Ollama call with a specific lens. |
 | `judge.py` | 📄 module | 1 | 4 | 168 | Judge engine — synthesizes agent responses into a CouncilDecision. |
 | `orchestrator.py` | 📄 module | 1 | 3 | 177 | Council orchestrator — runs Phase 1 (independent answers) + Phase 2 (judge). |
@@ -89,6 +121,15 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/council_engine/judge.py`
 - `/mnt/deepa/rag/council_engine/orchestrator.py`
 - `/mnt/deepa/rag/council_engine/rounds.py`
+
+
+## 🧭 Where Does X Live? (cheat sheet)
+
+Use this table when you're modifying this folder and need to know where new code goes.
+
+| I want to... | Role | Touch these files |
+|---|---|---|
+| Add a new agent / tool | 🤖 agent / tool | `agents/roles.py` |
 
 
 ## 3. C4 Model — Context / Container / Component / Code
@@ -122,7 +163,7 @@ _Internal files grouped by inferred role._
 
 ```mermaid
 flowchart TB
-    subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
+    subgraph __package_marker["📦 package marker"]
         __init___py["__init__.py"]
     end
     subgraph __agent___tool["🤖 agent / tool"]
@@ -146,6 +187,35 @@ flowchart TB
     rounds_py_116_check_evidence["check_evidence (32 lines)<br/>rounds.py:116"]
     rounds_py_59_aggregate_confidence["aggregate_confidence (27 lines)<br/>rounds.py:59"]
     judge_py_67__llm_judge["_llm_judge (25 lines)<br/>judge.py:67"]
+```
+
+
+## 📐 Class Diagram (UML-style)
+
+Top classes by method count, with inheritance arrows. Common framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) use dotted lines.
+
+```mermaid
+classDiagram
+    class EvidenceVerdict {
+        +0 methods
+        ~rounds.py:108
+    }
+    class DissentVerdict {
+        +0 methods
+        ~rounds.py:166
+    }
+    class JudgeResult {
+        +0 methods
+        ~judge.py:58
+    }
+    class CouncilRun {
+        +0 methods
+        ~orchestrator.py:42
+    }
+    class AgentResponse {
+        +0 methods
+        ~agents/roles.py:39
+    }
 ```
 
 
@@ -199,6 +269,79 @@ flowchart TD
 ## 6. API Endpoints — Input / Process / Output
 
 _No HTTP endpoints detected via `@app.*` / `@router.*` decorators._
+
+
+## 🏗 Input/Process/Output + Integration + Design Principles
+
+### Input / Process / Output per endpoint
+
+| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |
+|---|---|---|---|
+| _(no endpoints)_ | — | — | — |
+
+### Integration sequence (ordered by import volume)
+
+Other folders this one calls into, ordered by how heavily it depends on each:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant This as council_engine
+  participant agent_cli as agent_cli
+  participant risk_classifier as risk_classifier
+  participant safety_store as safety_store
+  This->>agent_cli: call (~1 import sites)
+  agent_cli-->>This: response
+  This->>risk_classifier: call (~1 import sites)
+  risk_classifier-->>This: response
+  This->>safety_store: call (~1 import sites)
+  safety_store-->>This: response
+```
+
+### SOLID principles applied here
+
+| Principle | Where it shows up in this folder |
+|---|---|
+| **S — Single Responsibility** | Each file has ONE role — routers route, services orchestrate, repos query, schemas describe. The §2 File Inventory shows the role per file; any file with multiple roles violates SRP. |
+| **O — Open/Closed** | New endpoints add new router functions; new business cases add new service methods. Existing methods stay closed for modification. |
+| **L — Liskov Substitution** | All adapter clients (Ollama / OpenAI / Anthropic) implement the same LLM-client protocol — they're interchangeable behind the circuit breaker. |
+| **I — Interface Segregation** | Pydantic models split request, response, and internal state into separate schemas — no client gets a fat model with fields it doesn't use. |
+| **D — Dependency Inversion** | Services receive their dependencies via FastAPI `Depends()` — they depend on abstractions (factories), not concrete repos. Swap implementations in tests via the `app.dependency_overrides` dict. |
+
+### Microservice principles applied here
+
+| Principle | Application |
+|---|---|
+| **Single business capability** | `council_engine` owns ONE capability (see §1 Purpose). Cross-capability logic lives in other services. |
+| **Bounded context** | Schemas + repositories are scoped to this service's bounded context — no shared DB tables with other services. |
+| **DB per service** | Each service owns its tables. Cross-service reads go through HTTP or Kafka — never a direct DB join. |
+| **Independent deploy** | Service is independently deployable — its container is built + released without coupling to other services. |
+| **Resilience patterns** | Circuit breakers (`documind_core/breakers/`), retries with exponential backoff, bulkheads, timeouts on every external call. |
+| **Observability** | Every request has a `request_id` propagated via OTel baggage; every external call emits a trace span. |
+
+### Design-principle stack (how the principles compose)
+
+Reading bottom-to-top — earlier principles enable later ones:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 7. AI Governance (§38 + §48): decision audit + explainability│
+├─────────────────────────────────────────────────────────────┤
+│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │
+├─────────────────────────────────────────────────────────────┤
+│ 5. Resilience: CB + retry + bulkhead + timeout              │
+├─────────────────────────────────────────────────────────────┤
+│ 4. Microservice: single capability, bounded context, DB/svc │
+├─────────────────────────────────────────────────────────────┤
+│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │
+├─────────────────────────────────────────────────────────────┤
+│ 2. 12-factor: stateless, deps in venv, config in env        │
+├─────────────────────────────────────────────────────────────┤
+│ 1. KISS / YAGNI / DRY: every line earns its place           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -407,6 +550,33 @@ _No AI / LLM dependencies detected — section not applicable._
 | `rounds` | 1 |
 
 
+## 📖 Domain Glossary
+
+Project-wide vocabulary a new developer needs. If you see a term in code you don't recognize, check here first.
+
+| Term | Definition |
+|---|---|
+| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |
+| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |
+| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |
+| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |
+| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |
+| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |
+| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |
+| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |
+| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |
+| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |
+| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |
+| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |
+| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |
+| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |
+| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |
+| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |
+| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |
+| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |
+| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |
+
+
 ## 18. Debugging Guide
 
 ### Step-by-step when something breaks
@@ -430,6 +600,25 @@ _No AI / LLM dependencies detected — section not applicable._
 | 5xx spike | downstream dep down | check `/health/upstreams` |
 | Memory growth | unbounded cache or closure leak | Section 11 |
 | Wrong-tenant data | RLS bypass | tenant isolation drill |
+
+
+## 📅 Recent Activity & Open TODOs
+
+### Last 8 commits touching this folder
+
+| Hash | Date | Subject |
+|---|---|---|
+| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
+| `fa35b08` | 2026-05-08 | feat(agent): add council safety foundation |
+
+```bash
+git log --oneline -- council_engine    # see all commits
+git blame <file>                       # who wrote what
+```
+
+### Open TODO / FIXME / HACK markers
+
+_No TODO / FIXME markers found — folder is hygienic._
 
 
 ## 19. Production Gates (hard pass/fail)

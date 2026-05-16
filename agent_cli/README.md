@@ -1,6 +1,6 @@
 # 📦 `agent_cli` — Advanced README
 
-  ·  **Path:** `agent_cli`  ·  **Generated:** 2026-05-16 19:57 UTC
+  ·  **Path:** `agent_cli`  ·  **Generated:** 2026-05-16 20:26 UTC
 
 > Always-on CLI agent council.
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `1	PraveenAsthana123` |
+| Top git contributors | `2	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -70,13 +70,43 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 > _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
 
 
+## 🗺 How to Read This Folder (Guided Tour)
+
+Read these files in order — by the end, you'll understand 80% of this folder's behavior. Click any path to jump straight to the source.
+
+1. **`main.py`** (🚀 entry point / app bootstrap, 142 LOC) — App boot wiring — middleware stack, router registration, lifespan startup, DI container setup.
+2. **`agents/cli_logger.py`** (🤖 agent / tool, 35 LOC) — Live CLI status logger. Color-coded so the user can see flow at a glance.
+3. **`agents/presenter.py`** (🤖 agent / tool, 20 LOC) — Presenter — final synthesis into structured output.
+4. **`agents/advisor.py`** (🤖 agent / tool, 16 LOC) — Advisor — recommends one path with explicit trade-offs.
+5. **`agents/critic.py`** (🤖 agent / tool, 16 LOC) — Critic — finds gaps, weak assumptions, unstated risks.
+6. **`agents/researcher.py`** (🤖 agent / tool, 16 LOC) — Researcher — surfaces relevant tools, frameworks, prior art.
+7. **`agents/planner.py`** (🤖 agent / tool, 15 LOC) — Planner — turns the user request into a phased step list.
+8. **`core/ollama_client.py`** (🔌 external service adapter, 44 LOC) — Wraps an external API (LLM / vector DB / message bus). Look for circuit breakers + retries.
+
+Click absolute paths for direct `cat`-ability in the §2 File Inventory above.
+
+
+## ⚙ Environment Variables
+
+All env vars this folder reads, auto-extracted from `BaseSettings` field declarations and `os.environ.get` calls.
+
+### Runtime `os.environ.get` / `os.getenv` calls
+
+| Variable | Default | Source location |
+|---|---|---|
+| `OLLAMA_URL` | `http://localhost:11434/api/chat` | `core/ollama_client.py:10` |
+| `AGENT_CLI_MODEL` | `llama3.1:8b` | `core/ollama_client.py:11` |
+
+_Variables marked **required** must be set — missing values may raise on startup or silently default to empty strings._
+
+
 ## 2. File Inventory
 
 Every Python file in this folder, with role / classes / functions / LOC / first docstring line. Full absolute paths listed below the table for easy `cat`-ability.
 
 | Relative path | Role (inferred) | Classes | Functions | LOC | Summary |
 |---|---|---|---|---|---|
-| `__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 18 | agent_cli — terminal-based always-on Ollama Agent Council. |
+| `__init__.py` | 📦 package marker | 0 | 0 | 18 | agent_cli — terminal-based always-on Ollama Agent Council. |
 | `agents/advisor.py` | 🤖 agent / tool | 0 | 1 | 16 | Advisor — recommends one path with explicit trade-offs. |
 | `agents/cli_logger.py` | 🤖 agent / tool | 0 | 2 | 35 | Live CLI status logger. Color-coded so the user can see flow at a glance. |
 | `agents/critic.py` | 🤖 agent / tool | 0 | 1 | 16 | Critic — finds gaps, weak assumptions, unstated risks. |
@@ -86,7 +116,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `core/ollama_client.py` | 🔌 external service adapter | 0 | 1 | 44 | Single-purpose Ollama chat call. Stream disabled for sequential pipeline. |
 | `main.py` | 🚀 entry point / app bootstrap | 0 | 4 | 142 | Always-on CLI agent council. |
 | `orchestrator.py` | 📄 module | 1 | 4 | 200 | Agent council orchestrator — sequential pipeline with safety gates. |
-| `schemas.py` | 📋 data model / schema | 7 | 0 | 121 | Pydantic schemas for typed agent outputs. |
+| `schemas.py` | 📄 module | 7 | 0 | 121 | Pydantic schemas for typed agent outputs. |
 
 ### Absolute paths (clickable)
 
@@ -101,6 +131,17 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/agent_cli/main.py`
 - `/mnt/deepa/rag/agent_cli/orchestrator.py`
 - `/mnt/deepa/rag/agent_cli/schemas.py`
+
+
+## 🧭 Where Does X Live? (cheat sheet)
+
+Use this table when you're modifying this folder and need to know where new code goes.
+
+| I want to... | Role | Touch these files |
+|---|---|---|
+| Wrap a new external API | 🔌 external service adapter | `core/ollama_client.py` |
+| Add a new agent / tool | 🤖 agent / tool | `agents/advisor.py`, `agents/cli_logger.py`, `agents/critic.py` (+3 more) |
+| Boot a background worker | 🚀 entry point / app bootstrap | `main.py` |
 
 
 ## 3. C4 Model — Context / Container / Component / Code
@@ -134,9 +175,8 @@ _Internal files grouped by inferred role._
 
 ```mermaid
 flowchart TB
-    subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
+    subgraph __package_marker["📦 package marker"]
         __init___py["__init__.py"]
-        main_py["main.py"]
     end
     subgraph __agent___tool["🤖 agent / tool"]
         agents_advisor_py["agents/advisor.py"]
@@ -149,10 +189,11 @@ flowchart TB
     subgraph __external_service_adapter["🔌 external service adapter"]
         core_ollama_client_py["core/ollama_client.py"]
     end
+    subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
+        main_py["main.py"]
+    end
     subgraph __module["📄 module"]
         orchestrator_py["orchestrator.py"]
-    end
-    subgraph __data_model___schema["📋 data model / schema"]
         schemas_py["schemas.py"]
     end
 ```
@@ -168,6 +209,54 @@ flowchart TB
     main_py_36_cmd_show_history["cmd_show_history (30 lines)<br/>main.py:36"]
     core_ollama_client_py_15_call_ollama["call_ollama (29 lines)<br/>core/ollama_client.py:15"]
     main_py_68_cmd_rollback["cmd_rollback (22 lines)<br/>main.py:68"]
+```
+
+
+## 📐 Class Diagram (UML-style)
+
+Top classes by method count, with inheritance arrows. Common framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) use dotted lines.
+
+```mermaid
+classDiagram
+    class CouncilResult {
+        +1 methods
+        ~orchestrator.py:33
+    }
+    class CouncilDecision {
+        +1 methods
+        ~schemas.py:85
+    }
+    _Base <|-- CouncilDecision
+    class _Base {
+        +0 methods
+        ~schemas.py:27
+    }
+    BaseModel <|.. _Base
+    class StrategyOutput {
+        +0 methods
+        ~schemas.py:31
+    }
+    _Base <|-- StrategyOutput
+    class PlannerOutput {
+        +0 methods
+        ~schemas.py:43
+    }
+    _Base <|-- PlannerOutput
+    class AdvisoryOutput {
+        +0 methods
+        ~schemas.py:54
+    }
+    _Base <|-- AdvisoryOutput
+    class CoderOutput {
+        +0 methods
+        ~schemas.py:64
+    }
+    _Base <|-- CoderOutput
+    class MonitoringOutput {
+        +0 methods
+        ~schemas.py:76
+    }
+    _Base <|-- MonitoringOutput
 ```
 
 
@@ -221,6 +310,79 @@ flowchart TD
 ## 6. API Endpoints — Input / Process / Output
 
 _No HTTP endpoints detected via `@app.*` / `@router.*` decorators._
+
+
+## 🏗 Input/Process/Output + Integration + Design Principles
+
+### Input / Process / Output per endpoint
+
+| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |
+|---|---|---|---|
+| _(no endpoints)_ | — | — | — |
+
+### Integration sequence (ordered by import volume)
+
+Other folders this one calls into, ordered by how heavily it depends on each:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant This as agent_cli
+  participant safety_store as safety_store
+  participant approval_agent as approval_agent
+  participant risk_classifier as risk_classifier
+  This->>safety_store: call (~2 import sites)
+  safety_store-->>This: response
+  This->>approval_agent: call (~1 import sites)
+  approval_agent-->>This: response
+  This->>risk_classifier: call (~1 import sites)
+  risk_classifier-->>This: response
+```
+
+### SOLID principles applied here
+
+| Principle | Where it shows up in this folder |
+|---|---|
+| **S — Single Responsibility** | Each file has ONE role — routers route, services orchestrate, repos query, schemas describe. The §2 File Inventory shows the role per file; any file with multiple roles violates SRP. |
+| **O — Open/Closed** | New endpoints add new router functions; new business cases add new service methods. Existing methods stay closed for modification. |
+| **L — Liskov Substitution** | All adapter clients (Ollama / OpenAI / Anthropic) implement the same LLM-client protocol — they're interchangeable behind the circuit breaker. |
+| **I — Interface Segregation** | Pydantic models split request, response, and internal state into separate schemas — no client gets a fat model with fields it doesn't use. |
+| **D — Dependency Inversion** | Services receive their dependencies via FastAPI `Depends()` — they depend on abstractions (factories), not concrete repos. Swap implementations in tests via the `app.dependency_overrides` dict. |
+
+### Microservice principles applied here
+
+| Principle | Application |
+|---|---|
+| **Single business capability** | `agent_cli` owns ONE capability (see §1 Purpose). Cross-capability logic lives in other services. |
+| **Bounded context** | Schemas + repositories are scoped to this service's bounded context — no shared DB tables with other services. |
+| **DB per service** | Each service owns its tables. Cross-service reads go through HTTP or Kafka — never a direct DB join. |
+| **Independent deploy** | Service is independently deployable — its container is built + released without coupling to other services. |
+| **Resilience patterns** | Circuit breakers (`documind_core/breakers/`), retries with exponential backoff, bulkheads, timeouts on every external call. |
+| **Observability** | Every request has a `request_id` propagated via OTel baggage; every external call emits a trace span. |
+
+### Design-principle stack (how the principles compose)
+
+Reading bottom-to-top — earlier principles enable later ones:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 7. AI Governance (§38 + §48): decision audit + explainability│
+├─────────────────────────────────────────────────────────────┤
+│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │
+├─────────────────────────────────────────────────────────────┤
+│ 5. Resilience: CB + retry + bulkhead + timeout              │
+├─────────────────────────────────────────────────────────────┤
+│ 4. Microservice: single capability, bounded context, DB/svc │
+├─────────────────────────────────────────────────────────────┤
+│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │
+├─────────────────────────────────────────────────────────────┤
+│ 2. 12-factor: stateless, deps in venv, config in env        │
+├─────────────────────────────────────────────────────────────┤
+│ 1. KISS / YAGNI / DRY: every line earns its place           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -427,6 +589,33 @@ _No AI / LLM dependencies detected — section not applicable._
 | `pydantic` | 1 |
 
 
+## 📖 Domain Glossary
+
+Project-wide vocabulary a new developer needs. If you see a term in code you don't recognize, check here first.
+
+| Term | Definition |
+|---|---|
+| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |
+| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |
+| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |
+| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |
+| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |
+| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |
+| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |
+| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |
+| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |
+| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |
+| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |
+| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |
+| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |
+| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |
+| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |
+| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |
+| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |
+| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |
+| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |
+
+
 ## 18. Debugging Guide
 
 ### Step-by-step when something breaks
@@ -450,6 +639,25 @@ _No AI / LLM dependencies detected — section not applicable._
 | 5xx spike | downstream dep down | check `/health/upstreams` |
 | Memory growth | unbounded cache or closure leak | Section 11 |
 | Wrong-tenant data | RLS bypass | tenant isolation drill |
+
+
+## 📅 Recent Activity & Open TODOs
+
+### Last 8 commits touching this folder
+
+| Hash | Date | Subject |
+|---|---|---|
+| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
+| `fa35b08` | 2026-05-08 | feat(agent): add council safety foundation |
+
+```bash
+git log --oneline -- agent_cli    # see all commits
+git blame <file>                       # who wrote what
+```
+
+### Open TODO / FIXME / HACK markers
+
+_No TODO / FIXME markers found — folder is hygienic._
 
 
 ## 19. Production Gates (hard pass/fail)

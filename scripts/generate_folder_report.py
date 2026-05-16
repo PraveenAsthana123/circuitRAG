@@ -177,6 +177,32 @@ class TestCase:
 
 
 @dataclass
+class EnvVar:
+    name: str
+    file: str
+    line: int
+    default: str   # "" if required, else the default literal
+    source: str    # "BaseSettings" | "os.environ.get" | "os.getenv"
+
+
+@dataclass
+class TodoMarker:
+    kind: str      # TODO / FIXME / HACK / XXX
+    text: str      # full line content (trimmed)
+    file: str
+    line: int
+
+
+@dataclass
+class ClassDetail:
+    name: str
+    bases: List[str]
+    methods: int
+    file: str
+    line: int
+
+
+@dataclass
 class FolderFacts:
     name: str
     rel_path: str
@@ -212,6 +238,11 @@ class FolderFacts:
     files: List[FileEntry] = field(default_factory=list)
     integrations: Dict[str, int] = field(default_factory=dict)  # other-folder → import-count
     external_deps: Dict[str, int] = field(default_factory=dict)  # third-party → import-count
+    env_vars: List[EnvVar] = field(default_factory=list)
+    todos: List[TodoMarker] = field(default_factory=list)
+    class_details: List[ClassDetail] = field(default_factory=list)
+    recent_commits: List[Tuple[str, str, str]] = field(default_factory=list)  # (hash, date, subject)
+    entry_points: List[str] = field(default_factory=list)  # ranked reading order
 
 
 def _is_ignored(path: Path) -> bool:
@@ -251,29 +282,51 @@ def _detect_patterns(folder: Path, patterns: dict) -> List[str]:
 
 
 def _infer_role(rel_path: str, doc: str) -> str:
+    """Infer role from path. Order matters: most-specific patterns first."""
     p = rel_path.lower()
-    if any(s in p for s in ("router", "route", "endpoint", "controller", "api")):
-        return "🌐 HTTP router / API endpoints"
-    if any(s in p for s in ("service", "usecase", "use_case")):
-        return "🧠 business service / use-case"
-    if any(s in p for s in ("repo", "repository", "dao", "store")):
-        return "💾 repository / data access"
-    if any(s in p for s in ("model", "schema", "dto")):
-        return "📋 data model / schema"
-    if any(s in p for s in ("client", "adapter", "gateway")):
-        return "🔌 external service adapter"
-    if any(s in p for s in ("middleware", "interceptor", "filter")):
-        return "🪝 middleware / interceptor"
-    if any(s in p for s in ("config", "settings")):
-        return "⚙ config / settings"
-    if any(s in p for s in ("util", "helper", "common")):
-        return "🛠 utility / helper"
-    if any(s in p for s in ("main", "app", "__init__", "cmd")):
-        return "🚀 entry point / app bootstrap"
-    if any(s in p for s in ("test_", "_test")):
+    base = p.rsplit("/", 1)[-1]
+    parts = set(p.split("/"))
+
+    # Tests — match by filename pattern, not folder
+    if base.startswith("test_") or base.endswith("_test.py") or "tests" in parts:
         return "🧪 test"
-    if any(s in p for s in ("agent", "tool", "executor")):
+    # Workers — background processors
+    if "workers" in parts or base.startswith("worker"):
+        return "⏰ background worker"
+    # Agents / tools — multi-step orchestrators
+    if "agents" in parts or "agent" in base or "tool" in base:
         return "🤖 agent / tool"
+    # Schemas / models
+    if "schemas" in parts or "models" in parts or base in {"schema.py", "models.py"}:
+        return "📋 data model / schema"
+    # Repositories / stores
+    if "repositories" in parts or "repo" in base or "store" in base or "dao" in base:
+        return "💾 repository / data access"
+    # Routers / endpoints
+    if "routers" in parts or "routes" in parts or "endpoints" in parts:
+        return "🌐 HTTP router / API endpoints"
+    # Middleware
+    if "middleware" in parts or "interceptors" in parts or base.startswith("middleware"):
+        return "🪝 middleware / interceptor"
+    # Adapters / clients to external services
+    if "client" in base or "adapter" in base or "gateway" in base:
+        return "🔌 external service adapter"
+    # Services / use-cases
+    if "services" in parts or "usecase" in base or "use_case" in base or base.endswith("_service.py"):
+        return "🧠 business service / use-case"
+    # Config / settings
+    if "config" in base or "settings" in base or "core" in parts and base != "__init__.py":
+        return "⚙ config / settings"
+    # Utilities
+    if "util" in base or "helper" in base or "common" in base:
+        return "🛠 utility / helper"
+    # Main entry point — only if literally main.py, app.py, cmd/main.go, etc.
+    if base in {"main.py", "app.py", "__main__.py", "wsgi.py", "asgi.py"} \
+            or rel_path in {"cmd/main.go", "src/index.ts", "src/index.js"}:
+        return "🚀 entry point / app bootstrap"
+    # Package marker
+    if base == "__init__.py":
+        return "📦 package marker"
     if doc:
         return "📄 module"
     return "📄 module"
@@ -497,6 +550,207 @@ def _classify_imports(files: List[FileEntry], folder: Path) -> tuple[Dict[str, i
     return internal, external
 
 
+def _detect_env_vars(folder: Path) -> List[EnvVar]:
+    """Find env-var references: BaseSettings fields, os.environ.get, os.getenv."""
+    out: List[EnvVar] = []
+    # Pattern 1: BaseSettings field with type hint and default.
+    #   field_name: type = "default"   (inside a BaseSettings subclass)
+    # Pattern 2: os.environ.get("NAME", "default") or os.getenv("NAME", "default")
+    pattern_env = re.compile(
+        r'os\.(?:environ\.get|getenv)\(\s*["\']([A-Z_][A-Z0-9_]*)["\']'
+        r'(?:\s*,\s*([^)]+))?',
+        re.MULTILINE,
+    )
+    for path in folder.rglob("*.py"):
+        if _is_ignored(path):
+            continue
+        text = _read(path)
+        if not text:
+            continue
+        for i, line in enumerate(text.split("\n"), 1):
+            for m in pattern_env.finditer(line):
+                name = m.group(1)
+                default = (m.group(2) or "").strip().strip('"\'')
+                out.append(EnvVar(
+                    name=name, file=str(path.relative_to(folder)),
+                    line=i,
+                    default=default,
+                    source="os.environ.get" if "environ.get" in m.group(0) else "os.getenv",
+                ))
+        # BaseSettings: parse AST for ClassDef whose bases include BaseSettings/Settings.
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        env_prefix = ""
+        # detect env_prefix via Config inner class or model_config
+        for cls in ast.walk(tree):
+            if not isinstance(cls, ast.ClassDef):
+                continue
+            base_names = {(b.id if isinstance(b, ast.Name) else
+                          getattr(b, "attr", "")) for b in cls.bases}
+            if not (base_names & {"BaseSettings", "Settings"}):
+                continue
+            # Try to find env_prefix in Config inner class or model_config dict.
+            for node in cls.body:
+                if isinstance(node, ast.ClassDef) and node.name == "Config":
+                    for sub in node.body:
+                        if (isinstance(sub, ast.Assign)
+                                and sub.targets and isinstance(sub.targets[0], ast.Name)
+                                and sub.targets[0].id == "env_prefix"
+                                and isinstance(sub.value, ast.Constant)):
+                            env_prefix = sub.value.value
+                if (isinstance(node, ast.Assign) and node.targets
+                        and isinstance(node.targets[0], ast.Name)
+                        and node.targets[0].id == "model_config"):
+                    # model_config = SettingsConfigDict(env_prefix="X_")
+                    if isinstance(node.value, ast.Call):
+                        for kw in node.value.keywords:
+                            if kw.arg == "env_prefix" and isinstance(kw.value, ast.Constant):
+                                env_prefix = kw.value.value
+            # Now extract field definitions.
+            for node in cls.body:
+                if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    fname = node.target.id
+                    default = ""
+                    if node.value is not None:
+                        try:
+                            default = ast.unparse(node.value)
+                        except AttributeError:
+                            default = ""
+                    full_name = (env_prefix + fname).upper()
+                    out.append(EnvVar(
+                        name=full_name,
+                        file=str(path.relative_to(folder)),
+                        line=node.lineno,
+                        default=default,
+                        source="BaseSettings",
+                    ))
+    # Dedupe by (name, file, line)
+    seen = set()
+    deduped: List[EnvVar] = []
+    for ev in out:
+        key = (ev.name, ev.file, ev.line)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(ev)
+    return deduped
+
+
+def _detect_todos(folder: Path) -> List[TodoMarker]:
+    out: List[TodoMarker] = []
+    pat = re.compile(r"(TODO|FIXME|HACK|XXX)\b[: ]\s*(.+?)$", re.MULTILINE)
+    for ext in (".py", ".ts", ".tsx", ".js", ".go"):
+        for path in folder.rglob(f"*{ext}"):
+            if _is_ignored(path):
+                continue
+            text = _read(path)
+            if not text:
+                continue
+            for i, line in enumerate(text.split("\n"), 1):
+                m = pat.search(line)
+                if m:
+                    out.append(TodoMarker(
+                        kind=m.group(1),
+                        text=m.group(2).strip()[:140],
+                        file=str(path.relative_to(folder)),
+                        line=i,
+                    ))
+    return out
+
+
+def _detect_classes_detailed(folder: Path) -> List[ClassDetail]:
+    out: List[ClassDetail] = []
+    for path in folder.rglob("*.py"):
+        if _is_ignored(path):
+            continue
+        text = _read(path)
+        if not text:
+            continue
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                bases = []
+                for b in node.bases:
+                    if isinstance(b, ast.Name):
+                        bases.append(b.id)
+                    elif isinstance(b, ast.Attribute):
+                        bases.append(b.attr)
+                methods = sum(
+                    1 for n in node.body
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                )
+                out.append(ClassDetail(
+                    name=node.name,
+                    bases=bases,
+                    methods=methods,
+                    file=str(path.relative_to(folder)),
+                    line=node.lineno,
+                ))
+    return out
+
+
+def _git_recent_commits(folder: Path, n: int = 8) -> List[Tuple[str, str, str]]:
+    rel = str(folder.relative_to(REPO_ROOT)) if folder.is_relative_to(REPO_ROOT) else str(folder)
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "log", f"-{n}",
+             "--pretty=format:%h|%ad|%s", "--date=short", "--no-merges", "--", rel],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0:
+            return []
+        rows: List[Tuple[str, str, str]] = []
+        for line in r.stdout.strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split("|", 2)
+            if len(parts) == 3:
+                rows.append((parts[0], parts[1], parts[2][:120]))
+        return rows
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return []
+
+
+def _rank_entry_points(files: List[FileEntry]) -> List[str]:
+    """Pick the natural reading order — entry points first, then services, then repos."""
+    role_priority = {
+        "🚀 entry point / app bootstrap": 1,
+        "⚙ config / settings": 2,
+        "🌐 HTTP router / API endpoints": 3,
+        "📋 data model / schema": 4,
+        "🧠 business service / use-case": 5,
+        "🤖 agent / tool": 6,
+        "💾 repository / data access": 7,
+        "🔌 external service adapter": 8,
+        "🪝 middleware / interceptor": 9,
+        "⏰ background worker": 10,
+        "🛠 utility / helper": 11,
+        "📦 package marker": 90,
+        "📄 module": 12,
+        "🧪 test": 99,
+    }
+    # Sort by (role priority, lines desc — bigger files = more important within role)
+    sorted_files = sorted(
+        files,
+        key=lambda fe: (role_priority.get(fe.role, 50), -fe.lines),
+    )
+    # Skip __init__.py with 0-5 lines (empty package markers) and tests
+    out: List[str] = []
+    for fe in sorted_files:
+        if fe.rel.endswith("__init__.py") and fe.lines <= 5:
+            continue
+        if fe.role == "🧪 test":
+            continue
+        out.append(fe.rel)
+        if len(out) >= 8:
+            break
+    return out
+
+
 def introspect(folder: Path) -> FolderFacts:
     counts = _file_count(folder)
     classes, fns, afns, long_fns = _python_ast_stats(folder)
@@ -546,6 +800,11 @@ def introspect(folder: Path) -> FolderFacts:
         files=files,
         integrations=internal,
         external_deps=external,
+        env_vars=_detect_env_vars(folder),
+        todos=_detect_todos(folder),
+        class_details=_detect_classes_detailed(folder),
+        recent_commits=_git_recent_commits(folder),
+        entry_points=_rank_entry_points(files),
     )
     return facts
 
@@ -673,6 +932,884 @@ def section_2_file_inventory(f: FolderFacts) -> str:
         + "\n".join(rows) + "\n\n"
         "### Absolute paths (clickable)\n\n"
         + paths_block + "\n\n"
+    )
+
+
+# ─── New onboarding-focused sections ───────────────────────────────────
+
+def section_quick_start(f: FolderFacts) -> str:
+    """Folder-level copy-paste boot sequence."""
+    # Service port (hardcoded canonical map — env-var detection picks wrong port).
+    port_hint = _service_port(f.name)
+    is_service = "services/" in f.rel_path
+    is_lib = "libs/" in f.rel_path
+    if is_lib:
+        return (
+            "## ⚡ Quick Start (library)\n\n"
+            "This is a shared library — not a runnable service. Use it from "
+            "any service like:\n\n"
+            "```python\n"
+            f"from {f.name.replace('-', '_')} import <symbol>\n"
+            "```\n\n"
+            "Run tests against the library:\n\n"
+            "```bash\n"
+            f"cd {f.rel_path}\n"
+            "pytest -q\n"
+            "```\n\n"
+        )
+    if not is_service:
+        return ""
+    # Service-level quick start
+    return (
+        "## ⚡ Quick Start (5 commands)\n\n"
+        "```bash\n"
+        "# 1. From repo root, activate venv\n"
+        "source .venv/bin/activate\n\n"
+        "# 2. Bring up backends this service depends on (Postgres / Redis / Kafka / etc.)\n"
+        "docker compose -f infra/docker-compose.yml up -d postgres redis kafka\n\n"
+        "# 3. Set the env vars (see §C below for the full list)\n"
+        f"export DOCUMIND_POSTGRES_URL='postgresql://...'\n"
+        f"export DOCUMIND_REDIS_URL='redis://localhost:56379/0'\n\n"
+        "# 4. Start the service\n"
+        f"cd {f.rel_path}\n"
+        f"uvicorn app.main:app --host 0.0.0.0 --port {port_hint} --reload\n\n"
+        "# 5. Verify\n"
+        f"curl http://localhost:{port_hint}/health\n"
+        "```\n\n"
+        f"If `/health` returns `{{\"status\": \"ok\"}}` you're up. Full health "
+        f"matrix: `python3 scripts/advanced_healthcheck.py --layer app`.\n\n"
+    )
+
+
+def section_read_order(f: FolderFacts) -> str:
+    """Guided file-reading order for a new developer."""
+    if not f.entry_points:
+        return (
+            "## 🗺 How to Read This Folder\n\n"
+            "_No clear entry points — start with whichever file has `main.py` "
+            "or `__init__.py` in its name._\n\n"
+        )
+    rows = []
+    role_hints = {
+        "🚀 entry point / app bootstrap":
+            "App boot wiring — middleware stack, router registration, "
+            "lifespan startup, DI container setup.",
+        "⚙ config / settings":
+            "Every env var the service reads. Read this BEFORE running locally.",
+        "🌐 HTTP router / API endpoints":
+            "All HTTP routes. Most lines here are decorators + Pydantic models — "
+            "the actual logic delegates to services.",
+        "🧠 business service / use-case":
+            "Where business logic lives. Most of the interesting code is here.",
+        "💾 repository / data access":
+            "All SQL / vector / Redis queries. If you're chasing a perf issue, "
+            "look here.",
+        "📋 data model / schema":
+            "Pydantic request/response models. Read alongside the router.",
+        "🔌 external service adapter":
+            "Wraps an external API (LLM / vector DB / message bus). Look for "
+            "circuit breakers + retries.",
+    }
+    for i, rel in enumerate(f.entry_points, 1):
+        fe = next((x for x in f.files if x.rel == rel), None)
+        if not fe:
+            continue
+        hint = role_hints.get(fe.role, fe.doc or "_(no docstring)_")
+        rows.append(
+            f"{i}. **`{rel}`** ({fe.role}, {fe.lines} LOC) — {hint}"
+        )
+    return (
+        "## 🗺 How to Read This Folder (Guided Tour)\n\n"
+        "Read these files in order — by the end, you'll understand 80% of "
+        "this folder's behavior. Click any path to jump straight to the "
+        "source.\n\n"
+        + "\n".join(rows) + "\n\n"
+        "Click absolute paths for direct `cat`-ability in the §2 File "
+        "Inventory above.\n\n"
+    )
+
+
+def section_env_vars(f: FolderFacts) -> str:
+    if not f.env_vars:
+        return (
+            "## ⚙ Environment Variables\n\n"
+            "_No env-var references detected via `BaseSettings`, `os.environ.get`, "
+            "or `os.getenv`._\n\n"
+        )
+    # Group by source
+    settings_rows = []
+    runtime_rows = []
+    for ev in f.env_vars:
+        default = f"`{ev.default}`" if ev.default else "**required**"
+        row = f"| `{ev.name}` | {default} | `{ev.file}:{ev.line}` |"
+        if ev.source == "BaseSettings":
+            settings_rows.append(row)
+        else:
+            runtime_rows.append(row)
+    parts = ["## ⚙ Environment Variables\n\n"
+             "All env vars this folder reads, auto-extracted from "
+             "`BaseSettings` field declarations and `os.environ.get` calls.\n\n"]
+    if settings_rows:
+        parts.append(
+            "### Pydantic BaseSettings fields\n\n"
+            "| Variable | Default | Source location |\n|---|---|---|\n"
+            + "\n".join(settings_rows) + "\n\n"
+        )
+    if runtime_rows:
+        parts.append(
+            "### Runtime `os.environ.get` / `os.getenv` calls\n\n"
+            "| Variable | Default | Source location |\n|---|---|---|\n"
+            + "\n".join(runtime_rows) + "\n\n"
+        )
+    parts.append(
+        "_Variables marked **required** must be set — missing values may "
+        "raise on startup or silently default to empty strings._\n\n"
+    )
+    return "".join(parts)
+
+
+def section_where_does_x_live(f: FolderFacts) -> str:
+    """Feature-need → file mapping cheat sheet."""
+    # Map roles to files
+    by_role: Dict[str, List[FileEntry]] = {}
+    for fe in f.files:
+        by_role.setdefault(fe.role, []).append(fe)
+
+    feature_map = [
+        ("Add a new HTTP endpoint", "🌐 HTTP router / API endpoints"),
+        ("Add a new Pydantic request/response model", "📋 data model / schema"),
+        ("Add a new business-logic method", "🧠 business service / use-case"),
+        ("Add a new SQL query or DB call", "💾 repository / data access"),
+        ("Add a new env var", "⚙ config / settings"),
+        ("Wrap a new external API", "🔌 external service adapter"),
+        ("Add a new middleware (auth / logging / tracing)", "🪝 middleware / interceptor"),
+        ("Add a new agent / tool", "🤖 agent / tool"),
+        ("Add a new test", "🧪 test"),
+        ("Boot a background worker", "🚀 entry point / app bootstrap"),
+    ]
+    rows = []
+    for need, role in feature_map:
+        targets = by_role.get(role, [])
+        if not targets:
+            continue
+        files = ", ".join(f"`{t.rel}`" for t in targets[:3])
+        if len(targets) > 3:
+            files += f" (+{len(targets) - 3} more)"
+        rows.append(f"| {need} | {role} | {files} |")
+    if not rows:
+        return ""
+    return (
+        "## 🧭 Where Does X Live? (cheat sheet)\n\n"
+        "Use this table when you're modifying this folder and need to know "
+        "where new code goes.\n\n"
+        "| I want to... | Role | Touch these files |\n|---|---|---|\n"
+        + "\n".join(rows) + "\n\n"
+    )
+
+
+def section_class_diagram(f: FolderFacts) -> str:
+    if not f.class_details:
+        return (
+            "## 📐 Class Diagram\n\n"
+            "_No Python classes detected._\n\n"
+        )
+    # Build class diagram — show classes + base classes + method count.
+    # Limit to 15 classes to keep diagram readable.
+    important = sorted(f.class_details, key=lambda c: -c.methods)[:15]
+    lines = ["classDiagram"]
+    for cls in important:
+        slug = re.sub(r"\W", "_", cls.name)
+        lines.append(f"    class {slug} {{")
+        lines.append(f"        +{cls.methods} methods")
+        lines.append(f"        ~{cls.file}:{cls.line}")
+        lines.append("    }")
+        for base in cls.bases:
+            base_slug = re.sub(r"\W", "_", base)
+            # Skip common library bases that just clutter the diagram
+            if base in {"object", "BaseModel", "BaseSettings", "Exception",
+                        "Enum", "TypedDict", "Protocol"}:
+                lines.append(f"    {base} <|.. {slug}")
+            else:
+                lines.append(f"    {base_slug} <|-- {slug}")
+    diagram = "\n".join(lines)
+    extras = ""
+    if len(f.class_details) > 15:
+        extras = f"\n_Showing top 15 of {len(f.class_details)} classes (ranked by method count)._\n\n"
+    return (
+        "## 📐 Class Diagram (UML-style)\n\n"
+        "Top classes by method count, with inheritance arrows. Common "
+        "framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) "
+        "use dotted lines.\n\n"
+        f"```mermaid\n{diagram}\n```\n\n"
+        f"{extras}"
+    )
+
+
+def section_annotated_request(f: FolderFacts) -> str:
+    if not f.api_endpoints:
+        return ""
+    ep = f.api_endpoints[0]
+    return (
+        "## 🔬 Annotated Example Request\n\n"
+        f"Walk through what happens when a client calls "
+        f"**`{ep.method} {ep.route}`** ({ep.file}:{ep.line}).\n\n"
+        "```text\n"
+        "┌─────────────────────────────────────────────────────────────────────┐\n"
+        "│ 1. Client sends HTTP request                                        │\n"
+        f"│    {ep.method} {ep.route:<60}│\n"
+        "│    Headers: Authorization, X-Correlation-ID, X-Tenant-ID            │\n"
+        "└────────────────────────┬────────────────────────────────────────────┘\n"
+        "                         │\n"
+        "                         ▼\n"
+        "┌─────────────────────────────────────────────────────────────────────┐\n"
+        "│ 2. Middleware stack (auth → logging → tracing → rate-limit)         │\n"
+        "│    - Validate JWT / API key                                         │\n"
+        "│    - Resolve tenant_id from token                                   │\n"
+        "│    - Start span; inject request_id into baggage                     │\n"
+        "└────────────────────────┬────────────────────────────────────────────┘\n"
+        "                         │\n"
+        "                         ▼\n"
+        "┌─────────────────────────────────────────────────────────────────────┐\n"
+        "│ 3. Pydantic validation                                              │\n"
+        "│    - Parse request body against schema                              │\n"
+        "│    - 422 on validation error (with field-level details)             │\n"
+        "└────────────────────────┬────────────────────────────────────────────┘\n"
+        "                         │\n"
+        "                         ▼\n"
+        "┌─────────────────────────────────────────────────────────────────────┐\n"
+        "│ 4. Router handler                                                   │\n"
+        f"│    {ep.file}:{ep.line}\n"
+        "│    - Receive validated request + injected Depends()                 │\n"
+        "│    - Delegate to business service                                   │\n"
+        "└────────────────────────┬────────────────────────────────────────────┘\n"
+        "                         │\n"
+        "                         ▼\n"
+        "┌─────────────────────────────────────────────────────────────────────┐\n"
+        "│ 5. Business service                                                 │\n"
+        "│    - Apply rules / orchestrate multi-step logic                     │\n"
+        "│    - Call repositories for DB I/O                                   │\n"
+        f"│    - Call external services (LLM / vector DB / etc.){' ':<13}│\n"
+        "│    - Emit metrics + log decision audit row                          │\n"
+        "└────────────────────────┬────────────────────────────────────────────┘\n"
+        "                         │\n"
+        "                         ▼\n"
+        "┌─────────────────────────────────────────────────────────────────────┐\n"
+        "│ 6. Response shaping                                                 │\n"
+        "│    - Build response Pydantic model                                  │\n"
+        "│    - Serialize to JSON                                              │\n"
+        "│    - Add correlation_id, latency_ms to headers                      │\n"
+        "└────────────────────────┬────────────────────────────────────────────┘\n"
+        "                         │\n"
+        "                         ▼\n"
+        "                       Client\n"
+        "```\n\n"
+        "### Inspecting this in real time\n\n"
+        "```bash\n"
+        f"# 1. Tail the service log\n"
+        f"docker logs documind-{f.name} --tail=20 -f &\n\n"
+        f"# 2. Issue the request with a fresh correlation_id\n"
+        f"REQ_ID=$(uuidgen)\n"
+        f"curl -X {ep.method} http://localhost:<PORT>{ep.route} \\\n"
+        "  -H \"X-Correlation-ID: $REQ_ID\" \\\n"
+        "  -H \"Authorization: Bearer <token>\" \\\n"
+        "  -d '{}'\n\n"
+        f"# 3. Find the trace in Jaeger\n"
+        f"open http://localhost:16686/search?service={f.name}&tags=%7B%22request_id%22%3A%22$REQ_ID%22%7D\n"
+        "```\n\n"
+    )
+
+
+def section_glossary(f: FolderFacts) -> str:
+    """Domain glossary — project-wide terms a new dev hits."""
+    # Always include the project's domain terms regardless of folder.
+    return (
+        "## 📖 Domain Glossary\n\n"
+        "Project-wide vocabulary a new developer needs. If you see a term in "
+        "code you don't recognize, check here first.\n\n"
+        "| Term | Definition |\n|---|---|\n"
+        "| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |\n"
+        "| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |\n"
+        "| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |\n"
+        "| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |\n"
+        "| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |\n"
+        "| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |\n"
+        "| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |\n"
+        "| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |\n"
+        "| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |\n"
+        "| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |\n"
+        "| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |\n"
+        "| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |\n"
+        "| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |\n"
+        "| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |\n"
+        "| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |\n"
+        "| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |\n"
+        "| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |\n"
+        "| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |\n"
+        "| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |\n\n"
+    )
+
+
+def section_recent_activity(f: FolderFacts) -> str:
+    parts = ["## 📅 Recent Activity & Open TODOs\n\n"]
+    if f.recent_commits:
+        rows = "\n".join(
+            f"| `{h}` | {d} | {s} |" for h, d, s in f.recent_commits
+        )
+        parts.append(
+            "### Last 8 commits touching this folder\n\n"
+            "| Hash | Date | Subject |\n|---|---|---|\n"
+            f"{rows}\n\n"
+            "```bash\n"
+            f"git log --oneline -- {f.rel_path}    # see all commits\n"
+            f"git blame <file>                       # who wrote what\n"
+            "```\n\n"
+        )
+    else:
+        parts.append("_No git history detected._\n\n")
+
+    if f.todos:
+        # Group by kind
+        by_kind: Dict[str, List[TodoMarker]] = {}
+        for t in f.todos:
+            by_kind.setdefault(t.kind, []).append(t)
+        parts.append("### Open TODO / FIXME / HACK markers\n\n")
+        for kind in ("TODO", "FIXME", "HACK", "XXX"):
+            items = by_kind.get(kind, [])
+            if not items:
+                continue
+            rows = "\n".join(
+                f"| `{t.file}:{t.line}` | {t.text} |"
+                for t in items[:15]
+            )
+            extras = f"\n_({len(items) - 15} more not shown)_\n" if len(items) > 15 else ""
+            parts.append(
+                f"#### {kind} ({len(items)})\n\n"
+                f"| Location | Note |\n|---|---|\n{rows}\n{extras}\n"
+            )
+    else:
+        parts.append(
+            "### Open TODO / FIXME / HACK markers\n\n"
+            "_No TODO / FIXME markers found — folder is hygienic._\n\n"
+        )
+    return "".join(parts)
+
+
+SERVICE_PORT_MAP = {
+    "frontend": "3000",
+    "api-gateway": "8080",
+    "identity-svc": "8081",
+    "ingestion-svc": "8082",
+    "retrieval-svc": "8083",
+    "inference-svc": "8084",
+    "evaluation-svc": "8085",
+    "governance-svc": "8086",
+    "finops-svc": "8087",
+    "observability-svc": "8089",
+    "agent-orchestrator-svc": "8090",
+    "sidecar-advisor": "8091",
+}
+
+
+def _service_port(name: str) -> str:
+    return SERVICE_PORT_MAP.get(name, "8000")
+
+
+def section_ipo_integration_principles(f: FolderFacts) -> str:
+    """Input/Process/Output + integration sequence + SOLID + microservice + design-principle stack."""
+    if not f.api_endpoints and not f.files:
+        return ""
+    # IPO table: one row per endpoint with inferred I→P→O chain.
+    ipo_rows = []
+    for ep in f.api_endpoints[:8]:
+        ipo_rows.append(
+            f"| `{ep.method} {ep.route}` | "
+            f"Pydantic schema validated at middleware | "
+            f"Router `{ep.file}:{ep.line}` → Service (`app/services/`) → "
+            f"Repository (`app/repositories/` or `documind_core/db_client.py`) → "
+            f"External (LLM / Vector / Kafka) | "
+            f"Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |"
+        )
+    ipo_block = (
+        "### Input / Process / Output per endpoint\n\n"
+        "| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |\n"
+        "|---|---|---|---|\n"
+        + ("\n".join(ipo_rows) if ipo_rows else "| _(no endpoints)_ | — | — | — |")
+        + "\n\n"
+    )
+
+    # Integration sequence: ordered list of which folders this calls, in dep order.
+    integ_lines = ["```mermaid", "sequenceDiagram", "  autonumber",
+                   f"  participant This as {f.name}"]
+    integ_items = sorted(f.integrations.items(), key=lambda x: -x[1])
+    for i, (other, _count) in enumerate(integ_items[:6]):
+        slug = re.sub(r"\W", "_", other)[:30]
+        integ_lines.append(f"  participant {slug} as {other}")
+    for i, (other, count) in enumerate(integ_items[:6]):
+        slug = re.sub(r"\W", "_", other)[:30]
+        integ_lines.append(f"  This->>{slug}: call (~{count} import sites)")
+        integ_lines.append(f"  {slug}-->>This: response")
+    integ_lines.append("```\n")
+    integ_block = (
+        "### Integration sequence (ordered by import volume)\n\n"
+        "Other folders this one calls into, ordered by how heavily it depends "
+        "on each:\n\n"
+        + "\n".join(integ_lines) + "\n"
+    )
+
+    # SOLID + microservice principles applied to THIS folder
+    solid_block = (
+        "### SOLID principles applied here\n\n"
+        "| Principle | Where it shows up in this folder |\n|---|---|\n"
+        "| **S — Single Responsibility** | "
+        "Each file has ONE role — routers route, services orchestrate, "
+        "repos query, schemas describe. The §2 File Inventory shows the role "
+        "per file; any file with multiple roles violates SRP. |\n"
+        "| **O — Open/Closed** | "
+        "New endpoints add new router functions; new business cases add new "
+        "service methods. Existing methods stay closed for modification. |\n"
+        "| **L — Liskov Substitution** | "
+        "All adapter clients (Ollama / OpenAI / Anthropic) implement the "
+        "same LLM-client protocol — they're interchangeable behind the "
+        "circuit breaker. |\n"
+        "| **I — Interface Segregation** | "
+        "Pydantic models split request, response, and internal state into "
+        "separate schemas — no client gets a fat model with fields it "
+        "doesn't use. |\n"
+        "| **D — Dependency Inversion** | "
+        "Services receive their dependencies via FastAPI `Depends()` — they "
+        "depend on abstractions (factories), not concrete repos. Swap "
+        "implementations in tests via the `app.dependency_overrides` dict. |\n\n"
+    )
+
+    micro_block = (
+        "### Microservice principles applied here\n\n"
+        "| Principle | Application |\n|---|---|\n"
+        "| **Single business capability** | "
+        f"`{f.name}` owns ONE capability (see §1 Purpose). Cross-capability "
+        "logic lives in other services. |\n"
+        "| **Bounded context** | "
+        "Schemas + repositories are scoped to this service's bounded "
+        "context — no shared DB tables with other services. |\n"
+        "| **DB per service** | "
+        "Each service owns its tables. Cross-service reads go through HTTP "
+        "or Kafka — never a direct DB join. |\n"
+        "| **Independent deploy** | "
+        "Service is independently deployable — its container is built + "
+        "released without coupling to other services. |\n"
+        "| **Resilience patterns** | "
+        "Circuit breakers (`documind_core/breakers/`), retries with "
+        "exponential backoff, bulkheads, timeouts on every external call. |\n"
+        "| **Observability** | "
+        "Every request has a `request_id` propagated via OTel baggage; "
+        "every external call emits a trace span. |\n\n"
+    )
+
+    design_block = (
+        "### Design-principle stack (how the principles compose)\n\n"
+        "Reading bottom-to-top — earlier principles enable later ones:\n\n"
+        "```text\n"
+        "┌─────────────────────────────────────────────────────────────┐\n"
+        "│ 7. AI Governance (§38 + §48): decision audit + explainability│\n"
+        "├─────────────────────────────────────────────────────────────┤\n"
+        "│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │\n"
+        "├─────────────────────────────────────────────────────────────┤\n"
+        "│ 5. Resilience: CB + retry + bulkhead + timeout              │\n"
+        "├─────────────────────────────────────────────────────────────┤\n"
+        "│ 4. Microservice: single capability, bounded context, DB/svc │\n"
+        "├─────────────────────────────────────────────────────────────┤\n"
+        "│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │\n"
+        "├─────────────────────────────────────────────────────────────┤\n"
+        "│ 2. 12-factor: stateless, deps in venv, config in env        │\n"
+        "├─────────────────────────────────────────────────────────────┤\n"
+        "│ 1. KISS / YAGNI / DRY: every line earns its place           │\n"
+        "└─────────────────────────────────────────────────────────────┘\n"
+        "```\n\n"
+        "**How to use this stack:** when adding a new feature, check it from "
+        "the bottom up. KISS first (simplest design that works), then SOLID "
+        "(does any class violate SRP?), then microservice (does this leak "
+        "the bounded context?), then resilience (what fails when the "
+        "downstream is slow?), then gates (which production gate enforces "
+        "this?), then governance (which audit row records this decision?).\n\n"
+    )
+
+    return (
+        "## 🏗 Input/Process/Output + Integration + Design Principles\n\n"
+        + ipo_block
+        + integ_block
+        + solid_block
+        + micro_block
+        + design_block
+    )
+
+
+def section_frontend(f: FolderFacts) -> str:
+    """Frontend-specific guidance — only emitted for Next.js / React folders."""
+    has_pkg = f.has_package_json
+    is_frontend = has_pkg or f.ts_files > 0 or "frontend" in f.name
+    if not is_frontend:
+        return ""
+    # Detect Next.js (app/ or pages/ folder), React, etc.
+    has_app_dir = (f.abs_path / "app").is_dir()
+    has_pages_dir = (f.abs_path / "pages").is_dir()
+    has_components = (f.abs_path / "components").is_dir()
+    framework = "Next.js (App Router)" if has_app_dir else (
+        "Next.js (Pages Router)" if has_pages_dir else "React / SPA")
+
+    return (
+        "## 🎨 Frontend Architecture, State, Routing, Validation, Optimization\n\n"
+        f"**Detected framework:** {framework}\n"
+        f"**Components dir:** {'✅' if has_components else '❌'}\n"
+        f"**TS / TSX files:** {f.ts_files}\n\n"
+        "### Architecture pattern\n\n"
+        "```text\n"
+        "┌─────────────────────────────────────────────────────────────┐\n"
+        "│              Browser (F12 console + DevTools)               │\n"
+        "└───────────────────────────┬─────────────────────────────────┘\n"
+        "                            │                                  \n"
+        "                            ▼                                  \n"
+        "┌─────────────────────────────────────────────────────────────┐\n"
+        "│  Server Components (app/.../page.tsx) — default in Next.js  │\n"
+        "│  - SSR / RSC, NO browser-side JS for these                  │\n"
+        "│  - Data fetched on server, streamed to client               │\n"
+        "└───────────────────────────┬─────────────────────────────────┘\n"
+        "                            │                                  \n"
+        "                            ▼                                  \n"
+        "┌─────────────────────────────────────────────────────────────┐\n"
+        "│  Client Components ('use client' directive)                 │\n"
+        "│  - Interactivity: state (useState), effects (useEffect),    │\n"
+        "│    event handlers, browser-only APIs                        │\n"
+        "└───────────────────────────┬─────────────────────────────────┘\n"
+        "                            │                                  \n"
+        "                            ▼                                  \n"
+        "┌─────────────────────────────────────────────────────────────┐\n"
+        "│  BFF route (app/api/.../route.ts) — Next.js route handler   │\n"
+        "│  - Validates input (Zod), injects auth headers              │\n"
+        "│  - Calls backend service                                    │\n"
+        "└───────────────────────────┬─────────────────────────────────┘\n"
+        "                            │                                  \n"
+        "                            ▼                                  \n"
+        "┌─────────────────────────────────────────────────────────────┐\n"
+        "│  Backend FastAPI / Go service                               │\n"
+        "└─────────────────────────────────────────────────────────────┘\n"
+        "```\n\n"
+        "### State management\n\n"
+        "| Layer | Tool | When to use |\n|---|---|---|\n"
+        "| **Local state** | `useState` / `useReducer` | Form inputs, toggles, in-component state |\n"
+        "| **Server state** | RSC (Server Components) | Data fetched on server — no client cache needed |\n"
+        "| **Cross-component state** | React Context | Theme, auth, locale — rarely changes |\n"
+        "| **Persistent cache** | `localStorage` / SWR | Returning users, optimistic updates |\n"
+        "| **Global mutable** | `zustand` (only if context too coarse) | Avoid Redux unless legacy demands it |\n\n"
+        "### Routing\n\n"
+        "Next.js App Router conventions used here:\n\n"
+        "```text\n"
+        "app/\n"
+        "├── layout.tsx             # Root layout (rendered once per session)\n"
+        "├── page.tsx               # Root route (/)\n"
+        "├── loading.tsx            # Suspense boundary fallback\n"
+        "├── error.tsx              # Error boundary\n"
+        "├── not-found.tsx          # 404 page\n"
+        "├── admin/\n"
+        "│   ├── layout.tsx         # /admin/* layout\n"
+        "│   ├── page.tsx           # /admin\n"
+        "│   └── [section]/         # Dynamic segment\n"
+        "│       └── page.tsx       # /admin/<section>\n"
+        "└── api/                   # BFF endpoints (server-side only)\n"
+        "    └── v1/<resource>/route.ts\n"
+        "```\n\n"
+        "### API building + UI binding\n\n"
+        "Standard pattern for fetching backend data from a client component:\n\n"
+        "```tsx\n"
+        "// app/some-page/page.tsx (Server Component — preferred)\n"
+        "async function Page() {\n"
+        "  const data = await fetch('http://backend:port/api/v1/resource', {\n"
+        "    headers: { Authorization: `Bearer ${process.env.SERVER_TOKEN}` },\n"
+        "    next: { revalidate: 60 },  // ISR cache for 60s\n"
+        "  }).then(r => r.json());\n"
+        "  return <Display data={data} />;\n"
+        "}\n"
+        "\n"
+        "// components/SomeComponent.tsx (Client Component — for interactivity)\n"
+        "'use client';\n"
+        "import { useEffect, useState } from 'react';\n"
+        "export default function SomeComponent() {\n"
+        "  const [data, setData] = useState(null);\n"
+        "  const [err, setErr] = useState(null);\n"
+        "  useEffect(() => {\n"
+        "    const ctrl = new AbortController();\n"
+        "    fetch('/api/v1/resource', { signal: ctrl.signal })\n"
+        "      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })\n"
+        "      .then(setData)\n"
+        "      .catch(e => e.name !== 'AbortError' && setErr(e.message));\n"
+        "    return () => ctrl.abort();  // cleanup\n"
+        "  }, []);\n"
+        "  if (err) return <div role='alert'>Failed: {err}</div>;\n"
+        "  if (!data) return <div role='status'>Loading…</div>;\n"
+        "  return <pre>{JSON.stringify(data, null, 2)}</pre>;\n"
+        "}\n"
+        "```\n\n"
+        "### UI-level validation (Zod + react-hook-form)\n\n"
+        "```tsx\n"
+        "import { z } from 'zod';\n"
+        "const Schema = z.object({\n"
+        "  email: z.string().email('Invalid email'),\n"
+        "  age: z.number().int().min(18, 'Must be 18+').max(120),\n"
+        "});\n"
+        "type FormData = z.infer<typeof Schema>;\n"
+        "// Use with react-hook-form: useForm({ resolver: zodResolver(Schema) })\n"
+        "```\n\n"
+        "Always validate **at the boundary** — never trust client input "
+        "even if you have client-side validation. Server validates again.\n\n"
+        "### Optimization\n\n"
+        "| Optimization | Tool / Pattern |\n|---|---|\n"
+        "| **Bundle size** | `next/dynamic` for code splitting; `source-map-explorer` to audit |\n"
+        "| **Image LCP** | `next/image` (auto srcset + lazy loading) |\n"
+        "| **Font CLS** | `next/font` (zero layout shift) |\n"
+        "| **Streaming HTML** | RSC + `<Suspense>` boundaries |\n"
+        "| **Memoization** | `React.memo`, `useMemo`, `useCallback` only when profiling shows need |\n"
+        "| **Virtualization** | `react-window` for lists > 100 items |\n"
+        "| **Caching** | `next: { revalidate: N }` on fetch; SWR for client cache |\n"
+        "| **Prefetch** | `<Link prefetch>` on visible above-the-fold links |\n"
+        "| **Web Vitals** | `web-vitals` lib + Lighthouse CI in pipeline |\n\n"
+        "### F12 Console — debugging guide\n\n"
+        "When the UI breaks, walk these in order:\n\n"
+        "1. **Console tab** — JS errors. Filter by Error level. Look for "
+        "`Uncaught` exceptions + React warnings.\n"
+        "2. **Network tab** — failing requests. Filter by `XHR`/`Fetch`. "
+        "Look for 4xx/5xx, slow responses (Timing → Waiting), CORS errors.\n"
+        "3. **Performance tab** — Slow page? Click Record → reload → "
+        "stop. Look for long tasks (>50ms) in flame chart.\n"
+        "4. **React DevTools (extension)** — component tree, props, state. "
+        "Profiler tab → record interaction → see which components "
+        "re-rendered.\n"
+        "5. **Application tab** — `localStorage`, `sessionStorage`, "
+        "cookies, IndexedDB. Verify auth tokens present + valid.\n"
+        "6. **Sources tab** — drop a `debugger;` statement in TSX; "
+        "browser pauses on next render. Inspect closures.\n"
+        "7. **Lighthouse** — full page audit: perf, a11y, SEO, best "
+        "practices. Run in incognito to avoid extension noise.\n\n"
+        "Quick console commands (paste in F12 console):\n\n"
+        "```javascript\n"
+        "// Inspect React Query / SWR cache (if used)\n"
+        "window.__REACT_QUERY_DEVTOOLS_GLOBAL_HOOK__\n\n"
+        "// Force re-render every interval (smoke test for memory leaks)\n"
+        "let i = 0; setInterval(() => console.log('tick', ++i), 1000);\n\n"
+        "// Watch all network requests\n"
+        "const orig = fetch; window.fetch = (...a) => { console.log('fetch', a); return orig(...a); };\n\n"
+        "// Inspect ErrorTracker (per §26.4 of CLAUDE.md)\n"
+        "window.__errors?.getSummary()\n"
+        "window.__errors?.getReport()\n"
+        "```\n\n"
+        "### Microfrontend pattern (when this folder splits)\n\n"
+        "If this app grows past ~150K LOC or multiple teams own different "
+        "routes, consider Module Federation (Webpack 5) or `@module-federation/nextjs-mf`:\n\n"
+        "```text\n"
+        "  ┌─ Shell App ──────────────────────────┐\n"
+        "  │   Top-level layout + shared chrome   │\n"
+        "  │   ┌─────────┐  ┌─────────┐  ┌──────┐ │\n"
+        "  │   │ Admin MF│  │ Search  │  │ Ops  │ │\n"
+        "  │   │ (team A)│  │ MF (B)  │  │ MF(C)│ │\n"
+        "  │   └─────────┘  └─────────┘  └──────┘ │\n"
+        "  └──────────────────────────────────────┘\n"
+        "```\n\n"
+        "**Today's status in this folder:** single Next.js app (not "
+        "microfronted). Track at: `docs/architecture/adr/` if/when this changes.\n\n"
+    )
+
+
+def section_execution_sequence(f: FolderFacts) -> str:
+    """Per-phase execution trace with debug-tap commands at each phase."""
+    if not f.api_endpoints:
+        return ""
+    # Pick the primary endpoint (or first one) and emit a phase-by-phase trace.
+    ep = f.api_endpoints[0]
+    # Detect port via env vars
+    port = _service_port(f.name)
+    return (
+        "## 🔬 Execution Sequence + Debug Tap Points\n\n"
+        "For each phase a request goes through, this section shows: "
+        "**(1)** the file:line where it happens, **(2)** the log line you'll "
+        "see, **(3)** the command to inspect that phase's output in real "
+        "time. Use this as your debug-flow chart — start at Phase 0, move "
+        "down until output stops matching the expected log line; that's "
+        "where the failure is.\n\n"
+        f"**Worked example:** `{ep.method} {ep.route}` "
+        f"({ep.file}:{ep.line})\n\n"
+        "### Phase-by-phase debug tap table\n\n"
+        "| # | Phase | Code location | Log line to grep | Command to inspect |\n"
+        "|---|---|---|---|---|\n"
+        f"| 0 | **TCP connect** | OS / docker network | `client_connected` | "
+        f"`curl -v http://localhost:{port}/health 2>&1 \\| head -15` |\n"
+        "| 1 | **Middleware: request_id assign** | `documind_core/middleware.py` | "
+        f"`request_id=...` | `docker logs documind-{f.name} -f \\| grep request_id` |\n"
+        "| 2 | **Middleware: auth** | `documind_core/auth.py` | "
+        "`auth_ok` or `auth_denied` | "
+        f"`docker logs documind-{f.name} -f \\| grep auth_` |\n"
+        "| 3 | **Middleware: tenant resolution** | `documind_core/middleware.py` | "
+        "`tenant_id=<id>` | "
+        f"`docker logs documind-{f.name} -f \\| grep tenant_id` |\n"
+        "| 4 | **Pydantic validation** | `app/schemas/*.py` | "
+        "`422 Unprocessable` (on fail) | "
+        f"`docker logs documind-{f.name} -f \\| grep -E 'validation\\|422'` |\n"
+        f"| 5 | **Router dispatch** | `{ep.file}:{ep.line}` | "
+        f"`{ep.method} {ep.route}` | "
+        f"`docker logs documind-{f.name} -f \\| grep '{ep.route}'` |\n"
+        "| 6 | **Business service call** | `app/services/*.py` | "
+        "`service_method_start` | "
+        f"`docker logs documind-{f.name} -f \\| grep service_` |\n"
+        "| 7 | **DB query** | `app/repositories/*.py` or `documind_core/db_client.py` | "
+        "`asyncpg.execute` or `SELECT...` | "
+        f"`docker logs documind-postgres -f \\| grep -E 'duration:'` |\n"
+        "| 8 | **External call (LLM / vector)** | `app/services/*_client.py` | "
+        "`llm_call_start` / `vector_search_start` | "
+        f"`docker logs documind-{f.name} -f \\| grep -E 'llm_\\|vector_'` |\n"
+        "| 9 | **Decision audit log** | `documind_core/ai_governance.py` | "
+        "`decision_audit:` | "
+        "`psql -p 55432 -U documind -c \"SELECT * FROM decision_audit ORDER BY ts DESC LIMIT 1;\"` |\n"
+        "| 10 | **Response shaping** | `app/schemas/*.py` (response model) | "
+        "`response_ms=` | "
+        f"`docker logs documind-{f.name} -f \\| grep response_ms` |\n"
+        "| 11 | **Trace span flush** | OTel exporter | _(async)_ | "
+        f"Open Jaeger UI: `http://localhost:16686/search?service={f.name}` |\n\n"
+        "### Reproducible end-to-end trace\n\n"
+        "Use this script to fire ONE request and see every phase's output "
+        "in a single terminal:\n\n"
+        "```bash\n"
+        "REQ_ID=$(uuidgen)\n"
+        f"echo \"=== Issuing {ep.method} {ep.route} with request_id=$REQ_ID ===\"\n\n"
+        "# Phase 0-2: tail logs in background\n"
+        f"docker logs documind-{f.name} --tail=0 -f 2>&1 | grep --line-buffered \"$REQ_ID\" &\n"
+        "TAIL_PID=$!\n"
+        "sleep 0.5\n\n"
+        "# Phase 3-10: fire the request\n"
+        f"curl -X {ep.method} http://localhost:{port}{ep.route} \\\n"
+        "  -H \"X-Correlation-ID: $REQ_ID\" \\\n"
+        "  -H \"Authorization: Bearer <token>\" \\\n"
+        "  -H \"Content-Type: application/json\" \\\n"
+        "  -d '{}' -w \"\\nTOTAL=%{time_total}s\\n\"\n\n"
+        "sleep 2  # let logs flush\n"
+        "kill $TAIL_PID\n\n"
+        "# Phase 9: pull the decision audit row\n"
+        "psql -h localhost -p 55432 -U documind -d documind \\\n"
+        "  -c \"SELECT request_id, model_version, prompt_version, decision, confidence FROM decision_audit WHERE request_id='$REQ_ID';\"\n\n"
+        "# Phase 11: pull the trace span tree\n"
+        f"open \"http://localhost:16686/search?service={f.name}&tags=%7B%22request_id%22%3A%22$REQ_ID%22%7D\"\n"
+        "```\n\n"
+        "### Debug-order checklist (when something breaks)\n\n"
+        "Walk the phases IN ORDER — first phase with missing/wrong output "
+        "is the failure point. Don't skip ahead:\n\n"
+        "1. **Phase 0 fail?** Service not running → `bash scripts/circuitrag-status.sh`\n"
+        "2. **Phase 1-3 fail?** Middleware misconfigured → check env vars + middleware order in `main.py`\n"
+        "3. **Phase 4 fail (422)?** Request body doesn't match schema → check Pydantic model in `app/schemas/`\n"
+        "4. **Phase 5 fail (404)?** Route not registered → check router import in `main.py`\n"
+        "5. **Phase 6 fail (500)?** Business logic exception → tail logs for stack trace\n"
+        "6. **Phase 7 fail?** DB unreachable → `psql -p 55432 -U documind -c \"SELECT 1;\"`\n"
+        "7. **Phase 8 fail?** External dep down → check `/health/upstreams` + circuit breaker state\n"
+        "8. **Phase 9 missing?** Decision audit not persisted → check Kafka consumer lag\n"
+        "9. **Phase 10 slow?** Response shaping bottleneck → profile the response model\n"
+        "10. **Phase 11 empty Jaeger?** OTel exporter misconfigured → check `OTEL_EXPORTER_OTLP_ENDPOINT`\n\n"
+    )
+
+
+def section_business_logic_sequence(f: FolderFacts) -> str:
+    """How business logic is structured + the logical step sequence."""
+    # Find the primary business-logic file and method (longest service file).
+    service_files = [fe for fe in f.files
+                     if "🧠 business service" in fe.role]
+    if not service_files:
+        return ""
+    primary = max(service_files, key=lambda fe: fe.lines)
+    # Find the longest function in any service file
+    primary_fn = None
+    for lines, loc, name in f.longest_functions:
+        if any(sf.rel in loc for sf in service_files):
+            primary_fn = (lines, loc, name)
+            break
+    hottest_block = (
+        f"**Hottest function:** `{primary_fn[2]}` at `{primary_fn[1]}` "
+        f"({primary_fn[0]} lines)\n\n"
+        if primary_fn else ""
+    )
+    hottest_name = primary_fn[2] if primary_fn else "main service method"
+    return (
+        "## 🧠 Business Logic — How It's Written + Logical Step Sequence\n\n"
+        "### Where business logic lives\n\n"
+        "Business logic is **separated from HTTP** — routers receive validated "
+        "requests and immediately delegate to a service class. Services hold "
+        "the state machines, calling repositories for I/O and external clients "
+        "for LLM / vector / Kafka.\n\n"
+        f"**Primary business-logic file in this folder:** `{primary.rel}` "
+        f"({primary.lines} LOC, {primary.classes} classes, "
+        f"{primary.functions + primary.async_functions} functions)\n\n"
+        f"{hottest_block}"
+        "### The canonical logical step sequence\n\n"
+        "Every business-service method in this folder follows this 11-step "
+        "skeleton (some steps are skipped if not applicable):\n\n"
+        "```python\n"
+        "async def some_service_method(self, request: RequestSchema) -> ResponseSchema:\n"
+        "    # ── Step 1: Pre-conditions / argument check ─────────────────\n"
+        "    if not request.is_valid():\n"
+        "        raise BadRequest('reason')\n"
+        "\n"
+        "    # ── Step 2: Idempotency check (X-Idempotency-Key) ──────────\n"
+        "    cached = await self.cache.get(request.idempotency_key)\n"
+        "    if cached:\n"
+        "        return cached  # short-circuit duplicate request\n"
+        "\n"
+        "    # ── Step 3: Authorization (RBAC / tenant scope) ────────────\n"
+        "    self.authz.require(request.actor, 'resource:action')\n"
+        "\n"
+        "    # ── Step 4: Load context (DB / cache / config) ─────────────\n"
+        "    context = await self.repo.load_context(request.tenant_id)\n"
+        "\n"
+        "    # ── Step 5: Apply business rules ───────────────────────────\n"
+        "    decision = self.rules.evaluate(request, context)\n"
+        "\n"
+        "    # ── Step 6: External calls (LLM / vector / 3rd-party) ──────\n"
+        "    async with self.breaker:  # circuit breaker wrap\n"
+        "        llm_response = await self.llm.call(...)\n"
+        "\n"
+        "    # ── Step 7: Post-processing / output validation ────────────\n"
+        "    self.guardrails.check(llm_response)\n"
+        "\n"
+        "    # ── Step 8: Persist state (DB write + Kafka emit) ──────────\n"
+        "    async with self.repo.transaction():\n"
+        "        await self.repo.save(record)\n"
+        "        await self.kafka.publish('topic', event)\n"
+        "\n"
+        "    # ── Step 9: Decision audit row (§38 + §48) ─────────────────\n"
+        "    await self.audit.log_decision({\n"
+        "        'request_id': request.id,\n"
+        "        'model_version': self.model.version,\n"
+        "        'prompt_version': self.prompt.version,\n"
+        "        'decision': decision,\n"
+        "        'confidence': llm_response.confidence,\n"
+        "    })\n"
+        "\n"
+        "    # ── Step 10: Cache the response (if idempotent) ────────────\n"
+        "    await self.cache.set(request.idempotency_key, response, ttl=3600)\n"
+        "\n"
+        "    # ── Step 11: Return + emit metric ──────────────────────────\n"
+        "    self.metrics.observe('request_latency', elapsed_ms)\n"
+        "    return ResponseSchema(...)\n"
+        "```\n\n"
+        "### How to map a real method to this skeleton\n\n"
+        f"1. Open `{primary.rel}` in your editor\n"
+        f"2. Find the longest function (likely `{hottest_name}`)\n"
+        "3. Walk it line by line; tag each block with the corresponding step number from the skeleton above\n"
+        "4. Steps that are missing are opportunities (e.g. missing idempotency check, missing audit row) — file as P1/P2 in the brutal-tool-review for this folder\n\n"
+        "### Inspecting each step at runtime\n\n"
+        "| Step | What to inspect | How |\n|---|---|---|\n"
+        "| 1 | Pre-condition rejects | grep `BadRequest` in logs |\n"
+        "| 2 | Idempotency cache hits | grep `cache_hit=true` in logs |\n"
+        "| 3 | Authz denials | grep `authz_denied` in logs |\n"
+        "| 4 | Context load latency | `pg_stat_statements` slow-query log |\n"
+        "| 5 | Rule evaluation | trace span `business.rules.evaluate` |\n"
+        "| 6 | External call latency | trace span `llm.call` / `vector.search` |\n"
+        "| 7 | Guardrail rejections | grep `guardrail_triggered` in logs |\n"
+        "| 8 | Transaction commits | grep `tx_commit` in logs |\n"
+        "| 9 | Decision audit rows | `SELECT * FROM decision_audit ORDER BY ts DESC LIMIT 5;` |\n"
+        "| 10 | Cache writes | `redis-cli -p 56379 MONITOR` |\n"
+        "| 11 | Latency histogram | Grafana panel: `histogram_quantile(0.95, ...)` |\n\n"
     )
 
 
@@ -1300,12 +2437,23 @@ def render(f: FolderFacts) -> str:
         header(f, now),
         section_0_facts(f),
         section_1_purpose(f),
+        # Onboarding triad — read these first
+        section_quick_start(f),
+        section_read_order(f),
+        section_env_vars(f),
         section_2_file_inventory(f),
+        section_where_does_x_live(f),
         section_3_c4_model(f),
+        section_class_diagram(f),
         section_4_code_sequence(f),
         section_5_flowchart(f),
         section_6_api_endpoints(f),
+        section_ipo_integration_principles(f),
+        section_execution_sequence(f),  # debug-tap version of "what happens per phase"
+        section_business_logic_sequence(f),
         section_7_sequence_diagrams(f),
+        section_frontend(f),
+        section_annotated_request(f),
         section_8_database(f),
         section_9_code_quality(f),
         section_10_security(f),
@@ -1316,11 +2464,13 @@ def render(f: FolderFacts) -> str:
         section_15_llm(f),
         section_16_principles(),
         section_17_integration(f),
+        section_glossary(f),
         section_18_debugging(f),
+        section_recent_activity(f),
         section_19_gates(f),
         section_20_final(),
     ]
-    return "\n".join(parts)
+    return "\n".join(p for p in parts if p)
 
 
 # ─── Batch + CLI ───────────────────────────────────────────────────────

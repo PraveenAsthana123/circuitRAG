@@ -1,6 +1,6 @@
 # 📦 `scripts` — Advanced README
 
-🔧 **Scripts**  ·  **Path:** `scripts`  ·  **Generated:** 2026-05-16 19:57 UTC
+🔧 **Scripts**  ·  **Path:** `scripts`  ·  **Generated:** 2026-05-16 20:26 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -18,16 +18,16 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | TypeScript/JS files | 0 |
 | Go files | 0 |
 | Shell scripts | 35 |
-| Lines of code | 41,005 |
-| Python classes | 120 |
-| Python functions | 1022 |
+| Lines of code | 42,101 |
+| Python classes | 123 |
+| Python functions | 1040 |
 | Async functions | 42 |
 | Total API endpoints | 5 |
 | Total DB call sites | 107 |
 | DB / Storage libs | Elasticsearch, Kafka (aiokafka), MongoDB (pymongo), Neo4j, Qdrant, Redis, SQLAlchemy, asyncpg, psycopg |
 | Concurrency primitives | Lock / RLock, asyncio (async/await), concurrent.futures, threading |
 | Caching primitives | functools.cache, in-memory @lru_cache, redis |
-| Input validation | Manual escape, Pydantic BaseModel, Pydantic validator |
+| Input validation | Manual escape, Pydantic BaseModel, Pydantic validator, Zod (TS) |
 | AI / LLM deps | Anthropic SDK, DeepEval, Giskard, LangChain, LangGraph, Ollama, OpenAI SDK, OpenTelemetry GenAI, Ragas, Rebuff (PI defense) |
 | Test files | 3 |
 | Detected test cases | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `216	PraveenAsthana123`, `2	Praveen` |
+| Top git contributors | `217	PraveenAsthana123`, `2	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -52,10 +52,10 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 
 | Smell | Count |
 |---|---|
-| hardcoded localhost URL | 90 |
+| hardcoded localhost URL | 93 |
 | hardcoded password literal | 1 |
 | hardcoded API key literal | 1 |
-| TODO/FIXME marker | 13 |
+| TODO/FIXME marker | 33 |
 
 
 ## 1. Purpose — Business + Technical
@@ -73,6 +73,216 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 > _Reviewer to fill: explicit non-goals — prevents scope creep at review time._
 
 
+## 🗺 How to Read This Folder (Guided Tour)
+
+Read these files in order — by the end, you'll understand 80% of this folder's behavior. Click any path to jump straight to the source.
+
+1. **`promote_best_config.py`** (⚙ config / settings, 278 LOC) — Every env var the service reads. Read this BEFORE running locally.
+2. **`best_config_loader.py`** (⚙ config / settings, 241 LOC) — Every env var the service reads. Read this BEFORE running locally.
+3. **`best_config_history.py`** (⚙ config / settings, 206 LOC) — Every env var the service reads. Read this BEFORE running locally.
+4. **`agent_task_registry.py`** (🤖 agent / tool, 827 LOC) — Unified agent task registry — provider-comparison rollup.
+5. **`gemma_agent_council.py`** (🤖 agent / tool, 446 LOC) — Gemma Agent Council — 5-agent orchestrator using local Gemma stack.
+6. **`catalog_tools_probe.py`** (🤖 agent / tool, 445 LOC) — Probe every tool in config/agentic_observability/oss_tooling_catalog.yaml
+7. **`agent_readiness_check.py`** (🤖 agent / tool, 405 LOC) — Agent readiness check — does the council actually FIX things? (iter-76).
+8. **`agent_task_board.py`** (🤖 agent / tool, 404 LOC) — Agent Task Board — central status view + drill-gated apply pipeline.
+
+Click absolute paths for direct `cat`-ability in the §2 File Inventory above.
+
+
+## ⚙ Environment Variables
+
+All env vars this folder reads, auto-extracted from `BaseSettings` field declarations and `os.environ.get` calls.
+
+### Runtime `os.environ.get` / `os.getenv` calls
+
+| Variable | Default | Source location |
+|---|---|---|
+| `PROMETHEUS_URL` | `http://localhost:9090` | `aiops_retrain_trigger.py:35` |
+| `DOCUMIND_EVALUATION_URL` | `http://localhost:8085` | `aiops_retrain_trigger.py:36` |
+| `NATIVE_COMPUTE_WRAPPER_ENABLED` | **required** | `native_compute_wrapper.py:61` |
+| `NAME` | `default` | `generate_folder_report.py:558` |
+| `PYTHON_BIN` | **required** | `write_drill_status.py:61` |
+| `WHATSAPP_WEBHOOK_ENABLED` | **required** | `whatsapp_fastapi_router.py:56` |
+| `WHATSAPP_PROVIDER` | `meta` | `whatsapp_fastapi_router.py:124` |
+| `WHATSAPP_META_APP_SECRET` | **required** | `whatsapp_fastapi_router.py:129` |
+| `PII_REDACTOR_ENABLED` | **required** | `whatsapp_fastapi_router.py:157` |
+| `GEMMA_AGENT_COUNCIL_ENABLED` | **required** | `whatsapp_fastapi_router.py:173` |
+| `WHATSAPP_PROVIDER` | `meta` | `whatsapp_fastapi_router.py:243` |
+| `AUTORAG_OPTIMIZER_ENABLED` | **required** | `autorag_optimizer.py:57` |
+| `MCP_GATEWAY_ENABLED` | **required** | `mcp_gateway.py:53` |
+| `MCP_GATEWAY_STRICT` | **required** | `mcp_gateway.py:58` |
+| `MCP_GATEWAY_SQL_AUDIT_ENABLED` | **required** | `mcp_gateway.py:356` |
+| `DOCUMIND_PG_HOST` | `localhost` | `mcp_gateway.py:389` |
+| `DOCUMIND_PG_PORT` | `55432` | `mcp_gateway.py:390` |
+| `DOCUMIND_PG_USER` | `documind_app` | `mcp_gateway.py:391` |
+| `DOCUMIND_PG_PASSWORD` | `documind_app` | `mcp_gateway.py:392` |
+| `DOCUMIND_PG_DB` | `documind` | `mcp_gateway.py:393` |
+| `PYDANTICAI_ENABLED` | **required** | `pydanticai_adapter.py:42` |
+| `GEPA_TARGET_PROMPT_NAME` | **required** | `promote_gepa_prompts.py:228` |
+| `CACHE_FINGERPRINT_ENABLED` | **required** | `cache_fingerprint.py:73` |
+| `LANGSMITH_API_KEY` | **required** | `lang_observability_status.py:66` |
+| `LANGCHAIN_API_KEY` | **required** | `lang_observability_status.py:66` |
+| `LANGSMITH_ENDPOINT` | **required** | `lang_observability_status.py:67` |
+| `LANGCHAIN_ENDPOINT` | **required** | `lang_observability_status.py:67` |
+| `LANGFUSE_HOST` | `http://localhost:3002` | `lang_observability_status.py:87` |
+| `LANGFUSE_PUBLIC_KEY` | **required** | `lang_observability_status.py:89` |
+| `LANGFUSE_SECRET_KEY` | **required** | `lang_observability_status.py:90` |
+| `COUNCIL_STATS_WEBHOOK` | **required** | `council_filter_stats.py:1014` |
+| `MCP_INJECT_FAIL` | **required** | `build_mcp_sdlc_batch.py:271` |
+| `DOCUMIND_PG_HOST` | `localhost` | `replay_action_draft.py:49` |
+| `DOCUMIND_PG_PORT` | `55432` | `replay_action_draft.py:50` |
+| `DOCUMIND_PG_USER` | `documind` | `replay_action_draft.py:51` |
+| `DOCUMIND_PG_PASSWORD` | `documind` | `replay_action_draft.py:52` |
+| `DOCUMIND_PG_DB` | `documind` | `replay_action_draft.py:53` |
+| `DOCUMIND_PG_HOST` | `localhost` | `sync_tools_catalog.py:209` |
+| `DOCUMIND_PG_PORT` | `55432` | `sync_tools_catalog.py:210` |
+| `DOCUMIND_PG_USER` | `documind_app` | `sync_tools_catalog.py:211` |
+| `DOCUMIND_PG_PASSWORD` | `documind_app` | `sync_tools_catalog.py:212` |
+| `DOCUMIND_PG_DB` | `documind` | `sync_tools_catalog.py:213` |
+| `MCP_TOOLS_SYNC_ENABLED` | **required** | `sync_tools_catalog.py:256` |
+| `KAFKA_PUBLISH` | **required** | `event_publisher.py:57` |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:9092` | `event_publisher.py:220` |
+| `SLACK_WEBHOOK_URL` | **required** | `notifications.py:100` |
+| `EMAIL_SMTP_USER` | **required** | `notifications.py:139` |
+| `EMAIL_SMTP_APP_PASSWORD` | **required** | `notifications.py:140` |
+| `EMAIL_TO` | **required** | `notifications.py:141` |
+| `EMAIL_SMTP_HOST` | `smtp.gmail.com` | `notifications.py:145` |
+| `EMAIL_SMTP_PORT` | `587` | `notifications.py:146` |
+| `TWILIO_ACCOUNT_SID` | **required** | `notifications.py:171` |
+| `TWILIO_AUTH_TOKEN` | **required** | `notifications.py:172` |
+| `TWILIO_WHATSAPP_FROM` | **required** | `notifications.py:173` |
+| `WHATSAPP_TO` | **required** | `notifications.py:174` |
+| `GENERIC_WEBHOOK_URL` | **required** | `notifications.py:216` |
+| `LITELLM_ENABLED` | **required** | `litellm_adapter.py:40` |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | `litellm_adapter.py:167` |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | `litellm_adapter.py:190` |
+| `STAGE3_EARNED_CHECK_ENABLED` | **required** | `stage3_earned_check.py:63` |
+| `STAGE3_MIN_CYCLES` | `10` | `stage3_earned_check.py:65` |
+| `STAGE3_MIN_SUCCESS_RATIO` | `0.8` | `stage3_earned_check.py:66` |
+| `STAGE3_MIN_DISTINCT` | `2` | `stage3_earned_check.py:73` |
+| `DOCUMIND_PG_OPS_USER` | `documind_ops` | `audit_verify.py:77` |
+| `DOCUMIND_PG_OPS_PASSWORD` | `documind_ops` | `audit_verify.py:78` |
+| `DOCUMIND_PG_HOST` | `localhost` | `audit_verify.py:79` |
+| `DOCUMIND_PG_PORT` | `55432` | `audit_verify.py:80` |
+| `DOCUMIND_PG_DB` | `documind` | `audit_verify.py:81` |
+| `PROMOTION_GATE_ENABLED` | **required** | `promote_best_config.py:57` |
+| `PROMOTION_MIN_PASS_RATE` | `0.5` | `promote_best_config.py:60` |
+| `PROMOTION_MIN_MARGIN` | `0.0` | `promote_best_config.py:61` |
+| `PROMOTION_MIN_EVAL_SET` | `5` | `promote_best_config.py:62` |
+| `SAFETY_STORE_DB` | `str(SAFETY_DB_DEFAULT` | `paperclip_manager.py:290` |
+| `SAFETY_STORE_DB` | `str(SAFETY_DB_DEFAULT` | `paperclip_manager.py:374` |
+| `XAI_API_KEY` | **required** | `paperclip_manager.py:1280` |
+| `XAI_API_KEY` | **required** | `paperclip_manager.py:1304` |
+| `WHATSAPP_WEBHOOK_ENABLED` | **required** | `whatsapp_webhook.py:65` |
+| `WHATSAPP_PROVIDER` | `meta` | `whatsapp_webhook.py:66` |
+| `WHATSAPP_VERIFY_TOKEN` | **required** | `whatsapp_webhook.py:67` |
+| `WHATSAPP_META_APP_SECRET` | **required** | `whatsapp_webhook.py:112` |
+| `WHATSAPP_TWILIO_AUTH_TOKEN` | **required** | `whatsapp_webhook.py:113` |
+| `DOCUMIND_PG_HOST` | `localhost` | `migrate.py:25` |
+| `DOCUMIND_PG_PORT` | `5432` | `migrate.py:26` |
+| `DOCUMIND_PG_DB` | `documind` | `migrate.py:27` |
+| `DOCUMIND_PG_USER` | `documind` | `migrate.py:28` |
+| `DOCUMIND_PG_PASSWORD` | `documind` | `migrate.py:29` |
+| `DOCUMIND_MCP_JIRA_URL` | **required** | `mcp_fleet_health.py:149` |
+| `EVAL_SET_GENERATOR_ENABLED` | **required** | `eval_set_generator.py:61` |
+| `EVAL_SET_GENERATOR_MODEL` | `gemma3:4b` | `eval_set_generator.py:62` |
+| `EVAL_SET_GENERATOR_TIMEOUT_S` | `30` | `eval_set_generator.py:63` |
+| `EVAL_SET_MAX_PAIRS` | `50` | `eval_set_generator.py:64` |
+| `OLLAMA_HOST` | `http://localhost:11434` | `eval_set_generator.py:65` |
+| `AUTORAG_OPTIMIZER_ENABLED` | **required** | `run_autorag_empirical.py:163` |
+| `PROMOTION_GATE_ENABLED` | **required** | `run_autorag_empirical.py:243` |
+| `DOCUMIND_PG_HOST` | `localhost` | `hitl_drafts_triage.py:33` |
+| `DOCUMIND_PG_PORT` | `55432` | `hitl_drafts_triage.py:34` |
+| `DOCUMIND_PG_USER` | `documind` | `hitl_drafts_triage.py:35` |
+| `DOCUMIND_PG_PASSWORD` | `documind` | `hitl_drafts_triage.py:36` |
+| `DOCUMIND_PG_DB` | `documind` | `hitl_drafts_triage.py:37` |
+| `PYTHON_BIN` | **required** | `run_drills.py:63` |
+| `AGENT_ROUTER_OLLAMA_ENABLED` | **required** | `agent_router.py:60` |
+| `DSPY_OPTIMIZER_ENABLED` | **required** | `dspy_optimizer.py:63` |
+| `DSPY_LM_MODEL` | `ollama_chat/gemma2:9b` | `dspy_optimizer.py:64` |
+| `OLLAMA_HOST` | `http://localhost:11435` | `dspy_optimizer.py:65` |
+| `RAGAS_EVAL_ENABLED` | **required** | `ragas_eval_adapter.py:56` |
+| `RAGAS_LM_MODEL` | `ollama_chat/gemma2:9b` | `ragas_eval_adapter.py:57` |
+| `OLLAMA_HOST` | `http://localhost:11434` | `ragas_eval_adapter.py:58` |
+| `RAGAS_FAITHFULNESS_THRESHOLD` | `0.7` | `ragas_eval_adapter.py:64` |
+| `RAGAS_ANSWER_RELEVANCY_THRESHOLD` | `0.7` | `ragas_eval_adapter.py:65` |
+| `RAGAS_CONTEXT_PRECISION_THRESHOLD` | `0.5` | `ragas_eval_adapter.py:66` |
+| `RAGAS_CONTEXT_RECALL_THRESHOLD` | `0.5` | `ragas_eval_adapter.py:67` |
+| `RAGAS_ANSWER_CORRECTNESS_THRESHOLD` | `0.6` | `ragas_eval_adapter.py:68` |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | `ollama_all_models_smoke.py:47` |
+| `DSPY_OPTIMIZER_ENABLED` | `(unset` | `show_gepa_status.py:96` |
+| `GEMMA_AGENT_COUNCIL_ENABLED` | `(unset` | `show_gepa_status.py:97` |
+| `OLLAMA_HOST` | `(default` | `show_gepa_status.py:98` |
+| `GEPA_PROMOTION_GATE_ENABLED` | `(unset` | `show_gepa_status.py:124` |
+| `GEPA_PROMPT_LOADER_ENABLED` | `(unset` | `show_gepa_status.py:134` |
+| `GEPA_TARGET_PROMPT_NAME` | `(unset` | `show_gepa_status.py:155` |
+| `GEPA_CANARY_ENABLED` | **required** | `show_gepa_status.py:165` |
+| `GEPA_CANARY_PERCENT` | `0` | `show_gepa_status.py:166` |
+| `BEST_CONFIG_HISTORY_ENABLED` | **required** | `best_config_history.py:46` |
+| `KUBECONFIG` | `/mnt/deepa/.kube/config` | `catalog_tools_probe.py:265` |
+| `KUBECONFIG` | `/mnt/deepa/.kube/config` | `catalog_tools_probe.py:291` |
+| `DSPY_OPTIMIZER_ENABLED` | **required** | `run_gepa_empirical.py:459` |
+| `HYDE_ENABLED` | **required** | `hyde_adapter.py:67` |
+| `HYDE_MODEL` | `gemma3:1b` | `hyde_adapter.py:68` |
+| `HYDE_MAX_TOKENS` | `200` | `hyde_adapter.py:69` |
+| `HYDE_TIMEOUT_S` | `10` | `hyde_adapter.py:70` |
+| `OLLAMA_HOST` | `http://localhost:11434` | `hyde_adapter.py:71` |
+| `DOCUMIND_PG_HOST` | `localhost` | `seed_demo.py:61` |
+| `DOCUMIND_PG_PORT` | `5432` | `seed_demo.py:62` |
+| `DOCUMIND_PG_DB` | `documind` | `seed_demo.py:63` |
+| `DOCUMIND_PG_USER` | `documind` | `seed_demo.py:64` |
+| `DOCUMIND_PG_PASSWORD` | `documind` | `seed_demo.py:65` |
+| `EVAL_GATE_GROUNDEDNESS_THRESHOLD` | `0.55` | `eval_quality_status.py:87` |
+| `EVAL_GATE_CONTEXT_RELEVANCE_THRESHOLD` | `0.35` | `eval_quality_status.py:88` |
+| `EVAL_GATE_CORRECTNESS_THRESHOLD` | `0.60` | `eval_quality_status.py:89` |
+| `RAGAS_EVAL_ENABLED` | **required** | `eval_quality_status.py:260` |
+| `RAGAS_EVAL_ENABLED` | **required** | `eval_quality_status.py:261` |
+| `GISKARD_SCAN_ENABLED` | **required** | `eval_quality_status.py:266` |
+| `GISKARD_SCAN_ENABLED` | **required** | `eval_quality_status.py:267` |
+| `DEEPEVAL_ENABLED` | **required** | `eval_quality_status.py:272` |
+| `DEEPEVAL_ENABLED` | **required** | `eval_quality_status.py:273` |
+| `DOCUMIND_INGESTION_URL` | `http://localhost:8082` | `smoke_test.py:24` |
+| `DOCUMIND_INFERENCE_URL` | `http://localhost:8084` | `smoke_test.py:25` |
+| `DOCUMIND_RETRIEVAL_URL` | `http://localhost:8083` | `smoke_test.py:26` |
+| `BEST_CONFIG_LOADER_ENABLED` | `1` | `best_config_loader.py:63` |
+| `BEST_CONFIG_PATH` | `.loop/best_config.json` | `best_config_loader.py:65` |
+| `BEST_CONFIG_TTL_S` | `300` | `best_config_loader.py:66` |
+| `REBUFF_PI_THRESHOLD` | `0.5` | `rebuff_status.py:89` |
+| `REBUFF_ENABLED` | **required** | `rebuff_status.py:175` |
+| `REBUFF_API_TOKEN` | **required** | `rebuff_status.py:176` |
+| `REBUFF_API_URL` | `https://www.rebuff.ai` | `rebuff_status.py:177` |
+| `DOCUMIND_PG_HOST` | `localhost` | `agent_task_registry.py:69` |
+| `DOCUMIND_PG_PORT` | `55432` | `agent_task_registry.py:70` |
+| `DOCUMIND_PG_USER` | `documind` | `agent_task_registry.py:71` |
+| `DOCUMIND_PG_PASSWORD` | `documind` | `agent_task_registry.py:72` |
+| `DOCUMIND_PG_DB` | `documind` | `agent_task_registry.py:73` |
+| `PAPERCLIP_DISPATCH_ENABLED` | **required** | `paperclip_dispatcher.py:41` |
+| `GEMMA_AGENT_COUNCIL_ENABLED` | **required** | `gemma_agent_council.py:65` |
+| `OLLAMA_HOST` | `http://localhost:11435` | `gemma_agent_council.py:66` |
+| `GEMMA_SAFETY_PRE_MODEL` | `shieldgemma:2b` | `gemma_agent_council.py:80` |
+| `GEMMA_ROUTER_MODEL` | `gemma3:1b` | `gemma_agent_council.py:81` |
+| `GEMMA_PLANNER_MODEL` | `gemma3:4b` | `gemma_agent_council.py:82` |
+| `GEMMA_CODE_MODEL` | `codegemma:7b` | `gemma_agent_council.py:83` |
+| `GEMMA_RAG_MODEL` | `gemma2:9b` | `gemma_agent_council.py:84` |
+| `GEMMA_GENERAL_MODEL` | `gemma3:4b` | `gemma_agent_council.py:85` |
+| `GEMMA_CRITIC_MODEL` | `gemma2:9b` | `gemma_agent_council.py:86` |
+| `GEMMA_SAFETY_POST_MODEL` | `shieldgemma:9b` | `gemma_agent_council.py:87` |
+| `OLLAMA_FALLBACK_MODEL` | `qwen2.5:latest` | `chatxai_fallback.py:38` |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | `chatxai_fallback.py:39` |
+| `XAI_API_KEY` | **required** | `chatxai_fallback.py:44` |
+| `LANGFUSE_TRACER_ENABLED` | **required** | `langfuse_tracer.py:73` |
+| `LANGFUSE_HOST` | `http://localhost:3000` | `langfuse_tracer.py:74` |
+| `LANGFUSE_PUBLIC_KEY` | **required** | `langfuse_tracer.py:75` |
+| `LANGFUSE_SECRET_KEY` | **required** | `langfuse_tracer.py:76` |
+| `DOCUMIND_NEO4J_USER` | `neo4j` | `scenario_batch_and_inference.py:54` |
+| `DOCUMIND_NEO4J_PASSWORD` | `documind` | `scenario_batch_and_inference.py:55` |
+| `DOCUMIND_JAEGER_API_URL` | `http://localhost:16686` | `scenario_batch_and_inference.py:499` |
+| `PII_REDACTOR_ENABLED` | **required** | `pii_redactor.py:52` |
+| `PII_REDACTOR_SCORE_THRESHOLD` | `0.5` | `pii_redactor.py:53` |
+
+_Variables marked **required** must be set — missing values may raise on startup or silently default to empty strings._
+
+
 ## 2. File Inventory
 
 Every Python file in this folder, with role / classes / functions / LOC / first docstring line. Full absolute paths listed below the table for easy `cat`-ability.
@@ -82,12 +292,12 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `advanced_healthcheck.py` | 📄 module | 1 | 18 | 568 | Advanced multi-layer health-check + troubleshoot + tracking tool. |
 | `agent_lead.py` | 🤖 agent / tool | 1 | 3 | 249 | Agent-lead-first routing — Tier 1 #1.2 of the autonomous-fix-bot roadmap. |
 | `agent_readiness_check.py` | 🤖 agent / tool | 0 | 9 | 405 | Agent readiness check — does the council actually FIX things? (iter-76). |
-| `agent_router.py` | 🌐 HTTP router / API endpoints | 2 | 7 | 400 | Agent Router Stage-1 — intent + risk classifier (conservative-default). |
+| `agent_router.py` | 🤖 agent / tool | 2 | 7 | 400 | Agent Router Stage-1 — intent + risk classifier (conservative-default). |
 | `agent_task_board.py` | 🤖 agent / tool | 0 | 10 | 404 | Agent Task Board — central status view + drill-gated apply pipeline. |
 | `agent_task_registry.py` | 🤖 agent / tool | 0 | 12 | 827 | Unified agent task registry — provider-comparison rollup. |
 | `agentic_observability_audit.py` | 🤖 agent / tool | 0 | 2 | 139 | Audit the 35-scenario agentic observability catalog (iter-96). |
 | `aiops_retrain_trigger.py` | 📄 module | 1 | 5 | 154 | AIops — automatic retrain-trigger driver. |
-| `append_drill_history.py` | 🚀 entry point / app bootstrap | 0 | 4 | 120 | Append .loop/last_drill_outcome.json → .loop/drill_history.jsonl. |
+| `append_drill_history.py` | 📄 module | 0 | 4 | 120 | Append .loop/last_drill_outcome.json → .loop/drill_history.jsonl. |
 | `audit_verify.py` | 📄 module | 1 | 8 | 360 | audit_verify.py — walk governance.audit_log per tenant and detect tampering. |
 | `autonomous_fix_daemon.py` | 📄 module | 0 | 21 | 616 | Autonomous Fix Daemon — always-active issue triage + drill-gated apply. |
 | `autorag_optimizer.py` | 📄 module | 5 | 5 | 375 | AutoRAG optimizer — Stage-1 adapter (per CLAUDE.md §56). |
@@ -101,8 +311,8 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `chatxai_fallback.py` | 📄 module | 0 | 5 | 166 | ChatXAI → ChatOllama fallback CLI when XAI_API_KEY absent. |
 | `chunking_quality_audit.py` | 📄 module | 0 | 1 | 130 | Chunking quality catalog audit (iter-99). |
 | `chunking_strategy_selector.py` | 📄 module | 2 | 5 | 300 | Chunking strategy selector — Stage-1 adapter (per CLAUDE.md §56). |
-| `council_filter_stats.py` | 🪝 middleware / interceptor | 1 | 24 | 1204 | Group council_runs.log entries by outcome / filter reason / risk. |
-| `council_schemas.py` | 📋 data model / schema | 1 | 3 | 291 | Pydantic schemas for the local-Ollama issue-fix council. |
+| `council_filter_stats.py` | 📄 module | 1 | 24 | 1204 | Group council_runs.log entries by outcome / filter reason / risk. |
+| `council_schemas.py` | 📄 module | 1 | 3 | 291 | Pydantic schemas for the local-Ollama issue-fix council. |
 | `council_stats_snapshot.py` | 📄 module | 0 | 7 | 280 | Daily council outcome snapshot — append-only JSONL for long-term trends. |
 | `crewai_status.py` | 📄 module | 0 | 4 | 90 | CrewAI status gate. |
 | `deep_rag_test.py` | 🧪 test | 0 | 5 | 212 | Deep RAG end-to-end test. |
@@ -110,8 +320,8 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `drain_outbox.py` | 📄 module | 0 | 3 | 195 | One-shot outbox drain — publishes backlogged ingestion.outbox rows. |
 | `drill_catalog_summary.py` | 📄 module | 0 | 7 | 179 | Drill catalog summary — one report for tiering, resource sets, and ratchets. |
 | `dspy_optimizer.py` | 📄 module | 1 | 5 | 232 | DSPy 3 + GEPA prompt optimizer — Stage-1 adapter (per CLAUDE.md §56). |
-| `e2e_per_tool_report.py` | 💾 repository / data access | 0 | 10 | 400 | End-to-end per-tool integration test harness (iter-90). |
-| `empirical_apply_test.py` | 🚀 entry point / app bootstrap | 0 | 6 | 227 | Empirical apply-rate test harness — runs council on synthetic broken file. |
+| `e2e_per_tool_report.py` | 🤖 agent / tool | 0 | 10 | 400 | End-to-end per-tool integration test harness (iter-90). |
+| `empirical_apply_test.py` | 🧪 test | 0 | 6 | 227 | Empirical apply-rate test harness — runs council on synthetic broken file. |
 | `eval_quality_status.py` | 📄 module | 0 | 12 | 334 | Advanced offline-safe status for RAGAS, Giskard, and DeepEval. |
 | `eval_set_generator.py` | 📄 module | 2 | 8 | 361 | Eval-set auto-generator — Stage-1 adapter (per CLAUDE.md §56). |
 | `event_publisher.py` | 📄 module | 0 | 8 | 262 | Stage-1 event-publisher — pushes new-layer audit events to Kafka. |
@@ -120,7 +330,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `generate-grafana-dashboards.py` | 📄 module | 0 | 4 | 354 | Generator for the 15 Grafana dashboards Kiali deep-links to. |
 | `generate_brutal_reviews.py` | 📄 module | 0 | 6 | 331 | Generate brutal-review docs for every MCP server (iter-84). |
 | `generate_folder_readme.py` | 📄 module | 1 | 18 | 491 | Folder README.md generator — pre-populated from auto-detection. |
-| `generate_folder_report.py` | 💾 repository / data access | 4 | 47 | 1429 | Folder-level ADVANCED README generator. |
+| `generate_folder_report.py` | 💾 repository / data access | 7 | 65 | 2579 | Folder-level ADVANCED README generator. |
 | `generate_folder_review_report.py` | 💾 repository / data access | 3 | 37 | 928 | Folder-level Manual Code Review Checklist generator. |
 | `generate_mesh_manifests.py` | 📄 module | 0 | 5 | 318 | Generate k8s Deployment + Service manifests for each MCP/agent tool (iter-94). |
 | `generate_production_review_report.py` | 💾 repository / data access | 3 | 27 | 1438 | Master Production Code Review & Architecture Assessment Checklist generator. |
@@ -128,7 +338,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `generate_tool_catalog_entries.py` | 🤖 agent / tool | 0 | 5 | 329 | Generate config/tool_catalog/<ns>.yaml for every MCP server (iter-80). |
 | `hitl_drafts_triage.py` | 📄 module | 0 | 7 | 360 | HITL drafts triage report — read-only operator-decision input. |
 | `hitl_framework.py` | 📄 module | 1 | 10 | 332 | HITL framework — Human-in-the-loop scoring at every pipeline gate. |
-| `human_review_router.py` | 🌐 HTTP router / API endpoints | 1 | 4 | 265 | Human-review router — routes retry-storm ids out of the council loop. |
+| `human_review_router.py` | 📄 module | 1 | 4 | 265 | Human-review router — routes retry-storm ids out of the council loop. |
 | `hyde_adapter.py` | 🔌 external service adapter | 2 | 3 | 215 | HyDE (Hypothetical Document Embeddings) adapter — Stage-1 (per §56). |
 | `issue_dispatcher.py` | 📄 module | 0 | 9 | 334 | Issue dispatcher — routes each issue from the checklist to its assignee. |
 | `issue_scanner.py` | 📄 module | 0 | 9 | 501 | Issue scanner — produces .loop/issue_checklist.jsonl from real signal sources. |
@@ -142,10 +352,10 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `mcp_gateway.py` | 🔌 external service adapter | 5 | 9 | 506 | MCP Gateway — Stage-1 allowlist + PolisAI gate + audit for MCP calls. |
 | `mcp_gateway_warmup.py` | 🔌 external service adapter | 0 | 2 | 84 | MCP gateway warmup — seed audit rows with latency_ms. |
 | `migrate.py` | 📄 module | 0 | 3 | 86 | Migration runner — applies numbered SQL files per service. |
-| `native_compute_wrapper.py` | 🚀 entry point / app bootstrap | 4 | 1 | 318 | Native-compute wrapper — Stage-1 adapter for LLVM/MLIR-optimized callables. |
+| `native_compute_wrapper.py` | 📄 module | 4 | 1 | 318 | Native-compute wrapper — Stage-1 adapter for LLVM/MLIR-optimized callables. |
 | `notifications.py` | 📄 module | 2 | 7 | 307 | Notifications — Tier 5 #5.13. |
 | `observability_triad_status.py` | 📄 module | 0 | 10 | 175 | Offline-safe readiness checker for Jaeger, Prometheus, and Grafana. |
-| `ollama_all_models_smoke.py` | 📋 data model / schema | 0 | 6 | 253 | Ollama all-models smoke test (iter-75). |
+| `ollama_all_models_smoke.py` | 📄 module | 0 | 6 | 253 | Ollama all-models smoke test (iter-75). |
 | `opa_gatekeeper_status.py` | 📄 module | 0 | 7 | 206 | Offline-safe OPA Gatekeeper readiness checker. |
 | `openclaw_coordinator.py` | 📄 module | 6 | 7 | 517 | OpenClaw Stage-1 — heavy-autonomy A2A (agent-to-agent) coordinator. |
 | `oss_tooling_audit.py` | 🤖 agent / tool | 0 | 1 | 154 | OSS-only tooling catalog audit (iter-97). |
@@ -193,8 +403,8 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `tool_catalog.py` | 🤖 agent / tool | 1 | 4 | 286 | Tool catalog loader + validator (iter-74). |
 | `verifiability_framework.py` | 📄 module | 2 | 4 | 322 | Verifiability framework — Tier 2 #2.11. |
 | `warm_council_pool.py` | 📄 module | 0 | 7 | 169 | Warm council pool — keep all 4 Ollama council models RAM-resident. |
-| `whatsapp_fastapi_router.py` | 🌐 HTTP router / API endpoints | 0 | 4 | 260 | WhatsApp FastAPI router — Stage-2 wire (per CLAUDE.md §56). |
-| `whatsapp_webhook.py` | 🚀 entry point / app bootstrap | 3 | 10 | 310 | WhatsApp webhook gateway — Stage-1 adapter (per CLAUDE.md §56). |
+| `whatsapp_fastapi_router.py` | 📄 module | 0 | 4 | 260 | WhatsApp FastAPI router — Stage-2 wire (per CLAUDE.md §56). |
+| `whatsapp_webhook.py` | 📄 module | 3 | 10 | 310 | WhatsApp webhook gateway — Stage-1 adapter (per CLAUDE.md §56). |
 | `write_drill_status.py` | 📄 module | 1 | 5 | 297 | Run a set of drills, capture pass/fail per drill, write status JSON. |
 
 ### Absolute paths (clickable)
@@ -318,6 +528,19 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/scripts/write_drill_status.py`
 
 
+## 🧭 Where Does X Live? (cheat sheet)
+
+Use this table when you're modifying this folder and need to know where new code goes.
+
+| I want to... | Role | Touch these files |
+|---|---|---|
+| Add a new SQL query or DB call | 💾 repository / data access | `generate_folder_report.py`, `generate_folder_review_report.py`, `generate_production_review_report.py` |
+| Add a new env var | ⚙ config / settings | `best_config_history.py`, `best_config_loader.py`, `promote_best_config.py` |
+| Wrap a new external API | 🔌 external service adapter | `hyde_adapter.py`, `litellm_adapter.py`, `mcp_gateway.py` (+3 more) |
+| Add a new agent / tool | 🤖 agent / tool | `agent_lead.py`, `agent_readiness_check.py`, `agent_router.py` (+10 more) |
+| Add a new test | 🧪 test | `deep_rag_test.py`, `empirical_apply_test.py`, `smoke_test.py` |
+
+
 ## 3. C4 Model — Context / Container / Component / Code
 
 ### Level 1 — System Context
@@ -374,50 +597,32 @@ flowchart TB
     subgraph __module["📄 module"]
         advanced_healthcheck_py["advanced_healthcheck.py"]
         aiops_retrain_trigger_py["aiops_retrain_trigger.py"]
+        append_drill_history_py["append_drill_history.py"]
         audit_verify_py["audit_verify.py"]
         autonomous_fix_daemon_py["autonomous_fix_daemon.py"]
         autorag_optimizer_py["autorag_optimizer.py"]
-        build_doc_framework_templates_py["build_doc_framework_templates.py"]
-        more___module["... +75 more"]
+        more___module["... +83 more"]
     end
     subgraph __agent___tool["🤖 agent / tool"]
         agent_lead_py["agent_lead.py"]
         agent_readiness_check_py["agent_readiness_check.py"]
+        agent_router_py["agent_router.py"]
         agent_task_board_py["agent_task_board.py"]
         agent_task_registry_py["agent_task_registry.py"]
         agentic_observability_audit_py["agentic_observability_audit.py"]
-        catalog_tools_probe_py["catalog_tools_probe.py"]
-        more___agent___tool["... +5 more"]
-    end
-    subgraph __HTTP_router___API_endpoints["🌐 HTTP router / API endpoints"]
-        agent_router_py["agent_router.py"]
-        human_review_router_py["human_review_router.py"]
-        whatsapp_fastapi_router_py["whatsapp_fastapi_router.py"]
-    end
-    subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
-        append_drill_history_py["append_drill_history.py"]
-        empirical_apply_test_py["empirical_apply_test.py"]
-        native_compute_wrapper_py["native_compute_wrapper.py"]
-        whatsapp_webhook_py["whatsapp_webhook.py"]
+        more___agent___tool["... +7 more"]
     end
     subgraph __config___settings["⚙ config / settings"]
         best_config_history_py["best_config_history.py"]
         best_config_loader_py["best_config_loader.py"]
         promote_best_config_py["promote_best_config.py"]
     end
-    subgraph __middleware___interceptor["🪝 middleware / interceptor"]
-        council_filter_stats_py["council_filter_stats.py"]
-    end
-    subgraph __data_model___schema["📋 data model / schema"]
-        council_schemas_py["council_schemas.py"]
-        ollama_all_models_smoke_py["ollama_all_models_smoke.py"]
-    end
     subgraph __test["🧪 test"]
         deep_rag_test_py["deep_rag_test.py"]
+        empirical_apply_test_py["empirical_apply_test.py"]
         smoke_test_py["smoke_test.py"]
     end
     subgraph __repository___data_access["💾 repository / data access"]
-        e2e_per_tool_report_py["e2e_per_tool_report.py"]
         generate_folder_report_py["generate_folder_report.py"]
         generate_folder_review_report_py["generate_folder_review_report.py"]
         generate_production_review_report_py["generate_production_review_report.py"]
@@ -444,6 +649,81 @@ flowchart TB
     council_filter_stats_py_975_cli["cli (225 lines)<br/>council_filter_stats.py:975"]
     capture_and_review_py_70_capture_and_rec["capture_and_record (184 lines)<br/>capture_and_review.py:70"]
 ```
+
+
+## 📐 Class Diagram (UML-style)
+
+Top classes by method count, with inheritance arrows. Common framework bases (`BaseModel`, `BaseSettings`, `Exception`, `Enum`) use dotted lines.
+
+```mermaid
+classDiagram
+    class NativeComputeWrapper {
+        +8 methods
+        ~native_compute_wrapper.py:95
+    }
+    class _ResourceTable {
+        +4 methods
+        ~run_drills.py:252
+    }
+    class AlertExpr {
+        +3 methods
+        ~council_filter_stats.py:98
+    }
+    class CouncilProposal {
+        +3 methods
+        ~council_schemas.py:66
+    }
+    BaseModel <|.. CouncilProposal
+    class ToolCatalogEntry {
+        +2 methods
+        ~tool_catalog.py:66
+    }
+    class SearchAxes {
+        +2 methods
+        ~autorag_optimizer.py:86
+    }
+    class Fingerprint {
+        +2 methods
+        ~cache_fingerprint.py:81
+    }
+    class CouncilProgram {
+        +2 methods
+        ~dspy_optimizer.py:158
+    }
+    Module <|-- CouncilProgram
+    class ChunkingStrategy {
+        +1 methods
+        ~chunking_strategy_selector.py:61
+    }
+    class ConfigPoint {
+        +1 methods
+        ~autorag_optimizer.py:65
+    }
+    class GatewayDecision {
+        +1 methods
+        ~mcp_gateway.py:62
+    }
+    class PromotionDecision {
+        +1 methods
+        ~promote_gepa_prompts.py:72
+    }
+    class EarnedReport {
+        +1 methods
+        ~stage3_earned_check.py:85
+    }
+    class PromotionDecision {
+        +1 methods
+        ~promote_best_config.py:70
+    }
+    class OllamaPolicyDenied {
+        +1 methods
+        ~local_council.py:157
+    }
+    RuntimeError <|-- OllamaPolicyDenied
+```
+
+
+_Showing top 15 of 123 classes (ranked by method count)._
 
 
 ## 4. Code Sequence — How Files Link to Each Other
@@ -576,6 +856,162 @@ flowchart TD
 _Reviewer fills the last three columns from the Pydantic models in the handler. Auto-extraction of Pydantic schemas is on the roadmap._
 
 
+## 🏗 Input/Process/Output + Integration + Design Principles
+
+### Input / Process / Output per endpoint
+
+| Endpoint | INPUT (validation chain) | PROCESS (call chain) | OUTPUT (response chain) |
+|---|---|---|---|
+| `GET /whatsapp` | Pydantic schema validated at middleware | Router `whatsapp_fastapi_router.py:79` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `POST /whatsapp` | Pydantic schema validated at middleware | Router `whatsapp_fastapi_router.py:102` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `GET /health` | Pydantic schema validated at middleware | Router `build_mcp_sdlc_batch.py:242` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `GET /tools/list` | Pydantic schema validated at middleware | Router `build_mcp_sdlc_batch.py:247` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+| `POST /tools/call` | Pydantic schema validated at middleware | Router `build_mcp_sdlc_batch.py:252` → Service (`app/services/`) → Repository (`app/repositories/` or `documind_core/db_client.py`) → External (LLM / Vector / Kafka) | Pydantic response model serialized to JSON + headers (`X-Correlation-ID`, `X-Latency-ms`) |
+
+### Integration sequence (ordered by import volume)
+
+Other folders this one calls into, ordered by how heavily it depends on each:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant This as scripts
+  participant scripts_paperclip_manager as scripts/paperclip_manager
+  participant approval_agent as approval_agent
+  participant app_eval_harness as app/eval_harness
+  participant documind_core_rebuff_detector as documind_core/rebuff_detector
+  participant libs_py as libs/py
+  participant documind_core_kafka_client as documind_core/kafka_client
+  This->>scripts_paperclip_manager: call (~3 import sites)
+  scripts_paperclip_manager-->>This: response
+  This->>approval_agent: call (~3 import sites)
+  approval_agent-->>This: response
+  This->>app_eval_harness: call (~2 import sites)
+  app_eval_harness-->>This: response
+  This->>documind_core_rebuff_detector: call (~2 import sites)
+  documind_core_rebuff_detector-->>This: response
+  This->>libs_py: call (~1 import sites)
+  libs_py-->>This: response
+  This->>documind_core_kafka_client: call (~1 import sites)
+  documind_core_kafka_client-->>This: response
+```
+
+### SOLID principles applied here
+
+| Principle | Where it shows up in this folder |
+|---|---|
+| **S — Single Responsibility** | Each file has ONE role — routers route, services orchestrate, repos query, schemas describe. The §2 File Inventory shows the role per file; any file with multiple roles violates SRP. |
+| **O — Open/Closed** | New endpoints add new router functions; new business cases add new service methods. Existing methods stay closed for modification. |
+| **L — Liskov Substitution** | All adapter clients (Ollama / OpenAI / Anthropic) implement the same LLM-client protocol — they're interchangeable behind the circuit breaker. |
+| **I — Interface Segregation** | Pydantic models split request, response, and internal state into separate schemas — no client gets a fat model with fields it doesn't use. |
+| **D — Dependency Inversion** | Services receive their dependencies via FastAPI `Depends()` — they depend on abstractions (factories), not concrete repos. Swap implementations in tests via the `app.dependency_overrides` dict. |
+
+### Microservice principles applied here
+
+| Principle | Application |
+|---|---|
+| **Single business capability** | `scripts` owns ONE capability (see §1 Purpose). Cross-capability logic lives in other services. |
+| **Bounded context** | Schemas + repositories are scoped to this service's bounded context — no shared DB tables with other services. |
+| **DB per service** | Each service owns its tables. Cross-service reads go through HTTP or Kafka — never a direct DB join. |
+| **Independent deploy** | Service is independently deployable — its container is built + released without coupling to other services. |
+| **Resilience patterns** | Circuit breakers (`documind_core/breakers/`), retries with exponential backoff, bulkheads, timeouts on every external call. |
+| **Observability** | Every request has a `request_id` propagated via OTel baggage; every external call emits a trace span. |
+
+### Design-principle stack (how the principles compose)
+
+Reading bottom-to-top — earlier principles enable later ones:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 7. AI Governance (§38 + §48): decision audit + explainability│
+├─────────────────────────────────────────────────────────────┤
+│ 6. Production Gates (§47.11): 10 gates BEFORE deploy        │
+├─────────────────────────────────────────────────────────────┤
+│ 5. Resilience: CB + retry + bulkhead + timeout              │
+├─────────────────────────────────────────────────────────────┤
+│ 4. Microservice: single capability, bounded context, DB/svc │
+├─────────────────────────────────────────────────────────────┤
+│ 3. SOLID: SRP + OCP + LSP + ISP + DIP                       │
+├─────────────────────────────────────────────────────────────┤
+│ 2. 12-factor: stateless, deps in venv, config in env        │
+├─────────────────────────────────────────────────────────────┤
+│ 1. KISS / YAGNI / DRY: every line earns its place           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
+
+
+## 🔬 Execution Sequence + Debug Tap Points
+
+For each phase a request goes through, this section shows: **(1)** the file:line where it happens, **(2)** the log line you'll see, **(3)** the command to inspect that phase's output in real time. Use this as your debug-flow chart — start at Phase 0, move down until output stops matching the expected log line; that's where the failure is.
+
+**Worked example:** `GET /whatsapp` (whatsapp_fastapi_router.py:79)
+
+### Phase-by-phase debug tap table
+
+| # | Phase | Code location | Log line to grep | Command to inspect |
+|---|---|---|---|---|
+| 0 | **TCP connect** | OS / docker network | `client_connected` | `curl -v http://localhost:8000/health 2>&1 \| head -15` |
+| 1 | **Middleware: request_id assign** | `documind_core/middleware.py` | `request_id=...` | `docker logs documind-scripts -f \| grep request_id` |
+| 2 | **Middleware: auth** | `documind_core/auth.py` | `auth_ok` or `auth_denied` | `docker logs documind-scripts -f \| grep auth_` |
+| 3 | **Middleware: tenant resolution** | `documind_core/middleware.py` | `tenant_id=<id>` | `docker logs documind-scripts -f \| grep tenant_id` |
+| 4 | **Pydantic validation** | `app/schemas/*.py` | `422 Unprocessable` (on fail) | `docker logs documind-scripts -f \| grep -E 'validation\|422'` |
+| 5 | **Router dispatch** | `whatsapp_fastapi_router.py:79` | `GET /whatsapp` | `docker logs documind-scripts -f \| grep '/whatsapp'` |
+| 6 | **Business service call** | `app/services/*.py` | `service_method_start` | `docker logs documind-scripts -f \| grep service_` |
+| 7 | **DB query** | `app/repositories/*.py` or `documind_core/db_client.py` | `asyncpg.execute` or `SELECT...` | `docker logs documind-postgres -f \| grep -E 'duration:'` |
+| 8 | **External call (LLM / vector)** | `app/services/*_client.py` | `llm_call_start` / `vector_search_start` | `docker logs documind-scripts -f \| grep -E 'llm_\|vector_'` |
+| 9 | **Decision audit log** | `documind_core/ai_governance.py` | `decision_audit:` | `psql -p 55432 -U documind -c "SELECT * FROM decision_audit ORDER BY ts DESC LIMIT 1;"` |
+| 10 | **Response shaping** | `app/schemas/*.py` (response model) | `response_ms=` | `docker logs documind-scripts -f \| grep response_ms` |
+| 11 | **Trace span flush** | OTel exporter | _(async)_ | Open Jaeger UI: `http://localhost:16686/search?service=scripts` |
+
+### Reproducible end-to-end trace
+
+Use this script to fire ONE request and see every phase's output in a single terminal:
+
+```bash
+REQ_ID=$(uuidgen)
+echo "=== Issuing GET /whatsapp with request_id=$REQ_ID ==="
+
+# Phase 0-2: tail logs in background
+docker logs documind-scripts --tail=0 -f 2>&1 | grep --line-buffered "$REQ_ID" &
+TAIL_PID=$!
+sleep 0.5
+
+# Phase 3-10: fire the request
+curl -X GET http://localhost:8000/whatsapp \
+  -H "X-Correlation-ID: $REQ_ID" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{}' -w "\nTOTAL=%{time_total}s\n"
+
+sleep 2  # let logs flush
+kill $TAIL_PID
+
+# Phase 9: pull the decision audit row
+psql -h localhost -p 55432 -U documind -d documind \
+  -c "SELECT request_id, model_version, prompt_version, decision, confidence FROM decision_audit WHERE request_id='$REQ_ID';"
+
+# Phase 11: pull the trace span tree
+open "http://localhost:16686/search?service=scripts&tags=%7B%22request_id%22%3A%22$REQ_ID%22%7D"
+```
+
+### Debug-order checklist (when something breaks)
+
+Walk the phases IN ORDER — first phase with missing/wrong output is the failure point. Don't skip ahead:
+
+1. **Phase 0 fail?** Service not running → `bash scripts/circuitrag-status.sh`
+2. **Phase 1-3 fail?** Middleware misconfigured → check env vars + middleware order in `main.py`
+3. **Phase 4 fail (422)?** Request body doesn't match schema → check Pydantic model in `app/schemas/`
+4. **Phase 5 fail (404)?** Route not registered → check router import in `main.py`
+5. **Phase 6 fail (500)?** Business logic exception → tail logs for stack trace
+6. **Phase 7 fail?** DB unreachable → `psql -p 55432 -U documind -c "SELECT 1;"`
+7. **Phase 8 fail?** External dep down → check `/health/upstreams` + circuit breaker state
+8. **Phase 9 missing?** Decision audit not persisted → check Kafka consumer lag
+9. **Phase 10 slow?** Response shaping bottleneck → profile the response model
+10. **Phase 11 empty Jaeger?** OTel exporter misconfigured → check `OTEL_EXPORTER_OTLP_ENDPOINT`
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 ### Generic flow (all endpoints)
@@ -687,6 +1123,79 @@ sequenceDiagram
 ```
 
 
+## 🔬 Annotated Example Request
+
+Walk through what happens when a client calls **`GET /whatsapp`** (whatsapp_fastapi_router.py:79).
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. Client sends HTTP request                                        │
+│    GET /whatsapp                                                   │
+│    Headers: Authorization, X-Correlation-ID, X-Tenant-ID            │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 2. Middleware stack (auth → logging → tracing → rate-limit)         │
+│    - Validate JWT / API key                                         │
+│    - Resolve tenant_id from token                                   │
+│    - Start span; inject request_id into baggage                     │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 3. Pydantic validation                                              │
+│    - Parse request body against schema                              │
+│    - 422 on validation error (with field-level details)             │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 4. Router handler                                                   │
+│    whatsapp_fastapi_router.py:79
+│    - Receive validated request + injected Depends()                 │
+│    - Delegate to business service                                   │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 5. Business service                                                 │
+│    - Apply rules / orchestrate multi-step logic                     │
+│    - Call repositories for DB I/O                                   │
+│    - Call external services (LLM / vector DB / etc.)             │
+│    - Emit metrics + log decision audit row                          │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 6. Response shaping                                                 │
+│    - Build response Pydantic model                                  │
+│    - Serialize to JSON                                              │
+│    - Add correlation_id, latency_ms to headers                      │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+                       Client
+```
+
+### Inspecting this in real time
+
+```bash
+# 1. Tail the service log
+docker logs documind-scripts --tail=20 -f &
+
+# 2. Issue the request with a fresh correlation_id
+REQ_ID=$(uuidgen)
+curl -X GET http://localhost:<PORT>/whatsapp \
+  -H "X-Correlation-ID: $REQ_ID" \
+  -H "Authorization: Bearer <token>" \
+  -d '{}'
+
+# 3. Find the trace in Jaeger
+open http://localhost:16686/search?service=scripts&tags=%7B%22request_id%22%3A%22$REQ_ID%22%7D
+```
+
+
 ## 8. Database Layer
 
 **DB / storage libraries:** Elasticsearch, Kafka (aiokafka), MongoDB (pymongo), Neo4j, Qdrant, Redis, SQLAlchemy, asyncpg, psycopg
@@ -742,7 +1251,7 @@ sequenceDiagram
 |---|---|---|
 | No dead / commented-out code | — | — |
 | No `print()` — use logger | — | — |
-| No hardcoded values | — | smell count: 105 |
+| No hardcoded values | — | smell count: 128 |
 | Constants extracted to a settings module | — | — |
 
 ### Complexity
@@ -768,7 +1277,7 @@ sequenceDiagram
 
 | Check | Status (✓/✗/⚠) | Notes |
 |---|---|---|
-| Request validation present | — | sanitization: Manual escape, Pydantic BaseModel, Pydantic validator |
+| Request validation present | — | sanitization: Manual escape, Pydantic BaseModel, Pydantic validator, Zod (TS) |
 | SQL injection prevention | — | DB libs: Elasticsearch, Kafka (aiokafka), MongoDB (pymongo), Neo4j, Qdrant, Redis, SQLAlchemy, asyncpg, psycopg — parameterized queries only |
 | XSS / CSRF prevention | — | output encoding / CSP / SameSite |
 | Path traversal prevention | — | no user input concatenated to file paths |
@@ -979,6 +1488,33 @@ _No `test_*` functions parsed via AST. Either tests live elsewhere or names don'
 | `rule_fix_strategy` | 2 |
 
 
+## 📖 Domain Glossary
+
+Project-wide vocabulary a new developer needs. If you see a term in code you don't recognize, check here first.
+
+| Term | Definition |
+|---|---|
+| **RAG** | Retrieval-Augmented Generation — the pattern of grounding LLM output in retrieved documents to reduce hallucination. |
+| **Chunk** | A token-bounded slice of a source document (typically 256–1024 tokens with 10–20% overlap). Embedded + stored in the vector DB. |
+| **Embedding** | Vector representation of text. Re-embed everything when the embedding model version bumps. |
+| **Vector DB** | Qdrant in this project. Stores chunk embeddings + metadata, returns top-k by cosine similarity. |
+| **Rerank** | Second-stage retrieval — re-scores the top-k from the vector DB with a more expensive cross-encoder for better relevance. |
+| **Hybrid retrieval** | Vector + keyword (Elasticsearch / BM25) merged via reciprocal-rank-fusion. |
+| **MCP** | Model Context Protocol — tool-server contract used by agents to call namespace-scoped operations (drill / ingest / etc.). |
+| **Tenant** | A logical customer boundary. Every row + every cache key + every prompt context is tenant-scoped. |
+| **Drill** | A runnable script that exercises real services + asserts ≥3 negative invariants (per §43). Lives under `mcp/tests/drill_*.py`. |
+| **Breaker** | Circuit breaker — opens after N failures to a downstream dep, lets traffic shed instead of cascading. See `documind_core/breakers/`. |
+| **Baggage** | OpenTelemetry context (request_id / tenant_id / actor) propagated across spans + service hops. |
+| **Decision audit row** | Per-AI-call record persisted to Postgres with request_id, prompt_version, model_version, output, confidence, fairness_flag — per §38 + §48. |
+| **Fanout** | Parallel sub-query split for multi-hop RAG (`services/inference-svc/app/agents/multi_hop_fanout.py`). |
+| **Council** | 3-model author + reviewer + advisor pattern for code-fix proposals (per §50). |
+| **Side-channel port** | Separate Prometheus `/metrics` port (9465–9470) per service to avoid app-port middleware interference. |
+| **Trust scorecard** | 5-layer aggregate (governance + tool review + maturity stack + drill catalog + production gates) used for go/no-go. |
+| **HBR** | High-Blast-Radius — file patterns that force the pre-commit hook to refresh the drill catalog. |
+| **HITL** | Human-In-The-Loop — escalation path when confidence falls in the 0.5–0.8 range (per §40). |
+| **Forensic substrate** | The §51-required metadata block (Date/Location/Approach/Policies/Verification) in every commit body. |
+
+
 ## 18. Debugging Guide
 
 ### Step-by-step when something breaks
@@ -1004,6 +1540,58 @@ _No `test_*` functions parsed via AST. Either tests live elsewhere or names don'
 | Wrong-tenant data | RLS bypass | tenant isolation drill |
 
 
+## 📅 Recent Activity & Open TODOs
+
+### Last 8 commits touching this folder
+
+| Hash | Date | Subject |
+|---|---|---|
+| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
+| `b4c9e00` | 2026-05-16 | feat(ops): advanced 7-layer health-check + troubleshoot tool — 46 probes parallel |
+| `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
+| `11c51b5` | 2026-05-08 | fix(run_drills): prefer repo .venv over /tmp/documind-venv — closes 2 drills |
+| `3c24119` | 2026-05-08 | fix(production-checker): skip BFF health_url + drop http:// from doc-string URLs |
+| `3bd47d6` | 2026-05-08 | fix(scripts): add --help handler to 6 shell scripts — drill 146/146 conform |
+| `b6c97a8` | 2026-05-08 | feat(ops): add operator status scripts |
+| `8167091` | 2026-05-08 | feat(eval): add offline quality gates |
+
+```bash
+git log --oneline -- scripts    # see all commits
+git blame <file>                       # who wrote what
+```
+
+### Open TODO / FIXME / HACK markers
+
+#### TODO (6)
+
+| Location | Note |
+|---|---|
+| `aiops_retrain_trigger.py:143` | inject kafka producer + webhook client (keep this script |
+| `generate_folder_report.py:190` | / FIXME / HACK / XXX |
+| `generate_folder_report.py:1275` | / FIXME / HACK markers\n\n") |
+| `generate_folder_report.py:1291` | / FIXME / HACK markers\n\n" |
+| `generate_folder_report.py:1292` | / FIXME markers found — folder is hygienic._\n\n" |
+| `build_doc_framework_templates.py:310` | define sections for {d.doc_type})\n" |
+
+#### FIXME (1)
+
+| Location | Note |
+|---|---|
+| `generate_folder_report.py:105` | marker"), |
+
+#### HACK (1)
+
+| Location | Note |
+|---|---|
+| `production-checker.js:169` | markers in production code', |
+
+#### XXX (1)
+
+| Location | Note |
+|---|---|
+| `replay_action_draft.py:27` | \\ |
+
+
 ## 19. Production Gates (hard pass/fail)
 
 | Gate | Target | Status | Evidence |
@@ -1012,9 +1600,9 @@ _No `test_*` functions parsed via AST. Either tests live elsewhere or names don'
 | Naming convention enforced | ruff / eslint | — | — |
 | Zero critical CVEs | Trivy / Bandit | — | — |
 | No hardcoded secrets | gitleaks | — | — |
-| No memory leaks | bounded caches | — | smells: 105 |
+| No memory leaks | bounded caches | — | smells: 128 |
 | No N+1 queries | hot paths reviewed | — | 107 DB call sites |
-| All APIs validated | Pydantic / Zod | — | sanitization: Manual escape, Pydantic BaseModel, Pydantic validator |
+| All APIs validated | Pydantic / Zod | — | sanitization: Manual escape, Pydantic BaseModel, Pydantic validator, Zod (TS) |
 | Duplicate logic eliminated | DRY check | — | — |
 | Structured logging with correlation_id | — | — | — |
 | Distributed tracing wired | OpenTelemetry | — | — |
