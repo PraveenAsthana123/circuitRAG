@@ -1,7 +1,7 @@
 # 🚀 Enterprise Folder-Level Manual Code Review
 
 **Folder under review:** `services/retrieval-svc`
-**Generated:** 2026-05-16 22:59 UTC
+**Generated:** 2026-05-16 23:32 UTC
 
 > Purpose: folder-level production review · architecture validation · business logic · security · scalability · integration · performance · production readiness.
 
@@ -24,13 +24,13 @@
 | README present | Yes |
 | Dockerfile present | Yes |
 | Tests dir present | Yes |
-| Top Git Contributors | 36	PraveenAsthana123, 4	Praveen |
+| Top Git Contributors | 37	PraveenAsthana123, 4	Praveen |
 | External DB Dependencies (detected) | Elasticsearch, MongoDB, Neo4j, Postgres (asyncpg), Postgres (psycopg), Qdrant, Redis, SQLAlchemy |
 | External HTTP Dependencies (detected) | aiohttp, httpx, node-fetch / fetch, requests |
 | Queue / Event Dependencies (detected) | Celery, Kafka (aiokafka), Kafka (kafka-python), RQ, Redis Streams |
 | AI / LLM Dependencies (detected) | Anthropic SDK, Giskard, LangChain, LangGraph, Ollama client, OpenAI SDK, Ragas |
 | Reviewer | Praveen Asthana |
-| Review Date | 2026-05-16 22:59 UTC |
+| Review Date | 2026-05-16 23:32 UTC |
 | Service/Module | _TBD by reviewer_ |
 | Business Domain | _TBD by reviewer_ |
 | Risk Level | _Critical / High / Medium / Low_ |

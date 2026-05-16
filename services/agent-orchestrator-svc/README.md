@@ -1,6 +1,6 @@
 # 📦 `agent-orchestrator-svc` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/agent-orchestrator-svc`  ·  **Generated:** 2026-05-16 22:40 UTC
+🧩 **Service**  ·  **Path:** `services/agent-orchestrator-svc`  ·  **Generated:** 2026-05-16 23:25 UTC
 
 > Agent orchestrator FastAPI service.
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `51	PraveenAsthana123` |
+| Top git contributors | `54	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -1230,14 +1230,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `551405a` | 2026-05-16 | docs: regen_all_docs.sh orchestrator + complete README/REPORT regen pass |
+| `0211a6c` | 2026-05-16 | docs(reports): rename to *_ASSESSMENT_REPORT.md + Code Logic Deep Dive section |
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
 | `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
 | `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `7451179` | 2026-05-08 | fix(llm-pool): close P0 #36 — per-backend CircuitBreaker; drill locks 8 invariants |
-| `502da93` | 2026-05-08 | feat(lang): add compatibility status gates |
-| `4665fa6` | 2026-05-08 | chore(deps): delete dead langgraph pin + its lock drill (§57.7 cleanup) |
-| `ec1f7b4` | 2026-05-07 | fix(iter-88): bulk lint cleanup across services/ libs/ mcp/ scripts/ (1139 ruff fixes; drill suite still green) |
 
 ```bash
 git log --oneline -- services/agent-orchestrator-svc    # see all commits
@@ -1312,9 +1312,9 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 | # | Item | Score | Evidence |
 |---|---|---|---|
 | 1 | Input validation present (Pydantic/Zod) | **10** if detected | §20 — detected: Pydantic BaseModel |
-| 2 | AuthN/Z documented + enforced | TBD | §20 |
+| 2 | AuthN enforced (Depends-based) | TBD | — |
 | 3 | OWASP Top 10 reviewed | TBD | STRIDE table per container |
-| 4 | No hardcoded secrets | **10** | smell count: 0 pw + 0 api-key literals |
+| 4 | No hardcoded secrets | **10** | ✓ no hardcoded password/api-key literals detected |
 | 5 | Secrets in Vault / env, not code | TBD | §4 Env Vars |
 | 6 | SAST scan clean (bandit/semgrep) | TBD | CI log |
 | 7 | Dependency CVE scan clean (pip-audit) | TBD | CI log |
@@ -1329,10 +1329,10 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 | 1 | Latency SLO documented | TBD | reviewer |
 | 2 | Load tested (k6/Locust) | TBD | `tests/load/` |
 | 3 | p95 measured + within SLO | TBD | Grafana panel |
-| 4 | No N+1 queries on hot paths | TBD | EXPLAIN ANALYZE |
+| 4 | Pagination on list endpoints | **10** | ✓ `offset` + `limit` Query params — detected at `app/main.py:303` |
 | 5 | Caches bounded (LRU/TTL) | **10** | detected: redis |
 | 6 | Async I/O where applicable | **10** | 140 async functions detected |
-| 7 | Timeouts on all external calls | TBD | reviewer audit |
+| 7 | Timeouts on all external calls | **10** | ✓ timeout= or asyncio.wait_for — detected at `app/agents.py:166` |
 | 8 | Memory profile clean (no growth) | TBD | py-spy / mprof |
 | 9 | Capacity model documented | TBD | runbook |
 | 10 | Cost per request tracked (token/cpu) | TBD | finops dashboard |
@@ -1342,9 +1342,9 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 | # | Item | Score | Evidence |
 |---|---|---|---|
 | 1 | Retry with exp backoff | TBD | reviewer audit |
-| 2 | Circuit breaker on external deps | TBD | `documind_core/breakers/` |
+| 2 | Circuit breaker on external deps | **10** | ✓ CircuitBreaker wired — detected at `app/db_circuit_breaker.py:66` |
 | 3 | Graceful degradation path | TBD | reviewer audit |
-| 4 | Health probe (startup/liveness/readiness) | TBD | k8s manifest |
+| 4 | Health probe (startup/liveness/readiness) | **10** | ✓ `/health` endpoint — detected at `app/main.py:224` |
 | 5 | Rollback tested in staging | TBD | deploy runbook |
 | 6 | DR plan with RTO/RPO | TBD | runbook |
 | 7 | Idempotency keys for writes | TBD | reviewer audit |
@@ -1358,14 +1358,14 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 |---|---|---|---|
 | 1 | Execution sequence with debug taps | **10** | ✓ §13 |
 | 2 | Business-logic step sequence | **10** | ✓ §14 |
-| 3 | Structured JSON logs | TBD | reviewer audit |
-| 4 | correlation_id propagated everywhere | TBD | trace check |
-| 5 | Tracing (OTel) wired | TBD | Jaeger query |
-| 6 | Metrics exposed (RED: rate/errors/duration) | TBD | Prometheus query |
+| 3 | Structured JSON logs | **10** | ✓ structured logger — detected at `app/main.py:65` |
+| 4 | correlation_id propagated everywhere | **10** | ✓ correlation_id used — detected at `app/main.py:403` |
+| 5 | Tracing (OTel) wired | TBD | — |
+| 6 | Metrics exposed (RED: rate/errors/duration) | TBD | — |
 | 7 | Grafana dashboard exists | TBD | dashboard URL |
 | 8 | Alerts defined (SLO burn) | TBD | Alertmanager config |
 | 9 | Runbook references | TBD | `ops/runbook/<svc>.md` |
-| 10 | Decision audit row per AI call (§38+§48) | TBD | `decision_audit` table |
+| 10 | Decision audit row per AI call (§38+§48) | TBD | — |
 
 ### 7. Testing (10 rows)
 

@@ -1,6 +1,6 @@
 # 📦 `services` — Advanced README
 
-  ·  **Path:** `services`  ·  **Generated:** 2026-05-16 23:02 UTC
+  ·  **Path:** `services`  ·  **Generated:** 2026-05-16 23:30 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `357	PraveenAsthana123`, `8	Praveen` |
+| Top git contributors | `358	PraveenAsthana123`, `8	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -1915,6 +1915,7 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `551405a` | 2026-05-16 | docs: regen_all_docs.sh orchestrator + complete README/REPORT regen pass |
 | `0211a6c` | 2026-05-16 | docs(reports): rename to *_ASSESSMENT_REPORT.md + Code Logic Deep Dive section |
 | `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
 | `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
@@ -1922,7 +1923,6 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `7451179` | 2026-05-08 | fix(llm-pool): close P0 #36 — per-backend CircuitBreaker; drill locks 8 invariants |
-| `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
 
 ```bash
 git log --oneline -- services    # see all commits
@@ -2034,9 +2034,9 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 | # | Item | Score | Evidence |
 |---|---|---|---|
 | 1 | Input validation present (Pydantic/Zod) | **10** if detected | §20 — detected: Manual escape, Pydantic BaseModel, Zod (TS) |
-| 2 | AuthN/Z documented + enforced | TBD | §20 |
+| 2 | AuthN enforced (Depends-based) | TBD | — |
 | 3 | OWASP Top 10 reviewed | TBD | STRIDE table per container |
-| 4 | No hardcoded secrets | TBD | smell count: 2 pw + 0 api-key literals |
+| 4 | No hardcoded secrets | TBD | — |
 | 5 | Secrets in Vault / env, not code | TBD | §4 Env Vars |
 | 6 | SAST scan clean (bandit/semgrep) | TBD | CI log |
 | 7 | Dependency CVE scan clean (pip-audit) | TBD | CI log |
@@ -2051,10 +2051,10 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 | 1 | Latency SLO documented | TBD | reviewer |
 | 2 | Load tested (k6/Locust) | TBD | `tests/load/` |
 | 3 | p95 measured + within SLO | TBD | Grafana panel |
-| 4 | No N+1 queries on hot paths | TBD | EXPLAIN ANALYZE |
+| 4 | Pagination on list endpoints | **10** | ✓ `offset` + `limit` Query params — detected at `agent-orchestrator-svc/app/main.py:303` |
 | 5 | Caches bounded (LRU/TTL) | **10** | detected: in-memory @lru_cache, redis |
 | 6 | Async I/O where applicable | **10** | 303 async functions detected |
-| 7 | Timeouts on all external calls | TBD | reviewer audit |
+| 7 | Timeouts on all external calls | **10** | ✓ timeout= or asyncio.wait_for — detected at `sidecar-advisor/git_capture.py:105` |
 | 8 | Memory profile clean (no growth) | TBD | py-spy / mprof |
 | 9 | Capacity model documented | TBD | runbook |
 | 10 | Cost per request tracked (token/cpu) | TBD | finops dashboard |
@@ -2064,9 +2064,9 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 | # | Item | Score | Evidence |
 |---|---|---|---|
 | 1 | Retry with exp backoff | TBD | reviewer audit |
-| 2 | Circuit breaker on external deps | TBD | `documind_core/breakers/` |
+| 2 | Circuit breaker on external deps | **10** | ✓ CircuitBreaker wired — detected at `agent-orchestrator-svc/app/db_circuit_breaker.py:66` |
 | 3 | Graceful degradation path | TBD | reviewer audit |
-| 4 | Health probe (startup/liveness/readiness) | TBD | k8s manifest |
+| 4 | Health probe (startup/liveness/readiness) | **10** | ✓ `/health` endpoint — detected at `agent-orchestrator-svc/app/main.py:224` |
 | 5 | Rollback tested in staging | TBD | deploy runbook |
 | 6 | DR plan with RTO/RPO | TBD | runbook |
 | 7 | Idempotency keys for writes | TBD | reviewer audit |
@@ -2080,14 +2080,14 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 |---|---|---|---|
 | 1 | Execution sequence with debug taps | **10** | ✓ §13 |
 | 2 | Business-logic step sequence | **10** | ✓ §14 |
-| 3 | Structured JSON logs | TBD | reviewer audit |
-| 4 | correlation_id propagated everywhere | TBD | trace check |
-| 5 | Tracing (OTel) wired | TBD | Jaeger query |
-| 6 | Metrics exposed (RED: rate/errors/duration) | TBD | Prometheus query |
+| 3 | Structured JSON logs | **10** | ✓ structured logger — detected at `agent-orchestrator-svc/app/main.py:65` |
+| 4 | correlation_id propagated everywhere | **10** | ✓ correlation_id used — detected at `agent-orchestrator-svc/app/main.py:403` |
+| 5 | Tracing (OTel) wired | **10** | ✓ OTel imported — detected at `inference-svc/app/services/guardrails.py:43` |
+| 6 | Metrics exposed (RED: rate/errors/duration) | **10** | ✓ Prometheus instrumentation — detected at `inference-svc/app/routers/__init__.py:146` |
 | 7 | Grafana dashboard exists | TBD | dashboard URL |
 | 8 | Alerts defined (SLO burn) | TBD | Alertmanager config |
 | 9 | Runbook references | TBD | `ops/runbook/<svc>.md` |
-| 10 | Decision audit row per AI call (§38+§48) | TBD | `decision_audit` table |
+| 10 | Decision audit row per AI call (§38+§48) | **10** | ✓ decision_audit ref — detected at `inference-svc/app/main.py:95` |
 
 ### 7. Testing (10 rows)
 

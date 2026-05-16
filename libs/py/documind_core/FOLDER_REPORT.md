@@ -1,7 +1,7 @@
 # 🚀 Enterprise Folder-Level Manual Code Review
 
 **Folder under review:** `libs/py/documind_core`
-**Generated:** 2026-05-16 23:04 UTC
+**Generated:** 2026-05-16 23:35 UTC
 
 > Purpose: folder-level production review · architecture validation · business logic · security · scalability · integration · performance · production readiness.
 
@@ -24,13 +24,13 @@
 | README present | Yes |
 | Dockerfile present | No |
 | Tests dir present | No |
-| Top Git Contributors | 51	PraveenAsthana123, 6	Praveen |
+| Top Git Contributors | 52	PraveenAsthana123, 6	Praveen |
 | External DB Dependencies (detected) | Neo4j, Postgres (asyncpg), Redis |
 | External HTTP Dependencies (detected) | httpx, node-fetch / fetch |
 | Queue / Event Dependencies (detected) | Kafka (aiokafka), Kafka (kafka-python) |
 | AI / LLM Dependencies (detected) | LangChain, Rebuff (prompt injection) |
 | Reviewer | Praveen Asthana |
-| Review Date | 2026-05-16 23:04 UTC |
+| Review Date | 2026-05-16 23:35 UTC |
 | Service/Module | _TBD by reviewer_ |
 | Business Domain | _TBD by reviewer_ |
 | Risk Level | _Critical / High / Medium / Low_ |

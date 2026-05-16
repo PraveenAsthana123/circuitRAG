@@ -1,6 +1,6 @@
 # 📦 `scripts` — Advanced README
 
-🔧 **Scripts**  ·  **Path:** `scripts`  ·  **Generated:** 2026-05-16 22:56 UTC
+🔧 **Scripts**  ·  **Path:** `scripts`  ·  **Generated:** 2026-05-16 23:26 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -13,14 +13,14 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `scripts` |
-| Total files | 164 |
+| Total files | 165 |
 | Python files | 120 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
-| Shell scripts | 35 |
-| Lines of code | 44,524 |
+| Shell scripts | 36 |
+| Lines of code | 44,726 |
 | Python classes | 127 |
-| Python functions | 1089 |
+| Python functions | 1092 |
 | Async functions | 42 |
 | Total API endpoints | 5 |
 | Total DB call sites | 110 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `223	PraveenAsthana123`, `2	Praveen` |
+| Top git contributors | `225	PraveenAsthana123`, `2	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -55,7 +55,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | hardcoded localhost URL | 95 |
 | hardcoded password literal | 1 |
 | hardcoded API key literal | 1 |
-| TODO/FIXME marker | 33 |
+| TODO/FIXME marker | 41 |
 
 
 ## 1. Purpose — Business + Technical
@@ -331,7 +331,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `generate-grafana-dashboards.py` | 📄 module | 0 | 4 | 354 | Generator for the 15 Grafana dashboards Kiali deep-links to. |
 | `generate_brutal_reviews.py` | 📄 module | 0 | 6 | 331 | Generate brutal-review docs for every MCP server (iter-84). |
 | `generate_folder_readme.py` | 📄 module | 1 | 18 | 491 | Folder README.md generator — pre-populated from auto-detection. |
-| `generate_folder_report.py` | 💾 repository / data access | 7 | 67 | 2996 | Folder-level ADVANCED README generator. |
+| `generate_folder_report.py` | 💾 repository / data access | 7 | 68 | 3127 | Folder-level ADVANCED README generator. |
 | `generate_folder_review_report.py` | 💾 repository / data access | 3 | 39 | 994 | Folder-level Manual Code Review Checklist generator. |
 | `generate_mesh_manifests.py` | 📄 module | 0 | 5 | 318 | Generate k8s Deployment + Service manifests for each MCP/agent tool (iter-94). |
 | `generate_production_review_report.py` | 💾 repository / data access | 3 | 27 | 1438 | Master Production Code Review & Architecture Assessment Checklist generator. |
@@ -1018,7 +1018,7 @@ Walk the phases IN ORDER — first phase with missing/wrong output is the failur
 
 ## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
 
-Auto-extracted from the hottest file in this folder: **`generate_folder_report.py`** (2996 LOC, 7 classes, 67 functions).
+Auto-extracted from the hottest file in this folder: **`generate_folder_report.py`** (3127 LOC, 7 classes, 68 functions).
 
 ### Module-level variables (state map)
 
@@ -1330,7 +1330,7 @@ open http://localhost:16686/search?service=scripts&tags=%7B%22request_id%22%3A%2
 |---|---|---|
 | No dead / commented-out code | — | — |
 | No `print()` — use logger | — | — |
-| No hardcoded values | — | smell count: 130 |
+| No hardcoded values | — | smell count: 138 |
 | Constants extracted to a settings module | — | — |
 
 ### Complexity
@@ -1625,14 +1625,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `551405a` | 2026-05-16 | docs: regen_all_docs.sh orchestrator + complete README/REPORT regen pass |
+| `0211a6c` | 2026-05-16 | docs(reports): rename to *_ASSESSMENT_REPORT.md + Code Logic Deep Dive section |
 | `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
 | `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
 | `91a5efe` | 2026-05-16 | docs(readme): enterprise 20-section root README per spec #1 |
 | `3634fb7` | 2026-05-16 | docs(audit): readme audit scoreboard + drill — honest §57.7 baseline |
 | `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
-| `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
-| `b4c9e00` | 2026-05-16 | feat(ops): advanced 7-layer health-check + troubleshoot tool — 46 probes parallel |
 
 ```bash
 git log --oneline -- scripts    # see all commits
@@ -1652,11 +1652,15 @@ git blame <file>                       # who wrote what
 | `generate_folder_report.py:1292` | / FIXME markers found — folder is hygienic._\n\n" |
 | `build_doc_framework_templates.py:310` | define sections for {d.doc_type})\n" |
 
-#### FIXME (1)
+#### FIXME (5)
 
 | Location | Note |
 |---|---|
 | `generate_folder_report.py:105` | marker"), |
+| `generate_folder_report.py:2741` | hygiene (≤ 5 markers) |
+| `generate_folder_report.py:2742` | marker", 0) |
+| `generate_folder_report.py:2744` | markers") |
+| `generate_folder_report.py:2746` | markers (acceptable)") |
 
 #### HACK (1)
 
@@ -1679,7 +1683,7 @@ git blame <file>                       # who wrote what
 | Naming convention enforced | ruff / eslint | — | — |
 | Zero critical CVEs | Trivy / Bandit | — | — |
 | No hardcoded secrets | gitleaks | — | — |
-| No memory leaks | bounded caches | — | smells: 130 |
+| No memory leaks | bounded caches | — | smells: 138 |
 | No N+1 queries | hot paths reviewed | — | 110 DB call sites |
 | All APIs validated | Pydantic / Zod | — | sanitization: Manual escape, Pydantic BaseModel, Pydantic validator, Zod (TS) |
 | Duplicate logic eliminated | DRY check | — | — |
@@ -1730,9 +1734,9 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 | # | Item | Score | Evidence |
 |---|---|---|---|
 | 1 | Input validation present (Pydantic/Zod) | **10** if detected | §20 — detected: Manual escape, Pydantic BaseModel, Pydantic validator, Zod (TS) |
-| 2 | AuthN/Z documented + enforced | TBD | §20 |
+| 2 | AuthN enforced (Depends-based) | TBD | — |
 | 3 | OWASP Top 10 reviewed | TBD | STRIDE table per container |
-| 4 | No hardcoded secrets | TBD | smell count: 1 pw + 1 api-key literals |
+| 4 | No hardcoded secrets | TBD | — |
 | 5 | Secrets in Vault / env, not code | TBD | §4 Env Vars |
 | 6 | SAST scan clean (bandit/semgrep) | TBD | CI log |
 | 7 | Dependency CVE scan clean (pip-audit) | TBD | CI log |
@@ -1747,10 +1751,10 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 | 1 | Latency SLO documented | TBD | reviewer |
 | 2 | Load tested (k6/Locust) | TBD | `tests/load/` |
 | 3 | p95 measured + within SLO | TBD | Grafana panel |
-| 4 | No N+1 queries on hot paths | TBD | EXPLAIN ANALYZE |
+| 4 | Pagination on list endpoints | TBD | — |
 | 5 | Caches bounded (LRU/TTL) | **10** | detected: functools.cache, in-memory @lru_cache, redis |
 | 6 | Async I/O where applicable | **10** | 42 async functions detected |
-| 7 | Timeouts on all external calls | TBD | reviewer audit |
+| 7 | Timeouts on all external calls | **10** | ✓ timeout= or asyncio.wait_for — detected at `aiops_retrain_trigger.py:114` |
 | 8 | Memory profile clean (no growth) | TBD | py-spy / mprof |
 | 9 | Capacity model documented | TBD | runbook |
 | 10 | Cost per request tracked (token/cpu) | TBD | finops dashboard |
@@ -1760,9 +1764,9 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 | # | Item | Score | Evidence |
 |---|---|---|---|
 | 1 | Retry with exp backoff | TBD | reviewer audit |
-| 2 | Circuit breaker on external deps | TBD | `documind_core/breakers/` |
+| 2 | Circuit breaker on external deps | **10** | ✓ CircuitBreaker wired — detected at `native_compute_wrapper.py:37` |
 | 3 | Graceful degradation path | TBD | reviewer audit |
-| 4 | Health probe (startup/liveness/readiness) | TBD | k8s manifest |
+| 4 | Health probe (startup/liveness/readiness) | **10** | ✓ `/health` endpoint — detected at `build_mcp_sdlc_batch.py:242` |
 | 5 | Rollback tested in staging | TBD | deploy runbook |
 | 6 | DR plan with RTO/RPO | TBD | runbook |
 | 7 | Idempotency keys for writes | TBD | reviewer audit |
@@ -1776,14 +1780,14 @@ Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each 
 |---|---|---|---|
 | 1 | Execution sequence with debug taps | **10** | ✓ §13 |
 | 2 | Business-logic step sequence | **10** | ✓ §14 |
-| 3 | Structured JSON logs | TBD | reviewer audit |
-| 4 | correlation_id propagated everywhere | TBD | trace check |
-| 5 | Tracing (OTel) wired | TBD | Jaeger query |
-| 6 | Metrics exposed (RED: rate/errors/duration) | TBD | Prometheus query |
+| 3 | Structured JSON logs | **10** | ✓ structured logger — detected at `generate_specialized_assessment.py:278` |
+| 4 | correlation_id propagated everywhere | **10** | ✓ correlation_id used — detected at `generate_folder_report.py:1200` |
+| 5 | Tracing (OTel) wired | **10** | ✓ OTel imported — detected at `scenario_batch_and_inference.py:509` |
+| 6 | Metrics exposed (RED: rate/errors/duration) | **10** | ✓ Prometheus instrumentation — detected at `generate_mesh_manifests.py:97` |
 | 7 | Grafana dashboard exists | TBD | dashboard URL |
 | 8 | Alerts defined (SLO burn) | TBD | Alertmanager config |
 | 9 | Runbook references | TBD | `ops/runbook/<svc>.md` |
-| 10 | Decision audit row per AI call (§38+§48) | TBD | `decision_audit` table |
+| 10 | Decision audit row per AI call (§38+§48) | **10** | ✓ decision_audit ref — detected at `generate_folder_report.py:1666` |
 
 ### 7. Testing (10 rows)
 
