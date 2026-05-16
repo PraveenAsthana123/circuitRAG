@@ -1,0 +1,115 @@
+# README + REPORT freshness CI gate per global Folder-README Standard.
+#
+# Runs all generators in --dry-run mode and fails if any generated
+# file would differ from the committed version. Forces contributors
+# to keep auto-generated docs in sync with the code they describe.
+#
+# SECURITY NOTE: This workflow only references constants defined in
+# env: at the top of the file. NO untrusted GitHub event inputs
+# (issue title, PR body, head_ref, commit message, comment body,
+# author email/name) are interpolated into run: steps — same
+# defensive pattern as ci.yml + drills.yml in this repo.
+# Reference: https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+
+name: README + REPORT freshness
+
+on:
+  pull_request:
+    paths:
+      - "scripts/generate_*.py"
+      - "scripts/regen_all_docs.sh"
+      - "scripts/audit_readme_scores.py"
+      - "services/**/*.py"
+      - "services/**/*.tsx"
+      - "services/**/*.ts"
+      - "services/**/*.go"
+      - "libs/py/**/*.py"
+      - "mcp/**/*.py"
+      - "**/README.md"
+      - "**/FOLDER_REPORT.md"
+      - "**/FRONTEND_ASSESSMENT_REPORT.md"
+      - "**/BACKEND_ASSESSMENT_REPORT.md"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+  REVIEWER_NAME: "CI Freshness Check"
+
+jobs:
+  freshness:
+    name: Generators produce committed output
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for recent-activity section's git log
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Regenerate all docs (uses env REVIEWER_NAME — no untrusted input)
+        env:
+          REVIEWER: ${{ env.REVIEWER_NAME }}
+        run: bash scripts/regen_all_docs.sh --reviewer "$REVIEWER"
+
+      - name: Diff check — any generator output drift?
+        run: |
+          if ! git diff --exit-code --stat; then
+            echo "============================================"
+            echo "  README / REPORT DRIFT DETECTED"
+            echo "============================================"
+            echo "Run locally:"
+            echo "  bash scripts/regen_all_docs.sh --reviewer 'Your Name'"
+            echo "Commit the resulting diff and push."
+            echo "============================================"
+            exit 1
+          fi
+
+  drills:
+    name: README-generator drills (>=3 negatives each)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run drill_readme_generator (12 steps)
+        run: python3 mcp/tests/drill_readme_generator.py
+
+      - name: Run drill_folder_review_report (12 steps)
+        run: python3 mcp/tests/drill_folder_review_report.py
+
+      - name: Run drill_audit_readme_scores (11 steps)
+        run: python3 mcp/tests/drill_audit_readme_scores.py
+
+  audit-score:
+    name: Aggregate audit score baseline
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run audit score dashboard
+        run: python3 scripts/audit_readme_scores.py | tee audit-baseline.txt
+
+      - name: Upload audit baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: readme-audit-score
+          path: audit-baseline.txt
+          retention-days: 30
