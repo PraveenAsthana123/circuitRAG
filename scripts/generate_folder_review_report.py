@@ -980,7 +980,13 @@ def main() -> int:
 
     print(f"\nSummary: {summary['wrote']} wrote · "
           f"{summary['skip']} skip · {summary['fail']} fail")
-    return 0 if summary["fail"] == 0 else 1
+    # Single-folder mode: SKIP is a user-visible failure (they asked for the file).
+    # Batch mode: SKIP is normal (some folders had reports; not a failure).
+    if summary["fail"] > 0:
+        return 1
+    if args.folder and summary["skip"] > 0 and summary["wrote"] == 0:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
