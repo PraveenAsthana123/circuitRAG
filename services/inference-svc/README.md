@@ -1,8 +1,8 @@
-# 📦 `agent-orchestrator-svc` — Advanced README
+# 📦 `inference-svc` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/agent-orchestrator-svc`  ·  **Generated:** 2026-05-16 20:02 UTC
+🧩 **Service**  ·  **Path:** `services/inference-svc`  ·  **Generated:** 2026-05-16 20:02 UTC
 
-> Agent orchestrator FastAPI service.
+> Inference service FastAPI application.
 
 This README is **auto-generated** by [`scripts/generate_folder_report.py`](../../scripts/generate_folder_report.py). It explains what this folder does, every file inside it, how the files link to each other, every API endpoint, every database call, every test case, and the production controls (security / reliability / performance / observability). Re-run after major changes.
 
@@ -12,55 +12,54 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 
 | Metric | Value |
 |---|---|
-| Folder | `services/agent-orchestrator-svc` |
-| Total files | 62 |
-| Python files | 35 |
+| Folder | `services/inference-svc` |
+| Total files | 27 |
+| Python files | 22 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
 | Shell scripts | 0 |
-| Lines of code | 5,759 |
-| Python classes | 59 |
-| Python functions | 241 |
-| Async functions | 140 |
-| Total API endpoints | 20 |
-| Total DB call sites | 31 |
+| Lines of code | 5,174 |
+| Python classes | 54 |
+| Python functions | 97 |
+| Async functions | 56 |
+| Total API endpoints | 3 |
+| Total DB call sites | 14 |
 | DB / Storage libs | Kafka (aiokafka), Redis, asyncpg |
-| Concurrency primitives | Lock / RLock, asyncio (async/await), threading |
+| Concurrency primitives | Lock / RLock, asyncio (async/await) |
 | Caching primitives | redis |
 | Input validation | Pydantic BaseModel |
-| AI / LLM deps | LangGraph, Ollama |
+| AI / LLM deps | Anthropic SDK, LangChain, LangGraph, Ollama, OpenAI SDK, Ragas |
 | Test files | 1 |
-| Detected test cases | 4 |
+| Detected test cases | 3 |
 | Tests dir present | ✅ |
 | Dockerfile | ✅ |
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `47	PraveenAsthana123` |
+| Top git contributors | `71	PraveenAsthana123`, `6	Praveen` |
 
 #### Longest functions (top 5)
 
 | Location | Name | Lines |
 |---|---|---|
-| `app/main.py:63` | `create_app` | 477 |
-| `app/langgraph_flow.py:58` | `build_graph` | 449 |
-| `app/main.py:74` | `lifespan` | 135 |
-| `app/explainability.py:56` | `assemble_explanation` | 114 |
-| `app/model_router.py:126` | `route` | 108 |
+| `app/services/rag_inference.py:121` | `ask` | 381 |
+| `app/main.py:49` | `create_app` | 369 |
+| `app/main.py:71` | `lifespan` | 277 |
+| `app/routers/__init__.py:326` | `health_upstreams` | 260 |
+| `app/routers/__init__.py:1080` | `admin_trace_link` | 199 |
 
 #### Smells detected (grep heuristics — verify manually)
 
 | Smell | Count |
 |---|---|
-| hardcoded localhost URL | 7 |
-| TODO/FIXME marker | 1 |
+| hardcoded localhost URL | 2 |
 
 
 ## 1. Purpose — Business + Technical
 
 ### Business problem this folder solves
 
-> _Reviewer to fill: Agent orchestrator FastAPI service._
+> _Reviewer to fill: Inference service FastAPI application._
 
 ### Technical contract this folder exposes
 
@@ -77,79 +76,49 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 
 | Relative path | Role (inferred) | Classes | Functions | LOC | Summary |
 |---|---|---|---|---|---|
-| `app/__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 2 | Agent orchestrator service skeleton. |
-| `app/agent_registry.py` | 🚀 entry point / app bootstrap | 1 | 1 | 292 | _(no docstring)_ |
-| `app/agent_schemas.py` | 📋 data model / schema | 2 | 3 | 157 | Pydantic schemas for agent structured output. |
-| `app/agents.py` | 🚀 entry point / app bootstrap | 6 | 2 | 544 | Agentic role implementations. |
-| `app/core/__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 2 | Core config package for agent orchestrator service. |
-| `app/core/config.py` | ⚙ config / settings | 1 | 0 | 37 | _(no docstring)_ |
-| `app/db_circuit_breaker.py` | 🚀 entry point / app bootstrap | 1 | 0 | 136 | Circuit breaker around the Postgres data layer. |
-| `app/deployer.py` | 🚀 entry point / app bootstrap | 1 | 0 | 94 | DeployerAgent (Phase B5 scaffold). |
-| `app/explainability.py` | 🚀 entry point / app bootstrap | 0 | 3 | 199 | §48 explainability — assemble per-task decision audit rows (Phase C4). |
-| `app/idempotency.py` | 🚀 entry point / app bootstrap | 4 | 3 | 114 | Idempotency-key helpers for POST /api/v1/agentic/tasks (Phase C2). |
-| `app/idempotency_postgres.py` | 🚀 entry point / app bootstrap | 1 | 0 | 72 | PostgresIdempotencyStore — multi-pod-safe IdempotencyStore. |
-| `app/langgraph_flow.py` | 🚀 entry point / app bootstrap | 1 | 5 | 530 | _(no docstring)_ |
-| `app/llm_clients/__init__.py` | 🔌 external service adapter | 0 | 0 | 24 | LLM client backends — uniform Protocol over Ollama / Claude CLI / Codex CLI. |
-| `app/llm_clients/claude_cli_client.py` | 🔌 external service adapter | 1 | 2 | 156 | Claude CLI client — shell-out to local Claude Code binary in JSON mode. |
-| `app/llm_clients/codex_cli_client.py` | 🔌 external service adapter | 1 | 2 | 125 | Codex CLI client — shell-out to local Codex binary. |
-| `app/llm_clients/ollama_client.py` | 🔌 external service adapter | 1 | 0 | 66 | Ollama HTTP client adapted to the LlmClient Protocol. |
-| `app/llm_clients/pool.py` | 🔌 external service adapter | 3 | 0 | 174 | LlmClientPool — dispatch-by-backend with fallback-chain execution. |
-| `app/llm_clients/protocol.py` | 🔌 external service adapter | 3 | 0 | 47 | LlmClient Protocol — uniform interface for Ollama / Claude CLI / Codex CLI. |
-| `app/main.py` | 🚀 entry point / app bootstrap | 0 | 1 | 543 | Agent orchestrator FastAPI service. |
-| `app/migrations.py` | 🚀 entry point / app bootstrap | 0 | 1 | 88 | Idempotent migration runner for agent-orchestrator-svc. |
-| `app/model_catalog.py` | 📋 data model / schema | 1 | 3 | 163 | Curated catalog of models per role, with tier mapping for the routing layer. |
-| `app/model_router.py` | 🌐 HTTP router / API endpoints | 3 | 6 | 234 | Deterministic model router — picks (model, tier, backend) per role. |
-| `app/models.py` | 📋 data model / schema | 19 | 0 | 248 | _(no docstring)_ |
-| `app/observer.py` | 🚀 entry point / app bootstrap | 1 | 0 | 110 | ObserverAgent (Phase B6 scaffold). |
-| `app/ollama_client.py` | 🔌 external service adapter | 1 | 0 | 23 | _(no docstring)_ |
-| `app/policy.py` | 🚀 entry point / app bootstrap | 0 | 3 | 56 | _(no docstring)_ |
-| `app/postgres_store.py` | 💾 repository / data access | 1 | 6 | 663 | _(no docstring)_ |
-| `app/rate_limit.py` | 🚀 entry point / app bootstrap | 2 | 0 | 111 | In-memory rate limiter for the orchestrator (P1 #33). |
-| `app/research.py` | 🚀 entry point / app bootstrap | 1 | 0 | 244 | ResearchAgent (Phase B2 scaffold). |
-| `app/service.py` | 🧠 business service / use-case | 1 | 0 | 779 | _(no docstring)_ |
-| `app/store.py` | 💾 repository / data access | 1 | 0 | 182 | _(no docstring)_ |
-| `app/tester.py` | 🚀 entry point / app bootstrap | 1 | 0 | 129 | TesterAgent (Phase B4 scaffold). |
-| `scripts/bootstrap.py` | 📄 module | 0 | 4 | 65 | Bootstrap Postgres objects for agent-orchestrator-svc. |
-| `tests/conftest.py` | 📄 module | 0 | 1 | 35 | pytest config for agent-orchestrator-svc tests. |
-| `tests/test_smoke.py` | 🧪 test | 0 | 4 | 73 | §8 smoke tests for agent-orchestrator-svc. |
+| `app/agents/__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 16 | Agent orchestration (Design Area 11 — Agent State, + Extra — CCB). |
+| `app/agents/multi_hop_agent.py` | 🚀 entry point / app bootstrap | 2 | 0 | 179 | Multi-hop RAG agent — skeleton showing the full breaker story in action. |
+| `app/agents/multi_hop_fanout.py` | 🚀 entry point / app bootstrap | 2 | 1 | 235 | Parallel sub-question fanout for the multi-hop RAG agent. |
+| `app/core/config.py` | ⚙ config / settings | 1 | 0 | 18 | Inference-service configuration. |
+| `app/main.py` | 🚀 entry point / app bootstrap | 0 | 1 | 421 | Inference service FastAPI application. |
+| `app/routers/__init__.py` | 🌐 HTTP router / API endpoints | 0 | 20 | 1660 | Inference HTTP routes. |
+| `app/schemas/__init__.py` | 📋 data model / schema | 32 | 0 | 698 | Inference request/response schemas (Design Area 33 — Output Contract). |
+| `app/services/__init__.py` | 🧠 business service / use-case | 0 | 0 | 19 | _(no docstring)_ |
+| `app/services/agent.py` | 🧠 business service / use-case | 2 | 1 | 323 | Agent flow: answer + optional MCP action. |
+| `app/services/guardrails.py` | 🧠 business service / use-case | 3 | 0 | 209 | Output guardrails (Design Area 33 — Output Contract, §38 AI Governance). |
+| `app/services/ollama_client.py` | 🧠 business service / use-case | 2 | 1 | 191 | Ollama LLM client — wrapped in a circuit breaker. |
+| `app/services/prompt_builder.py` | 🧠 business service / use-case | 2 | 0 | 102 | Prompt construction + versioning (Design Area 32 — Prompt Contract). |
+| `app/services/prompt_repo.py` | 🧠 business service / use-case | 2 | 0 | 327 | DB-backed prompt registry (Design Area 32 — Prompt Contract). |
+| `app/services/rag_inference.py` | 🧠 business service / use-case | 1 | 0 | 502 | RagInferenceService — end-to-end glue for the read path. |
+| `app/services/retrieval_client.py` | 🧠 business service / use-case | 1 | 0 | 51 | gRPC/HTTP client for retrieval-svc (using HTTP+JSON here for simplicity). |
+| `app/workers/__init__.py` | 🚀 entry point / app bootstrap | 0 | 0 | 2 | Background workers scheduled from the inference-svc lifespan. |
+| `app/workers/breaker_metrics.py` | 🚀 entry point / app bootstrap | 1 | 0 | 123 | Background exporter: bridges non-CircuitBreaker breakers into the |
+| `app/workers/draft_replay.py` | 🚀 entry point / app bootstrap | 1 | 4 | 558 | Draft replay worker — periodically resolves pending MCP drafts. |
+| `tests/conftest.py` | 📄 module | 0 | 1 | 21 | pytest config for inference-svc tests. |
+| `tests/test_integration_inference.py` | 🧪 test | 0 | 3 | 143 | Integration test for RagInferenceService with mocked externals. |
 
 ### Absolute paths (clickable)
 
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/__init__.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/agent_registry.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/agent_schemas.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/agents.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/core/__init__.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/core/config.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/db_circuit_breaker.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/deployer.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/explainability.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/idempotency.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/idempotency_postgres.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/langgraph_flow.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/llm_clients/__init__.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/llm_clients/claude_cli_client.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/llm_clients/codex_cli_client.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/llm_clients/ollama_client.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/llm_clients/pool.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/llm_clients/protocol.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/main.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/migrations.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/model_catalog.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/model_router.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/models.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/observer.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/ollama_client.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/policy.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/postgres_store.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/rate_limit.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/research.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/service.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/store.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/app/tester.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/scripts/bootstrap.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/tests/conftest.py`
-- `/mnt/deepa/rag/services/agent-orchestrator-svc/tests/test_smoke.py`
+- `/mnt/deepa/rag/services/inference-svc/app/agents/__init__.py`
+- `/mnt/deepa/rag/services/inference-svc/app/agents/multi_hop_agent.py`
+- `/mnt/deepa/rag/services/inference-svc/app/agents/multi_hop_fanout.py`
+- `/mnt/deepa/rag/services/inference-svc/app/core/config.py`
+- `/mnt/deepa/rag/services/inference-svc/app/main.py`
+- `/mnt/deepa/rag/services/inference-svc/app/routers/__init__.py`
+- `/mnt/deepa/rag/services/inference-svc/app/schemas/__init__.py`
+- `/mnt/deepa/rag/services/inference-svc/app/services/__init__.py`
+- `/mnt/deepa/rag/services/inference-svc/app/services/agent.py`
+- `/mnt/deepa/rag/services/inference-svc/app/services/guardrails.py`
+- `/mnt/deepa/rag/services/inference-svc/app/services/ollama_client.py`
+- `/mnt/deepa/rag/services/inference-svc/app/services/prompt_builder.py`
+- `/mnt/deepa/rag/services/inference-svc/app/services/prompt_repo.py`
+- `/mnt/deepa/rag/services/inference-svc/app/services/rag_inference.py`
+- `/mnt/deepa/rag/services/inference-svc/app/services/retrieval_client.py`
+- `/mnt/deepa/rag/services/inference-svc/app/workers/__init__.py`
+- `/mnt/deepa/rag/services/inference-svc/app/workers/breaker_metrics.py`
+- `/mnt/deepa/rag/services/inference-svc/app/workers/draft_replay.py`
+- `/mnt/deepa/rag/services/inference-svc/tests/conftest.py`
+- `/mnt/deepa/rag/services/inference-svc/tests/test_integration_inference.py`
 
 
 ## 3. C4 Model — Context / Container / Component / Code
@@ -160,13 +129,13 @@ _Where does this folder sit in the broader system?_
 
 ```mermaid
 flowchart LR
-    Caller([External Caller]) --> This["agent-orchestrator-svc"]
-    This --> mcp[mcp]
+    Caller([External Caller]) --> This["inference-svc"]
+    This --> documind_core_breakers[documind_core/breakers]
+    This --> app_services[app/services]
     This --> documind_core_config[documind_core/config]
-    This --> documind_core_circuit_breaker[documind_core/circuit_breaker]
-    This --> documind_core_db_client[documind_core/db_client]
-    This --> documind_core_body_limit[documind_core/body_limit]
-    This --> documind_core_dr_metrics[documind_core/dr_metrics]
+    This --> documind_core_auth[documind_core/auth]
+    This --> documind_core_logging_config[documind_core/logging_config]
+    This --> documind_core_middleware[documind_core/middleware]
 ```
 
 ### Level 2 — Container
@@ -175,14 +144,18 @@ _What external dependencies does this folder talk to?_
 
 ```mermaid
 flowchart TB
-    subgraph agent-orchestrator-svc
+    subgraph inference-svc
         Code[Source Code]
     end
     Code --> DB_0[("Kafka (aiokafka)")]
     Code --> DB_1[("Redis")]
     Code --> DB_2[("asyncpg")]
-    Code --> AI_0{{LLM: LangGraph}}
-    Code --> AI_1{{LLM: Ollama}}
+    Code --> AI_0{{LLM: Anthropic SDK}}
+    Code --> AI_1{{LLM: LangChain}}
+    Code --> AI_2{{LLM: LangGraph}}
+    Code --> AI_3{{LLM: Ollama}}
+    Code --> AI_4{{LLM: OpenAI SDK}}
+    Code --> AI_5{{LLM: Ragas}}
 ```
 
 ### Level 3 — Component
@@ -192,47 +165,37 @@ _Internal files grouped by inferred role._
 ```mermaid
 flowchart TB
     subgraph __entry_point___app_bootstrap["🚀 entry point / app bootstrap"]
-        app___init___py["app/__init__.py"]
-        app_agent_registry_py["app/agent_registry.py"]
-        app_agents_py["app/agents.py"]
-        app_core___init___py["app/core/__init__.py"]
-        app_db_circuit_breaker_py["app/db_circuit_breaker.py"]
-        app_deployer_py["app/deployer.py"]
-        more___entry_point___app_bootstrap["... +11 more"]
-    end
-    subgraph __data_model___schema["📋 data model / schema"]
-        app_agent_schemas_py["app/agent_schemas.py"]
-        app_model_catalog_py["app/model_catalog.py"]
-        app_models_py["app/models.py"]
+        app_agents___init___py["app/agents/__init__.py"]
+        app_agents_multi_hop_agent_py["app/agents/multi_hop_agent.py"]
+        app_agents_multi_hop_fanout_py["app/agents/multi_hop_fanout.py"]
+        app_main_py["app/main.py"]
+        app_workers___init___py["app/workers/__init__.py"]
+        app_workers_breaker_metrics_py["app/workers/breaker_metrics.py"]
+        more___entry_point___app_bootstrap["... +1 more"]
     end
     subgraph __config___settings["⚙ config / settings"]
         app_core_config_py["app/core/config.py"]
     end
-    subgraph __external_service_adapter["🔌 external service adapter"]
-        app_llm_clients___init___py["app/llm_clients/__init__.py"]
-        app_llm_clients_claude_cli_client_py["app/llm_clients/claude_cli_client.py"]
-        app_llm_clients_codex_cli_client_py["app/llm_clients/codex_cli_client.py"]
-        app_llm_clients_ollama_client_py["app/llm_clients/ollama_client.py"]
-        app_llm_clients_pool_py["app/llm_clients/pool.py"]
-        app_llm_clients_protocol_py["app/llm_clients/protocol.py"]
-        more___external_service_adapter["... +1 more"]
-    end
     subgraph __HTTP_router___API_endpoints["🌐 HTTP router / API endpoints"]
-        app_model_router_py["app/model_router.py"]
+        app_routers___init___py["app/routers/__init__.py"]
     end
-    subgraph __repository___data_access["💾 repository / data access"]
-        app_postgres_store_py["app/postgres_store.py"]
-        app_store_py["app/store.py"]
+    subgraph __data_model___schema["📋 data model / schema"]
+        app_schemas___init___py["app/schemas/__init__.py"]
     end
     subgraph __business_service___use_case["🧠 business service / use-case"]
-        app_service_py["app/service.py"]
+        app_services___init___py["app/services/__init__.py"]
+        app_services_agent_py["app/services/agent.py"]
+        app_services_guardrails_py["app/services/guardrails.py"]
+        app_services_ollama_client_py["app/services/ollama_client.py"]
+        app_services_prompt_builder_py["app/services/prompt_builder.py"]
+        app_services_prompt_repo_py["app/services/prompt_repo.py"]
+        more___business_service___use_case["... +2 more"]
     end
     subgraph __module["📄 module"]
-        scripts_bootstrap_py["scripts/bootstrap.py"]
         tests_conftest_py["tests/conftest.py"]
     end
     subgraph __test["🧪 test"]
-        tests_test_smoke_py["tests/test_smoke.py"]
+        tests_test_integration_inference_py["tests/test_integration_inference.py"]
     end
 ```
 
@@ -242,11 +205,11 @@ _Longest functions — these are the most likely refactor candidates._
 
 ```mermaid
 flowchart TB
-    app_main_py_63_create_app["create_app (477 lines)<br/>app/main.py:63"]
-    app_langgraph_flow_py_58_build_graph["build_graph (449 lines)<br/>app/langgraph_flow.py:58"]
-    app_main_py_74_lifespan["lifespan (135 lines)<br/>app/main.py:74"]
-    app_explainability_py_56_assemble_explan["assemble_explanation (114 lines)<br/>app/explainability.py:56"]
-    app_model_router_py_126_route["route (108 lines)<br/>app/model_router.py:126"]
+    app_services_rag_inference_py_121_ask["ask (381 lines)<br/>app/services/rag_inference.py:121"]
+    app_main_py_49_create_app["create_app (369 lines)<br/>app/main.py:49"]
+    app_main_py_71_lifespan["lifespan (277 lines)<br/>app/main.py:71"]
+    app_routers___init___py_326_health_upstr["health_upstreams (260 lines)<br/>app/routers/__init__.py:326"]
+    app_routers___init___py_1080_admin_trace["admin_trace_link (199 lines)<br/>app/routers/__init__.py:1080"]
 ```
 
 
@@ -256,14 +219,36 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    tests_test_smoke_py["tests/test_smoke.py"] --> app___init___py["app/__init__.py"]
+    app_agents_multi_hop_agent_py["app/agents/multi_hop_agent.py"] --> app_services___init___py["app/services/__init__.py"]
+    app_main_py["app/main.py"] --> app_core_config_py["app/core/config.py"]
+    app_main_py["app/main.py"] --> app_routers___init___py["app/routers/__init__.py"]
+    app_main_py["app/main.py"] --> app_services___init___py["app/services/__init__.py"]
+    app_main_py["app/main.py"] --> app_workers___init___py["app/workers/__init__.py"]
+    app_routers___init___py["app/routers/__init__.py"] --> app_schemas___init___py["app/schemas/__init__.py"]
+    app_routers___init___py["app/routers/__init__.py"] --> app_services___init___py["app/services/__init__.py"]
+    app_services_agent_py["app/services/agent.py"] --> app_schemas___init___py["app/schemas/__init__.py"]
+    app_services_agent_py["app/services/agent.py"] --> app_services___init___py["app/services/__init__.py"]
+    app_services_rag_inference_py["app/services/rag_inference.py"] --> app_schemas___init___py["app/schemas/__init__.py"]
+    tests_test_integration_inference_py["tests/test_integration_inference.py"] --> app_schemas___init___py["app/schemas/__init__.py"]
+    tests_test_integration_inference_py["tests/test_integration_inference.py"] --> app_services___init___py["app/services/__init__.py"]
 ```
 
 ### Edge list
 
 | From file | To file | Import-count |
 |---|---|---|
-| `tests/test_smoke.py` | `app/__init__.py` | 4 |
+| `tests/test_integration_inference.py` | `app/services/__init__.py` | 9 |
+| `app/routers/__init__.py` | `app/services/__init__.py` | 3 |
+| `tests/test_integration_inference.py` | `app/schemas/__init__.py` | 3 |
+| `app/main.py` | `app/services/__init__.py` | 2 |
+| `app/main.py` | `app/workers/__init__.py` | 2 |
+| `app/agents/multi_hop_agent.py` | `app/services/__init__.py` | 1 |
+| `app/main.py` | `app/core/config.py` | 1 |
+| `app/main.py` | `app/routers/__init__.py` | 1 |
+| `app/routers/__init__.py` | `app/schemas/__init__.py` | 1 |
+| `app/services/agent.py` | `app/schemas/__init__.py` | 1 |
+| `app/services/agent.py` | `app/services/__init__.py` | 1 |
+| `app/services/rag_inference.py` | `app/schemas/__init__.py` | 1 |
 
 
 ## 5. Request Flowchart
@@ -293,30 +278,13 @@ flowchart TD
 
 ## 6. API Endpoints — Input / Process / Output
 
-**Detected endpoints:** 20
+**Detected endpoints:** 3
 
 | Method | Route | Defined in | Input (schema) | Process (summary) | Output (schema) |
 |---|---|---|---|---|---|
-| `GET` | `/health/live` | `app/main.py:224` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/health/ready` | `app/main.py:228` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/admin/dr-targets` | `app/main.py:262` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/admin/governance/audit` | `app/main.py:302` | _TBD_ | _TBD_ | _TBD_ |
-| `POST` | `/api/v1/agentic/tasks` | `app/main.py:320` | _TBD_ | _TBD_ | _TBD_ |
-| `POST` | `/api/v1/agentic/projects` | `app/main.py:421` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/projects` | `app/main.py:425` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/projects/{project_id}/plan-items` | `app/main.py:429` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/policy` | `app/main.py:433` | _TBD_ | _TBD_ | _TBD_ |
-| `PUT` | `/api/v1/agentic/policy` | `app/main.py:437` | _TBD_ | _TBD_ | _TBD_ |
-| `POST` | `/api/v1/agentic/policy/simulate` | `app/main.py:441` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/agents` | `app/main.py:445` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/models/catalog` | `app/main.py:449` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/tasks` | `app/main.py:475` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/tasks/{task_id}` | `app/main.py:479` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/tasks/{task_id}/runs` | `app/main.py:486` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/tasks/{task_id}/approvals` | `app/main.py:490` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/tasks/{task_id}/explain` | `app/main.py:494` | _TBD_ | _TBD_ | _TBD_ |
-| `POST` | `/api/v1/agentic/tasks/{task_id}/approve` | `app/main.py:525` | _TBD_ | _TBD_ | _TBD_ |
-| `GET` | `/api/v1/agentic/memories` | `app/main.py:532` | _TBD_ | _TBD_ | _TBD_ |
+| `GET` | `/health` | `app/routers/__init__.py:52` | _TBD_ | _TBD_ | _TBD_ |
+| `POST` | `/api/v1/ask` | `app/routers/__init__.py:1288` | _TBD_ | _TBD_ | _TBD_ |
+| `POST` | `/api/v1/agent/ask` | `app/routers/__init__.py:1355` | _TBD_ | _TBD_ | _TBD_ |
 
 _Reviewer fills the last three columns from the Pydantic models in the handler. Auto-extraction of Pydantic schemas is on the roadmap._
 
@@ -329,7 +297,7 @@ _Reviewer fills the last three columns from the Pydantic models in the handler. 
 sequenceDiagram
   autonumber
   participant Client
-  participant API as agent-orchestrator-svc
+  participant API as inference-svc
   participant MW as Middleware (auth + logging)
   participant Svc as Business Service
   participant DB as Database
@@ -346,16 +314,16 @@ sequenceDiagram
 
 ### Per-endpoint sequence stubs (top 5)
 
-### `GET /health/live` (app/main.py:224)
+### `GET /health` (app/routers/__init__.py:52)
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant C as Client
-  participant H as Handler (app/main.py:224)
+  participant H as Handler (app/routers/__init__.py:52)
   participant S as Service
   participant D as DB / external
-  C->>H: GET /health/live
+  C->>H: GET /health
   H->>S: validated payload
   S->>D: read/write
   D-->>S: result
@@ -363,16 +331,16 @@ sequenceDiagram
   H-->>C: response
 ```
 
-### `GET /health/ready` (app/main.py:228)
+### `POST /api/v1/ask` (app/routers/__init__.py:1288)
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant C as Client
-  participant H as Handler (app/main.py:228)
+  participant H as Handler (app/routers/__init__.py:1288)
   participant S as Service
   participant D as DB / external
-  C->>H: GET /health/ready
+  C->>H: POST /api/v1/ask
   H->>S: validated payload
   S->>D: read/write
   D-->>S: result
@@ -380,72 +348,34 @@ sequenceDiagram
   H-->>C: response
 ```
 
-### `GET /api/v1/admin/dr-targets` (app/main.py:262)
+### `POST /api/v1/agent/ask` (app/routers/__init__.py:1355)
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant C as Client
-  participant H as Handler (app/main.py:262)
+  participant H as Handler (app/routers/__init__.py:1355)
   participant S as Service
   participant D as DB / external
-  C->>H: GET /api/v1/admin/dr-targets
+  C->>H: POST /api/v1/agent/ask
   H->>S: validated payload
   S->>D: read/write
   D-->>S: result
   S-->>H: domain object
   H-->>C: response
 ```
-
-### `GET /api/v1/admin/governance/audit` (app/main.py:302)
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant C as Client
-  participant H as Handler (app/main.py:302)
-  participant S as Service
-  participant D as DB / external
-  C->>H: GET /api/v1/admin/governance/audit
-  H->>S: validated payload
-  S->>D: read/write
-  D-->>S: result
-  S-->>H: domain object
-  H-->>C: response
-```
-
-### `POST /api/v1/agentic/tasks` (app/main.py:320)
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant C as Client
-  participant H as Handler (app/main.py:320)
-  participant S as Service
-  participant D as DB / external
-  C->>H: POST /api/v1/agentic/tasks
-  H->>S: validated payload
-  S->>D: read/write
-  D-->>S: result
-  S-->>H: domain object
-  H-->>C: response
-```
-
-_(+15 more endpoints — diagrams omitted for brevity.)_
 
 
 ## 8. Database Layer
 
 **DB / storage libraries:** Kafka (aiokafka), Redis, asyncpg
 
-**Total DB call sites:** 31
+**Total DB call sites:** 14
 
 | Pattern | Count |
 |---|---|
-| `execute` | 15 |
-| `fetch/fetchall/fetchrow` | 14 |
-| `ORM CRUD` | 1 |
-| `MongoDB` | 1 |
+| `fetch/fetchall/fetchrow` | 6 |
+| `ORM CRUD` | 8 |
 
 ### Query Optimization checklist
 
@@ -489,7 +419,7 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 |---|---|---|
 | No dead / commented-out code | — | — |
 | No `print()` — use logger | — | — |
-| No hardcoded values | — | smell count: 8 |
+| No hardcoded values | — | smell count: 2 |
 | Constants extracted to a settings module | — | — |
 
 ### Complexity
@@ -553,10 +483,10 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 
 | Check | Status (✓/✗/⚠) | Notes |
 |---|---|---|
-| Thread safety validated | — | primitives: Lock / RLock, asyncio (async/await), threading |
+| Thread safety validated | — | primitives: Lock / RLock, asyncio (async/await) |
 | Race conditions prevented | — | — |
 | Deadlocks avoided (lock ordering) | — | — |
-| Parallel processing where beneficial | — | 140 async fns |
+| Parallel processing where beneficial | — | 56 async fns |
 
 ### Latency
 
@@ -597,14 +527,13 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 ## 13. Test Cases
 
 **Test files detected:** 1
-**Test functions parsed:** 4
+**Test functions parsed:** 3
 
 | Test name | Location | Purpose (from docstring) |
 |---|---|---|
-| `test_health_live_endpoint_returns_ok` | `tests/test_smoke.py:12` | Real app boot — proves create_app() doesn't crash on import + |
-| `test_health_ready_endpoint_responds` | `tests/test_smoke.py:23` | The /health/ready probe responds (200 when deps up, 503 when |
-| `test_phantom_route_returns_404` | `tests/test_smoke.py:38` | Negative: a clearly-bogus route must 404 — proves no |
-| `test_admin_dr_targets_endpoint_exposes_targets_without_fake_measurements` | `tests/test_smoke.py:49` | §35 L3: dashboard contract exposes current-vs-target rows. |
+| `test_rag_inference_happy_path` | `tests/test_integration_inference.py:25` | _(no docstring)_ |
+| `test_rag_inference_rejects_prompt_injection` | `tests/test_integration_inference.py:85` | _(no docstring)_ |
+| `test_rag_inference_empty_retrieval_raises` | `tests/test_integration_inference.py:118` | _(no docstring)_ |
 
 ### Coverage matrix (reviewer to fill)
 
@@ -638,7 +567,7 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 
 ## 15. LLM / GenAI / RAG
 
-**Detected AI deps:** LangGraph, Ollama
+**Detected AI deps:** Anthropic SDK, LangChain, LangGraph, Ollama, OpenAI SDK, Ragas
 
 ### Prompt Safety
 
@@ -671,7 +600,7 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 | Check | Status (✓/✗/⚠) | Notes |
 |---|---|---|
 | Citation / source grounding (every claim cited) | — | — |
-| Confidence scoring (Ragas / DeepEval) | — | — |
+| Confidence scoring (Ragas / DeepEval) | — | Ragas |
 | Decision audit row per prediction (§48) | — | — |
 | Fairness / bias checks | — | — |
 
@@ -704,44 +633,53 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 
 | Folder / Module | Import-count | Purpose |
 |---|---|---|
-| `documind_core/db_client` | 4 | _reviewer-described_ |
-| `app/main` | 4 | _reviewer-described_ |
-| `mcp` | 3 | _reviewer-described_ |
+| `app/services` | 16 | _reviewer-described_ |
+| `documind_core/exceptions` | 6 | _reviewer-described_ |
+| `app/schemas` | 6 | _reviewer-described_ |
+| `documind_core/breakers` | 3 | _reviewer-described_ |
+| `documind_core/auth` | 3 | _reviewer-described_ |
+| `documind_core/circuit_breaker` | 3 | _reviewer-described_ |
 | `documind_core/config` | 2 | _reviewer-described_ |
-| `documind_core/circuit_breaker` | 2 | _reviewer-described_ |
-| `documind_core/body_limit` | 1 | _reviewer-described_ |
-| `documind_core/dr_metrics` | 1 | _reviewer-described_ |
-| `documind_core/governance_os` | 1 | _reviewer-described_ |
+| `documind_core/db_client` | 2 | _reviewer-described_ |
+| `mcp` | 2 | _reviewer-described_ |
+| `app/workers` | 2 | _reviewer-described_ |
+| `documind_core/rebuff_detector` | 2 | _reviewer-described_ |
 | `documind_core/logging_config` | 1 | _reviewer-described_ |
 | `documind_core/middleware` | 1 | _reviewer-described_ |
 | `documind_core/observability` | 1 | _reviewer-described_ |
+| `documind_core/rate_limiter` | 1 | _reviewer-described_ |
+| `app/core` | 1 | _reviewer-described_ |
+| `app/routers` | 1 | _reviewer-described_ |
+| `documind_core/audit` | 1 | _reviewer-described_ |
 | `documind_core/kafka_client` | 1 | _reviewer-described_ |
-| `scripts/migrate` | 1 | _reviewer-described_ |
+| `documind_core/schemas` | 1 | _reviewer-described_ |
+| `mcp/client` | 1 | _reviewer-described_ |
+| `documind_core/ai_governance` | 1 | _reviewer-described_ |
 
 ### External — third-party packages
 
 | Package | Import-count |
 |---|---|
-| `llm_clients` | 6 |
-| `models` | 6 |
-| `agents` | 5 |
-| `protocol` | 5 |
-| `fastapi` | 5 |
-| `ollama_client` | 3 |
-| `asyncpg` | 3 |
-| `policy` | 3 |
-| `pydantic` | 2 |
-| `agent_registry` | 2 |
-| `idempotency` | 2 |
-| `httpx` | 2 |
-| `db_circuit_breaker` | 2 |
-| `model_catalog` | 2 |
-| `store` | 2 |
-| `agent_schemas` | 1 |
-| `langgraph` | 1 |
-| `claude_cli_client` | 1 |
-| `codex_cli_client` | 1 |
-| `pool` | 1 |
+| `fastapi` | 4 |
+| `httpx` | 4 |
+| `prometheus_client` | 4 |
+| `prompt_builder` | 4 |
+| `best_config_loader` | 3 |
+| `guardrails` | 2 |
+| `ollama_client` | 2 |
+| `retrieval_client` | 2 |
+| `opentelemetry` | 2 |
+| `langfuse_tracer` | 2 |
+| `pytest` | 2 |
+| `multi_hop_agent` | 1 |
+| `multi_hop_fanout` | 1 |
+| `redis` | 1 |
+| `importlib` | 1 |
+| `best_config_history` | 1 |
+| `urllib` | 1 |
+| `pydantic` | 1 |
+| `prompt_repo` | 1 |
+| `rag_inference` | 1 |
 
 
 ## 18. Debugging Guide
@@ -749,13 +687,13 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 ### Step-by-step when something breaks
 
 ```
-1. Tail logs:        tail -50 /tmp/agent-orchestrator-svc.log   (if host-side)
-                     docker logs documind-agent-orchestrator-svc --tail=50   (if container)
+1. Tail logs:        tail -50 /tmp/inference-svc.log   (if host-side)
+                     docker logs documind-inference-svc --tail=50   (if container)
 2. Health probe:     curl http://localhost:<PORT>/health
 3. Fleet probe:      python3 scripts/advanced_healthcheck.py --layer app
 4. Trace:            Open Jaeger → search request_id → see span tree
 5. Metrics:          Open Grafana → service dashboard → look for spike
-6. Drill:            ls mcp/tests/drill_*agent-orchestrator-svc*.py and run
+6. Drill:            ls mcp/tests/drill_*inference-svc*.py and run
 ```
 
 ### Common failure modes
@@ -777,14 +715,14 @@ _(+15 more endpoints — diagrams omitted for brevity.)_
 | Naming convention enforced | ruff / eslint | — | — |
 | Zero critical CVEs | Trivy / Bandit | — | — |
 | No hardcoded secrets | gitleaks | — | — |
-| No memory leaks | bounded caches | — | smells: 8 |
-| No N+1 queries | hot paths reviewed | — | 31 DB call sites |
+| No memory leaks | bounded caches | — | smells: 2 |
+| No N+1 queries | hot paths reviewed | — | 14 DB call sites |
 | All APIs validated | Pydantic / Zod | — | sanitization: Pydantic BaseModel |
 | Duplicate logic eliminated | DRY check | — | — |
 | Structured logging with correlation_id | — | — | — |
 | Distributed tracing wired | OpenTelemetry | — | — |
 | For AI: prompt injection tested | Rebuff / Garak | — | AI deps present |
-| For AI: hallucination scoring ≥ 0.85 | Ragas faithfulness | — | n/a |
+| For AI: hallucination scoring ≥ 0.85 | Ragas faithfulness | — | yes |
 
 
 ## 20. Final Production Readiness Score
