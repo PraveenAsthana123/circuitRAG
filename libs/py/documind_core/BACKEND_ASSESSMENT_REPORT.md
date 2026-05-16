@@ -1,7 +1,7 @@
 # Backend Assessment - `documind_core`
 
 **Profile:** Backend (Python (38 files))
-**Generated:** 2026-05-16 22:37 UTC
+**Generated:** 2026-05-16 23:00 UTC
 **Reviewer:** Praveen Asthana
 
 > 25-section backend-specific production assessment. Reviewer fills Status / Notes / Risk / Recommendation per row. Skeleton starts with TBD per global honesty rule (never claim 10/10 without evidence).
@@ -31,9 +31,9 @@
 | pyproject.toml | no |
 | go.mod | no |
 | Lines of code (rough) | 8,527 |
-| Git authors | 49	PraveenAsthana123, 6	Praveen |
+| Git authors | 51	PraveenAsthana123, 6	Praveen |
 | Reviewer | Praveen Asthana |
-| Generated | 2026-05-16 22:37 UTC |
+| Generated | 2026-05-16 23:00 UTC |
 
 ---
 

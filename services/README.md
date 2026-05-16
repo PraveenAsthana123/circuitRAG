@@ -1,6 +1,6 @@
 # 📦 `services` — Advanced README
 
-  ·  **Path:** `services`  ·  **Generated:** 2026-05-16 20:51 UTC
+  ·  **Path:** `services`  ·  **Generated:** 2026-05-16 23:02 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `services` |
-| Total files | 2289 |
+| Total files | 2310 |
 | Python files | 191 |
 | TypeScript/JS files | 346 |
 | Go files | 17 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `353	PraveenAsthana123`, `8	Praveen` |
+| Top git contributors | `357	PraveenAsthana123`, `8	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -1088,6 +1088,66 @@ async def some_service_method(self, request: RequestSchema) -> ResponseSchema:
 | 11 | Latency histogram | Grafana panel: `histogram_quantile(0.95, ...)` |
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`inference-svc/app/routers/__init__.py`** (1660 LOC, 0 classes, 20 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `log` | `_inferred_` | immutable |
+| `router` | `_inferred_` | immutable |
+| `_CLIENT_ERROR_BUFFER_CAPACITY` | `_inferred_` | constant |
+| `_CLIENT_ERROR_STACK_CAP` | `_inferred_` | constant |
+| `_client_errors` | `_deque[ClientErrorRecord]` | immutable |
+
+### Data structures + algorithms detected in `inference-svc/app/routers/__init__.py`
+
+- sort / sorted (sorting algorithm)
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `health_upstreams` (inference-svc/app/routers/__init__.py:326, 260 lines)
+
+```text
+FUNCTION health_upstreams(request):
+   1. [CALL/EXPR] '\n    Probe every upstream dependency this service reaches out to:\n    retriev
+   2. [IMPORT] import asyncio
+   3. [IMPORT] import os
+   4. [IMPORT] import time
+   5. [IMPORTFROM] from datetime import UTC, datetime
+   6. [IMPORT] import httpx
+   7. [ASSIGN] state = request.app.state
+   8. [ASSIGN] settings = getattr(state, 'settings', None)
+   9. [TYPED-ASSIGN] specs: list[tuple[str, str, str, str]] = []
+  10. [ASSIGN] retrieval_url = getattr(settings, 'retrieval_svc_url', None) or os.getenv('DOCUM
+  11. [CALL/EXPR] specs.append(('retrieval-svc', 'http_service', retrieval_url, '/health'))
+  12. [ASSIGN] ollama_url = getattr(settings, 'ollama_url', None) or os.getenv('DOCUMIND_OLLAMA
+  13. [BRANCH] if ollama_url:
+  14. [ASSIGN] mcp_clients = getattr(state, 'mcp_clients', None) or {}
+  15. [LOOP] for namespace, mcp in sorted(mcp_clients.items()):
+  16. [ASSIGN] db_client = getattr(state, 'db_client', None)
+  17. [ASSIGN] kafka_bootstrap = getattr(settings, 'kafka_bootstrap_servers', None) or os.geten
+  18. [ASYNCFUNCTIONDEF] async def _probe_http(client: httpx.AsyncClient, name: str, kind: str, base_url:
+  19. [ASYNCFUNCTIONDEF] async def _probe_kafka() -> UpstreamHealthRow:
+  20. [ASYNCFUNCTIONDEF] async def _probe_db() -> UpstreamHealthRow:
+  ... +3 more statements truncated
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 ### Generic flow (all endpoints)
@@ -1855,14 +1915,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `0211a6c` | 2026-05-16 | docs(reports): rename to *_ASSESSMENT_REPORT.md + Code Logic Deep Dive section |
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `7451179` | 2026-05-08 | fix(llm-pool): close P0 #36 — per-backend CircuitBreaker; drill locks 8 invariants |
 | `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
-| `3c24119` | 2026-05-08 | fix(production-checker): skip BFF health_url + drop http:// from doc-string URLs |
-| `6004a31` | 2026-05-08 | fix(integrations-health): OTel collector probe /metrics not / |
-| `502da93` | 2026-05-08 | feat(lang): add compatibility status gates |
-| `a305d45` | 2026-05-08 | fix(reranker): refresh bge promotion status |
 
 ```bash
 git log --oneline -- services    # see all commits

@@ -1,7 +1,7 @@
 # 🚀 Enterprise Folder-Level Manual Code Review
 
 **Folder under review:** `services/agent-orchestrator-svc`
-**Generated:** 2026-05-16 21:55 UTC
+**Generated:** 2026-05-16 22:59 UTC
 
 > Purpose: folder-level production review · architecture validation · business logic · security · scalability · integration · performance · production readiness.
 
@@ -19,18 +19,18 @@
 | Relative Path | services/agent-orchestrator-svc |
 | Absolute Path | /mnt/deepa/rag/services/agent-orchestrator-svc |
 | Runtime Detected | Python (35 files) |
-| File Count | 62 |
+| File Count | 64 |
 | Lines of Code (rough) | 5,759 |
 | README present | Yes |
 | Dockerfile present | Yes |
 | Tests dir present | Yes |
-| Top Git Contributors | 50	PraveenAsthana123 |
+| Top Git Contributors | 53	PraveenAsthana123 |
 | External DB Dependencies (detected) | Postgres (asyncpg), Redis |
 | External HTTP Dependencies (detected) | httpx, node-fetch / fetch |
 | Queue / Event Dependencies (detected) | Kafka (aiokafka) |
 | AI / LLM Dependencies (detected) | LangGraph, Ollama client |
 | Reviewer | Praveen Asthana |
-| Review Date | 2026-05-16 21:55 UTC |
+| Review Date | 2026-05-16 22:59 UTC |
 | Service/Module | _TBD by reviewer_ |
 | Business Domain | _TBD by reviewer_ |
 | Risk Level | _Critical / High / Medium / Low_ |

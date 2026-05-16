@@ -1,6 +1,6 @@
 # 📦 `hybrid_architect` — Advanced README
 
-  ·  **Path:** `hybrid_architect`  ·  **Generated:** 2026-05-16 20:46 UTC
+  ·  **Path:** `hybrid_architect`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > hybrid_architect — Hub-and-Spoke + Council composition (CLAUDE.md §47).
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `hybrid_architect` |
-| Total files | 3 |
+| Total files | 4 |
 | Python files | 2 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `4	PraveenAsthana123` |
+| Top git contributors | `6	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -283,6 +283,53 @@ Reading bottom-to-top — earlier principles enable later ones:
 ```
 
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
+
+
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`architect.py`** (337 LOC, 1 classes, 8 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `Lane` | `_inferred_` | immutable |
+| `__all__` | `_inferred_` | ⚠ MUTABLE list |
+
+### Data structures + algorithms detected in `architect.py`
+
+- generator expression
+
+### Memory characteristics
+
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+
+### Pseudocode for hottest function: `_process` (architect.py:167, 138 lines)
+
+```text
+FUNCTION _process(user_input):
+   1. [BRANCH] if not user_input or not user_input.strip():
+   2. [ASSIGN] rid = request_id or f'H_{uuid.uuid4().hex[:10]}'
+   3. [ASSIGN] started = time.time()
+   4. [ASSIGN] assessment = classify(description=user_input)
+   5. [ASSIGN] risk = assessment.level
+   6. [ASSIGN] lane, hitl = _pick_lane(risk)
+   7. [TYPED-ASSIGN] council_decision_dump: dict[str, Any] | None = None
+   8. [ASSIGN] council_run = None
+   9. [WITH-CTX] with _maybe_open_trace(rid) as (ctx, span_fn):
+  10. [ASSIGN] final_answer = hub.final_answer
+  11. [ASSIGN] final_decision = hub.approval_decision
+  12. [BRANCH] if council_run is not None:
+  13. [ASSIGN] rec = save_history(entity_type='hybrid_architect_run', entity_id=rid, action='hy
+  14. [RETURN] return HybridDecision(request_id=rid, user_input=user_input, risk_level=risk, la
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -547,6 +594,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `3063c94` | 2026-05-08 | fix(hybrid-architect): add low-risk fast path |

@@ -1,6 +1,6 @@
 # 📦 `approval_agent` — Advanced README
 
-  ·  **Path:** `approval_agent`  ·  **Generated:** 2026-05-16 20:46 UTC
+  ·  **Path:** `approval_agent`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > approval_agent — pure-function decide() with blocked/human/auto rules.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `approval_agent` |
-| Total files | 11 |
+| Total files | 12 |
 | Python files | 8 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `6	PraveenAsthana123` |
+| Top git contributors | `8	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -387,6 +387,57 @@ Reading bottom-to-top — earlier principles enable later ones:
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`command_orchestrator.py`** (343 LOC, 2 classes, 0 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `log` | `_inferred_` | immutable |
+| `REPO_ROOT` | `_inferred_` | immutable |
+| `DEFAULT_AUDIT_PATH` | `_inferred_` | immutable |
+| `TERMINAL_AUTO` | `_inferred_` | constant |
+| `TERMINAL_ASK` | `_inferred_` | constant |
+| `TERMINAL_BATCHED` | `_inferred_` | constant |
+| `TERMINAL_BLOCK` | `_inferred_` | constant |
+| `__all__` | `_inferred_` | ⚠ MUTABLE list |
+
+### Data structures + algorithms detected in `command_orchestrator.py`
+
+- sort / sorted (sorting algorithm)
+- set comprehension
+- generator expression
+
+### Memory characteristics
+
+- ⚠ `open()` without `with` detected — file handle leak risk.
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+
+### Pseudocode for hottest function: `_verify_token` (command_orchestrator.py:140, 41 lines)
+
+```text
+FUNCTION _verify_token(self, session_token):
+   1. [CALL/EXPR] 'Return (token_obj_or_None, status_string).\n\n        Status enum:\n           
+   2. [BRANCH] if not session_token:
+   3. [BRANCH] if self._token_store is None:
+   4. [ASSIGN] prefix = session_token.split('.', 1)[0] if '.' in session_token else None
+   5. [BRANCH] if prefix and self._token_store.is_revoked(prefix):
+   6. [ASSIGN] valid = self._token_store.validate(session_token)
+   7. [BRANCH] if valid is not None:
+   8. [TRY] try:
+   9. [RETURN] return (None, 'invalid')
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 _No endpoints detected; sequence-diagram template intentionally omitted._
@@ -654,6 +705,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `d889f3a` | 2026-05-08 | test(approval): add opa parity gate |

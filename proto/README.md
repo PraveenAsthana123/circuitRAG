@@ -1,6 +1,6 @@
 # 📦 `proto` — Advanced README
 
-  ·  **Path:** `proto`  ·  **Generated:** 2026-05-16 20:47 UTC
+  ·  **Path:** `proto`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `proto` |
-| Total files | 40 |
+| Total files | 41 |
 | Python files | 33 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `4	PraveenAsthana123`, `2	Praveen` |
+| Top git contributors | `6	PraveenAsthana123`, `2	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -367,6 +367,44 @@ Reading bottom-to-top — earlier principles enable later ones:
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`identity/v1/identity_pb2_grpc.py`** (452 LOC, 3 classes, 1 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `GRPC_GENERATED_VERSION` | `_inferred_` | constant |
+| `GRPC_VERSION` | `_inferred_` | immutable |
+| `_version_not_supported` | `_inferred_` | constant |
+
+### Data structures + algorithms detected in `identity/v1/identity_pb2_grpc.py`
+
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `add_IdentityServiceServicer_to_server` (identity/v1/identity_pb2_grpc.py:149, 52 lines)
+
+```text
+FUNCTION add_IdentityServiceServicer_to_server(servicer, server):
+   1. [ASSIGN] rpc_method_handlers = {'Health': grpc.unary_unary_rpc_method_handler(servicer.He
+   2. [ASSIGN] generic_handler = grpc.method_handlers_generic_handler('documind.identity.v1.Ide
+   3. [CALL/EXPR] server.add_generic_rpc_handlers((generic_handler,))
+   4. [CALL/EXPR] server.add_registered_method_handlers('documind.identity.v1.IdentityService', rp
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 _No endpoints detected; sequence-diagram template intentionally omitted._
@@ -632,6 +670,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `7b2a6e5` | 2026-05-06 | fix(iter-38-39-40): close 3 already-shipped rows + complete gRPC codegen for paperclip+openclaw |

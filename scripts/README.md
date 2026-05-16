@@ -1,6 +1,6 @@
 # 📦 `scripts` — Advanced README
 
-🔧 **Scripts**  ·  **Path:** `scripts`  ·  **Generated:** 2026-05-16 20:47 UTC
+🔧 **Scripts**  ·  **Path:** `scripts`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -13,17 +13,17 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `scripts` |
-| Total files | 161 |
-| Python files | 118 |
+| Total files | 164 |
+| Python files | 120 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
 | Shell scripts | 35 |
-| Lines of code | 42,263 |
-| Python classes | 123 |
-| Python functions | 1041 |
+| Lines of code | 44,524 |
+| Python classes | 127 |
+| Python functions | 1089 |
 | Async functions | 42 |
 | Total API endpoints | 5 |
-| Total DB call sites | 107 |
+| Total DB call sites | 110 |
 | DB / Storage libs | Elasticsearch, Kafka (aiokafka), MongoDB (pymongo), Neo4j, Qdrant, Redis, SQLAlchemy, asyncpg, psycopg |
 | Concurrency primitives | Lock / RLock, asyncio (async/await), concurrent.futures, threading |
 | Caching primitives | functools.cache, in-memory @lru_cache, redis |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `218	PraveenAsthana123`, `2	Praveen` |
+| Top git contributors | `223	PraveenAsthana123`, `2	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -44,15 +44,15 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 |---|---|---|
 | `local_council.py:611` | `run_local_council` | 337 |
 | `run_gepa_empirical.py:177` | `_stage3_compile` | 247 |
+| `generate_folder_report.py:1713` | `section_code_logic_deep_dive` | 239 |
 | `generate_brutal_reviews.py:47` | `build_review` | 238 |
-| `council_filter_stats.py:975` | `cli` | 225 |
-| `capture_and_review.py:70` | `capture_and_record` | 184 |
+| `generate_specialized_assessment.py:540` | `render_backend` | 231 |
 
 #### Smells detected (grep heuristics — verify manually)
 
 | Smell | Count |
 |---|---|
-| hardcoded localhost URL | 93 |
+| hardcoded localhost URL | 95 |
 | hardcoded password literal | 1 |
 | hardcoded API key literal | 1 |
 | TODO/FIXME marker | 33 |
@@ -298,6 +298,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `agentic_observability_audit.py` | 🤖 agent / tool | 0 | 2 | 139 | Audit the 35-scenario agentic observability catalog (iter-96). |
 | `aiops_retrain_trigger.py` | 📄 module | 1 | 5 | 154 | AIops — automatic retrain-trigger driver. |
 | `append_drill_history.py` | 📄 module | 0 | 4 | 120 | Append .loop/last_drill_outcome.json → .loop/drill_history.jsonl. |
+| `audit_readme_scores.py` | 📄 module | 2 | 9 | 372 | Aggregate README audit-checklist scores across every folder in the repo. |
 | `audit_verify.py` | 📄 module | 1 | 8 | 360 | audit_verify.py — walk governance.audit_log per tenant and detect tampering. |
 | `autonomous_fix_daemon.py` | 📄 module | 0 | 21 | 616 | Autonomous Fix Daemon — always-active issue triage + drill-gated apply. |
 | `autorag_optimizer.py` | 📄 module | 5 | 5 | 375 | AutoRAG optimizer — Stage-1 adapter (per CLAUDE.md §56). |
@@ -330,11 +331,12 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `generate-grafana-dashboards.py` | 📄 module | 0 | 4 | 354 | Generator for the 15 Grafana dashboards Kiali deep-links to. |
 | `generate_brutal_reviews.py` | 📄 module | 0 | 6 | 331 | Generate brutal-review docs for every MCP server (iter-84). |
 | `generate_folder_readme.py` | 📄 module | 1 | 18 | 491 | Folder README.md generator — pre-populated from auto-detection. |
-| `generate_folder_report.py` | 💾 repository / data access | 7 | 66 | 2754 | Folder-level ADVANCED README generator. |
-| `generate_folder_review_report.py` | 💾 repository / data access | 3 | 37 | 928 | Folder-level Manual Code Review Checklist generator. |
+| `generate_folder_report.py` | 💾 repository / data access | 7 | 67 | 2996 | Folder-level ADVANCED README generator. |
+| `generate_folder_review_report.py` | 💾 repository / data access | 3 | 39 | 994 | Folder-level Manual Code Review Checklist generator. |
 | `generate_mesh_manifests.py` | 📄 module | 0 | 5 | 318 | Generate k8s Deployment + Service manifests for each MCP/agent tool (iter-94). |
 | `generate_production_review_report.py` | 💾 repository / data access | 3 | 27 | 1438 | Master Production Code Review & Architecture Assessment Checklist generator. |
-| `generate_project_readme.py` | 📄 module | 1 | 32 | 630 | Project-level README generator (writes ``README.md`` at repo root). |
+| `generate_project_readme.py` | 📄 module | 1 | 51 | 1497 | Project-level README generator (writes ``README.md`` at repo root). |
+| `generate_specialized_assessment.py` | 📄 module | 2 | 17 | 879 | Specialized assessment generator — frontend OR backend profile. |
 | `generate_tool_catalog_entries.py` | 🤖 agent / tool | 0 | 5 | 329 | Generate config/tool_catalog/<ns>.yaml for every MCP server (iter-80). |
 | `hitl_drafts_triage.py` | 📄 module | 0 | 7 | 360 | HITL drafts triage report — read-only operator-decision input. |
 | `hitl_framework.py` | 📄 module | 1 | 10 | 332 | HITL framework — Human-in-the-loop scoring at every pipeline gate. |
@@ -418,6 +420,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/scripts/agentic_observability_audit.py`
 - `/mnt/deepa/rag/scripts/aiops_retrain_trigger.py`
 - `/mnt/deepa/rag/scripts/append_drill_history.py`
+- `/mnt/deepa/rag/scripts/audit_readme_scores.py`
 - `/mnt/deepa/rag/scripts/audit_verify.py`
 - `/mnt/deepa/rag/scripts/autonomous_fix_daemon.py`
 - `/mnt/deepa/rag/scripts/autorag_optimizer.py`
@@ -455,6 +458,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/scripts/generate_mesh_manifests.py`
 - `/mnt/deepa/rag/scripts/generate_production_review_report.py`
 - `/mnt/deepa/rag/scripts/generate_project_readme.py`
+- `/mnt/deepa/rag/scripts/generate_specialized_assessment.py`
 - `/mnt/deepa/rag/scripts/generate_tool_catalog_entries.py`
 - `/mnt/deepa/rag/scripts/hitl_drafts_triage.py`
 - `/mnt/deepa/rag/scripts/hitl_framework.py`
@@ -598,10 +602,10 @@ flowchart TB
         advanced_healthcheck_py["advanced_healthcheck.py"]
         aiops_retrain_trigger_py["aiops_retrain_trigger.py"]
         append_drill_history_py["append_drill_history.py"]
+        audit_readme_scores_py["audit_readme_scores.py"]
         audit_verify_py["audit_verify.py"]
         autonomous_fix_daemon_py["autonomous_fix_daemon.py"]
-        autorag_optimizer_py["autorag_optimizer.py"]
-        more___module["... +83 more"]
+        more___module["... +85 more"]
     end
     subgraph __agent___tool["🤖 agent / tool"]
         agent_lead_py["agent_lead.py"]
@@ -645,9 +649,9 @@ _Longest functions — these are the most likely refactor candidates._
 flowchart TB
     local_council_py_611_run_local_council["run_local_council (337 lines)<br/>local_council.py:611"]
     run_gepa_empirical_py_177__stage3_compil["_stage3_compile (247 lines)<br/>run_gepa_empirical.py:177"]
+    generate_folder_report_py_1713_section_c["section_code_logic_deep_dive (239 lines)<br/>generate_folder_report.py:1713"]
     generate_brutal_reviews_py_47_build_revi["build_review (238 lines)<br/>generate_brutal_reviews.py:47"]
-    council_filter_stats_py_975_cli["cli (225 lines)<br/>council_filter_stats.py:975"]
-    capture_and_review_py_70_capture_and_rec["capture_and_record (184 lines)<br/>capture_and_review.py:70"]
+    generate_specialized_assessment_py_540_r["render_backend (231 lines)<br/>generate_specialized_assessment.py:540"]
 ```
 
 
@@ -723,7 +727,7 @@ classDiagram
 ```
 
 
-_Showing top 15 of 123 classes (ranked by method count)._
+_Showing top 15 of 127 classes (ranked by method count)._
 
 
 ## 4. Code Sequence — How Files Link to Each Other
@@ -1012,6 +1016,80 @@ Walk the phases IN ORDER — first phase with missing/wrong output is the failur
 10. **Phase 11 empty Jaeger?** OTel exporter misconfigured → check `OTEL_EXPORTER_OTLP_ENDPOINT`
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`generate_folder_report.py`** (2996 LOC, 7 classes, 67 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `REPO_ROOT` | `_inferred_` | immutable |
+| `IGNORE_DIRS` | `_inferred_` | ⚠ MUTABLE set |
+| `CODE_EXTS` | `_inferred_` | ⚠ MUTABLE set |
+| `API_DECORATOR_PATTERNS` | `_inferred_` | ⚠ MUTABLE list |
+| `API_ENDPOINT_PYTHON` | `_inferred_` | immutable |
+| `DB_CALL_PATTERNS` | `_inferred_` | ⚠ MUTABLE list |
+| `SANITIZATION_PATTERNS` | `_inferred_` | ⚠ MUTABLE list |
+| `SMELL_PATTERNS` | `_inferred_` | ⚠ MUTABLE list |
+| `CONCURRENCY_PATTERNS` | `_inferred_` | ⚠ MUTABLE dict |
+| `CACHE_PATTERNS` | `_inferred_` | ⚠ MUTABLE dict |
+| `DB_LIB_PATTERNS` | `_inferred_` | ⚠ MUTABLE dict |
+| `AI_PATTERNS` | `_inferred_` | ⚠ MUTABLE dict |
+| `SERVICE_PORT_MAP` | `_inferred_` | ⚠ MUTABLE dict |
+
+### Data structures + algorithms detected in `generate_folder_report.py`
+
+- functools.lru_cache (memoization)
+- sort / sorted (sorting algorithm)
+- set comprehension
+- dict comprehension
+- generator expression
+- recursion (function calls itself)
+
+### Memory characteristics
+
+- ⚠ Module-level `_cache = {}` detected — unbounded growth risk. Use `functools.lru_cache(maxsize=N)` or `OrderedDict` with explicit eviction.
+- ✓ `with open(...)` context manager used — file handles auto-closed.
+- ℹ `BytesIO` / `StringIO` used — in-memory buffer; verify size bounded.
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+- ℹ `asyncio.create_task()` used — keep a reference to prevent GC; use TaskGroup or explicit set for fire-and-forget tasks.
+
+### Pseudocode for hottest function: `section_code_logic_deep_dive` (generate_folder_report.py:1713, 239 lines)
+
+```text
+FUNCTION section_code_logic_deep_dive(f):
+   1. [CALL/EXPR] 'Variables / DSA / memory / pseudocode for the hottest service file.\n\n    AST-
+   2. [BRANCH] if not f.files:
+   3. [ASSIGN] service_files = [fe for fe in f.files if '🧠 business service' in fe.role or '🌐 H
+   4. [BRANCH] if not service_files:
+   5. [ASSIGN] target = max(service_files, key=lambda fe: fe.lines)
+   6. [ASSIGN] target_path = REPO_ROOT / f.rel_path / target.rel
+   7. [BRANCH] if not target_path.exists():
+   8. [TRY] try:
+   9. [TRY] try:
+  10. [TYPED-ASSIGN] module_vars: List[Tuple[str, str, str]] = []
+  11. [LOOP] for node in tree.body:
+  12. [ASSIGN] dsa_signals = {'collections.defaultdict': ['\\bdefaultdict\\('], 'collections.Co
+  13. [TYPED-ASSIGN] dsa_hits: List[str] = []
+  14. [LOOP] for name, patterns in dsa_signals.items():
+  15. [LOOP] for node in ast.walk(tree):
+  16. [TYPED-ASSIGN] memory_hints: List[str] = []
+  17. [BRANCH] if re.search('_cache\\s*=\\s*\\{\\}', text) or re.search('_cache\\s*:\\s*dict\\[
+  18. [BRANCH] if re.search('with open\\(', text):
+  19. [BRANCH] if re.search('open\\(', text) and (not re.search('with open\\(', text)):
+  20. [BRANCH] if 'BytesIO' in text or 'StringIO' in text:
+  ... +18 more statements truncated
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 ### Generic flow (all endpoints)
@@ -1200,14 +1278,15 @@ open http://localhost:16686/search?service=scripts&tags=%7B%22request_id%22%3A%2
 
 **DB / storage libraries:** Elasticsearch, Kafka (aiokafka), MongoDB (pymongo), Neo4j, Qdrant, Redis, SQLAlchemy, asyncpg, psycopg
 
-**Total DB call sites:** 107
+**Total DB call sites:** 110
 
 | Pattern | Count |
 |---|---|
 | `execute` | 26 |
 | `fetch/fetchall/fetchrow` | 34 |
+| `ORM query` | 1 |
 | `ORM CRUD` | 41 |
-| `MongoDB` | 6 |
+| `MongoDB` | 8 |
 
 ### Query Optimization checklist
 
@@ -1251,7 +1330,7 @@ open http://localhost:16686/search?service=scripts&tags=%7B%22request_id%22%3A%2
 |---|---|---|
 | No dead / commented-out code | — | — |
 | No `print()` — use logger | — | — |
-| No hardcoded values | — | smell count: 128 |
+| No hardcoded values | — | smell count: 130 |
 | Constants extracted to a settings module | — | — |
 
 ### Complexity
@@ -1546,14 +1625,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `91a5efe` | 2026-05-16 | docs(readme): enterprise 20-section root README per spec #1 |
+| `3634fb7` | 2026-05-16 | docs(audit): readme audit scoreboard + drill — honest §57.7 baseline |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `b4c9e00` | 2026-05-16 | feat(ops): advanced 7-layer health-check + troubleshoot tool — 46 probes parallel |
-| `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
-| `11c51b5` | 2026-05-08 | fix(run_drills): prefer repo .venv over /tmp/documind-venv — closes 2 drills |
-| `3c24119` | 2026-05-08 | fix(production-checker): skip BFF health_url + drop http:// from doc-string URLs |
-| `3bd47d6` | 2026-05-08 | fix(scripts): add --help handler to 6 shell scripts — drill 146/146 conform |
-| `b6c97a8` | 2026-05-08 | feat(ops): add operator status scripts |
 
 ```bash
 git log --oneline -- scripts    # see all commits
@@ -1600,8 +1679,8 @@ git blame <file>                       # who wrote what
 | Naming convention enforced | ruff / eslint | — | — |
 | Zero critical CVEs | Trivy / Bandit | — | — |
 | No hardcoded secrets | gitleaks | — | — |
-| No memory leaks | bounded caches | — | smells: 128 |
-| No N+1 queries | hot paths reviewed | — | 107 DB call sites |
+| No memory leaks | bounded caches | — | smells: 130 |
+| No N+1 queries | hot paths reviewed | — | 110 DB call sites |
 | All APIs validated | Pydantic / Zod | — | sanitization: Manual escape, Pydantic BaseModel, Pydantic validator, Zod (TS) |
 | Duplicate logic eliminated | DRY check | — | — |
 | Structured logging with correlation_id | — | — | — |

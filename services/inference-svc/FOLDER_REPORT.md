@@ -1,7 +1,7 @@
 # 🚀 Enterprise Folder-Level Manual Code Review
 
 **Folder under review:** `services/inference-svc`
-**Generated:** 2026-05-16 21:55 UTC
+**Generated:** 2026-05-16 22:59 UTC
 
 > Purpose: folder-level production review · architecture validation · business logic · security · scalability · integration · performance · production readiness.
 
@@ -19,18 +19,18 @@
 | Relative Path | services/inference-svc |
 | Absolute Path | /mnt/deepa/rag/services/inference-svc |
 | Runtime Detected | Python (22 files) |
-| File Count | 27 |
+| File Count | 29 |
 | Lines of Code (rough) | 5,174 |
 | README present | Yes |
 | Dockerfile present | Yes |
 | Tests dir present | Yes |
-| Top Git Contributors | 74	PraveenAsthana123, 6	Praveen |
+| Top Git Contributors | 77	PraveenAsthana123, 6	Praveen |
 | External DB Dependencies (detected) | Postgres (asyncpg), Redis |
 | External HTTP Dependencies (detected) | httpx, node-fetch / fetch |
 | Queue / Event Dependencies (detected) | Kafka (aiokafka) |
 | AI / LLM Dependencies (detected) | Anthropic SDK, LangChain, LangGraph, Ollama client, Ragas |
 | Reviewer | Praveen Asthana |
-| Review Date | 2026-05-16 21:55 UTC |
+| Review Date | 2026-05-16 22:59 UTC |
 | Service/Module | _TBD by reviewer_ |
 | Business Domain | _TBD by reviewer_ |
 | Risk Level | _Critical / High / Medium / Low_ |

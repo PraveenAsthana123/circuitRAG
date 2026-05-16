@@ -1,6 +1,6 @@
 # 📦 `safety_store` — Advanced README
 
-  ·  **Path:** `safety_store`  ·  **Generated:** 2026-05-16 20:47 UTC
+  ·  **Path:** `safety_store`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > safety_store — History + Rollback substrate for autonomous-agent platforms.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `safety_store` |
-| Total files | 3 |
+| Total files | 4 |
 | Python files | 2 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `3	PraveenAsthana123` |
+| Top git contributors | `5	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -276,6 +276,51 @@ Reading bottom-to-top — earlier principles enable later ones:
 ```
 
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
+
+
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`history.py`** (389 LOC, 2 classes, 9 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `DEFAULT_DB` | `_inferred_` | immutable |
+| `DB_PATH` | `_inferred_` | immutable |
+| `DEFAULT_ROLLBACK_DAYS` | `_inferred_` | constant |
+| `SCHEMA` | `_inferred_` | constant |
+| `__all__` | `_inferred_` | ⚠ MUTABLE list |
+
+### Data structures + algorithms detected in `history.py`
+
+- generator expression
+
+### Memory characteristics
+
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+
+### Pseudocode for hottest function: `save_history` (history.py:127, 74 lines)
+
+```text
+FUNCTION save_history():
+   1. [CALL/EXPR] 'Write one snapshot. ``action`` ∈ {create, update, delete, status_update, ...}.\
+   2. [BRANCH] if not entity_type or not entity_id or (not actor):
+   3. [CALL/EXPR] ensure_schema()
+   4. [ASSIGN] history_id = _new_id('HIST')
+   5. [ASSIGN] rollback_id = _new_id('RB')
+   6. [ASSIGN] until = datetime.now(UTC) + timedelta(days=rollback_days)
+   7. [ASSIGN] record = HistoryRecord(history_id=history_id, entity_type=entity_type, entity_id
+   8. [WITH-CTX] with _conn() as c:
+   9. [RETURN] return record
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -568,6 +613,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `fa35b08` | 2026-05-08 | feat(agent): add council safety foundation |

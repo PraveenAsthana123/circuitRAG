@@ -1,7 +1,7 @@
 # 🚀 Enterprise Folder-Level Manual Code Review
 
 **Folder under review:** `libs/py/tests`
-**Generated:** 2026-05-16 22:00 UTC
+**Generated:** 2026-05-16 23:04 UTC
 
 > Purpose: folder-level production review · architecture validation · business logic · security · scalability · integration · performance · production readiness.
 
@@ -19,18 +19,18 @@
 | Relative Path | libs/py/tests |
 | Absolute Path | /mnt/deepa/rag/libs/py/tests |
 | Runtime Detected | Python (27 files) |
-| File Count | 28 |
+| File Count | 30 |
 | Lines of Code (rough) | 3,722 |
 | README present | Yes |
 | Dockerfile present | No |
 | Tests dir present | No |
-| Top Git Contributors | 17	PraveenAsthana123, 4	Praveen |
+| Top Git Contributors | 20	PraveenAsthana123, 4	Praveen |
 | External DB Dependencies (detected) | Postgres (asyncpg), Redis |
 | External HTTP Dependencies (detected) | httpx, node-fetch / fetch |
 | Queue / Event Dependencies (detected) | (none detected) |
 | AI / LLM Dependencies (detected) | (none detected) |
 | Reviewer | Praveen Asthana |
-| Review Date | 2026-05-16 22:00 UTC |
+| Review Date | 2026-05-16 23:04 UTC |
 | Service/Module | _TBD by reviewer_ |
 | Business Domain | _TBD by reviewer_ |
 | Risk Level | _Critical / High / Medium / Low_ |

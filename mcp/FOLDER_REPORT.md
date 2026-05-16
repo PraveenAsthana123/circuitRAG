@@ -1,7 +1,7 @@
 # 🚀 Enterprise Folder-Level Manual Code Review
 
 **Folder under review:** `mcp`
-**Generated:** 2026-05-16 22:00 UTC
+**Generated:** 2026-05-16 23:04 UTC
 
 > Purpose: folder-level production review · architecture validation · business logic · security · scalability · integration · performance · production readiness.
 
@@ -18,19 +18,19 @@
 | Folder Name | mcp |
 | Relative Path | mcp |
 | Absolute Path | /mnt/deepa/rag/mcp |
-| Runtime Detected | Python (538 files) |
-| File Count | 540 |
-| Lines of Code (rough) | 95,124 |
+| Runtime Detected | Python (539 files) |
+| File Count | 542 |
+| Lines of Code (rough) | 95,358 |
 | README present | Yes |
 | Dockerfile present | No |
 | Tests dir present | Yes |
-| Top Git Contributors | 551	PraveenAsthana123 |
+| Top Git Contributors | 553	PraveenAsthana123 |
 | External DB Dependencies (detected) | Elasticsearch, Neo4j, Postgres (asyncpg), Postgres (psycopg), Qdrant, Redis |
 | External HTTP Dependencies (detected) | aiohttp, httpx, node-fetch / fetch |
 | Queue / Event Dependencies (detected) | Kafka (aiokafka) |
 | AI / LLM Dependencies (detected) | Anthropic SDK, Giskard, LangChain, LangGraph, Ollama client, Ragas, Rebuff (prompt injection) |
 | Reviewer | Praveen Asthana |
-| Review Date | 2026-05-16 22:00 UTC |
+| Review Date | 2026-05-16 23:04 UTC |
 | Service/Module | _TBD by reviewer_ |
 | Business Domain | _TBD by reviewer_ |
 | Risk Level | _Critical / High / Medium / Low_ |

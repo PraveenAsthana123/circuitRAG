@@ -1,6 +1,6 @@
 # 🔵 circuitRAG — Enterprise RAG Platform
 
-> **Branch:** `main`  ·  **Commits:** 810  ·  **Generated:** 2026-05-16 21:45 UTC
+> **Branch:** `main`  ·  **Commits:** 814  ·  **Generated:** 2026-05-16 23:02 UTC
 
 > An end-to-end retrieval-augmented-generation (RAG) platform built around production-grade controls: governance, observability, tenant-isolation, MCP tooling, multi-model routing, decision-audit, and a brutal-tool-review backlog driven by drilled invariants.
 
@@ -1053,7 +1053,7 @@ Model-Context-Protocol servers expose drill / namespace / tool catalog operation
 
 | Path | Role | Purpose | LOC | README |
 |---|---|---|---|---|
-| [`mcp/`](mcp/) | MCP server | _no docstring_ | 95,124 | [`mcp/README.md`](mcp/README.md) |
+| [`mcp/`](mcp/) | MCP server | _no docstring_ | 95,358 | [`mcp/README.md`](mcp/README.md) |
 
 
 ## 🛠 Other top-level folders
@@ -1062,7 +1062,7 @@ Model-Context-Protocol servers expose drill / namespace / tool catalog operation
 
 | Path | Role | Purpose | LOC | README |
 |---|---|---|---|---|
-| [`scripts/`](scripts/) | CLI scripts | _no docstring_ | 43,415 | [`scripts/README.md`](scripts/README.md) |
+| [`scripts/`](scripts/) | CLI scripts | _no docstring_ | 44,617 | [`scripts/README.md`](scripts/README.md) |
 
 ### 🏗 Infrastructure
 
@@ -1183,8 +1183,8 @@ python3 scripts/generate_folder_report.py --batch all --force
 
 ## 📊 Project metrics (live snapshot)
 
-- **Total LOC (code only):** 5,890,356
-- **Commits on this branch:** 810
+- **Total LOC (code only):** 5,891,792
+- **Commits on this branch:** 814
 - **Drills in regression catalog:** see `mcp/tests/drill_*.py` + `scripts/run_drills.py --list`
 - **ADRs:** see `docs/architecture/adr/`
 - **Brutal tool reviews:** see `docs/architecture/tool-reviews/`
@@ -1193,14 +1193,14 @@ python3 scripts/generate_folder_report.py --batch all --force
 ### Recent commits
 
 ```
+0211a6c docs(reports): rename to *_ASSESSMENT_REPORT.md + Code Logic Deep Dive section
+15eca63 docs(reports): frontend + backend specialized assessments + drill fix
+77409b7 docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention
+91a5efe docs(readme): enterprise 20-section root README per spec #1
 3634fb7 docs(audit): readme audit scoreboard + drill — honest §57.7 baseline
 4068a70 docs(readme): audit checklist + drill_readme_generator + sidecar fold-in
 5ecd9be docs(readme): 11 more sections for new-dev onboarding + bugfixes
 c6e58b8 docs(readme): advanced auto-generated READMEs (project + per-folder)
-90a8860 fix(prometheus): scrape FastAPI side-channel ports (9465-9470), add orchestrator
-b4c9e00 feat(ops): advanced 7-layer health-check + troubleshoot tool — 46 probes parallel
-e078437 docs(tool-review): close TesterAgent P0 #34 — subprocess-orphan kill already shipped
-6b9044c docs(tool-review): close StrategistAgent P0 #1 — timeout already shipped + drilled
 ```
 
 

@@ -1,6 +1,6 @@
 # 📦 `ops_worker` — Advanced README
 
-  ·  **Path:** `ops_worker`  ·  **Generated:** 2026-05-16 20:47 UTC
+  ·  **Path:** `ops_worker`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `ops_worker` |
-| Total files | 9 |
+| Total files | 10 |
 | Python files | 6 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `4	PraveenAsthana123` |
+| Top git contributors | `6	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -333,6 +333,67 @@ Reading bottom-to-top — earlier principles enable later ones:
 ```
 
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
+
+
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`worker.py`** (525 LOC, 0 classes, 9 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `TASK_FILE` | `_inferred_` | immutable |
+| `PRIORITY_ORDER` | `_inferred_` | ⚠ MUTABLE dict |
+| `ACTIVE_STATUSES` | `_inferred_` | ⚠ MUTABLE set |
+| `RUNNING_STATUSES` | `_inferred_` | ⚠ MUTABLE set |
+| `DONE_STATUSES` | `_inferred_` | ⚠ MUTABLE set |
+
+### Data structures + algorithms detected in `worker.py`
+
+- collections.Counter
+- sort / sorted (sorting algorithm)
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `run_once` (worker.py:302, 193 lines)
+
+```text
+FUNCTION run_once():
+   1. [CALL/EXPR] 'One iteration. Returns ``{outcome, task_id?, decision?}`` for callers.'
+   2. [ASSIGN] tasks = load_tasks()
+   3. [ASSIGN] task = pick_next_task(tasks)
+   4. [BRANCH] if task is None:
+   5. [ASSIGN] task['status'] = 'PICKED_UP'
+   6. [ASSIGN] task['attempts'] = task.get('attempts', 0) + 1
+   7. [ASSIGN] declared = task.get('risk')
+   8. [ASSIGN] classified = classify_task(task)
+   9. [ASSIGN] task['risk_declared'] = declared
+  10. [ASSIGN] task['risk'] = classified.level
+  11. [ASSIGN] task['risk_triggers'] = classified.triggers
+  12. [CALL/EXPR] _update_task(tasks, task)
+  13. [CALL/EXPR] save_tasks(tasks)
+  14. [CALL/EXPR] notify(task_id=task['id'], status='PICKED_UP', message=task['title'], details={'
+  15. [BRANCH] if dry_run:
+  16. [ASSIGN] task['status'] = 'IN_PROGRESS'
+  17. [CALL/EXPR] _update_task(tasks, task)
+  18. [CALL/EXPR] save_tasks(tasks)
+  19. [CALL/EXPR] notify(task_id=task['id'], status='IN_PROGRESS', message='Ollama proposing')
+  20. [TRY] try:
+  ... +22 more statements truncated
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -667,6 +728,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `ec1f7b4` | 2026-05-07 | fix(iter-88): bulk lint cleanup across services/ libs/ mcp/ scripts/ (1139 ruff fixes; drill suite still green) |

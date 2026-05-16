@@ -1,6 +1,6 @@
 # 📦 `testing_agent` — Advanced README
 
-  ·  **Path:** `testing_agent`  ·  **Generated:** 2026-05-16 20:51 UTC
+  ·  **Path:** `testing_agent`  ·  **Generated:** 2026-05-16 23:02 UTC
 
 > testing_agent — auto-generates drill skeletons from acceptance criteria.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `testing_agent` |
-| Total files | 4 |
+| Total files | 5 |
 | Python files | 3 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `2	PraveenAsthana123` |
+| Top git contributors | `4	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -274,6 +274,56 @@ Reading bottom-to-top — earlier principles enable later ones:
 ```
 
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
+
+
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`generator.py`** (201 LOC, 1 classes, 4 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `REPO_ROOT` | `_inferred_` | immutable |
+| `DRILL_DIR` | `_inferred_` | immutable |
+| `HAPPY_VERBS` | `_inferred_` | immutable |
+| `NEGATIVE_VERBS` | `_inferred_` | immutable |
+| `HEADER` | `_inferred_` | constant |
+| `POSITIVE_STEP_TEMPLATE` | `_inferred_` | constant |
+| `NEGATIVE_STEP_TEMPLATE` | `_inferred_` | constant |
+| `DEFAULT_NEG_STEP` | `_inferred_` | constant |
+| `MAIN_TEMPLATE` | `_inferred_` | constant |
+| `__all__` | `_inferred_` | ⚠ MUTABLE list |
+
+### Data structures + algorithms detected in `generator.py`
+
+- generator expression
+
+### Memory characteristics
+
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+
+### Pseudocode for hottest function: `generate_drill` (generator.py:170, 23 lines)
+
+```text
+FUNCTION generate_drill():
+   1. [CALL/EXPR] 'Generate a drill file. Returns path. Does NOT commit; operator reviews.'
+   2. [ASSIGN] pos, neg = parse_acceptance_criteria(acceptance_criteria or description)
+   3. [ASSIGN] spec = DrillSpec(task_id=task_id, task_title=task_title, description=description
+   4. [ASSIGN] target_dir = out_dir or DRILL_DIR
+   5. [CALL/EXPR] target_dir.mkdir(parents=True, exist_ok=True)
+   6. [ASSIGN] safe_name = re.sub('[^a-z0-9_]+', '_', task_id.lower()).strip('_')
+   7. [ASSIGN] path = target_dir / f'drill_auto_{safe_name}.py'
+   8. [CALL/EXPR] path.write_text(render_drill(spec), encoding='utf-8')
+   9. [RETURN] return path
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -600,6 +650,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 

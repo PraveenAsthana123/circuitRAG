@@ -1,6 +1,6 @@
 # 📦 `mcp` — Advanced README
 
-  ·  **Path:** `mcp`  ·  **Generated:** 2026-05-16 20:47 UTC
+  ·  **Path:** `mcp`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -13,14 +13,14 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `mcp` |
-| Total files | 539 |
-| Python files | 537 |
+| Total files | 542 |
+| Python files | 539 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
 | Shell scripts | 0 |
-| Lines of code | 94,939 |
+| Lines of code | 95,358 |
 | Python classes | 133 |
-| Python functions | 2535 |
+| Python functions | 2541 |
 | Async functions | 574 |
 | Total API endpoints | 95 |
 | Total DB call sites | 683 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `549	PraveenAsthana123` |
+| Top git contributors | `553	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -559,6 +559,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `tests/drill_audit_fail_closed.py` | 🧪 test | 2 | 5 | 199 | Drill: AuditWriter.write supports per-call fail_open vs fail_closed. |
 | `tests/drill_audit_log_partitioned.py` | 🧪 test | 0 | 5 | 466 | Drill: governance.audit_log_partitioned — partition routing + RLS + |
 | `tests/drill_audit_namespace_semantics.py` | 🧪 test | 0 | 5 | 113 | Drill: audit_*.py must not drift back into gate semantics. |
+| `tests/drill_audit_readme_scores.py` | 🧪 test | 0 | 3 | 213 | Drill: audit_readme_scores.py produces honest, parseable scoreboard. |
 | `tests/drill_audit_schema.py` | 🧪 test | 0 | 5 | 154 | Drill: audit_*.py survey schema contract. |
 | `tests/drill_audit_seal.py` | 🧪 test | 0 | 7 | 187 | Drill: audit_verify --seal writes forensic break-records to |
 | `tests/drill_audit_verifier.py` | 🧪 test | 0 | 6 | 214 | Drill: audit_verify.py detects tampering in governance.audit_log. |
@@ -684,6 +685,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 | `tests/drill_explain_endpoint.py` | 🧪 test | 0 | 3 | 195 | Drill: §48 explainability endpoint — `/api/v1/explain?prediction_id=<id>`. |
 | `tests/drill_explainability_row.py` | 🧪 test | 0 | 2 | 175 | Drill for C4 — §48 decision audit row endpoint (Phase C4). |
 | `tests/drill_filter_reason_granularity.py` | 🧪 test | 0 | 3 | 188 | Drill: pr_review_filter_reason() returns SPECIFIC named filters. |
+| `tests/drill_folder_review_report.py` | 🧪 test | 0 | 3 | 266 | Drill: generate_folder_review_report.py produces valid FOLDER_REPORT.md. |
 | `tests/drill_frontend_admin_llmops.py` | 🧪 test | 0 | 4 | 129 | Drill: /admin/llmops renders 200 with all 14 LLMOps categories |
 | `tests/drill_frontend_admin_python.py` | 🧪 test | 0 | 4 | 165 | Drill: /admin/python renders 200 with the expected sections + the |
 | `tests/drill_frontend_build_info.py` | 🧪 test | 0 | 4 | 147 | Drill: /app-meta/build-info exposes the frontend build identity so |
@@ -1099,6 +1101,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/mcp/tests/drill_audit_fail_closed.py`
 - `/mnt/deepa/rag/mcp/tests/drill_audit_log_partitioned.py`
 - `/mnt/deepa/rag/mcp/tests/drill_audit_namespace_semantics.py`
+- `/mnt/deepa/rag/mcp/tests/drill_audit_readme_scores.py`
 - `/mnt/deepa/rag/mcp/tests/drill_audit_schema.py`
 - `/mnt/deepa/rag/mcp/tests/drill_audit_seal.py`
 - `/mnt/deepa/rag/mcp/tests/drill_audit_verifier.py`
@@ -1224,6 +1227,7 @@ Every Python file in this folder, with role / classes / functions / LOC / first 
 - `/mnt/deepa/rag/mcp/tests/drill_explain_endpoint.py`
 - `/mnt/deepa/rag/mcp/tests/drill_explainability_row.py`
 - `/mnt/deepa/rag/mcp/tests/drill_filter_reason_granularity.py`
+- `/mnt/deepa/rag/mcp/tests/drill_folder_review_report.py`
 - `/mnt/deepa/rag/mcp/tests/drill_frontend_admin_llmops.py`
 - `/mnt/deepa/rag/mcp/tests/drill_frontend_admin_python.py`
 - `/mnt/deepa/rag/mcp/tests/drill_frontend_build_info.py`
@@ -1549,7 +1553,7 @@ Use this table when you're modifying this folder and need to know where new code
 | I want to... | Role | Touch these files |
 |---|---|---|
 | Wrap a new external API | 🔌 external service adapter | `client.py` |
-| Add a new test | 🧪 test | `tests/audit_frontend_link.py`, `tests/audit_frontend_template_coverage.py`, `tests/drill_a2a_protocol.py` (+501 more) |
+| Add a new test | 🧪 test | `tests/audit_frontend_link.py`, `tests/audit_frontend_template_coverage.py`, `tests/drill_a2a_protocol.py` (+503 more) |
 
 
 ## 3. C4 Model — Context / Container / Component / Code
@@ -1627,7 +1631,7 @@ flowchart TB
         tests_drill_action_draft_state_constraint_py["tests/drill_action_draft_state_constraint.py"]
         tests_drill_adapters_admin_page_py["tests/drill_adapters_admin_page.py"]
         tests_drill_admin_agentic_summary_panel_py["tests/drill_admin_agentic_summary_panel.py"]
-        more___test["... +498 more"]
+        more___test["... +500 more"]
     end
 ```
 
@@ -2105,6 +2109,55 @@ Walk the phases IN ORDER — first phase with missing/wrong output is the failur
 8. **Phase 9 missing?** Decision audit not persisted → check Kafka consumer lag
 9. **Phase 10 slow?** Response shaping bottleneck → profile the response model
 10. **Phase 11 empty Jaeger?** OTel exporter misconfigured → check `OTEL_EXPORTER_OTLP_ENDPOINT`
+
+
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`server_common.py`** (768 LOC, 3 classes, 15 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `log` | `_inferred_` | immutable |
+| `__all__` | `_inferred_` | ⚠ MUTABLE list |
+
+### Data structures + algorithms detected in `server_common.py`
+
+- sort / sorted (sorting algorithm)
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `handle_tool_call` (server_common.py:515, 232 lines)
+
+```text
+FUNCTION handle_tool_call():
+   1. [IMPORT] import uuid as _uuid
+   2. [ASSIGN] cid = req.correlation_id or str(_uuid.uuid4())
+   3. [CALL/EXPR] logger.info('%s_tool_called name=%s tenant=%s corr=%s idempotency=%s auth=%s', s
+   4. [TYPED-ASSIGN] claims: dict[str, Any] = {}
+   5. [BRANCH] if auth_required:
+   6. [ASSIGN] actor_id = claims.get('sub') if claims else None
+   7. [ASSIGN] actor_email = claims.get('email') if claims else None
+   8. [BRANCH] if actor_id:
+   9. [ASSIGN] tracer = get_tracer(tracer_module)
+  10. [ASSIGN] span_cm = tracer.start_as_current_span(f'mcp.tool:{req.name}') if tracer is not 
+  11. [TYPED-ASSIGN] outcome_attr: str = 'unknown'
+  12. [FUNCTIONDEF] def _stamp_outcome(span, value: str) -> None:
+  13. [WITH-CTX] with span_cm as sp:
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -2675,14 +2728,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `3634fb7` | 2026-05-16 | docs(audit): readme audit scoreboard + drill — honest §57.7 baseline |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `b4c9e00` | 2026-05-16 | feat(ops): advanced 7-layer health-check + troubleshoot tool — 46 probes parallel |
 | `7451179` | 2026-05-08 | fix(llm-pool): close P0 #36 — per-backend CircuitBreaker; drill locks 8 invariants |
-| `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
-| `d889f3a` | 2026-05-08 | test(approval): add opa parity gate |
-| `fa35b08` | 2026-05-08 | feat(agent): add council safety foundation |
-| `b6c97a8` | 2026-05-08 | feat(ops): add operator status scripts |
 
 ```bash
 git log --oneline -- mcp    # see all commits

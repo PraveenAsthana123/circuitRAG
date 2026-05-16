@@ -1,6 +1,6 @@
 # 📦 `council_engine` — Advanced README
 
-  ·  **Path:** `council_engine`  ·  **Generated:** 2026-05-16 20:46 UTC
+  ·  **Path:** `council_engine`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > council_engine — multi-agent debate + judge with 6-dim scoring.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `council_engine` |
-| Total files | 7 |
+| Total files | 8 |
 | Python files | 6 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `3	PraveenAsthana123` |
+| Top git contributors | `5	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -344,6 +344,65 @@ Reading bottom-to-top — earlier principles enable later ones:
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`rounds.py`** (256 LOC, 2 classes, 7 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `log` | `_inferred_` | immutable |
+| `AGGREGATION` | `_inferred_` | immutable |
+| `EVIDENCE_POLICY` | `_inferred_` | immutable |
+| `DISSENT_POLICY` | `_inferred_` | immutable |
+| `DISSENT_JACCARD_FLOOR` | `_inferred_` | constant |
+| `EVIDENCE_DEMOTE_PER_CLAIM` | `_inferred_` | constant |
+| `EVIDENCE_DEMOTE_MAX` | `_inferred_` | constant |
+| `CLAIM_VERBS` | `_inferred_` | immutable |
+| `CITATION_RE` | `_inferred_` | immutable |
+| `CRITIQUE_PROMPT` | `_inferred_` | constant |
+| `REVISION_PROMPT` | `_inferred_` | constant |
+| `__all__` | `_inferred_` | ⚠ MUTABLE list |
+
+### Data structures + algorithms detected in `rounds.py`
+
+- sort / sorted (sorting algorithm)
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+
+### Pseudocode for hottest function: `check_evidence` (rounds.py:116, 32 lines)
+
+```text
+FUNCTION check_evidence(text):
+   1. [CALL/EXPR] 'Heuristic evidence check — split into claims, count cited vs uncited.'
+   2. [ASSIGN] chosen = (policy or EVIDENCE_POLICY).lower()
+   3. [BRANCH] if not text:
+   4. [ASSIGN] sentences = [s.strip() for s in re.split('(?<=[.!?])\\s+', text) if s.strip()]
+   5. [ASSIGN] cited = 0
+   6. [ASSIGN] uncited = 0
+   7. [TYPED-ASSIGN] examples: list[str] = []
+   8. [LOOP] for s in sentences:
+   9. [BRANCH] if uncited == 0:
+  10. [BRANCH] if chosen == 'reject':
+  11. [BRANCH] if chosen == 'revise':
+  12. [ASSIGN] demote = min(EVIDENCE_DEMOTE_MAX, EVIDENCE_DEMOTE_PER_CLAIM * uncited)
+  13. [RETURN] return EvidenceVerdict(cited, uncited, demote, 'demote', examples)
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 _No endpoints detected; sequence-diagram template intentionally omitted._
@@ -608,6 +667,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `fa35b08` | 2026-05-08 | feat(agent): add council safety foundation |

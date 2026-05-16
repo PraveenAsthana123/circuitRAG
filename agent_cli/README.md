@@ -1,6 +1,6 @@
 # 📦 `agent_cli` — Advanced README
 
-  ·  **Path:** `agent_cli`  ·  **Generated:** 2026-05-16 20:46 UTC
+  ·  **Path:** `agent_cli`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > Always-on CLI agent council.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `agent_cli` |
-| Total files | 14 |
+| Total files | 15 |
 | Python files | 13 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `3	PraveenAsthana123` |
+| Top git contributors | `5	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -385,6 +385,59 @@ Reading bottom-to-top — earlier principles enable later ones:
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`orchestrator.py`** (200 LOC, 1 classes, 4 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `DESTRUCTIVE_PATTERNS` | `_inferred_` | immutable |
+
+### Data structures + algorithms detected in `orchestrator.py`
+
+- generator expression
+
+### Memory characteristics
+
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+
+### Pseudocode for hottest function: `run_council` (orchestrator.py:58, 130 lines)
+
+```text
+FUNCTION run_council(user_input):
+   1. [CALL/EXPR] 'Run the full council. Raises ValueError if input is empty.'
+   2. [BRANCH] if not user_input.strip():
+   3. [ASSIGN] sid = session_id or _new_session_id()
+   4. [CALL/EXPR] cli_logger.log('router', f'session={sid}  request={user_input[:80]!r}')
+   5. [ASSIGN] hit = _detect_destructive_intent(user_input)
+   6. [BRANCH] if hit:
+   7. [CALL/EXPR] cli_logger.log('planner', 'decomposing into phases')
+   8. [ASSIGN] plan = planner.run(user_input)['response']
+   9. [CALL/EXPR] cli_logger.log('researcher', 'surveying tools / patterns')
+  10. [ASSIGN] research = researcher.run(user_input)['response']
+  11. [CALL/EXPR] cli_logger.log('advisor', 'picking one path')
+  12. [ASSIGN] advice = advisor.run(user_input)['response']
+  13. [ASSIGN] combined = f'=== PLAN ===\n{plan}\n\n=== RESEARCH ===\n{research}\n\n=== ADVICE 
+  14. [CALL/EXPR] cli_logger.log('critic', 'finding gaps')
+  15. [ASSIGN] critique = critic.run(combined)['response']
+  16. [ASSIGN] inferred_risk = _infer_risk(user_input)
+  17. [ASSIGN] pseudo_task = {'id': sid, 'action': 'recommendation', 'type': 'recommendation', 
+  18. [ASSIGN] decision = approval_decide(task=pseudo_task, test_result='PASS', governance_resu
+  19. [CALL/EXPR] cli_logger.log('approval', f'{decision.decision} — {decision.reason}')
+  20. [BRANCH] if decision.decision == 'DENY':
+  ... +4 more statements truncated
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 _No endpoints detected; sequence-diagram template intentionally omitted._
@@ -647,6 +700,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `fa35b08` | 2026-05-08 | feat(agent): add council safety foundation |

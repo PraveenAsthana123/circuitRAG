@@ -1,6 +1,6 @@
 # 📦 `personalization` — Advanced README
 
-  ·  **Path:** `personalization`  ·  **Generated:** 2026-05-16 20:47 UTC
+  ·  **Path:** `personalization`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > Personalization pipeline — Levels 1-5 of the safe-first plan.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `personalization` |
-| Total files | 8 |
+| Total files | 9 |
 | Python files | 7 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `2	PraveenAsthana123` |
+| Top git contributors | `4	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -336,6 +336,59 @@ Reading bottom-to-top — earlier principles enable later ones:
 ```
 
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
+
+
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`cli.py`** (233 LOC, 0 classes, 9 functions).
+
+### Module-level variables
+
+_None detected._
+
+### Data structures + algorithms detected in `cli.py`
+
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `main` (cli.py:177, 52 lines)
+
+```text
+FUNCTION main(argv):
+   1. [ASSIGN] p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDes
+   2. [ASSIGN] sub = p.add_subparsers(dest='cmd', required=True)
+   3. [ASSIGN] log_p = sub.add_parser('log', help='log a single prompt')
+   4. [CALL/EXPR] log_p.add_argument('--user', required=True)
+   5. [CALL/EXPR] log_p.add_argument('--prompt', required=True)
+   6. [CALL/EXPR] log_p.add_argument('--session', default=None)
+   7. [CALL/EXPR] log_p.add_argument('--log-raw', action='store_true', help='ALSO persist raw prom
+   8. [CALL/EXPR] log_p.add_argument('--feedback', default=None)
+   9. [CALL/EXPR] log_p.set_defaults(func=cmd_log)
+  10. [ASSIGN] prof_p = sub.add_parser('profile', help='build + save style profile')
+  11. [CALL/EXPR] prof_p.add_argument('--user', required=True)
+  12. [CALL/EXPR] prof_p.set_defaults(func=cmd_profile)
+  13. [ASSIGN] mf_p = sub.add_parser('modelfile', help='generate Modelfile')
+  14. [CALL/EXPR] mf_p.add_argument('--user', required=True)
+  15. [CALL/EXPR] mf_p.add_argument('--base-model', default='llama3.1:8b')
+  16. [CALL/EXPR] mf_p.add_argument('--temperature', type=float, default=0.2)
+  17. [CALL/EXPR] mf_p.add_argument('--adapter-path', default=None)
+  18. [CALL/EXPR] mf_p.add_argument('--show', action='store_true')
+  19. [CALL/EXPR] mf_p.set_defaults(func=cmd_modelfile)
+  20. [ASSIGN] create_p = sub.add_parser('create-model', help='generate Modelfile + ollama crea
+  ... +21 more statements truncated
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -666,6 +719,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 

@@ -1,6 +1,6 @@
 # 📦 `risk_classifier` — Advanced README
 
-  ·  **Path:** `risk_classifier`  ·  **Generated:** 2026-05-16 20:47 UTC
+  ·  **Path:** `risk_classifier`  ·  **Generated:** 2026-05-16 22:56 UTC
 
 > risk_classifier — pure-function classification over (action, type, text).
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `risk_classifier` |
-| Total files | 3 |
+| Total files | 4 |
 | Python files | 2 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `3	PraveenAsthana123` |
+| Top git contributors | `5	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -261,6 +261,59 @@ Reading bottom-to-top — earlier principles enable later ones:
 ```
 
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
+
+
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`classifier.py`** (194 LOC, 1 classes, 4 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `RiskLevel` | `_inferred_` | immutable |
+| `CRITICAL_PATTERNS` | `_inferred_` | ⚠ MUTABLE list |
+| `HIGH_PATTERNS` | `_inferred_` | ⚠ MUTABLE list |
+| `MEDIUM_PATTERNS` | `_inferred_` | ⚠ MUTABLE list |
+| `ACTION_FLOORS` | `dict[str, RiskLevel]` | immutable |
+| `TYPE_FLOORS` | `dict[str, RiskLevel]` | immutable |
+| `_RANK` | `dict[RiskLevel, int]` | immutable |
+| `_LEVEL_BY_RANK` | `dict[int, RiskLevel]` | immutable |
+| `__all__` | `_inferred_` | ⚠ MUTABLE list |
+
+### Data structures + algorithms detected in `classifier.py`
+
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+
+### Pseudocode for hottest function: `classify` (classifier.py:129, 45 lines)
+
+```text
+FUNCTION classify():
+   1. [CALL/EXPR] 'Classify risk from any subset of (action, task_type, text).\n\n    Returns the 
+   2. [TYPED-ASSIGN] triggers: list[str] = []
+   3. [TYPED-ASSIGN] levels: list[RiskLevel] = ['low']
+   4. [BRANCH] if action:
+   5. [BRANCH] if task_type:
+   6. [ASSIGN] text = ' '.join((s for s in (title, description) if s))
+   7. [ASSIGN] text_level, text_trig = _scan_patterns(text)
+   8. [CALL/EXPR] levels.append(text_level)
+   9. [CALL/EXPR] triggers.extend(text_trig)
+  10. [ASSIGN] final = _max_level(*levels)
+  11. [RETURN] return RiskAssessment(level=final, score=_RANK[final], triggers=triggers, inputs
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -521,6 +574,8 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `fa35b08` | 2026-05-08 | feat(agent): add council safety foundation |
