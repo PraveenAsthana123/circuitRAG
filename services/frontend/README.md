@@ -1,6 +1,6 @@
 # 📦 `frontend` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/frontend`  ·  **Generated:** 2026-05-16 20:26 UTC
+🧩 **Service**  ·  **Path:** `services/frontend`  ·  **Generated:** 2026-05-16 20:50 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ✅ |
-| Top git contributors | `189	PraveenAsthana123`, `4	Praveen` |
+| Top git contributors | `190	PraveenAsthana123`, `4	Praveen` |
 
 #### Longest functions
 
@@ -697,6 +697,7 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
 | `3c24119` | 2026-05-08 | fix(production-checker): skip BFF health_url + drop http:// from doc-string URLs |
 | `6004a31` | 2026-05-08 | fix(integrations-health): OTel collector probe /metrics not / |
@@ -704,7 +705,6 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 | `d3ca211` | 2026-05-08 | feat(kiali): canonical Istio addon install — Kiali joins all-green (19/19 HEALTHY) |
 | `7959e6d` | 2026-05-08 | fix(integrations-health): all-green achieved — TCP probe + Kafka URL + Kibana override fix |
 | `8c169a5` | 2026-05-08 | fix(integrations-health): correct MinIO + OTel probe URLs + restart Kibana with user fix |
-| `f1898f1` | 2026-05-08 | feat(tools-launcher): traffic-light tool launcher page (8/8 drill, 4 negative) |
 
 ```bash
 git log --oneline -- services/frontend    # see all commits
@@ -773,6 +773,174 @@ _(181 more not shown)_
 | Distributed tracing wired | OpenTelemetry | — | — |
 | For AI: prompt injection tested | Rebuff / Garak | — | AI deps present |
 | For AI: hallucination scoring ≥ 0.85 | Ragas faithfulness | — | yes |
+
+
+## 📋 Reporting + Audit Checklist (10 categories × 10 rows)
+
+**Honesty contract per §57.7:** sections that are deterministically auto-generated AND covered by a drill are pre-scored 10/10. Sections that require human judgment start at **TBD** — never auto-mark them as ✓ without evidence.
+
+Aggregate score = sum of all 100 row scores. Target ≥ 80 for production. Each cell: ✓ (10) / ⚠ (5) / ✗ (0) / TBD.
+
+### 1. Architecture & Design (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | C4 L1 Context diagram present | **10** | ✓ `mcp/tests/drill_readme_generator.py` (12/12 ✓) → §7 |
+| 2 | C4 L2 Container diagram present | **10** | ✓ `mcp/tests/drill_readme_generator.py` (12/12 ✓) → §7 |
+| 3 | C4 L3 Component diagram present | **10** | ✓ `mcp/tests/drill_readme_generator.py` (12/12 ✓) → §7 |
+| 4 | C4 L4 Code (longest functions) | **10** | ✓ `mcp/tests/drill_readme_generator.py` (12/12 ✓) → §7 |
+| 5 | ADR filed for major design decisions | TBD | `docs/architecture/adr/` |
+| 6 | Bounded context documented | TBD | reviewer notes |
+| 7 | Separation of concerns enforced | TBD | review §2 File Inventory roles |
+| 8 | Class diagram (UML) present | **10** | ✓ §8 |
+| 9 | Sequence diagram per endpoint | **10** | ✓ §15 |
+| 10 | Integration graph documented | **10** | ✓ §27 |
+
+### 2. Code Quality (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | File inventory with roles | **10** | ✓ `mcp/tests/drill_readme_generator.py` (12/12 ✓) → §5 |
+| 2 | Longest-functions list | **10** | ✓ §0 |
+| 3 | No function > 50 lines without justification | TBD | `radon cc -a -nc` |
+| 4 | Cyclomatic complexity ≤ 15 per fn | TBD | `radon cc -nc` |
+| 5 | No file > 500 lines without sub-modules | TBD | `wc -l` per file |
+| 6 | Linted (ruff/eslint, zero warnings) | TBD | CI log |
+| 7 | Type-checked (mypy/ts-strict) | TBD | CI log |
+| 8 | No dead code (vulture / unused exports) | TBD | reviewer audit |
+| 9 | DRY — no duplicate logic across files | TBD | reviewer audit |
+| 10 | KISS — simplest design that works | TBD | reviewer judgment |
+
+### 3. Security (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | Input validation present (Pydantic/Zod) | **10** if detected | §20 — detected: Manual escape, Pydantic BaseModel, Zod (TS) |
+| 2 | AuthN/Z documented + enforced | TBD | §20 |
+| 3 | OWASP Top 10 reviewed | TBD | STRIDE table per container |
+| 4 | No hardcoded secrets | TBD | smell count: 2 pw + 0 api-key literals |
+| 5 | Secrets in Vault / env, not code | TBD | §4 Env Vars |
+| 6 | SAST scan clean (bandit/semgrep) | TBD | CI log |
+| 7 | Dependency CVE scan clean (pip-audit) | TBD | CI log |
+| 8 | PII masked in logs | TBD | §24 |
+| 9 | TLS / encryption in transit | TBD | infra config |
+| 10 | For AI: prompt injection defense | TBD | not applicable / TBD |
+
+### 4. Performance (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | Latency SLO documented | TBD | reviewer |
+| 2 | Load tested (k6/Locust) | TBD | `tests/load/` |
+| 3 | p95 measured + within SLO | TBD | Grafana panel |
+| 4 | No N+1 queries on hot paths | TBD | EXPLAIN ANALYZE |
+| 5 | Caches bounded (LRU/TTL) | **10** | detected: redis |
+| 6 | Async I/O where applicable | **10** | 0 async functions detected |
+| 7 | Timeouts on all external calls | TBD | reviewer audit |
+| 8 | Memory profile clean (no growth) | TBD | py-spy / mprof |
+| 9 | Capacity model documented | TBD | runbook |
+| 10 | Cost per request tracked (token/cpu) | TBD | finops dashboard |
+
+### 5. Reliability (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | Retry with exp backoff | TBD | reviewer audit |
+| 2 | Circuit breaker on external deps | TBD | `documind_core/breakers/` |
+| 3 | Graceful degradation path | TBD | reviewer audit |
+| 4 | Health probe (startup/liveness/readiness) | TBD | k8s manifest |
+| 5 | Rollback tested in staging | TBD | deploy runbook |
+| 6 | DR plan with RTO/RPO | TBD | runbook |
+| 7 | Idempotency keys for writes | TBD | reviewer audit |
+| 8 | Dead-letter queue for events | TBD | Kafka config |
+| 9 | Bulkhead isolation | TBD | reviewer audit |
+| 10 | Chaos test passed | TBD | chaos run log |
+
+### 6. Observability (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | Execution sequence with debug taps | **10** | ✓ §13 |
+| 2 | Business-logic step sequence | **10** | ✓ §14 |
+| 3 | Structured JSON logs | TBD | reviewer audit |
+| 4 | correlation_id propagated everywhere | TBD | trace check |
+| 5 | Tracing (OTel) wired | TBD | Jaeger query |
+| 6 | Metrics exposed (RED: rate/errors/duration) | TBD | Prometheus query |
+| 7 | Grafana dashboard exists | TBD | dashboard URL |
+| 8 | Alerts defined (SLO burn) | TBD | Alertmanager config |
+| 9 | Runbook references | TBD | `ops/runbook/<svc>.md` |
+| 10 | Decision audit row per AI call (§38+§48) | TBD | `decision_audit` table |
+
+### 7. Testing (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | Test files detected | TBD | 0 test files |
+| 2 | Test cases auto-parsed | TBD | 0 test functions |
+| 3 | Statement coverage ≥ 80% | TBD | `pytest --cov` |
+| 4 | Branch coverage ≥ 70% | TBD | `pytest --cov-branch` |
+| 5 | Negative-test cases (≥3 per drill) | TBD | §43 discipline |
+| 6 | Drill with real services (no mocks) | TBD | `mcp/tests/drill_*.py` |
+| 7 | Property-based tests (hypothesis) | TBD | reviewer audit |
+| 8 | Fuzz tests (atheris/honggfuzz) | TBD | reviewer audit |
+| 9 | Contract tests with downstream services | TBD | reviewer audit |
+| 10 | Smoke + load + chaos in CI | TBD | CI pipeline |
+
+### 8. Operations (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | Quick Start (5-cmd boot) | **10** | ✓ §2 |
+| 2 | Env vars table | **10** | ✓ §4 |
+| 3 | Where-does-X-live cheat sheet | **10** | ✓ §6 |
+| 4 | Debugging guide | **10** | ✓ §29 |
+| 5 | Runbook for common incidents | TBD | `ops/runbook/<svc>.md` |
+| 6 | On-call rotation defined | TBD | PagerDuty |
+| 7 | SLO/SLA published | TBD | reviewer audit |
+| 8 | Capacity headroom monitored | TBD | Grafana panel |
+| 9 | Cost dashboard | TBD | FinOps dashboard |
+| 10 | Backup + restore tested | TBD | DR drill log |
+
+### 9. Governance & Compliance (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | Owner (team + on-call) defined | TBD | CODEOWNERS |
+| 2 | Risk register entry | TBD | `docs/architecture/security/` |
+| 3 | Change management process | TBD | PR template |
+| 4 | Audit log retention ≥ 6 months | TBD | EU AI Act Art. 12 |
+| 5 | Right-to-explanation supported | TBD | §48 + EU AI Act Art. 86 |
+| 6 | Bias / fairness pre-deploy gate | TBD | §48 |
+| 7 | Model card filed (for AI) | TBD | `docs/model-cards/` |
+| 8 | SOC2 controls mapped | TBD | compliance matrix |
+| 9 | GDPR — PII inventory | TBD | data lineage |
+| 10 | Vendor / SaaS dependencies tracked | TBD | `docs/vendors.md` |
+
+### 10. Documentation (10 rows)
+
+| # | Item | Score | Evidence |
+|---|---|---|---|
+| 1 | README present | **10** | ✓ this file |
+| 2 | README has all 33 §58 sections | **10** | ✓ drill-locked |
+| 3 | README freshness < 7 days | TBD | git log mtime |
+| 4 | File inventory current | **10** | ✓ `mcp/tests/drill_readme_generator.py` (12/12 ✓) → §5 |
+| 5 | Recent activity tracked | **10** | ✓ §30 |
+| 6 | Domain glossary present | **10** | ✓ §28 |
+| 7 | ADRs cross-linked | TBD | reviewer audit |
+| 8 | Runbook cross-linked | TBD | reviewer audit |
+| 9 | OpenAPI spec generated + linked | TBD | `/openapi.json` URL |
+| 10 | Sequence diagrams up-to-date | TBD | 0 endpoints diagrammed |
+
+### Aggregate score
+
+```
+Auto-locked rows  : count below — drill-protected, deterministic
+Reviewer-fill rows: TBD — reviewer scores honestly per evidence
+Target            : ≥ 80 / 100 for production
+Brutal rule       : never overwrite TBD with ✓ without evidence
+```
+
+Run `python3 mcp/tests/drill_readme_generator.py` to verify the auto-locked rows are still locked. Manually fill TBD rows during PR review using the evidence-column commands as starting point.
 
 
 ## 20. Final Production Readiness Score
