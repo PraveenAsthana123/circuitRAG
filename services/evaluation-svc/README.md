@@ -1,6 +1,6 @@
 # 📦 `evaluation-svc` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/evaluation-svc`  ·  **Generated:** 2026-05-16 20:43 UTC
+🧩 **Service**  ·  **Path:** `services/evaluation-svc`  ·  **Generated:** 2026-05-16 22:40 UTC
 
 > Evaluation service (Design Areas 26, 59, 60, 61).
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `services/evaluation-svc` |
-| Total files | 13 |
+| Total files | 15 |
 | Python files | 7 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `16	PraveenAsthana123`, `3	Praveen` |
+| Top git contributors | `18	PraveenAsthana123`, `3	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -503,6 +503,45 @@ Walk the phases IN ORDER — first phase with missing/wrong output is the failur
 8. **Phase 9 missing?** Decision audit not persisted → check Kafka consumer lag
 9. **Phase 10 slow?** Response shaping bottleneck → profile the response model
 10. **Phase 11 empty Jaeger?** OTel exporter misconfigured → check `OTEL_EXPORTER_OTLP_ENDPOINT`
+
+
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`app/eval_harness.py`** (600 LOC, 5 classes, 1 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `logger` | `_inferred_` | immutable |
+
+### Data structures + algorithms detected in `app/eval_harness.py`
+
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `evaluate` (app/eval_harness.py:271, 90 lines)
+
+```text
+FUNCTION evaluate(self):
+   1. [CALL/EXPR] "Score answer via deepeval. Stage-2: env-gated real invocation.\n\n        DEEPE
+   2. [BRANCH] if not self._deepeval:
+   3. [IMPORT] import os as _os
+   4. [BRANCH] if _os.getenv('DEEPEVAL_ENABLED', '').strip() != '1':
+   5. [TRY] try:
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -976,14 +1015,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `4e2ec04` | 2026-05-08 | fix(rebuff): bridge langchain vectorstore import |
 | `0c22973` | 2026-05-07 | fix(iter-87): §55 Tier-3 rule-aware routing + 32 real lint fixes (E402 in main.py + routers/__init__.py; F841 in eval_ha |
 | `8c7d7f6` | 2026-05-06 | fix(iter-55): evaluation-svc /run publish point — 4-of-4 publishing fleet complete (§47.7) |
 | `9fd04bb` | 2026-05-06 | fix(iter-51): inference-svc /api/v1/ask publishes query.generated.v1 events (§47.7 expand-application) |
-| `531076c` | 2026-05-06 | fix(iter-37): Lakera+Rebuff prompt-injection + Giskard LLM red-team scaffolds |
-| `a526630` | 2026-05-06 | fix(iter-35-36): eval engines Stage-2 wiring + RAG vectorless feature flag |
 
 ```bash
 git log --oneline -- services/evaluation-svc    # see all commits

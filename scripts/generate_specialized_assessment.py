@@ -10,8 +10,8 @@ concerns (API standards, DB transactions, caching, observability,
 AI/RAG, etc.) that the generic template doesn't drill into.
 
 Output filename:
-  --profile frontend → <folder>/FRONTEND_REPORT.md
-  --profile backend  → <folder>/BACKEND_REPORT.md
+  --profile frontend → <folder>/FRONTEND_ASSESSMENT_REPORT.md
+  --profile backend  → <folder>/BACKEND_ASSESSMENT_REPORT.md
 
 Auto-detected metadata varies by profile:
   frontend → React/Next.js version, TS/TSX files, components,
@@ -827,11 +827,11 @@ def write_one(folder: Path, profile: str, reviewer: str, output: Path,
     if actual_profile == "frontend":
         facts = introspect_frontend(folder)
         content = render_frontend(facts, folder, reviewer, now)
-        fname = "FRONTEND_REPORT.md"
+        fname = "FRONTEND_ASSESSMENT_REPORT.md"
     else:
         facts = introspect_backend(folder)
         content = render_backend(facts, folder, reviewer, now)
-        fname = "BACKEND_REPORT.md"
+        fname = "BACKEND_ASSESSMENT_REPORT.md"
     out = output if output else folder / fname
     if out.exists() and not force:
         return False, f"SKIP (exists): {out}"

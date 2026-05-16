@@ -1,6 +1,6 @@
 # 📦 `tests` — Advanced README
 
-📚 **Library**  ·  **Path:** `libs/py/tests`  ·  **Generated:** 2026-05-16 20:43 UTC
+📚 **Library**  ·  **Path:** `libs/py/tests`  ·  **Generated:** 2026-05-16 22:42 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `libs/py/tests` |
-| Total files | 28 |
+| Total files | 30 |
 | Python files | 27 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `16	PraveenAsthana123`, `4	Praveen` |
+| Top git contributors | `19	PraveenAsthana123`, `4	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -530,6 +530,41 @@ Walk the phases IN ORDER — first phase with missing/wrong output is the failur
 8. **Phase 9 missing?** Decision audit not persisted → check Kafka consumer lag
 9. **Phase 10 slow?** Response shaping bottleneck → profile the response model
 10. **Phase 11 empty Jaeger?** OTel exporter misconfigured → check `OTEL_EXPORTER_OTLP_ENDPOINT`
+
+
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`test_ai_governance.py`** (370 LOC, 0 classes, 33 functions).
+
+### Module-level variables
+
+_None detected._
+
+### Data structures + algorithms detected in `test_ai_governance.py`
+
+- set comprehension
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `test_explainer_guardrail_violations_appear_in_narrative` (test_ai_governance.py:295, 27 lines)
+
+```text
+FUNCTION test_explainer_guardrail_violations_appear_in_narrative():
+   1. [ASSIGN] explanation = AIExplainer.build(question='q', answer='a', retrieval_strategy='ve
+   2. [ASSERT] assert 'Guardrails raised' in explanation.why_this_answer
+   3. [ASSERT] assert 'pii_leak' in explanation.why_this_answer
+   4. [ASSERT] assert 'low_confidence' in explanation.why_this_answer
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
 
 
 ## 7. Sequence Diagrams per Endpoint
@@ -1467,14 +1502,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `70d80fa` | 2026-04-30 | feat(ui): /admin/pipelines hub — every RAG flow in one node (iter 12/N) |
 | `2060086` | 2026-04-30 | feat(rag+ops): bm25 + sentry wrapper + comprehensive software inventory (iter 11/N) |
 | `a98e1d9` | 2026-04-30 | test(partials): ai_governance 92% → 100%, idempotency_middleware 31% → 93% (iter 10/N) |
-| `adfab93` | 2026-04-30 | feat(rag): embedding_cache + citations linker (iter 9/N) |
-| `89fa987` | 2026-04-30 | feat(rag): 6 RAG-primitive modules — chunking + fusion + pii + tokens + mmr + query_rewriter (iter 8/N) |
-| `a736fe1` | 2026-04-30 | test(dispatch_pool): dispatch_pool.py 0% → 100% (iter 7/N) |
 
 ```bash
 git log --oneline -- libs/py/tests    # see all commits

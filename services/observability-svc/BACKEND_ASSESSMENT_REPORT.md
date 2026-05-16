@@ -1,7 +1,7 @@
-# Backend Assessment - `sidecar-advisor`
+# Backend Assessment - `observability-svc`
 
-**Profile:** Backend (Python (18 files))
-**Generated:** 2026-05-16 22:18 UTC
+**Profile:** Backend (Go (2 files))
+**Generated:** 2026-05-16 22:36 UTC
 **Reviewer:** Praveen Asthana
 
 > 25-section backend-specific production assessment. Reviewer fills Status / Notes / Risk / Recommendation per row. Skeleton starts with TBD per global honesty rule (never claim 10/10 without evidence).
@@ -12,28 +12,28 @@
 
 | Field | Value |
 |---|---|
-| Folder | `services/sidecar-advisor` |
+| Folder | `services/observability-svc` |
 | Profile | Backend |
-| Runtime | Python (18 files) |
+| Runtime | Go (2 files) |
 | Has FastAPI | no |
 | Has Pydantic | no |
 | Has Uvicorn | no |
-| Async functions | 11 |
-| DB libs | Redis |
+| Async functions | 0 |
+| DB libs | _(none)_ |
 | Queue libs | _(none)_ |
 | Cache libs | _(none)_ |
-| HTTP client libs | httpx |
-| AI / LLM libs | Ollama |
+| HTTP client libs | _(none)_ |
+| AI / LLM libs | _(none)_ |
 | Observability libs | _(none)_ |
 | Auth libs | _(none)_ |
 | Test files | 1 |
 | Dockerfile | yes |
 | pyproject.toml | no |
-| go.mod | no |
-| Lines of code (rough) | 2,685 |
-| Git authors | 27	PraveenAsthana123 |
+| go.mod | yes |
+| Lines of code (rough) | 99 |
+| Git authors | 3	PraveenAsthana123, 2	Praveen |
 | Reviewer | Praveen Asthana |
-| Generated | 2026-05-16 22:18 UTC |
+| Generated | 2026-05-16 22:36 UTC |
 
 ---
 
@@ -79,7 +79,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. DB libs: Redis | TBD | — | — | — |
+| 1. DB libs: NONE | TBD | — | — | — |
 | 2. RLS policies for multi-tenant? | TBD | — | — | — |
 | 3. Migrations in expand -> migrate -> contract order? | TBD | — | — | — |
 | 4. Indexes on every WHERE + ORDER BY column? | TBD | — | — | — |
@@ -111,7 +111,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Async functions: 11 | TBD | — | — | — |
+| 1. Async functions: 0 | TBD | — | — | — |
 | 2. No blocking I/O inside `async def`? | TBD | — | — | — |
 | 3. Timeouts on every external call? | TBD | — | — | — |
 | 4. ThreadPool for CPU-bound work? | TBD | — | — | — |
@@ -121,7 +121,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. HTTP client libs: httpx | TBD | — | — | — |
+| 1. HTTP client libs: NONE | TBD | — | — | — |
 | 2. Circuit breaker around every external dep? | TBD | — | — | — |
 | 3. Retry with exponential backoff + jitter? | TBD | — | — | — |
 | 4. Timeouts (connect + read)? | TBD | — | — | — |
@@ -232,7 +232,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. AI libs: Ollama | TBD | — | — | — |
+| 1. AI libs: n/a | TBD | — | — | — |
 | 2. Prompt versioning in registry? | TBD | — | — | — |
 | 3. Embedding model versioned + re-embed on bump? | TBD | — | — | — |
 | 4. Decision audit row per AI call? | TBD | — | — | — |

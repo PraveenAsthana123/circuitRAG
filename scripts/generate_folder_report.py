@@ -1710,6 +1710,247 @@ def section_execution_sequence(f: FolderFacts) -> str:
     )
 
 
+def section_code_logic_deep_dive(f: FolderFacts) -> str:
+    """Variables / DSA / memory / pseudocode for the hottest service file.
+
+    AST-walks the largest service file to extract:
+      - module-level variables (state map + mutability flags)
+      - data-structure patterns used (Counter, defaultdict, heapq, deque, etc.)
+      - memory characteristics (caches, large objects, weak refs)
+      - 11-step pseudocode for the longest function
+    """
+    if not f.files:
+        return ""
+    # Pick the hottest service file (largest by LOC, role = business service)
+    service_files = [fe for fe in f.files
+                     if "🧠 business service" in fe.role
+                     or "🌐 HTTP router" in fe.role]
+    if not service_files:
+        service_files = sorted(f.files, key=lambda fe: -fe.lines)
+    target = max(service_files, key=lambda fe: fe.lines)
+    target_path = REPO_ROOT / f.rel_path / target.rel
+    if not target_path.exists():
+        target_path = f.abs_path / target.rel
+    try:
+        text = target_path.read_text(encoding="utf-8", errors="ignore")
+    except (PermissionError, OSError):
+        return ""
+
+    # ---- AST-walk for module-level variables -----------------------------
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return ""
+
+    module_vars: List[Tuple[str, str, str]] = []   # (name, type_hint, kind)
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name):
+                    # Heuristic mutability
+                    kind = "immutable"
+                    if isinstance(node.value, ast.Dict):
+                        kind = "⚠ MUTABLE dict"
+                    elif isinstance(node.value, ast.List):
+                        kind = "⚠ MUTABLE list"
+                    elif isinstance(node.value, ast.Set):
+                        kind = "⚠ MUTABLE set"
+                    elif isinstance(node.value, ast.Constant):
+                        kind = "constant"
+                    module_vars.append((tgt.id, "_inferred_", kind))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            type_str = "_typed_"
+            try:
+                type_str = ast.unparse(node.annotation)
+            except (AttributeError, Exception):
+                pass
+            kind = "immutable" if node.value else "uninitialized"
+            module_vars.append((node.target.id, type_str, kind))
+
+    # ---- DSA patterns ----------------------------------------------------
+    dsa_signals = {
+        "collections.defaultdict": [r"\bdefaultdict\("],
+        "collections.Counter": [r"\bCounter\("],
+        "collections.deque (FIFO/LIFO queue)": [r"\bdeque\("],
+        "collections.OrderedDict (LRU)": [r"\bOrderedDict\("],
+        "heapq (priority queue)": [r"\bheapq\.", r"\bheappush\(", r"\bheappop\("],
+        "bisect (sorted insertion)": [r"\bbisect\.", r"\bbisect_left\(", r"\bbisect_right\("],
+        "functools.lru_cache (memoization)": [r"@lru_cache", r"@functools\.lru_cache"],
+        "weakref (cache that GC can drop)": [r"\bweakref\."],
+        "asyncio.Lock / Semaphore": [r"asyncio\.Lock\(", r"asyncio\.Semaphore\("],
+        "recursion (function calls itself)": None,  # AST detected below
+        "sort / sorted (sorting algorithm)": [r"\.sort\(", r"\bsorted\("],
+        "set comprehension": [r"\{[^}]+for"],
+        "dict comprehension": [r"\{[^}]+:[^}]+for"],
+        "generator expression": [r"\([^)]*for[^)]*\)"],
+    }
+    dsa_hits: List[str] = []
+    for name, patterns in dsa_signals.items():
+        if patterns is None:
+            continue  # handled separately below
+        for pat in patterns:
+            if re.search(pat, text):
+                dsa_hits.append(name)
+                break
+
+    # Recursion detection — AST walk for self-call
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in ast.walk(node):
+                if (isinstance(child, ast.Call)
+                        and isinstance(child.func, ast.Name)
+                        and child.func.id == node.name):
+                    dsa_hits.append("recursion (function calls itself)")
+                    break
+            if "recursion" in (dsa_hits[-1] if dsa_hits else ""):
+                break
+
+    # ---- Memory characteristics -----------------------------------------
+    memory_hints: List[str] = []
+    if re.search(r"_cache\s*=\s*\{\}", text) or re.search(r"_cache\s*:\s*dict\[", text):
+        memory_hints.append(
+            "⚠ Module-level `_cache = {}` detected — unbounded growth risk. "
+            "Use `functools.lru_cache(maxsize=N)` or `OrderedDict` with explicit eviction."
+        )
+    if re.search(r"with open\(", text):
+        memory_hints.append(
+            "✓ `with open(...)` context manager used — file handles auto-closed."
+        )
+    if re.search(r"open\(", text) and not re.search(r"with open\(", text):
+        memory_hints.append(
+            "⚠ `open()` without `with` detected — file handle leak risk."
+        )
+    if "BytesIO" in text or "StringIO" in text:
+        memory_hints.append(
+            "ℹ `BytesIO` / `StringIO` used — in-memory buffer; verify size bounded."
+        )
+    if "@dataclass" in text:
+        memory_hints.append(
+            "ℹ `@dataclass` used — instances are mutable by default; "
+            "consider `frozen=True` if immutability needed."
+        )
+    if re.search(r"asyncio\.create_task\(", text):
+        memory_hints.append(
+            "ℹ `asyncio.create_task()` used — keep a reference to prevent GC; "
+            "use TaskGroup or explicit set for fire-and-forget tasks."
+        )
+
+    # ---- Pseudocode for the longest function in this file ---------------
+    longest_fn = None
+    longest_lines = 0
+    longest_name = ""
+    longest_line_no = 0
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if hasattr(node, "end_lineno") and node.end_lineno:
+                lines = node.end_lineno - node.lineno + 1
+                if lines > longest_lines:
+                    longest_lines = lines
+                    longest_fn = node
+                    longest_name = node.name
+                    longest_line_no = node.lineno
+
+    pseudo = ""
+    if longest_fn:
+        # Walk the function body, emitting pseudocode-style lines
+        steps: List[str] = []
+        for i, stmt in enumerate(longest_fn.body[:20], 1):  # cap at 20 statements
+            try:
+                src = ast.unparse(stmt).strip().split("\n")[0][:80]
+            except (AttributeError, Exception):
+                src = "<unparseable>"
+            stmt_type = type(stmt).__name__.replace("ast.", "")
+            tag = {
+                "If": "BRANCH",
+                "For": "LOOP",
+                "AsyncFor": "ASYNC-LOOP",
+                "While": "WHILE-LOOP",
+                "Try": "TRY",
+                "With": "WITH-CTX",
+                "AsyncWith": "ASYNC-WITH",
+                "Raise": "RAISE",
+                "Return": "RETURN",
+                "Assign": "ASSIGN",
+                "AnnAssign": "TYPED-ASSIGN",
+                "Expr": "CALL/EXPR",
+            }.get(stmt_type, stmt_type.upper())
+            steps.append(f"  {i:2d}. [{tag}] {src}")
+        if len(longest_fn.body) > 20:
+            steps.append(f"  ... +{len(longest_fn.body) - 20} more statements truncated")
+        pseudo = "\n".join(steps)
+
+    # ---- Render ---------------------------------------------------------
+    var_table = ""
+    if module_vars:
+        var_rows = "\n".join(
+            f"| `{name}` | `{type_str}` | {kind} |"
+            for name, type_str, kind in module_vars[:25]
+        )
+        if len(module_vars) > 25:
+            var_rows += f"\n| _(+{len(module_vars) - 25} more not shown)_ | — | — |"
+        var_table = (
+            "### Module-level variables (state map)\n\n"
+            "| Variable | Type | Mutability |\n|---|---|---|\n"
+            f"{var_rows}\n\n"
+        )
+    else:
+        var_table = "### Module-level variables\n\n_None detected._\n\n"
+
+    dsa_block = ""
+    if dsa_hits:
+        # Dedupe while preserving order
+        seen = set()
+        unique = [d for d in dsa_hits if not (d in seen or seen.add(d))]
+        dsa_rows = "\n".join(f"- {d}" for d in unique)
+        dsa_block = (
+            f"### Data structures + algorithms detected in `{target.rel}`\n\n"
+            f"{dsa_rows}\n\n"
+        )
+    else:
+        dsa_block = "### Data structures + algorithms\n\n_(no specialized DSA detected — uses primitive types)_\n\n"
+
+    mem_block = ""
+    if memory_hints:
+        mem_rows = "\n".join(f"- {h}" for h in memory_hints)
+        mem_block = f"### Memory characteristics\n\n{mem_rows}\n\n"
+    else:
+        mem_block = "### Memory characteristics\n\n_No notable memory patterns detected._\n\n"
+
+    pseudo_block = ""
+    if longest_fn and pseudo:
+        pseudo_block = (
+            f"### Pseudocode for hottest function: `{longest_name}` "
+            f"({target.rel}:{longest_line_no}, {longest_lines} lines)\n\n"
+            "```text\n"
+            f"FUNCTION {longest_name}({', '.join(a.arg for a in longest_fn.args.args)}):\n"
+            f"{pseudo}\n"
+            "```\n\n"
+        )
+
+    return (
+        "## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode\n\n"
+        f"Auto-extracted from the hottest file in this folder: "
+        f"**`{target.rel}`** ({target.lines} LOC, {target.classes} classes, "
+        f"{target.functions + target.async_functions} functions).\n\n"
+        f"{var_table}"
+        f"{dsa_block}"
+        f"{mem_block}"
+        f"{pseudo_block}"
+        "### Reading this section\n\n"
+        "- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` "
+        "warns of state shared across requests — guard with locks or use "
+        "request-scoped storage.\n"
+        "- **DSA detected** tells you what algorithmic patterns are in play "
+        "(hash maps, priority queues, recursion). Use this to predict "
+        "complexity at scale.\n"
+        "- **Memory characteristics** flag the leak / unbounded-growth "
+        "patterns that fail under load.\n"
+        "- **Pseudocode** is an AST-projected outline of the hottest "
+        "function. Walk it top-to-bottom to understand the control flow "
+        "before reading the real source.\n\n"
+    )
+
+
 def section_business_logic_sequence(f: FolderFacts) -> str:
     """How business logic is structured + the logical step sequence."""
     # Find the primary business-logic file and method (longest service file).
@@ -2625,6 +2866,7 @@ def render(f: FolderFacts) -> str:
         section_ipo_integration_principles(f),
         section_execution_sequence(f),  # debug-tap version of "what happens per phase"
         section_business_logic_sequence(f),
+        section_code_logic_deep_dive(f),  # variables / DSA / memory / pseudocode
         section_7_sequence_diagrams(f),
         section_frontend(f),
         section_annotated_request(f),

@@ -1,7 +1,7 @@
-# Backend Assessment - `identity-svc`
+# Backend Assessment - `inference-svc`
 
-**Profile:** Backend (Go (3 files))
-**Generated:** 2026-05-16 22:17 UTC
+**Profile:** Backend (Python (22 files))
+**Generated:** 2026-05-16 22:36 UTC
 **Reviewer:** Praveen Asthana
 
 > 25-section backend-specific production assessment. Reviewer fills Status / Notes / Risk / Recommendation per row. Skeleton starts with TBD per global honesty rule (never claim 10/10 without evidence).
@@ -12,28 +12,28 @@
 
 | Field | Value |
 |---|---|
-| Folder | `services/identity-svc` |
+| Folder | `services/inference-svc` |
 | Profile | Backend |
-| Runtime | Go (3 files) |
-| Has FastAPI | no |
-| Has Pydantic | no |
-| Has Uvicorn | no |
-| Async functions | 0 |
-| DB libs | _(none)_ |
-| Queue libs | _(none)_ |
-| Cache libs | _(none)_ |
-| HTTP client libs | _(none)_ |
-| AI / LLM libs | _(none)_ |
-| Observability libs | _(none)_ |
+| Runtime | Python (22 files) |
+| Has FastAPI | yes |
+| Has Pydantic | yes |
+| Has Uvicorn | yes |
+| Async functions | 56 |
+| DB libs | asyncpg, Redis |
+| Queue libs | Kafka |
+| Cache libs | Redis |
+| HTTP client libs | httpx |
+| AI / LLM libs | Ollama, Rebuff (PI defense) |
+| Observability libs | OpenTelemetry, Prometheus |
 | Auth libs | _(none)_ |
 | Test files | 1 |
 | Dockerfile | yes |
 | pyproject.toml | no |
-| go.mod | yes |
-| Lines of code (rough) | 296 |
-| Git authors | 3	Praveen, 3	PraveenAsthana123 |
+| go.mod | no |
+| Lines of code (rough) | 5,174 |
+| Git authors | 75	PraveenAsthana123, 6	Praveen |
 | Reviewer | Praveen Asthana |
-| Generated | 2026-05-16 22:17 UTC |
+| Generated | 2026-05-16 22:36 UTC |
 
 ---
 
@@ -61,7 +61,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Pydantic / Zod for every request? Detected Pydantic: False | TBD | — | — | — |
+| 1. Pydantic / Zod for every request? Detected Pydantic: True | TBD | — | — | — |
 | 2. Field validators + type coercion? | TBD | — | — | — |
 | 3. 422 response with field-level details on failure? | TBD | — | — | — |
 | 4. Request body size cap enforced? | TBD | — | — | — |
@@ -79,7 +79,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. DB libs: NONE | TBD | — | — | — |
+| 1. DB libs: asyncpg, Redis | TBD | — | — | — |
 | 2. RLS policies for multi-tenant? | TBD | — | — | — |
 | 3. Migrations in expand -> migrate -> contract order? | TBD | — | — | — |
 | 4. Indexes on every WHERE + ORDER BY column? | TBD | — | — | — |
@@ -91,7 +91,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Cache libs: NONE | TBD | — | — | — |
+| 1. Cache libs: Redis | TBD | — | — | — |
 | 2. Per-tenant cache keys (no cross-tenant leak)? | TBD | — | — | — |
 | 3. TTL strategy (no unbounded growth)? | TBD | — | — | — |
 | 4. Invalidation on source change? | TBD | — | — | — |
@@ -101,7 +101,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Queue libs: NONE | TBD | — | — | — |
+| 1. Queue libs: Kafka | TBD | — | — | — |
 | 2. Idempotent consumers (handle duplicates)? | TBD | — | — | — |
 | 3. Dead letter queue? | TBD | — | — | — |
 | 4. Event schema versioned + in registry? | TBD | — | — | — |
@@ -111,7 +111,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Async functions: 0 | TBD | — | — | — |
+| 1. Async functions: 56 | TBD | — | — | — |
 | 2. No blocking I/O inside `async def`? | TBD | — | — | — |
 | 3. Timeouts on every external call? | TBD | — | — | — |
 | 4. ThreadPool for CPU-bound work? | TBD | — | — | — |
@@ -121,7 +121,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. HTTP client libs: NONE | TBD | — | — | — |
+| 1. HTTP client libs: httpx | TBD | — | — | — |
 | 2. Circuit breaker around every external dep? | TBD | — | — | — |
 | 3. Retry with exponential backoff + jitter? | TBD | — | — | — |
 | 4. Timeouts (connect + read)? | TBD | — | — | — |
@@ -141,7 +141,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Structured logging libs: NONE | TBD | — | — | — |
+| 1. Structured logging libs: OpenTelemetry, Prometheus | TBD | — | — | — |
 | 2. JSON output (no print())? | TBD | — | — | — |
 | 3. correlation_id + tenant_id + actor on every line? | TBD | — | — | — |
 | 4. PII redaction (email, ssn, api_key)? | TBD | — | — | — |
@@ -151,7 +151,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. OTel installed? False | TBD | — | — | — |
+| 1. OTel installed? True | TBD | — | — | — |
 | 2. Spans for every external call? | TBD | — | — | — |
 | 3. Baggage propagated across services? | TBD | — | — | — |
 | 4. Sampling configured (head + tail)? | TBD | — | — | — |
@@ -161,7 +161,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Prometheus installed? False | TBD | — | — | — |
+| 1. Prometheus installed? True | TBD | — | — | — |
 | 2. Rate / Errors / Duration (RED) per endpoint? | TBD | — | — | — |
 | 3. Custom business metrics? | TBD | — | — | — |
 | 4. Per-tenant labels (cost attribution)? | TBD | — | — | — |
@@ -232,7 +232,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. AI libs: n/a | TBD | — | — | — |
+| 1. AI libs: Ollama, Rebuff (PI defense) | TBD | — | — | — |
 | 2. Prompt versioning in registry? | TBD | — | — | — |
 | 3. Embedding model versioned + re-embed on bump? | TBD | — | — | — |
 | 4. Decision audit row per AI call? | TBD | — | — | — |

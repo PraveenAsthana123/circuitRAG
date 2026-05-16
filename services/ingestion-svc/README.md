@@ -1,6 +1,6 @@
 # 📦 `ingestion-svc` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/ingestion-svc`  ·  **Generated:** 2026-05-16 20:43 UTC
+🧩 **Service**  ·  **Path:** `services/ingestion-svc`  ·  **Generated:** 2026-05-16 22:40 UTC
 
 > Ingestion-service FastAPI application.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `services/ingestion-svc` |
-| Total files | 50 |
+| Total files | 52 |
 | Python files | 42 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `12	PraveenAsthana123`, `4	Praveen` |
+| Top git contributors | `14	PraveenAsthana123`, `4	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -769,6 +769,48 @@ async def some_service_method(self, request: RequestSchema) -> ResponseSchema:
 | 11 | Latency histogram | Grafana panel: `histogram_quantile(0.95, ...)` |
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`app/services/ingestion_service.py`** (200 LOC, 2 classes, 0 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `log` | `_inferred_` | immutable |
+
+### Data structures + algorithms
+
+_(no specialized DSA detected — uses primitive types)_
+
+### Memory characteristics
+
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+- ℹ `asyncio.create_task()` used — keep a reference to prevent GC; use TaskGroup or explicit set for fire-and-forget tasks.
+
+### Pseudocode for hottest function: `ingest_upload` (app/services/ingestion_service.py:93, 74 lines)
+
+```text
+FUNCTION ingest_upload(self):
+   1. [CALL/EXPR] self._validate_upload(filename=filename, size=len(data))
+   2. [ASSIGN] checksum = hashlib.sha256(data).hexdigest()
+   3. [CALL/EXPR] await asyncio.to_thread(self._blob_service.ensure_bucket)
+   4. [ASSIGN] provisional_id = UUID(bytes=hashlib.md5(data).digest())
+   5. [ASSIGN] blob_uri = await asyncio.to_thread(self._blob_service.put, tenant_id=tenant_id, 
+   6. [ASSIGN] doc = await self._document_repo.create(tenant_id=tenant_id, filename=filename, m
+   7. [ASSIGN] document_id = doc['id']
+   8. [ASSIGN] saga = DocumentIngestionSaga(tenant_id=tenant_id, document_id=document_id, raw_b
+   9. [BRANCH] if run_saga_inline:
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 ### Generic flow (all endpoints)
@@ -1335,14 +1377,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `ec1f7b4` | 2026-05-07 | fix(iter-88): bulk lint cleanup across services/ libs/ mcp/ scripts/ (1139 ruff fixes; drill suite still green) |
 | `8fcb426` | 2026-05-05 | feat(ingestion): Stage-2 best_config_loader as SECONDARY chunking-strategy hint |
 | `38ca47a` | 2026-05-04 | feat(ingestion): Stage-3 wire chunking strategy selector into saga |
 | `cd77b0c` | 2026-05-04 | feat(ingestion): Stage-3 wire PII redactor into DocumentIngestionSaga |
-| `4f7354c` | 2026-05-04 | feat(retrieval): BGE reranker protected by NativeComputeWrapper — Stage-2 |
-| `ef5a97a` | 2026-04-30 | fix(ci): unblock python CI — 100% encryption.py coverage + lint sweep |
 
 ```bash
 git log --oneline -- services/ingestion-svc    # see all commits

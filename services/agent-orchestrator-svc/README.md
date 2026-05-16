@@ -1,6 +1,6 @@
 # 📦 `agent-orchestrator-svc` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/agent-orchestrator-svc`  ·  **Generated:** 2026-05-16 20:43 UTC
+🧩 **Service**  ·  **Path:** `services/agent-orchestrator-svc`  ·  **Generated:** 2026-05-16 22:40 UTC
 
 > Agent orchestrator FastAPI service.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `services/agent-orchestrator-svc` |
-| Total files | 62 |
+| Total files | 64 |
 | Python files | 35 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `49	PraveenAsthana123` |
+| Top git contributors | `51	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -631,6 +631,51 @@ Walk the phases IN ORDER — first phase with missing/wrong output is the failur
 10. **Phase 11 empty Jaeger?** OTel exporter misconfigured → check `OTEL_EXPORTER_OTLP_ENDPOINT`
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`app/service.py`** (779 LOC, 1 classes, 0 functions).
+
+### Module-level variables
+
+_None detected._
+
+### Data structures + algorithms detected in `app/service.py`
+
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `approve_task` (app/service.py:370, 101 lines)
+
+```text
+FUNCTION approve_task(self, task_id, req):
+   1. [ASSIGN] task = await self._store.get(task_id)
+   2. [BRANCH] if task is None:
+   3. [ASSIGN] approval_id = uuid.uuid4().hex
+   4. [ASSIGN] events = list(task.audit_events)
+   5. [CALL/EXPR] events.append({'role': 'human', 'event': 'approval', 'actor_id': req.actor_id, '
+   6. [BRANCH] if not req.approved:
+   7. [ASSIGN] updated = task.model_copy(update={'approved': True, 'status': 'approved', 'next_
+   8. [BRANCH] if task.status == 'waiting_for_plan_approval' and task.auto_advance:
+   9. [CALL/EXPR] await self._store.save(updated)
+  10. [CALL/EXPR] await self._record_approval(ApprovalView(approval_id=approval_id, tenant_id=upda
+  11. [BRANCH] if updated.status == 'completed':
+  12. [BRANCH] if updated.project_id:
+  13. [RETURN] return updated
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 ### Generic flow (all endpoints)
@@ -1185,14 +1230,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `7451179` | 2026-05-08 | fix(llm-pool): close P0 #36 — per-backend CircuitBreaker; drill locks 8 invariants |
 | `502da93` | 2026-05-08 | feat(lang): add compatibility status gates |
 | `4665fa6` | 2026-05-08 | chore(deps): delete dead langgraph pin + its lock drill (§57.7 cleanup) |
 | `ec1f7b4` | 2026-05-07 | fix(iter-88): bulk lint cleanup across services/ libs/ mcp/ scripts/ (1139 ruff fixes; drill suite still green) |
-| `0c22973` | 2026-05-07 | fix(iter-87): §55 Tier-3 rule-aware routing + 32 real lint fixes (E402 in main.py + routers/__init__.py; F841 in eval_ha |
-| `65f8855` | 2026-05-06 | fix(iter-54): retrieval-svc + agent-orchestrator-svc Kafka publish points (§47.7 application) |
 
 ```bash
 git log --oneline -- services/agent-orchestrator-svc    # see all commits

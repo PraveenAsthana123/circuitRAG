@@ -1,7 +1,7 @@
-# Backend Assessment - `documind_core`
+# Backend Assessment - `sidecar-advisor`
 
-**Profile:** Backend (Python (38 files))
-**Generated:** 2026-05-16 22:18 UTC
+**Profile:** Backend (Python (18 files))
+**Generated:** 2026-05-16 22:37 UTC
 **Reviewer:** Praveen Asthana
 
 > 25-section backend-specific production assessment. Reviewer fills Status / Notes / Risk / Recommendation per row. Skeleton starts with TBD per global honesty rule (never claim 10/10 without evidence).
@@ -12,28 +12,28 @@
 
 | Field | Value |
 |---|---|
-| Folder | `libs/py/documind_core` |
+| Folder | `services/sidecar-advisor` |
 | Profile | Backend |
-| Runtime | Python (38 files) |
-| Has FastAPI | yes |
-| Has Pydantic | yes |
-| Has Uvicorn | yes |
-| Async functions | 54 |
-| DB libs | asyncpg, Redis, Neo4j |
-| Queue libs | Kafka |
-| Cache libs | Redis, lru_cache |
+| Runtime | Python (18 files) |
+| Has FastAPI | no |
+| Has Pydantic | no |
+| Has Uvicorn | no |
+| Async functions | 11 |
+| DB libs | Redis |
+| Queue libs | _(none)_ |
+| Cache libs | _(none)_ |
 | HTTP client libs | httpx |
-| AI / LLM libs | LangChain, Ollama, Rebuff (PI defense) |
-| Observability libs | OpenTelemetry, Prometheus, structlog |
-| Auth libs | JWT, Custom (Bearer) |
-| Test files | 0 |
-| Dockerfile | no |
+| AI / LLM libs | Ollama |
+| Observability libs | _(none)_ |
+| Auth libs | _(none)_ |
+| Test files | 1 |
+| Dockerfile | yes |
 | pyproject.toml | no |
 | go.mod | no |
-| Lines of code (rough) | 8,527 |
-| Git authors | 49	PraveenAsthana123, 6	Praveen |
+| Lines of code (rough) | 2,685 |
+| Git authors | 27	PraveenAsthana123 |
 | Reviewer | Praveen Asthana |
-| Generated | 2026-05-16 22:18 UTC |
+| Generated | 2026-05-16 22:37 UTC |
 
 ---
 
@@ -51,7 +51,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. AuthN implemented? Detected: JWT, Custom (Bearer) | TBD | — | — | — |
+| 1. AuthN implemented? Detected: NONE - flag risk | TBD | — | — | — |
 | 2. AuthZ scope check at every endpoint? | TBD | — | — | — |
 | 3. JWT rotation strategy? | TBD | — | — | — |
 | 4. Tenant context resolved from token? | TBD | — | — | — |
@@ -61,7 +61,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Pydantic / Zod for every request? Detected Pydantic: True | TBD | — | — | — |
+| 1. Pydantic / Zod for every request? Detected Pydantic: False | TBD | — | — | — |
 | 2. Field validators + type coercion? | TBD | — | — | — |
 | 3. 422 response with field-level details on failure? | TBD | — | — | — |
 | 4. Request body size cap enforced? | TBD | — | — | — |
@@ -79,7 +79,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. DB libs: asyncpg, Redis, Neo4j | TBD | — | — | — |
+| 1. DB libs: Redis | TBD | — | — | — |
 | 2. RLS policies for multi-tenant? | TBD | — | — | — |
 | 3. Migrations in expand -> migrate -> contract order? | TBD | — | — | — |
 | 4. Indexes on every WHERE + ORDER BY column? | TBD | — | — | — |
@@ -91,7 +91,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Cache libs: Redis, lru_cache | TBD | — | — | — |
+| 1. Cache libs: NONE | TBD | — | — | — |
 | 2. Per-tenant cache keys (no cross-tenant leak)? | TBD | — | — | — |
 | 3. TTL strategy (no unbounded growth)? | TBD | — | — | — |
 | 4. Invalidation on source change? | TBD | — | — | — |
@@ -101,7 +101,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Queue libs: Kafka | TBD | — | — | — |
+| 1. Queue libs: NONE | TBD | — | — | — |
 | 2. Idempotent consumers (handle duplicates)? | TBD | — | — | — |
 | 3. Dead letter queue? | TBD | — | — | — |
 | 4. Event schema versioned + in registry? | TBD | — | — | — |
@@ -111,7 +111,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Async functions: 54 | TBD | — | — | — |
+| 1. Async functions: 11 | TBD | — | — | — |
 | 2. No blocking I/O inside `async def`? | TBD | — | — | — |
 | 3. Timeouts on every external call? | TBD | — | — | — |
 | 4. ThreadPool for CPU-bound work? | TBD | — | — | — |
@@ -141,7 +141,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Structured logging libs: OpenTelemetry, Prometheus, structlog | TBD | — | — | — |
+| 1. Structured logging libs: NONE | TBD | — | — | — |
 | 2. JSON output (no print())? | TBD | — | — | — |
 | 3. correlation_id + tenant_id + actor on every line? | TBD | — | — | — |
 | 4. PII redaction (email, ssn, api_key)? | TBD | — | — | — |
@@ -151,7 +151,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. OTel installed? True | TBD | — | — | — |
+| 1. OTel installed? False | TBD | — | — | — |
 | 2. Spans for every external call? | TBD | — | — | — |
 | 3. Baggage propagated across services? | TBD | — | — | — |
 | 4. Sampling configured (head + tail)? | TBD | — | — | — |
@@ -161,7 +161,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Prometheus installed? True | TBD | — | — | — |
+| 1. Prometheus installed? False | TBD | — | — | — |
 | 2. Rate / Errors / Duration (RED) per endpoint? | TBD | — | — | — |
 | 3. Custom business metrics? | TBD | — | — | — |
 | 4. Per-tenant labels (cost attribution)? | TBD | — | — | — |
@@ -212,7 +212,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Test files detected: 0 | TBD | — | — | — |
+| 1. Test files detected: 1 | TBD | — | — | — |
 | 2. Coverage >= 80% statements + 70% branches? | TBD | — | — | — |
 | 3. Drill with >= 3 negative assertions per project policy? | TBD | — | — | — |
 | 4. Integration tests against real DB (testcontainers)? | TBD | — | — | — |
@@ -232,7 +232,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. AI libs: LangChain, Ollama, Rebuff (PI defense) | TBD | — | — | — |
+| 1. AI libs: Ollama | TBD | — | — | — |
 | 2. Prompt versioning in registry? | TBD | — | — | — |
 | 3. Embedding model versioned + re-embed on bump? | TBD | — | — | — |
 | 4. Decision audit row per AI call? | TBD | — | — | — |

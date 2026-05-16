@@ -1,7 +1,7 @@
-# Backend Assessment - `observability-svc`
+# Backend Assessment - `identity-svc`
 
-**Profile:** Backend (Go (2 files))
-**Generated:** 2026-05-16 22:17 UTC
+**Profile:** Backend (Go (3 files))
+**Generated:** 2026-05-16 22:36 UTC
 **Reviewer:** Praveen Asthana
 
 > 25-section backend-specific production assessment. Reviewer fills Status / Notes / Risk / Recommendation per row. Skeleton starts with TBD per global honesty rule (never claim 10/10 without evidence).
@@ -12,9 +12,9 @@
 
 | Field | Value |
 |---|---|
-| Folder | `services/observability-svc` |
+| Folder | `services/identity-svc` |
 | Profile | Backend |
-| Runtime | Go (2 files) |
+| Runtime | Go (3 files) |
 | Has FastAPI | no |
 | Has Pydantic | no |
 | Has Uvicorn | no |
@@ -30,10 +30,10 @@
 | Dockerfile | yes |
 | pyproject.toml | no |
 | go.mod | yes |
-| Lines of code (rough) | 99 |
-| Git authors | 3	PraveenAsthana123, 2	Praveen |
+| Lines of code (rough) | 296 |
+| Git authors | 3	Praveen, 3	PraveenAsthana123 |
 | Reviewer | Praveen Asthana |
-| Generated | 2026-05-16 22:17 UTC |
+| Generated | 2026-05-16 22:36 UTC |
 
 ---
 

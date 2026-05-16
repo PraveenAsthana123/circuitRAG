@@ -1,6 +1,6 @@
 # 📦 `documind_core` — Advanced README
 
-📚 **Library**  ·  **Path:** `libs/py/documind_core`  ·  **Generated:** 2026-05-16 20:43 UTC
+📚 **Library**  ·  **Path:** `libs/py/documind_core`  ·  **Generated:** 2026-05-16 22:42 UTC
 
 > documind_core
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `libs/py/documind_core` |
-| Total files | 39 |
+| Total files | 41 |
 | Python files | 38 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `47	PraveenAsthana123`, `6	Praveen` |
+| Top git contributors | `50	PraveenAsthana123`, `6	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -577,6 +577,69 @@ Reading bottom-to-top — earlier principles enable later ones:
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`circuit_breaker.py`** (1072 LOC, 6 classes, 1 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `T` | `_inferred_` | immutable |
+| `log` | `_inferred_` | immutable |
+| `_UNKNOWN_CAUSE_LABEL` | `_inferred_` | constant |
+| `_STATE_NUMERIC` | `_inferred_` | ⚠ MUTABLE dict |
+| `_last_state` | `dict[str, str]` | immutable |
+
+### Data structures + algorithms detected in `circuit_breaker.py`
+
+- collections.Counter
+- collections.deque (FIFO/LIFO queue)
+- asyncio.Lock / Semaphore
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+- ⚠ `open()` without `with` detected — file handle leak risk.
+- ℹ `@dataclass` used — instances are mutable by default; consider `frozen=True` if immutability needed.
+
+### Pseudocode for hottest function: `__init__` (circuit_breaker.py:347, 152 lines)
+
+```text
+FUNCTION __init__(self, name):
+   1. [ASSIGN] self.name = name
+   2. [ASSIGN] self.failure_threshold = failure_threshold
+   3. [ASSIGN] self.recovery_timeout = recovery_timeout
+   4. [ASSIGN] self.expected_exception = expected_exception if expected_exception is not None e
+   5. [ASSIGN] self.call_timeout_s = call_timeout_s
+   6. [ASSIGN] self.failure_window_size = failure_window_size
+   7. [ASSIGN] self.failure_threshold_rate = failure_threshold_rate
+   8. [ASSIGN] self.half_open_max_concurrent = max(1, half_open_max_concurrent)
+   9. [ASSIGN] self.half_open_success_threshold = max(1, half_open_success_threshold)
+  10. [ASSIGN] self.backoff_factor = max(1.0, backoff_factor)
+  11. [ASSIGN] self.recovery_timeout_max = max(recovery_timeout, recovery_timeout_max)
+  12. [ASSIGN] self.backoff_jitter = max(0.0, min(1.0, backoff_jitter))
+  13. [ASSIGN] self.max_concurrent = max_concurrent
+  14. [ASSIGN] self.slow_call_threshold_s = slow_call_threshold_s
+  15. [ASSIGN] self.slow_call_rate = max(0.0, min(1.0, slow_call_rate))
+  16. [ASSIGN] self.on_state_change = on_state_change
+  17. [ASSIGN] self.health_check = health_check
+  18. [ASSIGN] self.tenant_id = tenant_id
+  19. [ASSIGN] self.otel_baggage = otel_baggage
+  20. [TYPED-ASSIGN] self._forced_state: State | None = None
+  ... +15 more statements truncated
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 _No endpoints detected; sequence-diagram template intentionally omitted._
@@ -921,14 +984,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `4e2ec04` | 2026-05-08 | fix(rebuff): bridge langchain vectorstore import |
 | `bad7b2d` | 2026-05-07 | feat(rebuff): runtime PI defense — Stage-1 adapter + Stage-2 inference wire (16/16 drill green) |
 | `ec1f7b4` | 2026-05-07 | fix(iter-88): bulk lint cleanup across services/ libs/ mcp/ scripts/ (1139 ruff fixes; drill suite still green) |
-| `b208d3d` | 2026-05-02 | fix(lint): close 85 ruff issues across 25 files (autofix 68 + manual 17) |
-| `fcc7b5d` | 2026-05-02 | feat(a2a): Tier 5 #5.9 + #5.10 — agent registry + A2A bus + connector + delegate |
-| `b586c3e` | 2026-05-02 | feat(agentic): Tier 1 #1.0 — agentic engineering framework (AgentSpec meta-template) |
 
 ```bash
 git log --oneline -- libs/py/documind_core    # see all commits

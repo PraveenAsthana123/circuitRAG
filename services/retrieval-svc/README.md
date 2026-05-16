@@ -1,6 +1,6 @@
 # 📦 `retrieval-svc` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/retrieval-svc`  ·  **Generated:** 2026-05-16 20:46 UTC
+🧩 **Service**  ·  **Path:** `services/retrieval-svc`  ·  **Generated:** 2026-05-16 22:41 UTC
 
 > Retrieval service FastAPI application.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `services/retrieval-svc` |
-| Total files | 137 |
+| Total files | 139 |
 | Python files | 67 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | (git unavailable) |
+| Top git contributors | `34	PraveenAsthana123`, `4	Praveen` |
 
 #### Longest functions (top 5)
 
@@ -711,6 +711,62 @@ async def some_service_method(self, request: RequestSchema) -> ResponseSchema:
 | 11 | Latency histogram | Grafana panel: `histogram_quantile(0.95, ...)` |
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`app/services/hybrid_retriever.py`** (415 LOC, 1 classes, 0 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `log` | `_inferred_` | immutable |
+
+### Data structures + algorithms detected in `app/services/hybrid_retriever.py`
+
+- sort / sorted (sorting algorithm)
+- set comprehension
+- dict comprehension
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `retrieve` (app/services/hybrid_retriever.py:129, 260 lines)
+
+```text
+FUNCTION retrieve(self):
+   1. [ASSIGN] start = time.monotonic()
+   2. [ASSIGN] key = self._cache_key(tenant_id, request)
+   3. [ASSIGN] cached = await self._cache.get_json(key)
+   4. [BRANCH] if cached is not None:
+   5. [IMPORT] import os as _os
+   6. [ASSIGN] force_graph_only = _os.getenv('DOCUMIND_VECTORLESS_DEFAULT', '').strip() == '1'
+   7. [ASSIGN] is_vectorless = request.strategy == 'vectorless'
+   8. [ASSIGN] coros = []
+   9. [BRANCH] if 'vector' in request.include_sources and request.strategy != 'graph' and (not 
+  10. [BRANCH] if 'graph' in request.include_sources and request.strategy != 'vector' and (not 
+  11. [ASSIGN] results = await asyncio.gather(*coros, return_exceptions=True)
+  12. [ASSIGN] ranked_lists = []
+  13. [LOOP] for r in results:
+  14. [BRANCH] if request.strategy == 'vector' or len(ranked_lists) == 1:
+  15. [ASSIGN] fused = fused[:request.top_k]
+  16. [ASSIGN] chunks = [RetrievedChunk(**h) for h in fused]
+  17. [ASSIGN] effective_min_score = request.min_score
+  18. [TRY] try:
+  19. [BRANCH] if effective_min_score > 0.0:
+  20. [IMPORT] import os as _os
+  ... +10 more statements truncated
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 ### Generic flow (all endpoints)
@@ -1195,14 +1251,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
 | `a305d45` | 2026-05-08 | fix(reranker): refresh bge promotion status |
 | `c87fe4f` | 2026-05-07 | feat(vectorless): strategy=vectorless selectable in HybridRetriever (Stage-1, 8/8 drill green) |
-| `1e9dd7b` | 2026-05-07 | iter-78: harden AI coding governance and frontend checks (§55.3 outcome) |
-| `ec1f7b4` | 2026-05-07 | fix(iter-88): bulk lint cleanup across services/ libs/ mcp/ scripts/ (1139 ruff fixes; drill suite still green) |
-| `65f8855` | 2026-05-06 | fix(iter-54): retrieval-svc + agent-orchestrator-svc Kafka publish points (§47.7 application) |
 
 ```bash
 git log --oneline -- services/retrieval-svc    # see all commits

@@ -1,7 +1,7 @@
-# Backend Assessment - `api-gateway`
+# Backend Assessment - `finops-svc`
 
-**Profile:** Backend (Go (8 files))
-**Generated:** 2026-05-16 22:17 UTC
+**Profile:** Backend (Go (2 files))
+**Generated:** 2026-05-16 22:36 UTC
 **Reviewer:** Praveen Asthana
 
 > 25-section backend-specific production assessment. Reviewer fills Status / Notes / Risk / Recommendation per row. Skeleton starts with TBD per global honesty rule (never claim 10/10 without evidence).
@@ -12,14 +12,14 @@
 
 | Field | Value |
 |---|---|
-| Folder | `services/api-gateway` |
+| Folder | `services/finops-svc` |
 | Profile | Backend |
-| Runtime | Go (8 files) |
+| Runtime | Go (2 files) |
 | Has FastAPI | no |
 | Has Pydantic | no |
 | Has Uvicorn | no |
 | Async functions | 0 |
-| DB libs | Redis |
+| DB libs | _(none)_ |
 | Queue libs | _(none)_ |
 | Cache libs | _(none)_ |
 | HTTP client libs | _(none)_ |
@@ -30,10 +30,10 @@
 | Dockerfile | yes |
 | pyproject.toml | no |
 | go.mod | yes |
-| Lines of code (rough) | 738 |
-| Git authors | 6	PraveenAsthana123, 3	Praveen |
+| Lines of code (rough) | 133 |
+| Git authors | 3	PraveenAsthana123, 2	Praveen |
 | Reviewer | Praveen Asthana |
-| Generated | 2026-05-16 22:17 UTC |
+| Generated | 2026-05-16 22:36 UTC |
 
 ---
 
@@ -79,7 +79,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. DB libs: Redis | TBD | — | — | — |
+| 1. DB libs: NONE | TBD | — | — | — |
 | 2. RLS policies for multi-tenant? | TBD | — | — | — |
 | 3. Migrations in expand -> migrate -> contract order? | TBD | — | — | — |
 | 4. Indexes on every WHERE + ORDER BY column? | TBD | — | — | — |

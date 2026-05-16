@@ -1,7 +1,7 @@
-# Backend Assessment - `finops-svc`
+# Backend Assessment - `retrieval-svc`
 
-**Profile:** Backend (Go (2 files))
-**Generated:** 2026-05-16 22:17 UTC
+**Profile:** Backend (Python (67 files))
+**Generated:** 2026-05-16 22:36 UTC
 **Reviewer:** Praveen Asthana
 
 > 25-section backend-specific production assessment. Reviewer fills Status / Notes / Risk / Recommendation per row. Skeleton starts with TBD per global honesty rule (never claim 10/10 without evidence).
@@ -12,28 +12,28 @@
 
 | Field | Value |
 |---|---|
-| Folder | `services/finops-svc` |
+| Folder | `services/retrieval-svc` |
 | Profile | Backend |
-| Runtime | Go (2 files) |
-| Has FastAPI | no |
-| Has Pydantic | no |
+| Runtime | Python (67 files) |
+| Has FastAPI | yes |
+| Has Pydantic | yes |
 | Has Uvicorn | no |
-| Async functions | 0 |
-| DB libs | _(none)_ |
-| Queue libs | _(none)_ |
-| Cache libs | _(none)_ |
-| HTTP client libs | _(none)_ |
-| AI / LLM libs | _(none)_ |
+| Async functions | 20 |
+| DB libs | Redis, Qdrant, Elasticsearch, Neo4j |
+| Queue libs | Kafka |
+| Cache libs | Redis |
+| HTTP client libs | httpx |
+| AI / LLM libs | Ollama |
 | Observability libs | _(none)_ |
 | Auth libs | _(none)_ |
-| Test files | 1 |
+| Test files | 0 |
 | Dockerfile | yes |
 | pyproject.toml | no |
-| go.mod | yes |
-| Lines of code (rough) | 133 |
-| Git authors | 3	PraveenAsthana123, 2	Praveen |
+| go.mod | no |
+| Lines of code (rough) | 3,944 |
+| Git authors | 34	PraveenAsthana123, 4	Praveen |
 | Reviewer | Praveen Asthana |
-| Generated | 2026-05-16 22:17 UTC |
+| Generated | 2026-05-16 22:36 UTC |
 
 ---
 
@@ -61,7 +61,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Pydantic / Zod for every request? Detected Pydantic: False | TBD | — | — | — |
+| 1. Pydantic / Zod for every request? Detected Pydantic: True | TBD | — | — | — |
 | 2. Field validators + type coercion? | TBD | — | — | — |
 | 3. 422 response with field-level details on failure? | TBD | — | — | — |
 | 4. Request body size cap enforced? | TBD | — | — | — |
@@ -79,7 +79,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. DB libs: NONE | TBD | — | — | — |
+| 1. DB libs: Redis, Qdrant, Elasticsearch, Neo4j | TBD | — | — | — |
 | 2. RLS policies for multi-tenant? | TBD | — | — | — |
 | 3. Migrations in expand -> migrate -> contract order? | TBD | — | — | — |
 | 4. Indexes on every WHERE + ORDER BY column? | TBD | — | — | — |
@@ -91,7 +91,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Cache libs: NONE | TBD | — | — | — |
+| 1. Cache libs: Redis | TBD | — | — | — |
 | 2. Per-tenant cache keys (no cross-tenant leak)? | TBD | — | — | — |
 | 3. TTL strategy (no unbounded growth)? | TBD | — | — | — |
 | 4. Invalidation on source change? | TBD | — | — | — |
@@ -101,7 +101,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Queue libs: NONE | TBD | — | — | — |
+| 1. Queue libs: Kafka | TBD | — | — | — |
 | 2. Idempotent consumers (handle duplicates)? | TBD | — | — | — |
 | 3. Dead letter queue? | TBD | — | — | — |
 | 4. Event schema versioned + in registry? | TBD | — | — | — |
@@ -111,7 +111,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Async functions: 0 | TBD | — | — | — |
+| 1. Async functions: 20 | TBD | — | — | — |
 | 2. No blocking I/O inside `async def`? | TBD | — | — | — |
 | 3. Timeouts on every external call? | TBD | — | — | — |
 | 4. ThreadPool for CPU-bound work? | TBD | — | — | — |
@@ -121,7 +121,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. HTTP client libs: NONE | TBD | — | — | — |
+| 1. HTTP client libs: httpx | TBD | — | — | — |
 | 2. Circuit breaker around every external dep? | TBD | — | — | — |
 | 3. Retry with exponential backoff + jitter? | TBD | — | — | — |
 | 4. Timeouts (connect + read)? | TBD | — | — | — |
@@ -212,7 +212,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Test files detected: 1 | TBD | — | — | — |
+| 1. Test files detected: 0 | TBD | — | — | — |
 | 2. Coverage >= 80% statements + 70% branches? | TBD | — | — | — |
 | 3. Drill with >= 3 negative assertions per project policy? | TBD | — | — | — |
 | 4. Integration tests against real DB (testcontainers)? | TBD | — | — | — |
@@ -232,7 +232,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. AI libs: n/a | TBD | — | — | — |
+| 1. AI libs: Ollama | TBD | — | — | — |
 | 2. Prompt versioning in registry? | TBD | — | — | — |
 | 3. Embedding model versioned + re-embed on bump? | TBD | — | — | — |
 | 4. Decision audit row per AI call? | TBD | — | — | — |

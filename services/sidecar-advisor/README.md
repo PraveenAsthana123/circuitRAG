@@ -1,6 +1,6 @@
 # 📦 `sidecar-advisor` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/sidecar-advisor`  ·  **Generated:** 2026-05-16 20:46 UTC
+🧩 **Service**  ·  **Path:** `services/sidecar-advisor`  ·  **Generated:** 2026-05-16 22:41 UTC
 
 > Sidecar Advisor — personal AI auditor for prompt + code activity.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `services/sidecar-advisor` |
-| Total files | 25 |
+| Total files | 27 |
 | Python files | 18 |
 | TypeScript/JS files | 0 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ❌ |
-| Top git contributors | `25	PraveenAsthana123` |
+| Top git contributors | `28	PraveenAsthana123` |
 
 #### Longest functions (top 5)
 
@@ -440,6 +440,46 @@ Reading bottom-to-top — earlier principles enable later ones:
 **How to use this stack:** when adding a new feature, check it from the bottom up. KISS first (simplest design that works), then SOLID (does any class violate SRP?), then microservice (does this leak the bounded context?), then resilience (what fails when the downstream is slow?), then gates (which production gate enforces this?), then governance (which audit row records this decision?).
 
 
+## 🔬 Code Logic Deep Dive — Variables / DSA / Memory / Pseudocode
+
+Auto-extracted from the hottest file in this folder: **`memory.py`** (566 LOC, 1 classes, 2 functions).
+
+### Module-level variables (state map)
+
+| Variable | Type | Mutability |
+|---|---|---|
+| `MIGRATIONS_DIR` | `_inferred_` | immutable |
+
+### Data structures + algorithms detected in `memory.py`
+
+- sort / sorted (sorting algorithm)
+- set comprehension
+- generator expression
+
+### Memory characteristics
+
+_No notable memory patterns detected._
+
+### Pseudocode for hottest function: `prune_council_runs` (memory.py:472, 72 lines)
+
+```text
+FUNCTION prune_council_runs(self):
+   1. [CALL/EXPR] 'Delete advisor_council_runs rows older than N days.\n\n        The drafts_json 
+   2. [BRANCH] if older_than_days < 0:
+   3. [ASSIGN] threshold_dt = datetime.now(UTC) - timedelta(days=older_than_days)
+   4. [ASSIGN] threshold_iso = threshold_dt.isoformat(timespec='seconds')
+   5. [WITH-CTX] with self._connect() as conn:
+   6. [RETURN] return {'would_delete': to_delete if dry_run else 0, 'deleted': to_delete if not
+```
+
+### Reading this section
+
+- **Module-level variables** are loaded ONCE per process. `⚠ MUTABLE` warns of state shared across requests — guard with locks or use request-scoped storage.
+- **DSA detected** tells you what algorithmic patterns are in play (hash maps, priority queues, recursion). Use this to predict complexity at scale.
+- **Memory characteristics** flag the leak / unbounded-growth patterns that fail under load.
+- **Pseudocode** is an AST-projected outline of the hottest function. Walk it top-to-bottom to understand the control flow before reading the real source.
+
+
 ## 7. Sequence Diagrams per Endpoint
 
 _No endpoints detected; sequence-diagram template intentionally omitted._
@@ -745,14 +785,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `c6e58b8` | 2026-05-16 | docs(readme): advanced auto-generated READMEs (project + per-folder) |
 | `67e7567` | 2026-04-30 | feat(ops): §19 sidecar-advisor Dockerfile + 9-iter audit roll-up (iter 21/N) |
 | `09fec80` | 2026-04-30 | fix(security): operator-reviewed S-rule resolutions (5 → 0; mechanism's safety gate worked) |
 | `8e4492e` | 2026-04-30 | chore(lint): apply 4 non-security ruff fixes (5 remaining are security/human-review) |
 | `7882295` | 2026-04-30 | chore(lint): apply 5 council-reviewed medium ruff fixes (6th rejected as stale) |
-| `868dfaa` | 2026-04-30 | chore(lint): apply ruff autofix lane via issue dispatcher (34 fixes) |
-| `6831dee` | 2026-04-29 | fix(sidecar): fall back to local chair model on ollama 404 |
-| `14c7616` | 2026-04-29 | feat(sidecar): G-5.1 + Phase 7CC - rating metadata columns + Vitest infra + drill drift drain |
 
 ```bash
 git log --oneline -- services/sidecar-advisor    # see all commits

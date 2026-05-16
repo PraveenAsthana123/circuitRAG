@@ -1,6 +1,6 @@
 # 📦 `api-gateway` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/api-gateway`  ·  **Generated:** 2026-05-16 20:50 UTC
+🧩 **Service**  ·  **Path:** `services/api-gateway`  ·  **Generated:** 2026-05-16 22:42 UTC
 
 > Command api-gateway is the DocuMind edge service.
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `services/api-gateway` |
-| Total files | 12 |
+| Total files | 14 |
 | Python files | 0 |
 | TypeScript/JS files | 0 |
 | Go files | 8 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ✅ |
 | package.json | ❌ |
-| Top git contributors | `4	PraveenAsthana123`, `3	Praveen` |
+| Top git contributors | `7	PraveenAsthana123`, `3	Praveen` |
 
 #### Longest functions
 
@@ -460,13 +460,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `13d368f` | 2026-04-30 | test(svc): §8 smoke tests for 6 services flagged in 2026-04-30 audit (iter 16/N) |
 | `09f8ac0` | 2026-04-30 | fix(go-ci): commit go.sum + tidy'd go.mod + identity-svc vet error |
 | `5dfeb9c` | 2026-04-29 | feat(agentic): add ollama-backed orchestrator service |
 | `ae9f95d` | 2026-04-23 | fix(remediation): close the brutal-feedback gap — real wiring, Dockerfiles, CI, poisoning defense, outbox, JWT, re-embed |
-| `6732b02` | 2026-04-23 | feat(infra): fill production-base gaps — nginx, hardened gateway, gRPC, Istio, K8s, ELK, Kiali, vLLM, AIops |
-| `d98e305` | 2026-04-23 | feat: scaffold DocuMind advanced-RAG platform per 67-area spec |
 
 ```bash
 git log --oneline -- services/api-gateway    # see all commits

@@ -1,6 +1,6 @@
 # 📦 `frontend` — Advanced README
 
-🧩 **Service**  ·  **Path:** `services/frontend`  ·  **Generated:** 2026-05-16 20:50 UTC
+🧩 **Service**  ·  **Path:** `services/frontend`  ·  **Generated:** 2026-05-16 22:45 UTC
 
 > _Purpose not detected from docstrings — reviewer to fill._
 
@@ -13,7 +13,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | Metric | Value |
 |---|---|
 | Folder | `services/frontend` |
-| Total files | 1925 |
+| Total files | 1927 |
 | Python files | 0 |
 | TypeScript/JS files | 346 |
 | Go files | 0 |
@@ -36,7 +36,7 @@ This README is **auto-generated** by [`scripts/generate_folder_report.py`](../..
 | pyproject.toml | ❌ |
 | go.mod | ❌ |
 | package.json | ✅ |
-| Top git contributors | `190	PraveenAsthana123`, `4	Praveen` |
+| Top git contributors | `193	PraveenAsthana123`, `4	Praveen` |
 
 #### Longest functions
 
@@ -697,14 +697,14 @@ Project-wide vocabulary a new developer needs. If you see a term in code you don
 
 | Hash | Date | Subject |
 |---|---|---|
+| `15eca63` | 2026-05-16 | docs(reports): frontend + backend specialized assessments + drill fix |
+| `77409b7` | 2026-05-16 | docs(reports): FOLDER_REPORT.md alongside README.md per two-file convention |
+| `4068a70` | 2026-05-16 | docs(readme): audit checklist + drill_readme_generator + sidecar fold-in |
 | `5ecd9be` | 2026-05-16 | docs(readme): 11 more sections for new-dev onboarding + bugfixes |
 | `e22a1c4` | 2026-05-08 | docs(tool-review): close InMemoryTaskStore P0 — drill locks 8 invariants of bounded-memory fix |
 | `3c24119` | 2026-05-08 | fix(production-checker): skip BFF health_url + drop http:// from doc-string URLs |
 | `6004a31` | 2026-05-08 | fix(integrations-health): OTel collector probe /metrics not / |
 | `e8a6142` | 2026-05-08 | feat(service-mesh-deep): add Kiali-integration topic — closes §49 gap (3 surfaces) |
-| `d3ca211` | 2026-05-08 | feat(kiali): canonical Istio addon install — Kiali joins all-green (19/19 HEALTHY) |
-| `7959e6d` | 2026-05-08 | fix(integrations-health): all-green achieved — TCP probe + Kafka URL + Kibana override fix |
-| `8c169a5` | 2026-05-08 | fix(integrations-health): correct MinIO + OTel probe URLs + restart Kibana with user fix |
 
 ```bash
 git log --oneline -- services/frontend    # see all commits

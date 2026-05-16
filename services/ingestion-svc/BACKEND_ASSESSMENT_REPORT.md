@@ -1,7 +1,7 @@
-# Backend Assessment - `inference-svc`
+# Backend Assessment - `ingestion-svc`
 
-**Profile:** Backend (Python (22 files))
-**Generated:** 2026-05-16 22:17 UTC
+**Profile:** Backend (Python (42 files))
+**Generated:** 2026-05-16 22:36 UTC
 **Reviewer:** Praveen Asthana
 
 > 25-section backend-specific production assessment. Reviewer fills Status / Notes / Risk / Recommendation per row. Skeleton starts with TBD per global honesty rule (never claim 10/10 without evidence).
@@ -12,28 +12,28 @@
 
 | Field | Value |
 |---|---|
-| Folder | `services/inference-svc` |
+| Folder | `services/ingestion-svc` |
 | Profile | Backend |
-| Runtime | Python (22 files) |
+| Runtime | Python (42 files) |
 | Has FastAPI | yes |
 | Has Pydantic | yes |
 | Has Uvicorn | yes |
-| Async functions | 56 |
-| DB libs | asyncpg, Redis |
-| Queue libs | Kafka |
-| Cache libs | Redis |
+| Async functions | 71 |
+| DB libs | asyncpg, Redis, Qdrant, Neo4j |
+| Queue libs | _(none)_ |
+| Cache libs | Redis, lru_cache |
 | HTTP client libs | httpx |
-| AI / LLM libs | Ollama, Rebuff (PI defense) |
-| Observability libs | OpenTelemetry, Prometheus |
+| AI / LLM libs | Ollama |
+| Observability libs | Prometheus |
 | Auth libs | _(none)_ |
 | Test files | 1 |
 | Dockerfile | yes |
 | pyproject.toml | no |
 | go.mod | no |
-| Lines of code (rough) | 5,174 |
-| Git authors | 75	PraveenAsthana123, 6	Praveen |
+| Lines of code (rough) | 3,323 |
+| Git authors | 14	PraveenAsthana123, 4	Praveen |
 | Reviewer | Praveen Asthana |
-| Generated | 2026-05-16 22:17 UTC |
+| Generated | 2026-05-16 22:36 UTC |
 
 ---
 
@@ -79,7 +79,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. DB libs: asyncpg, Redis | TBD | — | — | — |
+| 1. DB libs: asyncpg, Redis, Qdrant, Neo4j | TBD | — | — | — |
 | 2. RLS policies for multi-tenant? | TBD | — | — | — |
 | 3. Migrations in expand -> migrate -> contract order? | TBD | — | — | — |
 | 4. Indexes on every WHERE + ORDER BY column? | TBD | — | — | — |
@@ -91,7 +91,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Cache libs: Redis | TBD | — | — | — |
+| 1. Cache libs: Redis, lru_cache | TBD | — | — | — |
 | 2. Per-tenant cache keys (no cross-tenant leak)? | TBD | — | — | — |
 | 3. TTL strategy (no unbounded growth)? | TBD | — | — | — |
 | 4. Invalidation on source change? | TBD | — | — | — |
@@ -101,7 +101,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Queue libs: Kafka | TBD | — | — | — |
+| 1. Queue libs: NONE | TBD | — | — | — |
 | 2. Idempotent consumers (handle duplicates)? | TBD | — | — | — |
 | 3. Dead letter queue? | TBD | — | — | — |
 | 4. Event schema versioned + in registry? | TBD | — | — | — |
@@ -111,7 +111,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Async functions: 56 | TBD | — | — | — |
+| 1. Async functions: 71 | TBD | — | — | — |
 | 2. No blocking I/O inside `async def`? | TBD | — | — | — |
 | 3. Timeouts on every external call? | TBD | — | — | — |
 | 4. ThreadPool for CPU-bound work? | TBD | — | — | — |
@@ -141,7 +141,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. Structured logging libs: OpenTelemetry, Prometheus | TBD | — | — | — |
+| 1. Structured logging libs: Prometheus | TBD | — | — | — |
 | 2. JSON output (no print())? | TBD | — | — | — |
 | 3. correlation_id + tenant_id + actor on every line? | TBD | — | — | — |
 | 4. PII redaction (email, ssn, api_key)? | TBD | — | — | — |
@@ -151,7 +151,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. OTel installed? True | TBD | — | — | — |
+| 1. OTel installed? False | TBD | — | — | — |
 | 2. Spans for every external call? | TBD | — | — | — |
 | 3. Baggage propagated across services? | TBD | — | — | — |
 | 4. Sampling configured (head + tail)? | TBD | — | — | — |
@@ -232,7 +232,7 @@
 
 | # / Item | Status | Notes | Risk (H/M/L) | Recommendation |
 |---|---|---|---|---|
-| 1. AI libs: Ollama, Rebuff (PI defense) | TBD | — | — | — |
+| 1. AI libs: Ollama | TBD | — | — | — |
 | 2. Prompt versioning in registry? | TBD | — | — | — |
 | 3. Embedding model versioned + re-embed on bump? | TBD | — | — | — |
 | 4. Decision audit row per AI call? | TBD | — | — | — |
