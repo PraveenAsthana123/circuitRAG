@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from identity.jwt_auth import JWTAuth
+from identity.jwt_auth import JWTAuth, TokenInvalidError
 
 
 VALID_SECRET = "x" * 64  # 64 chars, well above the 32 minimum
@@ -65,6 +65,14 @@ def test_round_trip_with_valid_secret(monkeypatch):
     claims = auth.verify_token(token)
     assert claims["user_id"] == "u1"
     assert claims["tenant_id"] == "t1"
+
+
+def test_invalid_token_raises_domain_exception(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", VALID_SECRET)
+    auth = JWTAuth()
+
+    with pytest.raises(TokenInvalidError):
+        auth.verify_token("not-a-valid-token")
 
 
 if __name__ == "__main__":

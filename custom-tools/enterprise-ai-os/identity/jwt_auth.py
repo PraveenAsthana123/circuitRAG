@@ -14,13 +14,17 @@
 #     - Add clock-skew tolerance window
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 from jose import jwt, JWTError
 
 
 _INSECURE_SECRETS = {"change-me", "changeme", "secret", "password", ""}
 _MIN_SECRET_LENGTH = 32
+
+
+class TokenInvalidError(Exception):
+    pass
 
 
 class JWTAuth:
@@ -54,7 +58,7 @@ class JWTAuth:
 
     def create_token(self, payload: Dict[str, Any]) -> str:
         claims = payload.copy()
-        claims["exp"] = datetime.utcnow() + timedelta(minutes=self.expire_minutes)
+        claims["exp"] = datetime.now(timezone.utc) + timedelta(minutes=self.expire_minutes)
 
         return jwt.encode(
             claims,
@@ -70,4 +74,4 @@ class JWTAuth:
                 algorithms=[self.algorithm]
             )
         except JWTError as exc:
-            raise PermissionError("Invalid or expired token") from exc
+            raise TokenInvalidError("Invalid or expired token") from exc

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 import uuid
 
@@ -18,10 +18,10 @@ class PromptRelease:
             "version": version,
             "approved_by": approved_by,
             "status": "created",
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
 
     def mark_active(self, release: Dict[str, Any]) -> Dict[str, Any]:
         release["status"] = "active"
-        release["activated_at"] = datetime.utcnow().isoformat()
+        release["activated_at"] = datetime.now(timezone.utc).isoformat()
         return release

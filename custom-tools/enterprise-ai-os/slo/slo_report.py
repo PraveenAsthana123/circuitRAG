@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 
 
@@ -22,5 +22,5 @@ class SLOReport:
             "failed_slos": failed,
             "evaluations": evaluations,
             "error_budget": error_budget,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }

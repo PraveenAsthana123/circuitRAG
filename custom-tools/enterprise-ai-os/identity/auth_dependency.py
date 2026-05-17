@@ -1,5 +1,5 @@
 from fastapi import Depends, Header, HTTPException
-from identity.jwt_auth import JWTAuth
+from identity.jwt_auth import JWTAuth, TokenInvalidError
 
 
 auth = JWTAuth()
@@ -24,7 +24,7 @@ def get_current_user(
 
     try:
         claims = auth.verify_token(token)
-    except PermissionError:
+    except TokenInvalidError:
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired token"

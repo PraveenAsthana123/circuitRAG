@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 import uuid
 
@@ -20,10 +20,10 @@ class AgentRelease:
             "image_tag": image_tag,
             "approved_by": approved_by,
             "status": "created",
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
 
     def mark_deployed(self, release: Dict[str, Any]) -> Dict[str, Any]:
         release["status"] = "deployed"
-        release["deployed_at"] = datetime.utcnow().isoformat()
+        release["deployed_at"] = datetime.now(timezone.utc).isoformat()
         return release
