@@ -1,0 +1,5 @@
+
+# Local test venv (Iteration 1+, P0 fix verification)
+.venv-test/
+__pycache__/
+*.pyc
