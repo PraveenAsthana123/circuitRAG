@@ -75,7 +75,15 @@ export class AgentWorkflowEngine {
         timestamp: new Date().toISOString(),
       }));
 
+      // ✅ P1 FIXED (2026-05-17): persist `running` BEFORE awaiting
+      // the tool. Pre-fix: status was mutated but not saved; a crash
+      // mid-tool left the step looking `pending` on restart and it
+      // would run twice. Now the running state is durable.
       step.status = "running";
+      this.store.save({
+        ...state,
+        status: "executing" as const,
+      });
 
       await this.simulateToolExecution(toolName);
 
