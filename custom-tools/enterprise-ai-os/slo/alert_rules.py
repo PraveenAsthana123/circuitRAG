@@ -23,4 +23,12 @@ class AlertRules:
                 "error_budget": error_budget,
             })
 
+        elif error_budget.get("budget_remaining_percent", 100.0) <= (error_budget.get("allowed_error_rate_percent", 100.0) * 0.2):
+            alerts.append({
+                "severity": "warning",
+                "type": "error_budget_low",
+                "message": "Error budget below 20 percent.",
+                "error_budget": error_budget,
+            })
+
         return alerts

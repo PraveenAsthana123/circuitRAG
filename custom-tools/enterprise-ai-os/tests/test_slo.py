@@ -34,7 +34,7 @@ def test_slo_report_and_alert_rules():
 
     error_budget = budget.calculate(
         total_requests=100000,
-        failed_requests=800,
+        failed_requests=100,
         allowed_error_rate_percent=1.0
     )
 
@@ -49,6 +49,52 @@ def test_slo_report_and_alert_rules():
 
     alert_list = alerts.evaluate(slo_report)
     assert alert_list == []
+
+
+def test_slo_violation_triggers_high_alert():
+    reporter = SLOReport()
+    alerts = AlertRules()
+
+    slo_report = reporter.generate(
+        service_name="enterprise-ai-os",
+        evaluations=[{
+            "slo": "availability",
+            "metric": "availability_percent",
+            "target": 99.9,
+            "actual": 99.0,
+            "passed": False,
+            "window": "30d",
+        }],
+        error_budget={"budget_exhausted": False, "budget_remaining_percent": 50.0},
+    )
+
+    alert_list = alerts.evaluate(slo_report)
+
+    assert any(alert["type"] == "slo_violation" for alert in alert_list)
+    assert any(alert["severity"] == "high" for alert in alert_list)
+
+
+def test_error_budget_warning_and_exhaustion_alerts():
+    alerts = AlertRules()
+    reporter = SLOReport()
+
+    warning_report = reporter.generate(
+        service_name="enterprise-ai-os",
+        evaluations=[],
+        error_budget={"budget_exhausted": False, "budget_remaining_percent": 0.1, "allowed_error_rate_percent": 1.0},
+    )
+    warning_alerts = alerts.evaluate(warning_report)
+    assert warning_alerts[0]["type"] == "error_budget_low"
+    assert warning_alerts[0]["severity"] == "warning"
+
+    critical_report = reporter.generate(
+        service_name="enterprise-ai-os",
+        evaluations=[],
+        error_budget={"budget_exhausted": True, "budget_remaining_percent": 0.0, "allowed_error_rate_percent": 1.0},
+    )
+    critical_alerts = alerts.evaluate(critical_report)
+    assert critical_alerts[0]["type"] == "error_budget_exhausted"
+    assert critical_alerts[0]["severity"] == "critical"
 
 
 if __name__ == "__main__":
