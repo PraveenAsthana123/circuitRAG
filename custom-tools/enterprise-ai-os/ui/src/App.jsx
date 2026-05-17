@@ -1,9 +1,3 @@
-// NOTE: source imports CostPanel and IncidentPanel — these files
-// were NOT shown in the source paste. See ../TRUNCATED.md.
-// Imports are kept verbatim for fidelity but the named files do not
-// exist in this folder; the app will fail to build until they are
-// provided.
-
 import DashboardSummary from "./components/DashboardSummary";
 import AgentGraph from "./components/AgentGraph";
 import TraceViewer from "./components/TraceViewer";
