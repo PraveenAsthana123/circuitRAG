@@ -74,16 +74,23 @@ export class MemoryGovernanceService {
     if (!record) return undefined;
 
     if (this.retention.isExpired(record)) {
-      this.store.delete(record.memoryId);
+      this.store.delete(record.memoryId, record.tenantId);
       return undefined;
     }
 
     return record;
   }
 
-  rollback(memoryId: string, actorUserId: string, reason: string, traceId?: string): MemoryRecord {
-    const before = this.store.get(memoryId);
-    const restored = this.store.rollback(memoryId);
+  rollback(
+    memoryId: string,
+    callerTenantId: string,
+    actorUserId: string,
+    reason: string,
+    traceId?: string,
+  ): MemoryRecord {
+    // store.get + rollback both enforce tenant; AccessDenied bubbles up.
+    const before = this.store.get(memoryId, callerTenantId);
+    const restored = this.store.rollback(memoryId, callerTenantId);
 
     this.audit.append({
       auditId: randomUUID(),
