@@ -1,28 +1,48 @@
-# ✅ P0 FIXED (2026-05-17): `filters` argument is now actually passed
-#     to Qdrant. The pre-fix version accepted `filters` and silently
-#     dropped it, so callers that expected tenant filtering received
-#     cross-tenant results.
-#
-#     The `filters` dict is converted into a Qdrant `Filter` object
-#     with one MatchValue condition per key. For more complex filter
-#     trees (must/should/must_not, ranges, geo), callers can pass a
-#     pre-built `Filter` directly via the new `query_filter` argument.
-#
-#     Negative drill: tests/test_qdrant_filter_passthrough.py
+# ✅ P0 FIXED (Iter 4, 2026-05-17): filters now passed (tenant
+#     isolation).
+# ✅ P1 FIXED (Iter 30, 2026-05-17): retry + per-request timeout
+#     wrapper, mirroring the OpenAIClient pattern from Iter 24.
+#     Pre-fix: a Qdrant 5xx or network blip bubbled straight to the
+#     caller; a hung request could block the worker forever.
 
 import os
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import (
+    UnexpectedResponse,
+    ResponseHandlingException,
+)
 from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+
+from integrations.retry_policy import RetryPolicy
+
+
+_DEFAULT_TIMEOUT_SECONDS = 30.0
 
 
 class QdrantVectorClient:
-    def __init__(self):
+    def __init__(
+        self,
+        timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+        retry_policy: RetryPolicy | None = None,
+    ):
         self.client = QdrantClient(
             url=os.getenv("QDRANT_URL", "http://localhost:6333"),
-            api_key=os.getenv("QDRANT_API_KEY")
+            api_key=os.getenv("QDRANT_API_KEY"),
+            timeout=timeout_seconds,
         )
         self.collection = os.getenv("QDRANT_COLLECTION", "enterprise_docs")
+        self.retry_policy = retry_policy or RetryPolicy(
+            max_retries=3,
+            base_delay_ms=200,
+            timeout_seconds=timeout_seconds,
+            retry_on=(
+                ConnectionError,
+                TimeoutError,
+                ResponseHandlingException,
+                UnexpectedResponse,
+            ),
+        )
 
     def search(
         self,
@@ -32,8 +52,6 @@ class QdrantVectorClient:
         query_filter: Filter | None = None,
     ) -> List[Dict[str, Any]]:
 
-        # Build the Filter argument: prefer an explicit pre-built one,
-        # otherwise translate the simple `filters` dict.
         effective_filter: Filter | None
         if query_filter is not None:
             effective_filter = query_filter
@@ -42,23 +60,25 @@ class QdrantVectorClient:
         else:
             effective_filter = None
 
-        results = self.client.search(
-            collection_name=self.collection,
-            query_vector=query_vector,
-            limit=top_k,
-            query_filter=effective_filter,
-        )
+        def _call():
+            results = self.client.search(
+                collection_name=self.collection,
+                query_vector=query_vector,
+                limit=top_k,
+                query_filter=effective_filter,
+            )
+            return [
+                {
+                    "chunk_id": str(item.id),
+                    "score": item.score,
+                    "payload": item.payload,
+                    "text": item.payload.get("text"),
+                    "source": item.payload.get("source"),
+                }
+                for item in results
+            ]
 
-        return [
-            {
-                "chunk_id": str(item.id),
-                "score": item.score,
-                "payload": item.payload,
-                "text": item.payload.get("text"),
-                "source": item.payload.get("source")
-            }
-            for item in results
-        ]
+        return self.retry_policy.execute(_call)
 
     @staticmethod
     def _dict_to_filter(filters: Dict[str, Any]) -> Filter:
