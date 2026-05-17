@@ -30,4 +30,10 @@ export interface RAGResponse {
   citations: string[];
   grounded: boolean;
   qualityScore: number;
+  /** Markers in the answer that don't resolve to a retrieved chunk
+   *  (hallucination signal). Set by Iter 21. */
+  uncited?: string[];
+  /** Retrieved chunks the answer never cited (irrelevant retrieval). */
+  unreferenced?: string[];
+  hallucinationFlag?: boolean;
 }

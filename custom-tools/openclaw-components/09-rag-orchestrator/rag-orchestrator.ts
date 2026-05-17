@@ -28,7 +28,8 @@ export class RAGOrchestrator {
 
     const grounded = this.groundingChecker.check(answer, reranked);
 
-    const citations = this.citationValidator.validate(reranked);
+    // Iter 21: real span-level citation verification.
+    const citationResult = this.citationValidator.validate(answer, reranked);
 
     const qualityScore = this.qualityScorer.score(
       answer,
@@ -44,6 +45,9 @@ export class RAGOrchestrator {
       rerankedCount: reranked.length,
       grounded,
       qualityScore,
+      uncitedCount: citationResult.uncited.length,
+      unreferencedCount: citationResult.unreferenced.length,
+      hallucinationFlag: citationResult.hallucinationFlag,
       durationMs: Date.now() - start,
       traceId: request.traceId,
       timestamp: new Date().toISOString(),
@@ -51,15 +55,26 @@ export class RAGOrchestrator {
 
     return {
       answer,
-      citations,
+      citations: citationResult.cited,
       grounded,
       qualityScore,
+      uncited: citationResult.uncited,
+      unreferenced: citationResult.unreferenced,
+      hallucinationFlag: citationResult.hallucinationFlag,
     };
   }
 
-  private generateAnswer(query: string, chunks: { text: string }[]): string {
-    const context = chunks.map((c) => c.text).join("\n---\n");
-
-    return `Based on retrieved evidence, the answer to "${query}" is:\n\n${context}`;
+  private generateAnswer(
+    query: string,
+    chunks: { documentId: string; chunkId: string; text: string }[],
+  ): string {
+    // Stub: a real LLM call with citation-aware prompting would emit
+    // [doc:chunk] markers next to claims. This stub appends a marker
+    // after each chunk's text so CitationValidator has something
+    // realistic to verify (Iter 21).
+    const cited = chunks
+      .map((c) => `${c.text} [${c.documentId}:${c.chunkId}]`)
+      .join("\n---\n");
+    return `Based on retrieved evidence, the answer to "${query}" is:\n\n${cited}`;
   }
 }
