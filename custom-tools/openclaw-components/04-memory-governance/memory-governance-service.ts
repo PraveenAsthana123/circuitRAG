@@ -4,6 +4,7 @@ import { MemoryStore } from "./memory-store";
 import { MemoryAuditLog } from "./memory-audit-log";
 import { PIIMasker } from "./pii-masker";
 import { RetentionPolicy } from "./retention-policy";
+import { ValueEncryptor } from "./encryption";
 
 interface SaveMemoryInput {
   tenantId: string;
@@ -21,11 +22,18 @@ export class MemoryGovernanceService {
     private readonly store: MemoryStore,
     private readonly audit: MemoryAuditLog,
     private readonly piiMasker: PIIMasker,
-    private readonly retention: RetentionPolicy
+    private readonly retention: RetentionPolicy,
+    // Iter 20: optional encryption-at-rest. If provided, values are
+    // encrypted before store + decrypted on read. Backcompat: if
+    // omitted, behaves as pre-fix (PII-masked plaintext stored).
+    private readonly encryptor?: ValueEncryptor,
   ) {}
 
   save(input: SaveMemoryInput): MemoryRecord {
     const maskedValue = this.piiMasker.mask(input.value);
+    const storedValue = this.encryptor
+      ? this.encryptor.encrypt(maskedValue)
+      : maskedValue;
 
     const existing = this.store.findByKey(
       input.tenantId,
@@ -41,7 +49,7 @@ export class MemoryGovernanceService {
       userId: input.userId,
       scope: "user",
       key: input.key,
-      value: maskedValue,
+      value: storedValue,
       version: existing ? existing.version + 1 : 1,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -78,6 +86,13 @@ export class MemoryGovernanceService {
       return undefined;
     }
 
+    // Decrypt on read. If encryptor is not configured but record was
+    // encrypted (e.g., after a deploy that dropped the encryptor),
+    // the sentinel-prefixed value is returned as-is — the caller will
+    // see garbage and should escalate.
+    if (this.encryptor) {
+      return { ...record, value: this.encryptor.decrypt(record.value) };
+    }
     return record;
   }
 
