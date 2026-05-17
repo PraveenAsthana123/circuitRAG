@@ -1,0 +1,25 @@
+# Tool Set 32 base
+fastapi
+uvicorn
+pydantic
+python-dotenv
+requests
+pytest
+httpx
+locust
+psycopg2-binary
+ruff
+bandit
+
+# Tool Set 34 — integrations
+openai
+qdrant-client
+redis
+kafka-python
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp
+
+# Tool Set 35 — auth
+python-jose[cryptography]
+passlib[bcrypt]
