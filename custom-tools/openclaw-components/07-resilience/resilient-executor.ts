@@ -18,15 +18,34 @@ import {
   ResiliencePolicy,
 } from "./types";
 
+/**
+ * Optional dependencies for ResilientExecutor. Iter 32 (2026-05-17):
+ * factored out so callers + tests can inject mocks/spies, and so
+ * a custom RetryPolicy (e.g., one with a deterministic randomFn)
+ * can be passed in for repeatability. Pre-fix these were `new`'d
+ * inline at field-init, which made the class untestable in
+ * isolation and tightly coupled to the concrete classes.
+ */
+export interface ResilientExecutorDeps {
+  timeout?: Timeout;
+  retry?: RetryPolicy;
+  fallbackHandler?: FallbackHandler;
+}
+
 export class ResilientExecutor {
-  private readonly timeout = new Timeout();
-  private readonly retry = new RetryPolicy();
-  private readonly fallbackHandler = new FallbackHandler();
+  private readonly timeout: Timeout;
+  private readonly retry: RetryPolicy;
+  private readonly fallbackHandler: FallbackHandler;
 
   constructor(
     private readonly circuitBreaker: CircuitBreaker,
-    private readonly policy: ResiliencePolicy
-  ) {}
+    private readonly policy: ResiliencePolicy,
+    deps: ResilientExecutorDeps = {},
+  ) {
+    this.timeout = deps.timeout ?? new Timeout();
+    this.retry = deps.retry ?? new RetryPolicy();
+    this.fallbackHandler = deps.fallbackHandler ?? new FallbackHandler();
+  }
 
   async execute<T>(
     context: ResilienceContext,
