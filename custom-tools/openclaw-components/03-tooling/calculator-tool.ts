@@ -1,10 +1,112 @@
-// ⚠️  SECURITY: This tool uses dynamic code execution via the Function
-//     constructor. The regex allowlist is insufficient defense against
-//     a determined attacker. See GAPS.md (Component 3, P0 row) for the
-//     production fix (use `mathjs` with a restricted scope instead).
-//     Kept verbatim from source paste for fidelity.
-
 import { ToolDefinition } from "./types";
+
+class ArithmeticParser {
+  private index = 0;
+
+  constructor(private readonly input: string) {}
+
+  parse(): number {
+    const value = this.parseExpression();
+    this.skipWhitespace();
+
+    if (this.index !== this.input.length) {
+      throw new Error("Invalid arithmetic expression");
+    }
+
+    if (!Number.isFinite(value)) {
+      throw new Error("Arithmetic result is not finite");
+    }
+
+    return value;
+  }
+
+  private parseExpression(): number {
+    let value = this.parseTerm();
+
+    while (true) {
+      this.skipWhitespace();
+      const operator = this.peek();
+
+      if (operator !== "+" && operator !== "-") return value;
+
+      this.index += 1;
+      const right = this.parseTerm();
+      value = operator === "+" ? value + right : value - right;
+    }
+  }
+
+  private parseTerm(): number {
+    let value = this.parseFactor();
+
+    while (true) {
+      this.skipWhitespace();
+      const operator = this.peek();
+
+      if (operator !== "*" && operator !== "/") return value;
+
+      this.index += 1;
+      const right = this.parseFactor();
+      value = operator === "*" ? value * right : value / right;
+    }
+  }
+
+  private parseFactor(): number {
+    this.skipWhitespace();
+    const char = this.peek();
+
+    if (char === "+" || char === "-") {
+      this.index += 1;
+      const value = this.parseFactor();
+      return char === "-" ? -value : value;
+    }
+
+    if (char === "(") {
+      this.index += 1;
+      const value = this.parseExpression();
+      this.skipWhitespace();
+
+      if (this.peek() !== ")") {
+        throw new Error("Invalid arithmetic expression");
+      }
+
+      this.index += 1;
+      return value;
+    }
+
+    return this.parseNumber();
+  }
+
+  private parseNumber(): number {
+    this.skipWhitespace();
+    const start = this.index;
+
+    while (/\d/.test(this.peek())) this.index += 1;
+
+    if (this.peek() === ".") {
+      this.index += 1;
+      while (/\d/.test(this.peek())) this.index += 1;
+    }
+
+    if (start === this.index) {
+      throw new Error("Invalid arithmetic expression");
+    }
+
+    const value = Number(this.input.slice(start, this.index));
+    if (!Number.isFinite(value)) {
+      throw new Error("Invalid arithmetic expression");
+    }
+
+    return value;
+  }
+
+  private skipWhitespace(): void {
+    while (/\s/.test(this.peek())) this.index += 1;
+  }
+
+  private peek(): string {
+    return this.input[this.index] ?? "";
+  }
+}
 
 export const calculatorTool: ToolDefinition = {
   name: "calculator",
@@ -21,7 +123,7 @@ export const calculatorTool: ToolDefinition = {
 
     return {
       expression,
-      result: Function(`"use strict"; return (${expression})`)(),
+      result: new ArithmeticParser(expression).parse(),
     };
   },
 };

@@ -33,6 +33,7 @@ export class ToolDispatcher {
       this.guard.validate(request);
 
       const tool = this.registry.get(request.toolName);
+      this.authorize(request, tool.allowedRoles);
 
       const output = await tool.execute(request.input, request.context);
 
@@ -79,6 +80,17 @@ export class ToolDispatcher {
       return result;
     } finally {
       span.end();
+    }
+  }
+
+  private authorize(request: ToolRequest, allowedRoles: string[]): void {
+    if (allowedRoles.length === 0) return;
+
+    const callerRoles = request.context.roles ?? [];
+    const allowed = callerRoles.some((role) => allowedRoles.includes(role));
+
+    if (!allowed) {
+      throw new Error("Tool access denied: " + request.toolName);
     }
   }
 }

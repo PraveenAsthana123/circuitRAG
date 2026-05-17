@@ -6,6 +6,7 @@ export interface ToolContext {
   userId: string;
   tenantId: string;
   traceId?: string;
+  roles?: string[];
 }
 
 export interface ToolRequest {
