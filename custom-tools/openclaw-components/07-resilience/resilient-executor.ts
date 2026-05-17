@@ -1,7 +1,17 @@
+// Updated 2026-05-17 (Iter 13) for upstream signature changes:
+//   - Timeout.run now takes (signal) => Promise<T> and cancels via
+//     AbortController on deadline. Operation MUST honor the signal.
+//   - FallbackHandler.executeFallback returns FallbackResult<T> with
+//     a `source` tag; we propagate it into ExecutionOutcome.
+
 import { Timeout } from "./timeout";
 import { RetryPolicy } from "./retry-policy";
 import { CircuitBreaker } from "./circuit-breaker";
-import { FallbackHandler } from "./fallback-handler";
+import {
+  FallbackHandler,
+  SimpleFallback,
+  TaggedFallback,
+} from "./fallback-handler";
 import {
   ExecutionOutcome,
   ResilienceContext,
@@ -20,21 +30,21 @@ export class ResilientExecutor {
 
   async execute<T>(
     context: ResilienceContext,
-    operation: () => Promise<T>,
-    fallback?: () => Promise<T>
+    operation: (signal: AbortSignal) => Promise<T>,
+    fallback?: TaggedFallback<T> | SimpleFallback<T>,
   ): Promise<ExecutionOutcome<T>> {
     const start = Date.now();
 
     if (!this.circuitBreaker.canExecute()) {
-      const fallbackData = await this.fallbackHandler.executeFallback(
+      const fallbackResult = await this.fallbackHandler.executeFallback(
         context,
-        fallback
+        fallback,
       );
-
       return {
         success: true,
-        data: fallbackData,
+        data: fallbackResult.data,
         fallbackUsed: true,
+        fallbackSource: fallbackResult.source,
         durationMs: Date.now() - start,
       };
     }
@@ -79,15 +89,15 @@ export class ResilientExecutor {
       }));
 
       try {
-        const fallbackData = await this.fallbackHandler.executeFallback(
+        const fallbackResult = await this.fallbackHandler.executeFallback(
           context,
-          fallback
+          fallback,
         );
-
         return {
           success: true,
-          data: fallbackData,
+          data: fallbackResult.data,
           fallbackUsed: true,
+          fallbackSource: fallbackResult.source,
           durationMs: Date.now() - start,
         };
       } catch {

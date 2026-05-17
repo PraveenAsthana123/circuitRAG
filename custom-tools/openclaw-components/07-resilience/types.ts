@@ -21,6 +21,15 @@ export interface ExecutionOutcome<T> {
   success: boolean;
   data?: T;
   fallbackUsed: boolean;
+  // When fallbackUsed=true, what source was the fallback drawn from?
+  // (Set by FallbackHandler in Iter 13; "unspecified" if the caller
+  // didn't tag a tagged fallback.)
+  fallbackSource?:
+    | "cache"
+    | "static"
+    | "degraded_model"
+    | "stale"
+    | "unspecified";
   error?: string;
   durationMs: number;
 }
