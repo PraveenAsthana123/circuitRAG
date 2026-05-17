@@ -39,11 +39,21 @@ function luhnValid(digits: string): boolean {
   return sum % 10 === 0;
 }
 
+/** Stateless match — String.match() with /g returns array-or-null
+ *  and doesn't carry RegExp.lastIndex across calls. The original
+ *  RegExp.test() pattern was a real bug: module-level /g regexes
+ *  mutate lastIndex between calls so successive detect() invocations
+ *  could miss matches that started before the prior lastIndex.
+ *  Fixed in Iter 40 when the response-side test surfaced it. */
+function hasMatch(text: string, re: RegExp): boolean {
+  return text.match(re) !== null;
+}
+
 export class PIIDetector {
   detect(text: string): GuardrailFinding[] {
     const findings: GuardrailFinding[] = [];
 
-    if (EMAIL_RE.test(text)) {
+    if (hasMatch(text, EMAIL_RE)) {
       findings.push({
         ruleId: "PII_EMAIL",
         severity: "medium",
@@ -51,7 +61,7 @@ export class PIIDetector {
       });
     }
 
-    if (US_PHONE_RE.test(text) || INTL_PHONE_RE.test(text)) {
+    if (hasMatch(text, US_PHONE_RE) || hasMatch(text, INTL_PHONE_RE)) {
       findings.push({
         ruleId: "PII_PHONE",
         severity: "medium",
@@ -59,7 +69,7 @@ export class PIIDetector {
       });
     }
 
-    if (SSN_RE.test(text)) {
+    if (hasMatch(text, SSN_RE)) {
       findings.push({
         ruleId: "PII_SSN",
         severity: "critical",
@@ -80,7 +90,7 @@ export class PIIDetector {
       }
     }
 
-    if (IBAN_RE.test(text)) {
+    if (hasMatch(text, IBAN_RE)) {
       findings.push({
         ruleId: "PII_IBAN",
         severity: "critical",
@@ -88,7 +98,7 @@ export class PIIDetector {
       });
     }
 
-    if (IPV4_RE.test(text)) {
+    if (hasMatch(text, IPV4_RE)) {
       findings.push({
         ruleId: "PII_IP",
         severity: "high",
