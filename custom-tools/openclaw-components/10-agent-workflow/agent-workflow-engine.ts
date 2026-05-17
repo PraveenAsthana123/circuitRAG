@@ -4,7 +4,7 @@ import { ToolSelector } from "./tool-selector";
 import { HumanApprovalGate } from "./human-approval";
 import { WorkflowStateStore } from "./workflow-state-store";
 import { RollbackManager } from "./rollback-manager";
-import { WorkflowContext, WorkflowState } from "./types";
+import { WorkflowContext, WorkflowState, RetryableError } from "./types";
 
 export class AgentWorkflowEngine {
   private readonly rollbackManager: RollbackManager;
@@ -101,8 +101,36 @@ export class AgentWorkflowEngine {
 
       return nextState;
     } catch (error) {
-      step.status = "failed";
+      // Iter 44: distinguish transient (retryable) from permanent.
+      const isRetryable = error instanceof RetryableError;
+      const currentRetries = step.retryCount ?? 0;
+      const maxRetries = step.maxRetries ?? 0;
 
+      if (isRetryable && currentRetries < maxRetries) {
+        step.retryCount = currentRetries + 1;
+        step.status = "pending"; // ready for the next runNext() call
+        const retryState = {
+          ...state,
+          status: "executing" as const,
+        };
+        this.store.save(retryState);
+
+        console.warn(JSON.stringify({
+          type: "workflow_step_retry",
+          workflowId,
+          stepId: step.stepId,
+          retryCount: step.retryCount,
+          maxRetries,
+          error: error.message,
+          traceId: state.context.traceId,
+          timestamp: new Date().toISOString(),
+        }));
+
+        return retryState;
+      }
+
+      // Non-retryable OR exhausted → replan.
+      step.status = "failed";
       const replanned = this.replanner.replan(
         {
           ...state,
@@ -122,7 +150,10 @@ export class AgentWorkflowEngine {
     return this.rollbackManager.rollback(workflowId, callerTenantId, reason);
   }
 
-  private async simulateToolExecution(toolName: string): Promise<void> {
+  // Protected so a test subclass can override to simulate retryable
+  // vs permanent failures. Real production replaces this entirely
+  // with a Component 3 ToolDispatcher.dispatch() call.
+  protected async simulateToolExecution(toolName: string): Promise<void> {
     if (!toolName) {
       throw new Error("No tool selected");
     }
