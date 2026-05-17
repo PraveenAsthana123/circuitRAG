@@ -12,7 +12,12 @@ const POLICY: ResiliencePolicy = {
   maxRetries: 3,
   retryDelayMs: 10,
   failureThreshold: 2,
-  resetAfterMs: 1, // expire fast so tests don't wait
+  // 50ms is short enough for tests to wait 52ms in setTimeout but
+  // long enough that the next-microtask canExecute() after a fresh
+  // recordFailure reliably sees elapsed < resetAfterMs.
+  // (Pre-fix used 1ms which was racy — synchronous canExecute()
+  // after recordFailure can be either side of 1ms depending on CPU.)
+  resetAfterMs: 50,
 };
 
 describe("CircuitBreaker — half-open race (P0)", () => {
