@@ -28,4 +28,11 @@ export interface LLMResponse {
   latencyMs: number;
   estimatedCostUsd: number;
   explanation: string;
+  /** True if this response came from a fallback model after the
+   *  primary failed (Iter 17). The primary model that was attempted
+   *  is also included so observability can correlate the failure
+   *  with the recovery. */
+  fallbackUsed?: boolean;
+  primaryAttempted?: string;
+  primaryError?: string;
 }
