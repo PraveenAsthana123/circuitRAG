@@ -38,6 +38,27 @@ env:
   REVIEWER_NAME: "CI Freshness Check"
 
 jobs:
+  freshness-precheck:
+    # Fast (<1s) mtime-based detector. Runs first; if it fails the
+    # full regen-and-diff is wasted CPU. Constant-input only —
+    # no untrusted GitHub event vars.
+    name: README mtime fast precheck (<1s)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run mtime freshness check
+        run: python3 scripts/check_readme_freshness.py
+
+      - name: Run drill_check_readme_freshness (9 steps)
+        run: python3 mcp/tests/drill_check_readme_freshness.py
+
   freshness:
     name: Generators produce committed output
     runs-on: ubuntu-latest
@@ -71,7 +92,7 @@ jobs:
           fi
 
   drills:
-    name: README-generator drills (>=3 negatives each)
+    name: README-generator drills (4 drills, 44 steps total)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -90,6 +111,9 @@ jobs:
 
       - name: Run drill_audit_readme_scores (11 steps)
         run: python3 mcp/tests/drill_audit_readme_scores.py
+
+      - name: Run drill_check_readme_freshness (9 steps)
+        run: python3 mcp/tests/drill_check_readme_freshness.py
 
   audit-score:
     name: Aggregate audit score baseline
