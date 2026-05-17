@@ -89,7 +89,7 @@ describe("AgentWorkflowEngine — crash-safe step transitions (P1)", () => {
       originalSave(s);
     };
 
-    await engine.runNext(wf.context.workflowId);
+    await engine.runNext(wf.context.workflowId, "t");
 
     // BACKDOOR CHECK (pre-fix): no "running" would appear because
     // status mutation happened but no save() was called between

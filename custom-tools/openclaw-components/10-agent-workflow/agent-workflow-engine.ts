@@ -40,8 +40,10 @@ export class AgentWorkflowEngine {
     return state;
   }
 
-  async runNext(workflowId: string): Promise<WorkflowState> {
-    const state = this.store.get(workflowId);
+  async runNext(workflowId: string, callerTenantId: string): Promise<WorkflowState> {
+    // tenantId required for §47 multi-tenant isolation; the store
+    // throws WorkflowAccessDeniedError if it doesn't match.
+    const state = this.store.get(workflowId, callerTenantId);
     const step = state.steps[state.currentStepIndex];
 
     if (!step) {
@@ -115,8 +117,9 @@ export class AgentWorkflowEngine {
     }
   }
 
-  rollback(workflowId: string, reason: string): WorkflowState {
-    return this.rollbackManager.rollback(workflowId, reason);
+  rollback(workflowId: string, callerTenantId: string, reason: string): WorkflowState {
+    // tenantId required for §47 multi-tenant isolation.
+    return this.rollbackManager.rollback(workflowId, callerTenantId, reason);
   }
 
   private async simulateToolExecution(toolName: string): Promise<void> {

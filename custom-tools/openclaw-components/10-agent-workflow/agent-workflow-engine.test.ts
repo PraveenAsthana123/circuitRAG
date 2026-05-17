@@ -27,7 +27,7 @@ describe("AgentWorkflowEngine", () => {
       "Generate RAG answer"
     );
 
-    const next = await engine.runNext(workflow.context.workflowId);
+    const next = await engine.runNext(workflow.context.workflowId, "tenant-1");
 
     expect(next.currentStepIndex).toBe(1);
   });
