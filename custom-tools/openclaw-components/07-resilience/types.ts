@@ -15,6 +15,12 @@ export interface ResiliencePolicy {
   retryDelayMs: number;
   failureThreshold: number;
   resetAfterMs: number;
+  /**
+   * Number of consecutive successes required in half_open before
+   * the breaker closes (Iter 18). Default 1 (matches the pre-fix
+   * behavior). 3-5 is typical for production.
+   */
+  successThreshold?: number;
 }
 
 export interface ExecutionOutcome<T> {

@@ -1,16 +1,12 @@
-// ✅ P0 FIXED (2026-05-17): half-open race condition closed.
-//     Pre-fix: when state was "open" and resetAfterMs elapsed,
-//     canExecute() returned true and flipped to "half_open" — but
-//     EVERY concurrent call did the same thing simultaneously, so
-//     instead of admitting a single trial request the breaker
-//     admitted all in-flight callers and defeated its own purpose.
+// ✅ P0 FIXED (Iter 6, 2026-05-17): half-open race closed via
+//     halfOpenProbeInFlight flag.
+// ✅ P1 FIXED (Iter 18, 2026-05-17): closing requires N consecutive
+//     successes in half-open. Pre-fix: a single successful probe
+//     flipped the breaker straight to closed — letting it eagerly
+//     re-saturate a downstream that hadn't actually recovered.
 //
-//     Now: half_open admits only one trial probe at a time. Other
-//     callers see half_open and are denied until the probe resolves
-//     via recordSuccess()/recordFailure(). recordSuccess() in
-//     half_open closes the breaker; recordFailure() re-opens it.
-//
-//     Drill: ../07-resilience/circuit-breaker.test.ts
+//     Default successThreshold = 1 (backcompat). Set 3-5 in
+//     production via ResiliencePolicy.successThreshold.
 
 import { CircuitState, ResiliencePolicy } from "./types";
 
@@ -19,8 +15,13 @@ export class CircuitBreaker {
   private failureCount = 0;
   private lastFailureAt = 0;
   private halfOpenProbeInFlight = false;
+  private halfOpenSuccessStreak = 0;
 
   constructor(private readonly policy: ResiliencePolicy) {}
+
+  private get successThreshold(): number {
+    return Math.max(1, this.policy.successThreshold ?? 1);
+  }
 
   canExecute(): boolean {
     if (this.state === "closed") return true;
@@ -28,36 +29,51 @@ export class CircuitBreaker {
     if (this.state === "open") {
       const elapsed = Date.now() - this.lastFailureAt;
       if (elapsed >= this.policy.resetAfterMs) {
-        // Transition to half_open and admit exactly one probe.
         this.state = "half_open";
+        this.halfOpenSuccessStreak = 0;
         this.halfOpenProbeInFlight = true;
         return true;
       }
       return false;
     }
 
-    // state === "half_open": only the in-flight probe is admitted.
-    if (this.halfOpenProbeInFlight) {
-      // Another concurrent caller — deny.
-      return false;
-    }
-    // No probe in flight yet (e.g. after a recordSuccess that closed
-    // and re-opened) — admit one.
+    // half_open: admit one probe at a time.
+    if (this.halfOpenProbeInFlight) return false;
     this.halfOpenProbeInFlight = true;
     return true;
   }
 
   recordSuccess(): void {
+    if (this.state === "half_open") {
+      this.halfOpenSuccessStreak += 1;
+      this.halfOpenProbeInFlight = false;
+      if (this.halfOpenSuccessStreak >= this.successThreshold) {
+        // Sustained recovery — close.
+        this.state = "closed";
+        this.failureCount = 0;
+        this.halfOpenSuccessStreak = 0;
+      }
+      // Else: stay half_open and await more probes.
+      return;
+    }
+
+    // closed (normal path): reset failure count.
     this.failureCount = 0;
-    this.state = "closed";
     this.halfOpenProbeInFlight = false;
   }
 
   recordFailure(): void {
-    this.failureCount += 1;
     this.lastFailureAt = Date.now();
     this.halfOpenProbeInFlight = false;
 
+    if (this.state === "half_open") {
+      // Any failure in half_open re-opens immediately and resets streak.
+      this.state = "open";
+      this.halfOpenSuccessStreak = 0;
+      return;
+    }
+
+    this.failureCount += 1;
     if (this.failureCount >= this.policy.failureThreshold) {
       this.state = "open";
     }
@@ -65,5 +81,10 @@ export class CircuitBreaker {
 
   getState(): CircuitState {
     return this.state;
+  }
+
+  /** Test helper. */
+  getSuccessStreak(): number {
+    return this.halfOpenSuccessStreak;
   }
 }
