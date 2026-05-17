@@ -1,21 +1,24 @@
-# ✅ P0 FIXED (2026-05-17): JWTAuth refuses to construct if
-#     JWT_SECRET_KEY is unset, equals the literal "change-me", or is
-#     shorter than 32 chars. Forging tokens against this module now
-#     requires the real env-injected secret, not a hardcoded fallback.
-#     Negative drill: tests/test_jwt_secret_hardening.py
+# ✅ P0 FIXED (Iter 1, 2026-05-17): JWTAuth refuses to construct if
+#     JWT_SECRET_KEY is unset/insecure/short. (See test_jwt_secret_hardening.)
+# ✅ P1 FIXED (Iter 12, 2026-05-17): iss/aud/nbf/iat now enforced.
+#     - iss: required if JWT_ISSUER is set; verify_token rejects
+#       tokens with a different issuer.
+#     - aud: required if JWT_AUDIENCE is set; verify_token rejects
+#       tokens with a different audience.
+#     - nbf: tokens minted include a `nbf` claim equal to `iat`;
+#       tokens used before `nbf` (clock skew, replay) are rejected
+#       within a tolerance window (JWT_LEEWAY_SECONDS, default 30).
+#     - iat: every token now carries an `iat` claim.
 #
-# ⚠️ STILL REQUIRED before real deployment (not in scope for this P0
-#     fix, see GAPS.md Tool Set 35):
-#     - Move to RS256 / EdDSA with a JWKS endpoint (HS256 is symmetric
-#       — every verifier holds the signing key)
-#     - Validate `iss` (issuer) and `aud` (audience) claims
-#     - Add `nbf` (not-before) and `iat` (issued-at) claims
-#     - Implement token revocation (blacklist / jti cache)
-#     - Add clock-skew tolerance window
+#     Negative drill: tests/test_jwt_claims_validation.py
+#
+# ⚠️ STILL REQUIRED before real deployment (see GAPS.md Tool Set 35):
+#     - Move to RS256 / EdDSA with a JWKS endpoint (HS256 is symmetric)
+#     - Implement token revocation (blacklist / jti cache backed by Redis)
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from jose import jwt, JWTError
 
 
@@ -56,9 +59,22 @@ class JWTAuth:
         self.algorithm = os.getenv("JWT_ALGORITHM", "HS256")
         self.expire_minutes = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
+        # Optional but recommended for production. Leaving them None
+        # disables that specific check (compat with the pre-fix shape).
+        self.issuer: Optional[str] = os.getenv("JWT_ISSUER") or None
+        self.audience: Optional[str] = os.getenv("JWT_AUDIENCE") or None
+        self.leeway_seconds = int(os.getenv("JWT_LEEWAY_SECONDS", "30"))
+
     def create_token(self, payload: Dict[str, Any]) -> str:
+        now = datetime.now(timezone.utc)
         claims = payload.copy()
-        claims["exp"] = datetime.now(timezone.utc) + timedelta(minutes=self.expire_minutes)
+        claims["iat"] = now
+        claims["nbf"] = now
+        claims["exp"] = now + timedelta(minutes=self.expire_minutes)
+        if self.issuer is not None:
+            claims["iss"] = self.issuer
+        if self.audience is not None:
+            claims["aud"] = self.audience
 
         return jwt.encode(
             claims,
@@ -67,11 +83,28 @@ class JWTAuth:
         )
 
     def verify_token(self, token: str) -> Dict[str, Any]:
+        # python-jose puts leeway INSIDE options (not a top-level
+        # kwarg, unlike PyJWT). iss/aud go top-level.
+        decode_kwargs: Dict[str, Any] = {
+            "algorithms": [self.algorithm],
+            "options": {
+                "require_exp": True,
+                "require_iat": True,
+                "require_nbf": True,
+                "verify_iat": True,
+                "verify_nbf": True,
+                "verify_exp": True,
+                "leeway": self.leeway_seconds,
+            },
+        }
+        if self.issuer is not None:
+            decode_kwargs["issuer"] = self.issuer
+            decode_kwargs["options"]["require_iss"] = True
+        if self.audience is not None:
+            decode_kwargs["audience"] = self.audience
+            decode_kwargs["options"]["require_aud"] = True
+
         try:
-            return jwt.decode(
-                token,
-                self.secret_key,
-                algorithms=[self.algorithm]
-            )
+            return jwt.decode(token, self.secret_key, **decode_kwargs)
         except JWTError as exc:
-            raise TokenInvalidError("Invalid or expired token") from exc
+            raise TokenInvalidError(f"Invalid or expired token: {exc}") from exc
