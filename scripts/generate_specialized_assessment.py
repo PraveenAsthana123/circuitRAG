@@ -82,7 +82,7 @@ def _git_authors(folder: Path) -> str:
 
 
 def detect_profile(folder: Path) -> str:
-    """Auto-detect frontend vs backend from folder contents."""
+    """Auto-detect frontend / backend / database from folder contents."""
     pkg_json = folder / "package.json"
     if pkg_json.exists():
         body = _read(pkg_json)
@@ -92,6 +92,13 @@ def detect_profile(folder: Path) -> str:
         return "frontend"
     if (folder / "app").is_dir() and (folder / "package.json").exists():
         return "frontend"
+    # Database: dominant signals = migrations dir, .sql files, repo/store names
+    if ((folder / "migrations").is_dir()
+            or (folder / "schemas").is_dir() and _count_ext(folder, ".sql") > 0
+            or _count_ext(folder, ".sql") > 3
+            or folder.name in {"migrations", "repositories", "db", "database",
+                               "schemas", "alembic", "flyway"}):
+        return "database"
     return "backend"
 
 
@@ -162,6 +169,90 @@ def _loc(folder: Path) -> int:
             continue
         total += sum(1 for line in _read(p).split("\n") if line.strip())
     return total
+
+
+@dataclass
+class DatabaseFacts:
+    runtime: str = ""
+    sql_files: int = 0
+    migration_files: int = 0
+    has_migrations_dir: bool = False
+    has_schema_dir: bool = False
+    has_alembic: bool = False
+    has_flyway: bool = False
+    has_rls: bool = False
+    has_jsonb: bool = False
+    has_partition: bool = False
+    has_index_concurrent: bool = False
+    has_foreign_keys: bool = False
+    db_engines: List[str] = field(default_factory=list)
+    orm_libs: List[str] = field(default_factory=list)
+    has_pyproject: bool = False
+    git_authors: str = ""
+    loc: int = 0
+
+
+def introspect_database(folder: Path) -> DatabaseFacts:
+    b = DatabaseFacts(
+        sql_files=_count_ext(folder, ".sql"),
+        has_migrations_dir=(folder / "migrations").is_dir(),
+        has_schema_dir=(folder / "schemas").is_dir(),
+        has_alembic=(folder / "alembic.ini").exists() or (folder / "alembic").is_dir(),
+        has_flyway=any(folder.rglob("flyway.conf")),
+        has_pyproject=(folder / "pyproject.toml").exists(),
+        git_authors=_git_authors(folder),
+        loc=_loc(folder),
+    )
+    b.migration_files = sum(
+        1 for p in folder.rglob("*.sql")
+        if not _is_ignored(p) and ("migration" in str(p).lower()
+                                   or "_initial" in p.name
+                                   or re.match(r"\d{3,4}_", p.name))
+    )
+    b.runtime = (
+        "PostgreSQL (SQL files)" if b.sql_files > 0
+        else "ORM / migrations folder" if b.has_migrations_dir
+        else "Unknown"
+    )
+    # Detect engines via .sql / .py contents
+    # NOTE: _grep_any() re.escapes its patterns, so use plain substrings here.
+    eng_patterns = {
+        "PostgreSQL": ["CREATE EXTENSION", "SERIAL,", "jsonb", "ON CONFLICT",
+                       " RETURNING ", "::text", "::int"],
+        "MySQL": ["AUTO_INCREMENT", "UNSIGNED"],
+        "SQLite": ["PRAGMA ", "AUTOINCREMENT", "INTEGER PRIMARY KEY"],
+        "MongoDB": ["db.collection(", "find_one(", "insert_one("],
+    }
+    for engine, patterns in eng_patterns.items():
+        for pat in patterns:
+            if _grep_any(folder, [pat], (".sql", ".py")):
+                b.db_engines.append(engine)
+                break
+    b.db_engines = sorted(set(b.db_engines))
+    # ORM libs
+    orm_patterns = {
+        "SQLAlchemy": ["sqlalchemy", "sessionmaker"],
+        "asyncpg (raw)": ["asyncpg"],
+        "psycopg": ["psycopg"],
+        "Tortoise": ["tortoise"],
+        "Prisma": ["prisma"],
+        "Alembic (migration)": ["alembic"],
+    }
+    for label, patterns in orm_patterns.items():
+        if _grep_any(folder, patterns, (".py",)):
+            b.orm_libs.append(label)
+    # Pattern detection in SQL files
+    sql_blob = ""
+    for p in folder.rglob("*.sql"):
+        if _is_ignored(p):
+            continue
+        sql_blob += _read(p)[:50000]  # cap reads
+    b.has_rls = "ROW LEVEL SECURITY" in sql_blob or "ENABLE ROW LEVEL" in sql_blob
+    b.has_jsonb = "jsonb" in sql_blob.lower()
+    b.has_partition = "PARTITION BY" in sql_blob
+    b.has_index_concurrent = "CREATE INDEX CONCURRENTLY" in sql_blob
+    b.has_foreign_keys = "FOREIGN KEY" in sql_blob or "REFERENCES " in sql_blob
+    return b
 
 
 def introspect_frontend(folder: Path) -> FrontendFacts:
@@ -537,6 +628,246 @@ def render_frontend(f: FrontendFacts, folder: Path, reviewer: str, now: str) -> 
     )
 
 
+def render_database(b: DatabaseFacts, folder: Path, reviewer: str, now: str) -> str:
+    metadata = (
+        "| Field | Value |\n|---|---|\n"
+        f"| Folder | `{folder.relative_to(REPO_ROOT)}` |\n"
+        f"| Profile | Database |\n"
+        f"| Runtime | {b.runtime} |\n"
+        f"| SQL files | {b.sql_files} |\n"
+        f"| Migration files | {b.migration_files} |\n"
+        f"| `migrations/` dir | {'yes' if b.has_migrations_dir else 'no'} |\n"
+        f"| `schemas/` dir | {'yes' if b.has_schema_dir else 'no'} |\n"
+        f"| Alembic detected | {'yes' if b.has_alembic else 'no'} |\n"
+        f"| Flyway detected | {'yes' if b.has_flyway else 'no'} |\n"
+        f"| ORM / DB client libs | {', '.join(b.orm_libs) or '_(none)_'} |\n"
+        f"| Database engines (detected) | {', '.join(b.db_engines) or '_(none)_'} |\n"
+        f"| Row-Level Security present | {'yes' if b.has_rls else 'no'} |\n"
+        f"| JSONB column type used | {'yes' if b.has_jsonb else 'no'} |\n"
+        f"| Partition tables | {'yes' if b.has_partition else 'no'} |\n"
+        f"| `CREATE INDEX CONCURRENTLY` used | {'yes' if b.has_index_concurrent else 'no'} |\n"
+        f"| Foreign keys defined | {'yes' if b.has_foreign_keys else 'no'} |\n"
+        f"| Lines of code (rough) | {b.loc:,} |\n"
+        f"| Git authors | {b.git_authors} |\n"
+        f"| Reviewer | {reviewer} |\n"
+        f"| Generated | {now} |\n\n"
+    )
+    sections = [
+        ("1. Schema design", [
+            f"Database engine documented? Detected: {', '.join(b.db_engines) or 'NONE'}",
+            "Normalized to 3NF (no redundant columns)?",
+            "Foreign keys defined?" + (f" Detected: {b.has_foreign_keys}"),
+            "Surrogate vs natural keys decision documented?",
+            "Timestamps (created_at, updated_at) on every mutable table?",
+            "Soft-delete pattern (`deleted_at`) vs hard DELETE?",
+            "Tenant_id column on every multi-tenant table?",
+            "Schema versioned in source control?",
+        ]),
+        ("2. Migrations", [
+            f"Migration files numbered + ordered? Detected: {b.migration_files} files",
+            "Each migration is reversible (down.sql)?",
+            "Migrations idempotent (safe to re-run)?",
+            "Expand -> migrate -> contract pattern (never add+drop same release)?",
+            f"Tool: Alembic ({b.has_alembic}) / Flyway ({b.has_flyway}) / custom?",
+            "Migration applied via app startup OR explicit deploy step?",
+            "Migration history tracked in `_migrations` table?",
+            "Production-data backfills tested in staging?",
+        ]),
+        ("3. Indexing", [
+            "Index on every foreign key?",
+            "Index on every WHERE column on tables > 1000 rows?",
+            "Index on ORDER BY column?",
+            "Composite index for hot multi-column queries (column order matters)?",
+            "Partial index for soft-delete (`WHERE deleted_at IS NULL`)?",
+            f"`CREATE INDEX CONCURRENTLY` for production? Detected: {b.has_index_concurrent}",
+            "Index bloat monitored (vacuum + analyze schedule)?",
+            "Unused indexes audited periodically?",
+        ]),
+        ("4. Transactions (ACID)", [
+            "Isolation level documented per use case (READ COMMITTED vs SERIALIZABLE)?",
+            "Transaction boundaries narrow (no HTTP / LLM inside)?",
+            "Rollback on exception?",
+            "Retry on serialization failure (40001)?",
+            "Pessimistic vs optimistic locking decision per table?",
+            "Deadlock prevention (consistent lock order)?",
+            "Savepoints used for nested transactions?",
+        ]),
+        ("5. Multi-tenant isolation", [
+            f"Row-Level Security policies enabled? Detected: {b.has_rls}",
+            "Tenant context set at connection (`SET app.current_tenant`)?",
+            "Tenant-id column on every row?",
+            "BYPASSRLS role isolated from app code?",
+            "Wrong-tenant query returns ZERO rows (drill-locked)?",
+            "Per-tenant connection pool limits?",
+        ]),
+        ("6. Connection pooling", [
+            "Pool size sized per service (not unlimited)?",
+            "Connection timeout configured?",
+            "Idle connection eviction?",
+            "PgBouncer / proxy in front of Postgres?",
+            "Read replica routing for read-heavy workloads?",
+            "Connection lifecycle managed by ORM (not raw)?",
+        ]),
+        ("7. Query optimization", [
+            "EXPLAIN ANALYZE run on every new hot-path query?",
+            "`pg_stat_statements` enabled?",
+            "Slow query log in Grafana?",
+            "No SELECT * (explicit columns)?",
+            "No N+1 (batched IN/JOIN)?",
+            "Pagination uses keyset (not OFFSET) for large tables?",
+            "JOIN order verified for query planner?",
+        ]),
+        ("8. Concurrency + locking", [
+            "Hot rows identified (FOR UPDATE strategy)?",
+            "Lock wait timeout configured?",
+            "Long transactions detected + alerted?",
+            "Advisory locks for app-level coordination?",
+            "VACUUM frequency tuned for high-write tables?",
+        ]),
+        ("9. Backup + recovery", [
+            "Continuous WAL archiving to S3?",
+            "Daily snapshots retained N days?",
+            "Restore drill monthly (operator runs + measures RTO)?",
+            "Backup encryption at rest (KMS)?",
+            "Cross-region backup replication?",
+            "Point-in-time recovery tested?",
+        ]),
+        ("10. Partitioning + sharding", [
+            f"Partitioned tables? Detected: {b.has_partition}",
+            "Partition pruning strategy documented?",
+            "Sharding key chosen (avoid hot shards)?",
+            "Resharding plan + tooling?",
+            "Cross-shard queries minimized?",
+        ]),
+        ("11. Data types", [
+            f"JSONB for flexible schema? Detected: {b.has_jsonb}",
+            "ENUM vs lookup table decision documented?",
+            "TIMESTAMPTZ (not TIMESTAMP) for all timestamps?",
+            "UUID v4 vs v7 / ULID choice documented?",
+            "DECIMAL for money (never FLOAT)?",
+            "TEXT vs VARCHAR(N) decision (TEXT preferred in PG)?",
+        ]),
+        ("12. Data integrity", [
+            "NOT NULL on every required column?",
+            "CHECK constraints for business invariants?",
+            "UNIQUE constraints for natural keys?",
+            "Foreign key ON DELETE behavior chosen (CASCADE / SET NULL / RESTRICT)?",
+            "Trigger usage minimized (logic in app code preferred)?",
+        ]),
+        ("13. Security", [
+            "No DB credentials in code (Vault / env)?",
+            "App role least-privileged (SELECT/INSERT/UPDATE only)?",
+            "RLS enforced for all app queries?",
+            "SQL injection prevented (parameterized queries everywhere)?",
+            "Audit log for sensitive table changes?",
+            "PII columns encrypted at rest (pgcrypto)?",
+        ]),
+        ("14. Performance monitoring", [
+            "pg_stat_database scraped to Prometheus?",
+            "Active connections + waiting count alerted?",
+            "Replication lag alerted?",
+            "Disk space alerted?",
+            "Slow query alerted (> N seconds)?",
+        ]),
+        ("15. ORM hygiene (if applicable)", [
+            f"ORM libs: {', '.join(b.orm_libs) or 'none — using raw SQL'}",
+            "Lazy loading avoided in hot paths?",
+            "Eager loading explicit (joinedload / selectinload)?",
+            "Session lifecycle per request (not per process)?",
+            "Bulk operations use batch APIs (not loop + single insert)?",
+            "Raw SQL escape hatch documented for complex queries?",
+        ]),
+        ("16. Caching", [
+            "Read-through cache (Redis) for hot rows?",
+            "Cache invalidation on source row change?",
+            "Per-tenant cache keys (no cross-tenant leak)?",
+            "Materialized views for expensive aggregations?",
+            "Cache stampede prevention (single flight)?",
+        ]),
+        ("17. Schema evolution + change mgmt", [
+            "Schema change requires ADR?",
+            "Schema diff visible in PR review?",
+            "Production schema vs staging diff zero?",
+            "Downstream consumer notified before schema change?",
+            "Breaking schema changes versioned (additive only in v1)?",
+        ]),
+        ("18. Testing", [
+            "Unit tests use real DB (testcontainers / docker)?",
+            "Integration tests cover migration up + down?",
+            "Drills assert RLS isolation (per project policy)?",
+            "Property-based tests for invariants?",
+            "Load tests at expected scale?",
+        ]),
+        ("19. Documentation", [
+            "ER diagram in `docs/db/`?",
+            "Data dictionary (column descriptions)?",
+            "Migration changelog?",
+            "Runbook for common DB incidents (replication lag, connection storm)?",
+        ]),
+        ("20. AI/RAG-specific (if applicable)", [
+            "Vector column type (pgvector or external)?",
+            "Embedding model version stored alongside vector?",
+            "Re-embed strategy when model bumps?",
+            "Per-tenant vector collection isolation?",
+            "Hybrid retrieval index (BM25 + vector + metadata)?",
+        ]),
+        ("21. DR + RTO / RPO", [
+            "RTO tier documented (< 15 min / < 1 hr / < 4 hr)?",
+            "RPO documented (< 0 / < 15 min / < 1 hr)?",
+            "Hot standby for tier-1?",
+            "Failover drill quarterly?",
+            "Cross-region DR for tier-1?",
+        ]),
+        ("22. Cost", [
+            "Storage growth monitored + alerted?",
+            "Index storage vs table storage ratio tracked?",
+            "Cold data archived (S3 + table partition drop)?",
+            "Read replica cost vs latency tradeoff documented?",
+        ]),
+        ("23. Common DB mistakes (avoid)", [
+            "f-string SQL (use parameters)?",
+            "Implicit transaction (rely on autocommit)?",
+            "DROP COLUMN in same release that stops reading it?",
+            "Missing index on hot-path WHERE column?",
+            "Unbounded query without LIMIT?",
+            "Synchronous DB call inside `async def`?",
+            "Cross-tenant SELECT without WHERE tenant_id?",
+        ]),
+        ("24. Production gates", [
+            "All migrations idempotent + reversible?",
+            "Zero schema diff between staging and prod?",
+            "Backup tested in last 30 days?",
+            "p95 query latency within SLO?",
+            "No table > 100M rows without partitioning plan?",
+        ]),
+        ("25. Sign-off", [
+            "DBA reviewed",
+            "Security reviewed (RLS + audit log)",
+            "SRE reviewed (backup + DR)",
+            "Tech Lead reviewed",
+            "Data Engineer reviewed (lineage)",
+        ]),
+    ]
+    body = "".join(_checklist(t, items) for t, items in sections)
+    return (
+        f"# Database Assessment - `{folder.name}`\n\n"
+        f"**Profile:** Database ({b.runtime})\n"
+        f"**Generated:** {now}\n"
+        f"**Reviewer:** {reviewer}\n\n"
+        f"> 25-section database-specific production assessment. Reviewer "
+        f"fills Status / Notes / Risk / Recommendation per row. Skeleton "
+        f"starts with TBD per global honesty rule.\n\n"
+        f"---\n\n"
+        f"## Metadata (auto-detected)\n\n"
+        f"{metadata}"
+        f"---\n\n"
+        f"{body}"
+        f"---\n\n"
+        f"_Generated by `scripts/generate_specialized_assessment.py "
+        f"--profile database`. Re-run after major changes._\n"
+    )
+
+
 def render_backend(b: BackendFacts, folder: Path, reviewer: str, now: str) -> str:
     metadata = (
         "| Field | Value |\n|---|---|\n"
@@ -808,9 +1139,9 @@ def parse_args() -> argparse.Namespace:
                    help="Single folder to assess.")
     g.add_argument("--batch", "-b", choices=["services", "libs", "all"],
                    help="Run on a named batch.")
-    p.add_argument("--profile", choices=["frontend", "backend", "auto"],
+    p.add_argument("--profile", choices=["frontend", "backend", "database", "auto"],
                    default="auto",
-                   help="Which profile to apply. 'auto' detects via package.json + .tsx files.")
+                   help="Which profile to apply. 'auto' detects via package.json + .tsx + migrations/.")
     p.add_argument("--output", "-o", type=Path,
                    help="(single-folder only) custom output path.")
     p.add_argument("--reviewer", default="<Reviewer>")
@@ -828,6 +1159,10 @@ def write_one(folder: Path, profile: str, reviewer: str, output: Path,
         facts = introspect_frontend(folder)
         content = render_frontend(facts, folder, reviewer, now)
         fname = "FRONTEND_ASSESSMENT_REPORT.md"
+    elif actual_profile == "database":
+        facts = introspect_database(folder)
+        content = render_database(facts, folder, reviewer, now)
+        fname = "DATABASE_ASSESSMENT_REPORT.md"
     else:
         facts = introspect_backend(folder)
         content = render_backend(facts, folder, reviewer, now)
