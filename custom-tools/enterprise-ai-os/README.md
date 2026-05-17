@@ -13,29 +13,26 @@
 | 1–10 | — | ✗ NOT in source paste |
 | 11 | `explainability_ai/` | ✓ verbatim · backfilled from gap · **does NOT meet CLAUDE.md §48 explainability** — see GAPS.md |
 | 12–30 | — | ✗ NOT in source paste |
-| 31 | `ui/` | ⚠ TRUNCATED — only 6 of N React components shown; cut mid-`GovernancePanel.jsx` |
+| 31 | `ui/` | ⚠ reconstructed from truncated source; builds with local stubs and shared API client |
 | 32 | (root: README, requirements, startup.sh) | ✓ verbatim · structure/config only |
 | 33 | `GAPS.md` (gap closure section) | ✓ verbatim · the source itself is gap analysis, not code |
 | 34 | `integrations/` | ✓ verbatim · 6 real-SDK clients |
-| 35 | `identity/` | ✓ verbatim · **2 P0 security bugs flagged in-file + GAPS** |
+| 35 | `identity/` | ✓ P0 JWT-secret and token-role bugs fixed; remaining gaps in GAPS.md |
 | 36 | `audit/` | ✓ verbatim · in-memory, not durable |
 | 37 | `release_management/` | ✓ verbatim · object-only, no real deploy |
 | 38 | `slo/` | ✓ verbatim · evaluator only, no Prometheus wiring |
 | 39 | `runbooks/` | ✓ verbatim · 5 markdown runbooks |
 
-## P0 security flags (do not run as-is)
+## Security status
 
-1. **`identity/jwt_auth.py`** defaults the JWT signing secret to
-   `"change-me"` if `JWT_SECRET_KEY` is unset → anyone can forge tokens.
-2. **`identity/auth_route_example.py`** (the `/auth/token` endpoint from
-   Tool Set 35 §7) accepts arbitrary `roles` from the client with NO
-   password verification → anyone can grant themselves `admin`.
+The two earlier Tool Set 35 P0 issues are fixed in code and covered by negative drills:
 
-Both are flagged in the source files with `# ⚠️ SECURITY` headers and
-documented as P0 in [GAPS.md](GAPS.md). Do not deploy. Do not even
-run the `/auth/token` endpoint on a network-reachable interface.
+1. `identity/jwt_auth.py` refuses unset, weak, or default `JWT_SECRET_KEY` values.
+2. `identity/auth_route_example.py` authenticates credentials and derives `tenant_id` and `roles` server-side instead of trusting client-claimed roles.
 
-## What's here
+This folder is still study material, not production-grade; remaining deployment blockers are tracked in [GAPS.md](GAPS.md).
+
+## What is included
 
 ```
 enterprise-ai-os/
@@ -60,7 +57,7 @@ enterprise-ai-os/
 │   ├── kafka_client.py
 │   └── otel_sdk.py
 │
-├── identity/           ← Tool Set 35: auth (⚠ 2 P0 bugs)
+├── identity/           ← Tool Set 35: auth (P0 drills fixed; still not production auth)
 │   ├── jwt_auth.py
 │   ├── user_store.py
 │   ├── tenant_store.py
@@ -94,7 +91,7 @@ enterprise-ai-os/
 │   ├── hallucination_incident.md
 │   └── governance_failure.md
 │
-├── ui/                 ← Tool Set 31 (truncated)
+├── ui/                 ← Tool Set 31 (reconstructed UI)
 │   ├── package.json
 │   ├── TRUNCATED.md
 │   └── src/
@@ -104,7 +101,9 @@ enterprise-ai-os/
 │           ├── DashboardSummary.jsx
 │           ├── AgentGraph.jsx
 │           ├── TraceViewer.jsx
-│           └── GovernancePanel.jsx (truncated mid-file)
+│           ├── GovernancePanel.jsx
+│           ├── CostPanel.jsx
+│           └── IncidentPanel.jsx
 │
 └── tests/
     ├── test_slo.py
@@ -114,14 +113,10 @@ enterprise-ai-os/
 
 ## How (not) to run
 
-- **Do NOT** start the FastAPI app exposing `/auth/token` on any
-  network-reachable interface until you replace the example route with
-  a real password / OAuth flow.
+- Do not expose this example auth flow as production SSO; it is credential-backed study code and still lacks MFA, rate limits, durable audit, and revocation.
 - Python files parse cleanly but have no production wiring (no Postgres
   schema, no Kafka topic config, no OTel collector running).
-- React UI is incomplete — `GovernancePanel.jsx` is truncated and the
-  `CostPanel` / `IncidentPanel` files referenced in `App.jsx` were
-  never shown in source.
+- React UI source was reconstructed where the paste was incomplete; it now builds, uses `VITE_API_BASE_URL`, supports bearer tokens from local storage, and aborts in-flight requests on unmount.
 
 ## Cross-reference with circuitRAG real services
 

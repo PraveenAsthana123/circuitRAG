@@ -14,57 +14,7 @@ classifies this work as **"Production MVP ⚠️ close · Enterprise-grade
 durability, SLOs"**. That self-assessment is accurate. This review
 adds the specific P0 rows that need closing before any deployment.
 
-**Two findings are immediate P0 security bugs.** They are flagged in
-the source files themselves and listed first below.
-
----
-
-## P0 SECURITY (Tool Set 35)
-
-### 1. JWT signing key falls back to literal `"change-me"`
-
-`identity/jwt_auth.py:32` reads:
-
-```python
-self.secret_key = os.getenv("JWT_SECRET_KEY", "change-me")
-```
-
-Impact: anyone reading this open-source code can forge tokens claiming
-any `roles`, `user_id`, `tenant_id` against any deployment where the
-env var is unset (a common dev / staging misconfiguration).
-
-Fix: remove the default. Refuse to start if env unset:
-
-```python
-self.secret_key = os.environ["JWT_SECRET_KEY"]  # raises KeyError if absent
-if self.secret_key == "change-me" or len(self.secret_key) < 32:
-    raise RuntimeError("JWT_SECRET_KEY must be a real secret")
-```
-
-Or better: switch to RS256/EdDSA with a JWKS endpoint so verifiers
-don't hold the signing key at all.
-
-### 2. `/auth/token` endpoint accepts arbitrary roles from the client
-
-`identity/auth_route_example.py` (Tool Set 35 §7) defines:
-
-```python
-@router.post("/token")
-def create_token(request: LoginRequest):
-    token = auth.create_token({
-        "user_id": request.user_id,
-        "tenant_id": request.tenant_id,
-        "roles": request.roles
-    })
-```
-
-Impact: a caller POSTs `{"user_id": "anyone", "tenant_id": "any",
-"roles": ["admin"]}` and gets a valid admin token. No password check,
-no MFA, no rate limit, no audit row, no lookup against `UserStore` or
-`RoleAssignment`.
-
-Fix: see the file header — authenticate first, look up server-side,
-never trust client-claimed roles.
+**Previously identified Tool Set 35 P0 security bugs are fixed in code and covered by negative drills.** `JWTAuth` now refuses unset, weak, or default secrets, and `/auth/token` now authenticates credentials and derives tenant/roles server-side. Remaining identity gaps are listed below.
 
 ---
 
@@ -88,26 +38,14 @@ never trust client-claimed roles.
 | **No fairness metrics** (CLAUDE.md §48.8) — no group-level performance, no disparate-impact check | **P0** | Per-group accuracy + disparate-impact ratio; weekly drift check |
 | **No decision-audit-row persistence** (CLAUDE.md §48.4) — the engine just `return`s a dict; nothing is stored, nothing survives restart | **P0** | Append-only Postgres `decision_audits` table with the §48.4 schema |
 | `ReasoningTrace.steps` is a single shared in-memory list across ALL trace_ids — multi-tenant leak risk if Tenant A's trace contains identifiers visible during Tenant B's listing | **P0** | Per-tenant store + tenant filter on `get_trace`; better: Postgres-backed with tenant_id column + RLS |
-| `ConfidenceReport.generate()` recommends `"release"` when `confidence_score >= 0.8` — **ignores** `responsible_ai_passed` and `governance_passed` ⚠️ governance-bypass possible | **P0** | Recommendation must require ALL: confidence >= 0.8 AND responsible_ai_passed AND governance_passed AND evaluation_passed |
 | Confidence thresholds (0.85 high / 0.65 medium / 0.8 release) are magic numbers with no calibration history | **P1** | Calibrate against historical human-judgment data; document per-domain thresholds |
-| `ReasoningTrace.get_trace()` is O(n) over the whole list | **P2** | Index by trace_id; or DB query |
 | `ExplainabilityEngine` constructs all 4 dependencies in `__init__` — not injectable, hard to mock | **P2** | DI per CLAUDE.md §3 |
-| `DecisionPath.build()` returns `"unknown"` if `decisions` is empty — silently OK when it should be an error (empty decision path means audit chain broken) | **P1** | Raise; empty decision path is a contract violation |
-| `datetime.utcnow()` deprecated in Python 3.12+ | **P3** | Use `datetime.now(timezone.utc)` |
-| Test asserts every field is `"approve"` / `"high"` / `"release"` — only happy path, no rejection / low-confidence / governance-fail drill | **P0** | Per CLAUDE.md §43, ≥3 negative drills: low confidence → recommend "review"; governance_passed=False but confidence>0.8 → recommend NOT "release" (catches the bug above); missing decisions → error not "unknown" |
-| No drill | **P0** | Per §43 with the negatives above |
 
 ### Tool Set 31 — React UI
 
 | Gap | Severity | Fix |
 |---|---|---|
-| `GovernancePanel.jsx` truncated in source | n/a | User provides remainder |
-| `CostPanel.jsx` + `IncidentPanel.jsx` imported but never shown | n/a | User provides source |
-| `package.json` / `vite.config.js` / `index.html` / `main.jsx` not shown | n/a | Scaffold created from minimal defaults |
 | Every component lacks loading/error/empty states beyond a single `<p>` | **P1** | Add skeletons + ErrorBoundary per CLAUDE.md §14 |
-| Raw `fetch` without `AbortController` (memory leak on unmount during in-flight request) | **P1** | `AbortController` + cleanup; see CLAUDE.md §31.2 mandatory pattern |
-| No auth header — incompatible with Tool Set 35's protected routes | **P0** | Pull token from store, attach `Authorization: Bearer <token>` |
-| Hardcoded `http://localhost:8000` | **P1** | `import.meta.env.VITE_API_BASE_URL` per CLAUDE.md §14.2 |
 | `.jsx` not `.tsx` | **P2** | Migrate to TS for compile-time type checks |
 | No a11y review (no ARIA, no heading hierarchy check) | **P2** | WCAG 2.1 AA per CLAUDE.md §14 |
 | No tests | **P1** | Vitest + RTL per CLAUDE.md §14 |
@@ -135,7 +73,6 @@ than replaces it.
 | Gap | Severity | Fix |
 |---|---|---|
 | `OpenAIClient.chat()` — no retry, no timeout, no circuit breaker | **P1** | Wrap with retry+timeout+CB per Component 7 pattern in `../openclaw-components/07-resilience/` |
-| `QdrantVectorClient.search()` — `filters` argument accepted but never passed to `self.client.search()` (silent ignore) | **P0** | Pass `query_filter=Filter(...)` or remove the parameter |
 | `PostgresClient` — single connection, no pool, no `with` context, no transaction boundaries | **P0** | Use `psycopg_pool` or `asyncpg` pool; explicit `BEGIN`/`COMMIT` |
 | `PostgresClient.query()` `params: tuple = ()` — empty tuple as default arg is fine but the SQL-with-no-params idiom invites string concatenation | **P1** | Document that callers MUST use `%s` placeholders and never f-string |
 | `RedisClient` — `decode_responses=True` everywhere; binary values (embeddings, images) will break | **P2** | Two clients: one binary, one text |
@@ -157,14 +94,12 @@ than replaces it.
 | `RoleAssignment.assign_role` allows duplicate-tolerant insert but no revocation | **P1** | Add `revoke_role`; track grant timestamp + grantor |
 | `require_role` checks JWT claim, not DB — role revocation requires waiting for expiry | **P1** | Server-side role check OR short token TTL + DB-backed denylist |
 | No tenant binding check (admin in tenant A could call admin in tenant B if `tenant_id` is bag-of-claims) | **P0** | Verify `claims["tenant_id"]` matches path/body tenant_id |
-| `PermissionError` raised inside `verify_token` then caught in dependency — confusing exception type | **P3** | Define `class TokenInvalidError(Exception)` |
 | No CSRF protection if these tokens are stored in cookies | **P1** | Document: tokens must be in Authorization header, never cookies |
 
 ### Tool Set 36 — Audit (hash-chain)
 
 | Gap | Severity | Fix |
 |---|---|---|
-| Class named `ImmutableAuditStore` but `self.records` is a mutable list — caller can edit + chain breaks silently | **P0** | Real Postgres table with INSERT-only role per source's own §5 note |
 | `previous_hash` field is stored but `verify()` re-computes from scratch — informational only | **P3** | Either remove the field or document its purpose |
 | No periodic merkle-root publication to external transparency log | **P1** | Per quarter, publish root hash to a public ledger (or notarize via TSA RFC 3161) |
 | `verify()` returns at first failure — doesn't tell you how many records are affected | **P2** | Continue + collect all failures |
@@ -193,10 +128,7 @@ than replaces it.
 | No connection to Prometheus / metric source — pure evaluator on already-collected values | **P0** | Add `PrometheusClient.query_range` + window-aware computation |
 | `ErrorBudget.calculate()` uses a single 1.0% allowance without burn-rate alerts | **P1** | Multi-window multi-burn-rate alerts (e.g., 14d window / 2% burn) |
 | `cost_per_request` SLO target `0.02` is hardcoded; should be per-tenant + per-model | **P2** | Config-driven per-tenant budgets |
-| `SLOReport.generate()` `created_at` uses `datetime.utcnow()` (deprecated in Python 3.12+ → `datetime.now(UTC)`) | **P3** | Switch to `datetime.now(timezone.utc)` |
 | `AlertRules.evaluate` returns alerts but no routing (Slack, PagerDuty, email) | **P1** | Integrate with notification service |
-| No "warning" threshold (e.g., 80% of SLO consumed) — only fires when fully violated | **P1** | Tiered alerts: info / warning / critical |
-| Test `test_slo.py` has only ONE assertion path (all-pass) — no negative drill | **P1** | Add: SLO violation triggers alert; budget exhaustion triggers critical |
 
 ### Tool Set 39 — Runbooks
 

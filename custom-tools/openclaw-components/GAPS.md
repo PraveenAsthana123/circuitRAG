@@ -21,11 +21,7 @@ strength. Examples:
   per-process in-memory. Two replicas = two session universes. First pod
   restart = total session loss.
 - `Function("use strict"; return (...))()` in `calculator-tool.ts` is a
-  **dynamic-code-execution sink**. Risk-level claimed "low" is wrong —
-  it is a remote-code-execution surface against ANY caller that controls
-  the expression. The regex allowlist permits patterns that, combined
-  with longer attack vectors, are not guaranteed safe under all Node
-  engines. P0.
+  previously used dynamic code execution in `calculator-tool.ts`; this has been replaced with a small arithmetic parser and negative tests.
 
 ## Per-component gaps
 
@@ -52,7 +48,6 @@ strength. Examples:
 | `model-client.ts` listed in folder layout but **not provided** in source | **n/a** | Bridge to Component 8's `LLMRouter` is the natural mapping |
 | No tool registry, no memory, no guardrails, no tracing wired in | **P0** | Constructor-inject Components 3-6 dependencies; thread `traceId` through every call |
 | No max-iteration / step-budget guard | **P0** | LLM-driven planners loop. Without a cap, a buggy plan can burn unbounded tokens. |
-| `crypto.randomUUID()` uses the global — fine on Node 19+; documents the floor | **P3** | Pin Node ≥ 19 in `package.json` `engines` |
 | No test file in source paste | **n/a** | Drill per §43 — at minimum: happy path + budget exhausted + tool-step routed to dispatcher + failed-step error propagation |
 | No drill | **P0** | Per §43, with the 3+ negative assertions above |
 
@@ -75,13 +70,10 @@ strength. Examples:
 
 | Gap | Severity | Fix |
 |---|---|---|
-| `calculatorTool` uses dynamic code execution — **arbitrary code injection** | **P0** | Replace with a real expression parser (`mathjs` with restricted scope) |
 | Registry is per-process; no shared state across replicas | **P1** | Tool catalog from config + signature pinning per CLAUDE.md §50 catalog pattern |
-| `allowedRoles` field exists but is never checked in `dispatch` | **P0** | Enforce `allowedRoles ∩ context.actor.roles ≠ ∅` before execute |
 | Responsible-AI guard is a substring matcher | **P1** | Use a real classifier (Llama Guard / Bedrock Guardrails) OR document the substring approach as detection-only, not enforcement |
 | No idempotency key on `dispatch` | **P1** | `Idempotency-Key` header → cache by `(toolName, key)` for duplicates |
 | Telemetry is `console.log` | **P1** | Real OTel `tracer.startActiveSpan()` with carrier injection |
-| No drill | **P0** | Per §43 — happy path + 3 negatives (blocked pattern, missing tool, code-injection attempt) |
 
 ### Component 4 — Memory Governance
 
