@@ -1,24 +1,25 @@
+import { randomUUID } from "crypto";
 import { WorkflowContext, WorkflowState, WorkflowStep } from "./types";
 
 export class WorkflowPlanner {
   createPlan(context: WorkflowContext, userGoal: string): WorkflowState {
     const steps: WorkflowStep[] = [
       {
-        stepId: crypto.randomUUID(),
+        stepId: randomUUID(),
         name: "understand_goal",
         goal: "Analyze the user request and identify outcome",
         requiresApproval: false,
         status: "pending",
       },
       {
-        stepId: crypto.randomUUID(),
+        stepId: randomUUID(),
         name: "select_tools",
         goal: "Identify tools required to complete task",
         requiresApproval: false,
         status: "pending",
       },
       {
-        stepId: crypto.randomUUID(),
+        stepId: randomUUID(),
         name: "execute_task",
         goal: userGoal,
         requiredTool: "tool_dispatcher",
@@ -26,7 +27,7 @@ export class WorkflowPlanner {
         status: "pending",
       },
       {
-        stepId: crypto.randomUUID(),
+        stepId: randomUUID(),
         name: "quality_review",
         goal: "Validate output quality, safety, and traceability",
         requiredTool: "quality_scorer",

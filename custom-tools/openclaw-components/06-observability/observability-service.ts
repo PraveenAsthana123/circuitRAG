@@ -18,7 +18,7 @@ export class ObservabilityService {
     context: ObservabilityContext,
     operation: () => Promise<T>
   ): Promise<T> {
-    const span = this.tracer.startSpan(spanName, context);
+    const span = this.tracer.startSpan(spanName, { ...context });
 
     const start = Date.now();
 

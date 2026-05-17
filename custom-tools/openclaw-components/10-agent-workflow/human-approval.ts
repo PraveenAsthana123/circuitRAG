@@ -1,8 +1,9 @@
+import { randomUUID } from "crypto";
 import { WorkflowContext, WorkflowStep } from "./types";
 
 export class HumanApprovalGate {
   requestApproval(context: WorkflowContext, step: WorkflowStep): string {
-    const approvalId = crypto.randomUUID();
+    const approvalId = randomUUID();
 
     console.log(JSON.stringify({
       type: "human_approval_required",

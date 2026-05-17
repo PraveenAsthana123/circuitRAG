@@ -1,9 +1,10 @@
+import { randomUUID } from "crypto";
 import { WorkflowState } from "./types";
 
 export class Replanner {
   replan(state: WorkflowState, failureReason: string): WorkflowState {
     const recoveryStep = {
-      stepId: crypto.randomUUID(),
+      stepId: randomUUID(),
       name: "recovery_step",
       goal: `Recover from failure: ${failureReason}`,
       requiredTool: "fallback_handler",

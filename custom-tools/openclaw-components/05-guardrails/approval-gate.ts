@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { GuardrailResult } from "./types";
 
 export class ApprovalGate {
@@ -6,7 +7,7 @@ export class ApprovalGate {
   }
 
   createApprovalTicket(result: GuardrailResult): string {
-    const ticketId = crypto.randomUUID();
+    const ticketId = randomUUID();
 
     console.log(JSON.stringify({
       type: "approval_ticket",
