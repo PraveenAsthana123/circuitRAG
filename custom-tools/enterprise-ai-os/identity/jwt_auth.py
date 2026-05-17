@@ -12,14 +12,22 @@
 #
 #     Negative drill: tests/test_jwt_claims_validation.py
 #
+# ✅ P1 FIXED (Iter 23, 2026-05-17): token revocation via jti
+#     blacklist. Tokens now carry a `jti` (UUID) claim; verify_token
+#     checks the revocation list and rejects revoked tokens. Default
+#     revocation list is in-memory; production should inject a
+#     Redis-backed implementation (same is_revoked/revoke surface).
+#
 # ⚠️ STILL REQUIRED before real deployment (see GAPS.md Tool Set 35):
 #     - Move to RS256 / EdDSA with a JWKS endpoint (HS256 is symmetric)
-#     - Implement token revocation (blacklist / jti cache backed by Redis)
 
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 from jose import jwt, JWTError
+
+from identity.token_revocation import TokenRevocationList
 
 
 _INSECURE_SECRETS = {"change-me", "changeme", "secret", "password", ""}
@@ -31,7 +39,12 @@ class TokenInvalidError(Exception):
 
 
 class JWTAuth:
-    def __init__(self):
+    def __init__(self, revocation_list: Optional[TokenRevocationList] = None):
+        # Iter 23: optional revocation list injection. If omitted,
+        # uses a fresh in-memory instance. Production: inject a
+        # Redis-backed implementation.
+        self.revocation_list = revocation_list or TokenRevocationList()
+
         secret = os.getenv("JWT_SECRET_KEY")
 
         if secret is None:
@@ -71,6 +84,10 @@ class JWTAuth:
         claims["iat"] = now
         claims["nbf"] = now
         claims["exp"] = now + timedelta(minutes=self.expire_minutes)
+        # Iter 23: jti for revocation. Caller may override (e.g.,
+        # binding the token to a session_id); default is a fresh UUID.
+        if "jti" not in claims:
+            claims["jti"] = str(uuid.uuid4())
         if self.issuer is not None:
             claims["iss"] = self.issuer
         if self.audience is not None:
@@ -105,6 +122,28 @@ class JWTAuth:
             decode_kwargs["options"]["require_aud"] = True
 
         try:
-            return jwt.decode(token, self.secret_key, **decode_kwargs)
+            claims = jwt.decode(token, self.secret_key, **decode_kwargs)
         except JWTError as exc:
             raise TokenInvalidError(f"Invalid or expired token: {exc}") from exc
+
+        # Iter 23: revocation check AFTER signature + temporal claims
+        # pass — keeps the revocation list from being consulted on
+        # garbage input.
+        if self.revocation_list.is_revoked(claims.get("jti")):
+            raise TokenInvalidError("Token has been revoked")
+
+        return claims
+
+    def revoke_token(self, token: str) -> None:
+        """Add this token's jti to the revocation list. Useful for
+        logout endpoints. Verifies the token first so a malformed
+        token can't pollute the blacklist."""
+        claims = self.verify_token(token)
+        jti = claims.get("jti")
+        exp = claims.get("exp")
+        if not jti or not exp:
+            raise TokenInvalidError(
+                "Token lacks jti/exp; cannot revoke"
+            )
+        # exp is an epoch seconds int after jose decode
+        self.revocation_list.revoke(jti, float(exp))
