@@ -1,6 +1,7 @@
 # Test script from Tool Set 11 §6 — reformatted as a runnable pytest
 
 import sys
+import pytest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -59,6 +60,22 @@ def test_explainability_engine_assembles_report():
     assert result["confidence_report"]["recommendation"] == "release"
     assert result["decision_path"]["final_decision"] == "approve"
     assert len(result["reasoning_steps"]) == 2
+
+
+def test_explainability_engine_rejects_empty_decision_path():
+    engine = ExplainabilityEngine()
+
+    with pytest.raises(ValueError, match="Decision path requires"):
+        engine.explain(
+            trace_id="trace_empty",
+            answer="answer",
+            sources=[],
+            confidence_score=0.87,
+            evaluation_result={"quality_gate": {"passed": True}},
+            responsible_ai_result={"overall_passed": True},
+            governance_result={"policy_passed": True},
+            decisions=[]
+        )
 
 
 if __name__ == "__main__":

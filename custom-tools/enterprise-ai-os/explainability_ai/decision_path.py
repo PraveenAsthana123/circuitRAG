@@ -7,6 +7,9 @@ class DecisionPath:
         decisions: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
 
+        if not decisions:
+            raise ValueError("Decision path requires at least one decision")
+
         return {
             "path": [
                 {
@@ -17,5 +20,5 @@ class DecisionPath:
                 }
                 for index, decision in enumerate(decisions)
             ],
-            "final_decision": decisions[-1].get("decision") if decisions else "unknown"
+            "final_decision": decisions[-1].get("decision")
         }

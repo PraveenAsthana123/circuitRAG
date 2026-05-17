@@ -1,4 +1,5 @@
-from datetime import datetime
+from copy import deepcopy
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 import uuid
 
@@ -6,6 +7,7 @@ import uuid
 class ReasoningTrace:
     def __init__(self):
         self.steps: List[Dict[str, Any]] = []
+        self._steps_by_trace: Dict[str, List[Dict[str, Any]]] = {}
 
     def add_step(
         self,
@@ -25,14 +27,12 @@ class ReasoningTrace:
             "reason": reason,
             "input_summary": input_summary,
             "output_summary": output_summary,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         self.steps.append(step)
-        return step
+        self._steps_by_trace.setdefault(trace_id, []).append(step)
+        return deepcopy(step)
 
     def get_trace(self, trace_id: str) -> List[Dict[str, Any]]:
-        return [
-            step for step in self.steps
-            if step["trace_id"] == trace_id
-        ]
+        return deepcopy(self._steps_by_trace.get(trace_id, []))

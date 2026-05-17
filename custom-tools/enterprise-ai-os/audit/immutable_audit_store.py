@@ -1,8 +1,6 @@
 # ⚠️ NOT IMMUTABLE AT RUNTIME — the class name oversells.
-#     `self.records` is a plain Python list. Anyone with a reference
-#     to the store can do `store.records[0]["current_hash"] = "X"`
-#     and the chain breaks silently (until `verify_integrity()` is
-#     called). True immutability requires:
+#     `self._records` is process-local memory. Public accessors return
+#     defensive copies, but true immutability still requires durable storage. True immutability requires:
 #       1. A backing store that enforces insert-only at the DB layer
 #          (Postgres role with INSERT but no UPDATE/DELETE/TRUNCATE)
 #       2. WORM storage for cold archives (S3 Object Lock / Glacier
@@ -13,7 +11,8 @@
 #     The source's own Tool Set 36 §5 "Production Note" acknowledges
 #     this — see GAPS.md Tool Set 36 for the P0 list.
 
-from datetime import datetime
+from datetime import datetime, timezone
+from copy import deepcopy
 from typing import Dict, Any, List
 import uuid
 
@@ -22,7 +21,7 @@ from audit.hash_chain import HashChain
 
 class ImmutableAuditStore:
     def __init__(self):
-        self.records: List[Dict[str, Any]] = []
+        self._records: List[Dict[str, Any]] = []
         self.hash_chain = HashChain()
 
     def append(
@@ -34,8 +33,8 @@ class ImmutableAuditStore:
     ) -> Dict[str, Any]:
 
         previous_hash = (
-            self.records[-1]["current_hash"]
-            if self.records
+            self._records[-1]["current_hash"]
+            if self._records
             else "GENESIS"
         )
 
@@ -44,7 +43,7 @@ class ImmutableAuditStore:
             "actor": actor,
             "event_type": event_type,
             "payload": payload,
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
 
         current_hash = self.hash_chain.calculate_hash(
@@ -59,17 +58,17 @@ class ImmutableAuditStore:
             "payload": audit_payload
         }
 
-        self.records.append(record)
-        return record
+        self._records.append(record)
+        return deepcopy(record)
 
     def list_records(self) -> List[Dict[str, Any]]:
-        return self.records
+        return deepcopy(self._records)
 
     def search_by_trace(self, trace_id: str) -> List[Dict[str, Any]]:
-        return [
-            record for record in self.records
+        return deepcopy([
+            record for record in self._records
             if record["payload"]["trace_id"] == trace_id
-        ]
+        ])
 
     def verify_integrity(self) -> Dict[str, Any]:
-        return self.hash_chain.verify(self.records)
+        return self.hash_chain.verify(self._records)

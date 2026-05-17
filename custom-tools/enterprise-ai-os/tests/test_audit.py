@@ -42,6 +42,23 @@ def test_hash_chain_round_trip():
     assert "trace_001" in exported
 
 
+def test_list_records_returns_defensive_copies():
+    store = ImmutableAuditStore()
+    record = store.append(
+        trace_id="trace_copy",
+        actor="runtime",
+        event_type="session_started",
+        payload={"session_id": "session_001"}
+    )
+
+    record["payload"]["trace_id"] = "tampered"
+    listed = store.list_records()
+    listed[0]["payload"]["trace_id"] = "tampered_again"
+
+    assert store.search_by_trace("trace_copy")[0]["payload"]["trace_id"] == "trace_copy"
+    assert store.verify_integrity()["valid"] is True
+
+
 if __name__ == "__main__":
     test_hash_chain_round_trip()
     print("OK")
