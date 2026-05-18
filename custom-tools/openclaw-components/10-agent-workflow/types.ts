@@ -40,6 +40,40 @@ export interface WorkflowStep {
   output?: unknown;
   /** UTF-8 JSON byte size of output when it was accepted. */
   outputSizeBytes?: number;
+  /** Iter 57 (2026-05-17): last error envelope from this step's most
+   *  recent failed attempt. Set on every retry AND on the
+   *  permanent-failure path so the audit row + downstream replan can
+   *  see what went wrong. Cleared to undefined when the step
+   *  eventually succeeds, so a leftover error from an earlier retry
+   *  cannot be misread as the cause of the final state. */
+  lastError?: StepErrorEnvelope;
+}
+
+/**
+ * Iter 57 (2026-05-17): structured error info captured when a step
+ * throws. Distinct from the raw Error object because:
+ *   - Persisted across structuredClone (Error instances would
+ *     lose their prototype chain).
+ *   - Carries `retryable: boolean` so an audit consumer doesn't have
+ *     to re-parse `name === "RetryableError"`.
+ *   - Stack is optional — some platforms / production builds strip
+ *     stack info, and we don't want the engine to crash on absence.
+ */
+export interface StepErrorEnvelope {
+  /** Error class name, e.g. "RetryableError" or "TypeError". */
+  name: string;
+  /** Human-readable error message. NEVER include secrets here —
+   *  the engine does not redact. The tool implementation is
+   *  responsible for not embedding sensitive values in error
+   *  messages. */
+  message: string;
+  /** JS engine stack trace if available. Optional. */
+  stack?: string;
+  /** True if the error was a RetryableError (transient class).
+   *  False for any other thrown value. */
+  retryable: boolean;
+  /** ISO-8601 timestamp the engine captured the error. */
+  timestamp: string;
 }
 
 /**

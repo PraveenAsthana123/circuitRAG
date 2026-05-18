@@ -4,7 +4,13 @@ import { ToolSelector } from "./tool-selector";
 import { HumanApprovalGate } from "./human-approval";
 import { WorkflowStateStore } from "./workflow-state-store";
 import { RollbackManager } from "./rollback-manager";
-import { WorkflowContext, WorkflowState, WorkflowStep, RetryableError } from "./types";
+import {
+  WorkflowContext,
+  WorkflowState,
+  WorkflowStep,
+  RetryableError,
+  StepErrorEnvelope,
+} from "./types";
 
 const cloneSteps = (steps: WorkflowStep[]): WorkflowStep[] =>
   steps.map((step) => ({ ...step }));
@@ -149,6 +155,10 @@ export class AgentWorkflowEngine {
       // values fail the step before they enter persisted workflow state.
       step.output = result;
       step.outputSizeBytes = outputSizeBytes;
+      // Iter 57: success path clears any stale error from a prior
+      // retried attempt — the final state of the step is "completed
+      // with no error", not "completed with a leftover error".
+      step.lastError = undefined;
 
       const nextState = {
         ...state,
@@ -174,6 +184,11 @@ export class AgentWorkflowEngine {
         // failed-and-retried sibling's leftover data.
         step.output = undefined;
         step.outputSizeBytes = undefined;
+        // Iter 57: capture the error envelope so audit / debugging /
+        // operator UI can see WHY the retry happened. Overwritten on
+        // every retry attempt, cleared on success, preserved through
+        // replan on the permanent path.
+        step.lastError = this.toErrorEnvelope(error, true);
         const retryState = {
           ...state,
           steps: cloneSteps(state.steps),
@@ -200,6 +215,11 @@ export class AgentWorkflowEngine {
       // Iter 55: a failed step has no valid output.
       step.output = undefined;
       step.outputSizeBytes = undefined;
+      // Iter 57: attach error envelope BEFORE replan so the
+      // replanner's `{...failedStep, status: "failed"}` copy carries
+      // it through to the final state. Operator UI sees lastError
+      // on the failed step even after the recovery step has run.
+      step.lastError = this.toErrorEnvelope(error, isRetryable);
       const replanned = this.replanner.replan(
         {
           ...state,
@@ -241,6 +261,29 @@ export class AgentWorkflowEngine {
 
   private maxStepOutputBytes(): number {
     return this.options.maxStepOutputBytes ?? DEFAULT_MAX_STEP_OUTPUT_BYTES;
+  }
+
+  // Iter 57: normalize anything thrown into the persisted error
+  // envelope. Non-Error throws ("string", numbers, undefined) are
+  // common in JS — the catch block must NOT crash when stack/message
+  // are absent.
+  private toErrorEnvelope(thrown: unknown, retryable: boolean): StepErrorEnvelope {
+    const now = new Date().toISOString();
+    if (thrown instanceof Error) {
+      return {
+        name: thrown.name,
+        message: thrown.message,
+        stack: thrown.stack,
+        retryable,
+        timestamp: now,
+      };
+    }
+    return {
+      name: "NonError",
+      message: typeof thrown === "string" ? thrown : JSON.stringify(thrown ?? null),
+      retryable,
+      timestamp: now,
+    };
   }
 
   private measureOutputBytes(output: unknown): number {
