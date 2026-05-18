@@ -16,7 +16,61 @@ import { Telemetry } from "./telemetry";
 import { ResponsibleAIGuard } from "./responsible-ai-guard";
 import { ExplainabilityRecorder } from "./explainability-recorder";
 import { IdempotencyCache } from "./idempotency-cache";
-import { ToolRequest, ToolResult } from "./types";
+import { ToolRequest, ToolResult, ToolErrorMeta } from "./types";
+
+/**
+ * Iter M1.1 (2026-05-18): redact host filesystem paths from a stack
+ * trace before persisting (defense-in-depth — even if a tool's
+ * thrown error leaks an absolute path, the dispatcher scrubs it
+ * before the dispatcher result is surfaced to the workflow engine
+ * or audit log). Mirrors iter 59's engine-level redactor; inlined
+ * here to keep the dispatcher independent of the workflow engine.
+ */
+function redactStackPaths(stack: string | undefined): string | undefined {
+  if (stack === undefined) return undefined;
+  return stack.split("\n").map((line) => {
+    if (line.includes("(node:") || /\bat\s+node:/.test(line)) return line;
+    let redacted = line.replace(
+      /\(((?:file:\/\/\/?)?[^()]+?)(:\d+:\d+)\)/g,
+      "([redacted]$2)",
+    );
+    redacted = redacted.replace(
+      /(\s+at\s+)((?:file:\/\/\/?)?(?:\/|[A-Za-z]:[\\/])[^\s()]+?)(:\d+:\d+)\s*$/,
+      "$1[redacted]$3",
+    );
+    return redacted;
+  }).join("\n");
+}
+
+/**
+ * Iter M1.1: build a structured ToolErrorMeta from anything thrown.
+ * Captures one level of `Error.cause` (a standard ES2022 chain) so
+ * the workflow audit envelope can reconstruct "tool wrapped HTTP
+ * error" without unbounded depth. Non-Error throws produce a
+ * NonError envelope rather than crashing.
+ */
+function buildErrorMeta(thrown: unknown): ToolErrorMeta {
+  if (thrown instanceof Error) {
+    const meta: ToolErrorMeta = {
+      name: thrown.name,
+      message: thrown.message,
+      stack: redactStackPaths(thrown.stack),
+    };
+    const cause = (thrown as { cause?: unknown }).cause;
+    if (cause instanceof Error) {
+      meta.cause = {
+        name: cause.name,
+        message: cause.message,
+        stack: redactStackPaths(cause.stack),
+      };
+    }
+    return meta;
+  }
+  return {
+    name: "NonError",
+    message: typeof thrown === "string" ? thrown : JSON.stringify(thrown ?? null),
+  };
+}
 
 export class ToolDispatcher {
   private readonly idempotency: IdempotencyCache;
@@ -38,6 +92,7 @@ export class ToolDispatcher {
       sessionId: request.context.sessionId,
       toolName: request.toolName,
       tenantId: request.context.tenantId,
+      traceId: request.context.traceId,
       idempotent: Boolean(request.idempotencyKey),
     });
 
@@ -95,9 +150,16 @@ export class ToolDispatcher {
 
       return result;
     } catch (error) {
+      // Iter M1.1 (2026-05-18): preserve structured error metadata
+      // (name, stack, cause chain) so workflow engine's catch block
+      // (iter 57 toErrorEnvelope) can persist the full forensic
+      // trail in StepErrorEnvelope. Pre-fix, only `error.message`
+      // survived, so the audit log knew "something failed" but not
+      // WHAT class, WHERE in the stack, or WHAT caused it.
       const result: ToolResult = {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
+        errorMeta: buildErrorMeta(error),
         durationMs: Date.now() - start,
       };
 

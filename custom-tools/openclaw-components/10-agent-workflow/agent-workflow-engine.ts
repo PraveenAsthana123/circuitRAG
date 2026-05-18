@@ -4,12 +4,16 @@ import { ToolSelector } from "./tool-selector";
 import { HumanApprovalGate } from "./human-approval";
 import { WorkflowStateStore } from "./workflow-state-store";
 import { RollbackManager } from "./rollback-manager";
+import { ToolDispatcher } from "../03-tooling/tool-dispatcher";
+import { ToolRequest, ToolErrorMeta } from "../03-tooling/types";
+import { WorkflowMonitor } from "./workflow-monitor";
 import {
   WorkflowContext,
   WorkflowState,
   WorkflowStep,
   RetryableError,
   StepErrorEnvelope,
+  StepErrorCauseEnvelope,
   ReplanHistoryEntry,
 } from "./types";
 
@@ -130,6 +134,16 @@ const DEFAULT_MAX_ATTEMPTS_PER_WINDOW = 60;
 const DEFAULT_ATTEMPT_WINDOW_MS = 60_000;
 
 export interface AgentWorkflowEngineOptions {
+  /** Real tool execution path. When supplied, runNext() dispatches
+   *  selected workflow steps through Component 3 ToolDispatcher
+   *  instead of the legacy simulateToolExecution hook. */
+  toolDispatcher?: ToolDispatcher;
+  /** Production guard: refuse construction unless toolDispatcher is
+   *  supplied. Keeps local tests able to subclass simulateToolExecution
+   *  while making production config fail closed. */
+  requireRealToolDispatcher?: boolean;
+  /** Optional monitoring/tracing adapter for workflow metrics and spans. */
+  monitor?: WorkflowMonitor;
   /** Iter 56: cap persisted per-step output to defend in-memory state. */
   maxStepOutputBytes?: number;
   /** Iter 58: cap recovery-step replan depth per workflow. When the
@@ -209,6 +223,50 @@ export class WorkflowRateLimitedError extends Error {
 }
 
 /**
+ * Iter M1.1 (2026-05-18): synthetic Error wrapper that turns a
+ * ToolErrorMeta into an Error.cause chain that toErrorEnvelope's
+ * existing recursive traversal already handles. Pre-fix the engine
+ * threw `new Error(result.error)` which lost class + stack + cause
+ * because ToolResult only carried a string `error` field. Iter M1.1
+ * added ToolResult.errorMeta and this class is the bridge from that
+ * meta into the StepErrorEnvelope.cause field already wired by
+ * toCauseEnvelope.
+ */
+class SyntheticToolCause extends Error {
+  constructor(meta: ToolErrorMeta) {
+    super(meta.message);
+    this.name = meta.name;
+    if (meta.stack !== undefined) {
+      this.stack = meta.stack;
+    }
+    if (meta.cause !== undefined) {
+      // Recursively wrap nested causes. Bounded by JS engine + our
+      // own cause shape (1 level deep at the schema layer); deeper
+      // chains from real tools also serialize fine because each
+      // SyntheticToolCause is a real Error with .cause.
+      (this as Error & { cause?: Error }).cause = new SyntheticToolCause({
+        name: meta.cause.name,
+        message: meta.cause.message,
+        stack: meta.cause.stack,
+      });
+    }
+  }
+}
+
+export class ToolDispatchFailedError extends Error {
+  public readonly toolName: string;
+  constructor(toolName: string, message: string, meta?: ToolErrorMeta) {
+    super(message);
+    this.name = "ToolDispatchFailedError";
+    this.toolName = toolName;
+    if (meta !== undefined) {
+      // ES2022 cause chain — toCauseEnvelope walks this automatically.
+      (this as Error & { cause?: Error }).cause = new SyntheticToolCause(meta);
+    }
+  }
+}
+
+/**
  * Iter 55 (2026-05-17): read-only view of prior completed steps'
  * outputs, passed into simulateToolExecution so a step can chain
  * off upstream results (e.g. fetch-then-summarize). Stale outputs
@@ -241,6 +299,9 @@ export class AgentWorkflowEngine {
     private readonly options: AgentWorkflowEngineOptions = {},
   ) {
     this.rollbackManager = new RollbackManager(store);
+    if (this.options.requireRealToolDispatcher && !this.options.toolDispatcher) {
+      throw new Error("AgentWorkflowEngine requires a real ToolDispatcher in production mode");
+    }
     const maxBytes = this.maxStepOutputBytes();
     if (!Number.isFinite(maxBytes) || maxBytes < 0) {
       throw new Error("maxStepOutputBytes must be a non-negative finite number");
@@ -281,6 +342,7 @@ export class AgentWorkflowEngine {
       traceId: context.traceId,
       timestamp: new Date().toISOString(),
     }));
+    this.options.monitor?.workflowStarted(context, state.steps.length);
 
     return state;
   }
@@ -338,6 +400,12 @@ export class AgentWorkflowEngine {
     }
 
     const toolName = this.toolSelector.select(step);
+    const monitorStartedAt = Date.now();
+    const monitorSpan = this.options.monitor?.stepStarted(
+      state.context,
+      step,
+      toolName,
+    );
 
     // Iter 55: build the read-only output context for THIS step.
     // Only completed upstream steps contribute; retried steps with
@@ -366,7 +434,7 @@ export class AgentWorkflowEngine {
         status: "executing" as const,
       });
 
-      const result = await this.simulateToolExecution(toolName, outputContext, step);
+      const result = await this.executeSelectedTool(toolName, outputContext, step, state);
       const outputSizeBytes = this.measureOutputBytes(result);
       if (outputSizeBytes > this.maxStepOutputBytes()) {
         throw new StepOutputTooLargeError(outputSizeBytes, this.maxStepOutputBytes());
@@ -383,6 +451,14 @@ export class AgentWorkflowEngine {
       // retried attempt — the final state of the step is "completed
       // with no error", not "completed with a leftover error".
       step.lastError = undefined;
+      this.options.monitor?.stepSucceeded(
+        state.context,
+        step,
+        toolName,
+        Date.now() - monitorStartedAt,
+        outputSizeBytes,
+      );
+      monitorSpan?.end("ok", { outputSizeBytes });
 
       const nextState = {
         ...state,
@@ -401,6 +477,15 @@ export class AgentWorkflowEngine {
       const maxRetries = step.maxRetries ?? 0;
 
       if (isRetryable && currentRetries < maxRetries) {
+        this.options.monitor?.stepFailed(
+          state.context,
+          step,
+          toolName,
+          Date.now() - monitorStartedAt,
+          true,
+          "retry",
+        );
+        monitorSpan?.end("error", { outcome: "retry" });
         step.retryCount = currentRetries + 1;
         step.status = "pending"; // ready for the next runNext() call
         // Iter 55: a retried step has no valid output yet — clear any
@@ -455,6 +540,15 @@ export class AgentWorkflowEngine {
         (s) => s.name === RECOVERY_STEP_NAME,
       ).length;
       if (existingRecoveryCount >= this.maxRecoveryDepth()) {
+        this.options.monitor?.stepFailed(
+          state.context,
+          step,
+          toolName,
+          Date.now() - monitorStartedAt,
+          isRetryable,
+          "abandon",
+        );
+        monitorSpan?.end("error", { outcome: "abandon" });
         const giveUp = new RecoveryDepthExceededError(
           existingRecoveryCount,
           this.maxRecoveryDepth(),
@@ -505,6 +599,16 @@ export class AgentWorkflowEngine {
       // saved state. recoveryDepthAtTime captures the depth BEFORE
       // this replan adds a new recovery_step (i.e. how many recovery
       // attempts had ALREADY happened when this failure occurred).
+      this.options.monitor?.stepFailed(
+        state.context,
+        step,
+        toolName,
+        Date.now() - monitorStartedAt,
+        isRetryable,
+        "replan",
+      );
+      monitorSpan?.end("error", { outcome: "replan" });
+
       const replanEntry: ReplanHistoryEntry = {
         timestamp: new Date().toISOString(),
         failedStepId: step.stepId,
@@ -561,6 +665,72 @@ export class AgentWorkflowEngine {
     return undefined;
   }
 
+  private async executeSelectedTool(
+    toolName: string,
+    outputContext: StepOutputContext,
+    step: WorkflowStep,
+    state: WorkflowState,
+  ): Promise<unknown> {
+    if (!this.options.toolDispatcher) {
+      return this.simulateToolExecution(toolName, outputContext, step);
+    }
+
+    const result = await this.options.toolDispatcher.dispatch(
+      this.toToolRequest(toolName, step, state),
+    );
+    if (!result.success) {
+      // Iter M1.1 (2026-05-18): preserve the dispatcher's structured
+      // error metadata via Error.cause so toCauseEnvelope picks it up.
+      // Pre-fix: bare `new Error(result.error)` lost the class name,
+      // stack, and any underlying cause chain. Now a ToolDispatch-
+      // FailedError carries the dispatcher's ToolErrorMeta as a
+      // synthetic Error-like cause; toErrorEnvelope's existing
+      // recursive cause traversal flattens it into StepErrorEnvelope.
+      throw new ToolDispatchFailedError(
+        toolName,
+        result.error ?? `Tool dispatch failed: ${toolName}`,
+        result.errorMeta,
+      );
+    }
+    return result.output;
+  }
+
+  private toToolRequest(
+    toolName: string,
+    step: WorkflowStep,
+    state: WorkflowState,
+  ): ToolRequest {
+    return {
+      toolName,
+      input: {
+        workflowId: state.context.workflowId,
+        stepId: step.stepId,
+        stepName: step.name,
+        goal: step.goal,
+        previousOutputs: this.completedOutputsBeforeCurrentStep(state),
+      },
+      context: {
+        requestId: state.context.requestId,
+        sessionId: state.context.sessionId ?? state.context.workflowId,
+        userId: state.context.userId,
+        tenantId: state.context.tenantId,
+        traceId: state.context.traceId,
+        roles: state.context.roles,
+      },
+      idempotencyKey: `${state.context.workflowId}:${step.stepId}:${step.retryCount ?? 0}`,
+    };
+  }
+
+  private completedOutputsBeforeCurrentStep(state: WorkflowState): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const step of state.steps.slice(0, state.currentStepIndex)) {
+      if (step.status === "completed") {
+        out[step.name] = step.output;
+      }
+    }
+    return out;
+  }
+
   private maxStepOutputBytes(): number {
     return this.options.maxStepOutputBytes ?? DEFAULT_MAX_STEP_OUTPUT_BYTES;
   }
@@ -596,6 +766,7 @@ export class AgentWorkflowEngine {
           ? (redactSensitiveMessage(rawMessage) ?? rawMessage)
           : rawMessage,
         stack: this.shouldRedactStack() ? redactStackPaths(thrown.stack) : thrown.stack,
+        cause: this.toCauseEnvelope(thrown.cause),
         retryable,
         timestamp: now,
       };
@@ -609,6 +780,27 @@ export class AgentWorkflowEngine {
         : rawNonErrorMessage,
       retryable,
       timestamp: now,
+    };
+  }
+
+  private toCauseEnvelope(cause: unknown): StepErrorCauseEnvelope | undefined {
+    if (cause === undefined) return undefined;
+    if (cause instanceof Error) {
+      return {
+        name: cause.name,
+        message: this.shouldRedactMessage()
+          ? (redactSensitiveMessage(cause.message) ?? cause.message)
+          : cause.message,
+        stack: this.shouldRedactStack() ? redactStackPaths(cause.stack) : cause.stack,
+        cause: this.toCauseEnvelope(cause.cause),
+      };
+    }
+    const raw = typeof cause === "string" ? cause : JSON.stringify(cause ?? null);
+    return {
+      name: "NonError",
+      message: this.shouldRedactMessage()
+        ? (redactSensitiveMessage(raw) ?? raw)
+        : raw,
     };
   }
 
