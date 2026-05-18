@@ -13,11 +13,22 @@
 //     is mechanical.
 
 import { Sampler, AlwaysOnSampler } from "./sampler";
+import { TraceSink, ConsoleTraceSink } from "./sinks";
 
 export class Tracer {
+  private readonly sink: TraceSink;
   constructor(
     private readonly sampler: Sampler = new AlwaysOnSampler(),
-  ) {}
+    // Iter M2.1 (2026-05-18): pluggable sink — pre-fix the Tracer
+    // hardcoded console.log emission, blocking any test capture
+    // and any real OTel/Prometheus exporter integration.
+    // Default ConsoleTraceSink preserves backcompat behavior;
+    // InMemoryTraceSink lets drills capture without spy boilerplate;
+    // a future OTelSpanSink plugs in here unchanged.
+    sink?: TraceSink,
+  ) {
+    this.sink = sink ?? new ConsoleTraceSink();
+  }
 
   startSpan(name: string, attributes: Record<string, unknown>) {
     const startedAt = Date.now();
@@ -30,7 +41,7 @@ export class Tracer {
           (status === "error" && this.sampler.alwaysSampleOnError());
         if (!shouldEmit) return;
 
-        console.log(JSON.stringify({
+        this.sink.emit({
           type: "trace",
           spanName: name,
           status,
@@ -40,7 +51,7 @@ export class Tracer {
           sampled: sampledAtStart,
           sampledOnError: !sampledAtStart && status === "error",
           timestamp: new Date().toISOString(),
-        }));
+        });
       },
     };
   }
