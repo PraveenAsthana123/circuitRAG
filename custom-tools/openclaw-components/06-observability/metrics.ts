@@ -13,6 +13,8 @@
 //     Also new: validateLabels() rejects forbidden high-cardinality
 //     label names (userId, requestId, sessionId by default).
 
+import { MetricsSink, ConsoleMetricsSink } from "./sinks";
+
 const DEFAULT_MAX_SERIES_PER_METRIC = 1_000;
 const FORBIDDEN_HIGH_CARD_LABELS = new Set([
   "userId", "requestId", "sessionId", "traceId", "spanId",
@@ -36,10 +38,16 @@ export class MetricsRecorder {
   private readonly overflowLogged = new Set<string>();
   private readonly maxSeries: number;
   private readonly forbidden: Set<string>;
+  private readonly sink: MetricsSink;
 
-  constructor(config: MetricsRecorderConfig = {}) {
+  constructor(config: MetricsRecorderConfig = {}, sink?: MetricsSink) {
     this.maxSeries = config.maxSeriesPerMetric ?? DEFAULT_MAX_SERIES_PER_METRIC;
     this.forbidden = config.forbiddenLabels ?? FORBIDDEN_HIGH_CARD_LABELS;
+    // Iter M2.2 (2026-05-18): pluggable sink. Default ConsoleMetricsSink
+    // preserves backcompat; InMemoryMetricsSink lets drills capture
+    // without spy boilerplate; a future PrometheusSink plugs in
+    // unchanged. See sinks.ts.
+    this.sink = sink ?? new ConsoleMetricsSink();
   }
 
   counter(name: string, value: number, labels: Record<string, string>): void {
@@ -83,14 +91,14 @@ export class MetricsRecorder {
       }
     }
 
-    console.log(JSON.stringify({
+    this.sink.emit({
       type: "metric",
       metricType,
       name,
       value,
       labels: effectiveLabels,
       timestamp: new Date().toISOString(),
-    }));
+    });
   }
 
   private _stripForbidden(
