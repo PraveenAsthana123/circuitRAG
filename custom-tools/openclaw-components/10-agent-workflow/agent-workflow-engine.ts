@@ -9,6 +9,20 @@ import { WorkflowContext, WorkflowState, WorkflowStep, RetryableError } from "./
 const cloneSteps = (steps: WorkflowStep[]): WorkflowStep[] =>
   steps.map((step) => ({ ...step }));
 
+const DEFAULT_MAX_STEP_OUTPUT_BYTES = 64 * 1024;
+
+export interface AgentWorkflowEngineOptions {
+  /** Iter 56: cap persisted per-step output to defend in-memory state. */
+  maxStepOutputBytes?: number;
+}
+
+export class StepOutputTooLargeError extends Error {
+  constructor(sizeBytes: number, maxBytes: number) {
+    super(`Step output is ${sizeBytes} bytes; limit is ${maxBytes} bytes`);
+    this.name = "StepOutputTooLargeError";
+  }
+}
+
 /**
  * Iter 55 (2026-05-17): read-only view of prior completed steps'
  * outputs, passed into simulateToolExecution so a step can chain
@@ -33,9 +47,14 @@ export class AgentWorkflowEngine {
     private readonly replanner: Replanner,
     private readonly toolSelector: ToolSelector,
     private readonly approvalGate: HumanApprovalGate,
-    private readonly store: WorkflowStateStore
+    private readonly store: WorkflowStateStore,
+    private readonly options: AgentWorkflowEngineOptions = {},
   ) {
     this.rollbackManager = new RollbackManager(store);
+    const maxBytes = this.maxStepOutputBytes();
+    if (!Number.isFinite(maxBytes) || maxBytes < 0) {
+      throw new Error("maxStepOutputBytes must be a non-negative finite number");
+    }
   }
 
   start(context: WorkflowContext, userGoal: string): WorkflowState {
@@ -118,11 +137,18 @@ export class AgentWorkflowEngine {
       });
 
       const result = await this.simulateToolExecution(toolName, outputContext, step);
+      const outputSizeBytes = this.measureOutputBytes(result);
+      if (outputSizeBytes > this.maxStepOutputBytes()) {
+        throw new StepOutputTooLargeError(outputSizeBytes, this.maxStepOutputBytes());
+      }
 
       step.status = "completed";
       // Iter 55: persist the tool's return value so a downstream
       // step's outputContext.getByName(step.name) can read it.
+      // Iter 56: output was measured before assignment, so oversized
+      // values fail the step before they enter persisted workflow state.
       step.output = result;
+      step.outputSizeBytes = outputSizeBytes;
 
       const nextState = {
         ...state,
@@ -147,6 +173,7 @@ export class AgentWorkflowEngine {
         // stale value so the rerun's outputContext cannot read a
         // failed-and-retried sibling's leftover data.
         step.output = undefined;
+        step.outputSizeBytes = undefined;
         const retryState = {
           ...state,
           steps: cloneSteps(state.steps),
@@ -172,6 +199,7 @@ export class AgentWorkflowEngine {
       step.status = "failed";
       // Iter 55: a failed step has no valid output.
       step.output = undefined;
+      step.outputSizeBytes = undefined;
       const replanned = this.replanner.replan(
         {
           ...state,
@@ -209,6 +237,25 @@ export class AgentWorkflowEngine {
       throw new Error("No tool selected");
     }
     return undefined;
+  }
+
+  private maxStepOutputBytes(): number {
+    return this.options.maxStepOutputBytes ?? DEFAULT_MAX_STEP_OUTPUT_BYTES;
+  }
+
+  private measureOutputBytes(output: unknown): number {
+    if (output === undefined) return 0;
+
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(output);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      throw new Error(`Step output must be JSON-serializable: ${message}`);
+    }
+
+    if (serialized === undefined) return 0;
+    return Buffer.byteLength(serialized, "utf8");
   }
 
   // Iter 55: build the read-only output view passed to a tool. Only

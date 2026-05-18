@@ -32,8 +32,14 @@ export interface WorkflowStep {
    *  Downstream steps may reference upstream outputs through the
    *  StepOutputContext passed into simulateToolExecution. Cleared
    *  to undefined on retry so a stale value can't be re-read by a
-   *  later attempt. Set ONLY when status === "completed". */
+   *  later attempt. Set ONLY when status === "completed".
+   *
+   *  Iter 56: the engine refuses to persist outputs larger than its
+   *  maxStepOutputBytes setting, so this field cannot grow workflow
+   *  state without bound. */
   output?: unknown;
+  /** UTF-8 JSON byte size of output when it was accepted. */
+  outputSizeBytes?: number;
 }
 
 /**

@@ -33,10 +33,12 @@ class ScriptedEngine extends AgentWorkflowEngine {
       ctx: StepOutputContext,
     ) => Promise<unknown>,
     store: WorkflowStateStore,
+    maxStepOutputBytes?: number,
   ) {
     super(
       new WorkflowPlanner(), new Replanner(), new ToolSelector(),
       new HumanApprovalGate(), store,
+      maxStepOutputBytes === undefined ? {} : { maxStepOutputBytes },
     );
   }
   public attempts = 0;
@@ -200,6 +202,92 @@ describe("AgentWorkflowEngine — step output persistence (P1)", () => {
     expect(() => store.get(wfA.context.workflowId, "tenant-B")).toThrow(
       /cannot access workflow/,
     );
+  });
+
+  it("records accepted output byte size", async () => {
+    const store = new WorkflowStateStore();
+    const engine = new ScriptedEngine(async () => ({ ok: true }), store);
+
+    const wf = engine.start({ ...CTX, workflowId: "wf-out-size" }, "test");
+    await engine.runNext(wf.context.workflowId, "t");
+
+    const after = store.get(wf.context.workflowId, "t");
+    expect(after.steps[0].output).toEqual({ ok: true });
+    expect(after.steps[0].outputSizeBytes).toBe(
+      Buffer.byteLength(JSON.stringify({ ok: true }), "utf8"),
+    );
+  });
+
+  it("oversized output fails the step before output enters persisted state", async () => {
+    const store = new WorkflowStateStore();
+    const engine = new ScriptedEngine(
+      async () => ({ blob: "x".repeat(200) }),
+      store,
+      64,
+    );
+
+    const wf = engine.start({ ...CTX, workflowId: "wf-out-too-large" }, "test");
+    const afterRun = await engine.runNext(wf.context.workflowId, "t");
+
+    expect(afterRun.status).toBe("replanning");
+    const after = store.get(wf.context.workflowId, "t");
+    expect(after.steps[0].status).toBe("failed");
+    expect(after.steps[0].output).toBeUndefined();
+    expect(after.steps[0].outputSizeBytes).toBeUndefined();
+    expect(after.steps[after.currentStepIndex].name).toBe("recovery_step");
+  });
+
+  it("constructor rejects invalid output cap", () => {
+    const store = new WorkflowStateStore();
+    expect(() => new ScriptedEngine(async () => undefined, store, -1))
+      .toThrow(/maxStepOutputBytes/);
+  });
+
+  it("boundary: output exactly at the cap is accepted; cap+1 is rejected", async () => {
+    // JSON.stringify("xxxxx") = "\"xxxxx\"" = 7 bytes.
+    // Cap = 7 → exactly-equal accepted.
+    const store = new WorkflowStateStore();
+    const engine = new ScriptedEngine(async () => "xxxxx", store, 7);
+    const wf = engine.start({ ...CTX, workflowId: "wf-cap-eq" }, "test");
+    await engine.runNext(wf.context.workflowId, "t");
+    const ok = store.get(wf.context.workflowId, "t");
+    expect(ok.steps[0].status).toBe("completed");
+    expect(ok.steps[0].outputSizeBytes).toBe(7);
+
+    // Cap = 6 → "\"xxxxx\"" (7 bytes) > 6, rejected.
+    const store2 = new WorkflowStateStore();
+    const engine2 = new ScriptedEngine(async () => "xxxxx", store2, 6);
+    const wf2 = engine2.start({ ...CTX, workflowId: "wf-cap-over" }, "test");
+    await engine2.runNext(wf2.context.workflowId, "t");
+    const reject = store2.get(wf2.context.workflowId, "t");
+    expect(reject.steps[0].status).toBe("failed");
+    expect(reject.steps[0].output).toBeUndefined();
+  });
+
+  it("non-JSON-serializable output (circular ref) fails the step with a clear error", async () => {
+    type Cyclic = { self?: Cyclic };
+    const cyclic: Cyclic = {};
+    cyclic.self = cyclic;
+    const store = new WorkflowStateStore();
+    const engine = new ScriptedEngine(async () => cyclic, store);
+    const wf = engine.start({ ...CTX, workflowId: "wf-circular" }, "test");
+    const result = await engine.runNext(wf.context.workflowId, "t");
+    // Circular → JSON.stringify throws → engine wraps + step.replan.
+    expect(result.status).toBe("replanning");
+    const after = store.get(wf.context.workflowId, "t");
+    expect(after.steps[0].status).toBe("failed");
+    expect(after.steps[0].output).toBeUndefined();
+  });
+
+  it("undefined output (no return) is accepted as 0 bytes — defaults preserved", async () => {
+    const store = new WorkflowStateStore();
+    const engine = new ScriptedEngine(async () => undefined, store);
+    const wf = engine.start({ ...CTX, workflowId: "wf-undef" }, "test");
+    await engine.runNext(wf.context.workflowId, "t");
+    const after = store.get(wf.context.workflowId, "t");
+    expect(after.steps[0].status).toBe("completed");
+    expect(after.steps[0].output).toBeUndefined();
+    expect(after.steps[0].outputSizeBytes).toBe(0);
   });
 
   it("output survives a save → get round trip (structuredClone preserves shape)", async () => {
