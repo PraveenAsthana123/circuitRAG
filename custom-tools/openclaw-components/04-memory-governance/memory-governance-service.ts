@@ -189,7 +189,29 @@ export class MemoryGovernanceService {
     if (!record) return undefined;
 
     if (this.retention.isExpired(record)) {
-      this.store.delete(record.memoryId, record.tenantId);
+      // Iter 74 (2026-05-17): auto-delete on read-of-expired is a
+      // state mutation; per §38 every state change MUST be auditable.
+      // Pre-fix: silent deletion left no audit row, so a compliance
+      // auditor reviewing retention policy enforcement had no
+      // evidence the delete ever happened. Now: append a "delete"
+      // row with reason="auto-delete: retention expiry" + the
+      // pre-deletion value so an investigator can reconstruct what
+      // the record contained before it was purged.
+      const previousValue = record.value;
+      const recordTenantId = record.tenantId;
+      const recordMemoryId = record.memoryId;
+      this.store.delete(recordMemoryId, recordTenantId);
+      this.audit.append({
+        auditId: randomUUID(),
+        memoryId: recordMemoryId,
+        action: "delete",
+        actorUserId: "system",
+        tenantId: recordTenantId,
+        previousValue,
+        newValue: undefined,
+        reason: "auto-delete: retention expiry",
+        timestamp: new Date().toISOString(),
+      });
       return undefined;
     }
 
