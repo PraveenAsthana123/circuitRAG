@@ -9,7 +9,14 @@ import { describe, it, expect } from "vitest";
 import { Gateway } from "./gateway";
 import { SessionManager } from "./session-manager";
 import { RateLimiter } from "./rate-limiter";
+import { NoOpAuthMiddleware } from "./auth";
 import { UserMessage } from "./types";
+
+// Iter 50 added a default-deny auth middleware. Existing gateway
+// tests construct Gateway without auth, which would now 401 every
+// request. devAuth here opts into the unauthenticated-dev path so
+// the iter 11 assertions keep their behavior.
+const devAuth = () => new NoOpAuthMiddleware(true);
 
 function newMessage(over: Partial<UserMessage> = {}): UserMessage {
   return {
@@ -24,7 +31,7 @@ function newMessage(over: Partial<UserMessage> = {}): UserMessage {
 
 describe("Gateway — request_id propagation (P0)", () => {
   it("mints a request_id per call; two calls get distinct IDs", async () => {
-    const gw = new Gateway(new SessionManager());
+    const gw = new Gateway(new SessionManager(), new RateLimiter(), devAuth());
     const r1 = await gw.handleMessage(newMessage({ text: "first" }));
     const r2 = await gw.handleMessage(newMessage({ text: "second" }));
     expect(r1.ok && r1.response.requestId).toBeTruthy();
@@ -94,7 +101,7 @@ describe("RateLimiter (P0)", () => {
 
 describe("Gateway — error envelope (P0)", () => {
   it("rate-limit overflow returns structured error with request_id", async () => {
-    const gw = new Gateway(new SessionManager(), new RateLimiter(1, 60_000));
+    const gw = new Gateway(new SessionManager(), new RateLimiter(1, 60_000), devAuth());
     const r1 = await gw.handleMessage(newMessage({ userId: "x" }));
     const r2 = await gw.handleMessage(newMessage({ userId: "x" }));
     expect(r1.ok).toBe(true);
@@ -105,5 +112,66 @@ describe("Gateway — error envelope (P0)", () => {
       expect(r2.error.detail).toContain("Rate limit exceeded");
       expect(r2.statusHint).toBe(429);
     }
+  });
+});
+
+
+describe("Gateway — auth middleware (Iter 50, P0)", () => {
+  it("BACKDOOR CHECK: default Gateway construction 401s without auth opt-in", async () => {
+    const gw = new Gateway(new SessionManager());  // default NoOpAuthMiddleware()
+    const r = await gw.handleMessage(newMessage());
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.errorCode).toBe("UNAUTHORIZED");
+      expect(r.statusHint).toBe(401);
+    }
+  });
+
+  it("BACKDOOR CHECK: auth claims OVERRIDE message-claimed identity", async () => {
+    // Real-world attack: client sends { userId: 'admin', tenantId: 'rich' }
+    // in the message body. The auth middleware authoritatively returns
+    // a DIFFERENT identity from the verified token. Gateway must use
+    // the auth claims, not the body.
+    const fakeAuth = {
+      async authenticate(): Promise<any> {
+        return { userId: "real-user", tenantId: "real-tenant", roles: ["user"] };
+      },
+    };
+    const sm = new SessionManager();
+    const gw = new Gateway(sm, new RateLimiter(), fakeAuth);
+    const r = await gw.handleMessage(newMessage({
+      userId: "attacker-claims-admin",
+      tenantId: "attacker-claims-other-tenant",
+    }));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      // sessionId format is `${tenant}:${channel}:${user}` per session-manager
+      expect(r.response.sessionId).toContain("real-tenant");
+      expect(r.response.sessionId).toContain("real-user");
+      expect(r.response.sessionId).not.toContain("attacker");
+    }
+  });
+
+  it("auth middleware throwing GatewayError surfaces as proper 401", async () => {
+    const failAuth = {
+      async authenticate(): Promise<any> {
+        const { GatewayError } = await import("./types");
+        throw new GatewayError("Bad token", "UNAUTHORIZED", 401);
+      },
+    };
+    const gw = new Gateway(new SessionManager(), new RateLimiter(), failAuth);
+    const r = await gw.handleMessage(newMessage());
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.errorCode).toBe("UNAUTHORIZED");
+      expect(r.error.detail).toContain("Bad token");
+      expect(r.statusHint).toBe(401);
+    }
+  });
+
+  it("NoOpAuthMiddleware(allowUnauthenticated=true) passes through", async () => {
+    const gw = new Gateway(new SessionManager(), new RateLimiter(), new NoOpAuthMiddleware(true));
+    const r = await gw.handleMessage(newMessage());
+    expect(r.ok).toBe(true);
   });
 });

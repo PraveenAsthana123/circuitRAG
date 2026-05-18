@@ -1,22 +1,23 @@
-// ✅ MULTIPLE FIXES (Iter 11, 2026-05-17):
-//     - P0: requestId is now minted per inbound message and propagated
-//       to the AgentResponse (CLAUDE.md §47 baggage rule).
-//     - P0: per-tenant + per-user rate limit (in-memory sliding
-//       window; real prod needs Redis — see RateLimiter file).
-//     - P0: structured error envelope on any failure (CLAUDE.md §6.2).
-//     - P1: session manager now uses TTL + LRU + tenant scoping
-//       (see SessionManager).
+// ✅ MULTIPLE FIXES (Iter 11): requestId + rate limit + tenant
+//     sessions + error envelope.
+// ✅ P0 FIXED (Iter 50, 2026-05-17): auth middleware hook.
+//     Pre-fix: Gateway accepted message.tenantId/userId on trust.
+//     Now: AuthMiddleware.authenticate() runs first; its claims
+//     OVERRIDE the message's self-asserted identity so a malicious
+//     caller cannot forge tenant/user by submitting different
+//     values in the body. Same trust-boundary lesson as iter 2's
+//     /auth/token fix.
 //
-//     Authentication / RBAC is still NOT implemented in this stub;
-//     real deployments must front the Gateway with an OIDC-aware
-//     reverse proxy or middleware that validates a Bearer token
-//     and sets req.tenantId from token claims BEFORE handing off
-//     to handleMessage. The Gateway accepts message.tenantId on
-//     trust — that trust must be enforced by the layer above.
+//     Default: NoOpAuthMiddleware() refuses to authenticate
+//     anything → Gateway 401s every request. Caller MUST pass a
+//     real AuthMiddleware to ship.
+//     For local dev: NoOpAuthMiddleware({ allowUnauthenticated: true })
+//     opens the gate (with a clear, audit-visible choice).
 
 import { randomUUID } from "crypto";
 import { SessionManager } from "./session-manager";
 import { RateLimiter } from "./rate-limiter";
+import { AuthMiddleware, NoOpAuthMiddleware } from "./auth";
 import {
   UserMessage,
   AgentResponse,
@@ -32,15 +33,25 @@ export class Gateway {
   constructor(
     private readonly sessionManager: SessionManager,
     private readonly rateLimiter: RateLimiter = new RateLimiter(),
+    // Iter 50: AuthMiddleware default refuses everything; tests
+    // and dev pass NoOpAuthMiddleware({ allowUnauthenticated: true }).
+    private readonly auth: AuthMiddleware = new NoOpAuthMiddleware(),
   ) {}
 
   async handleMessage(message: UserMessage): Promise<GatewayResult> {
     const requestId = randomUUID();
 
     try {
-      // Rate-limit key: tenant:user. Real prod adds per-IP as well.
-      const tenantId = message.tenantId ?? "default";
-      const rlKey = `${tenantId}:${message.userId}`;
+      // Iter 50: auth FIRST. Authenticated claims override what
+      // the message body claimed about user / tenant / roles.
+      const claims = await this.auth.authenticate(message);
+      const authedMessage: UserMessage = {
+        ...message,
+        userId: claims.userId,
+        tenantId: claims.tenantId,
+      };
+
+      const rlKey = `${claims.tenantId}:${claims.userId}`;
       if (!this.rateLimiter.tryAcquire(rlKey)) {
         throw new GatewayError(
           `Rate limit exceeded for ${rlKey}`,
@@ -49,7 +60,7 @@ export class Gateway {
         );
       }
 
-      const session = this.sessionManager.getOrCreateSession(message);
+      const session = this.sessionManager.getOrCreateSession(authedMessage);
 
       // Later this will call Agent Runtime via Component 2.
       const response: AgentResponse = {
