@@ -56,7 +56,7 @@ strength. Examples:
 | Gap | Severity | Fix |
 |---|---|---|
 | Registry is per-process; no shared state across replicas | **P1** | Tool catalog from config + signature pinning per CLAUDE.md §50 catalog pattern |
-| Responsible-AI guard is a substring matcher | **P1** | Use a real classifier (Llama Guard / Bedrock Guardrails) OR document the substring approach as detection-only, not enforcement |
+| ⚠ Partial close (Iter 73, 2026-05-17): substring contract locked + FP surface drilled + documented-limitations captured as regression flip points. Real-classifier upgrade still needed. | **P1** | Upgrade to real classifier (Llama Guard / Bedrock Guardrails). Today's drill: rai-guard-corpus.test.ts (8 steps; ATTACK + BENIGN_KEYWORD + CLEAN + DOCUMENTED_LIMITATION corpora; TPR===1.0, FPR===0.0). |
 | Telemetry is `console.log` | **P1** | Real OTel `tracer.startActiveSpan()` with carrier injection |
 
 ### Component 4 — Memory Governance
