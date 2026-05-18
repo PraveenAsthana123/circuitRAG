@@ -15,6 +15,42 @@ import {
 const cloneSteps = (steps: WorkflowStep[]): WorkflowStep[] =>
   steps.map((step) => ({ ...step }));
 
+/**
+ * Iter 59 (2026-05-17): redact absolute filesystem paths from a JS
+ * stack trace while preserving function names and `:line:col`.
+ *
+ * Examples:
+ *   "    at fn (/mnt/deepa/rag/.../engine.ts:42:10)"
+ *     → "    at fn ([redacted]:42:10)"
+ *   "    at fn (file:///home/p/proj/file.mjs:7:3)"
+ *     → "    at fn ([redacted]:7:3)"
+ *   "    at /tmp/x.mjs:5:9"             (anonymous, no parens)
+ *     → "    at [redacted]:5:9"
+ *   "    at runScriptInThisContext (node:internal/vm:209:10)"
+ *     → unchanged (node:internal/* carries no host info)
+ *
+ * Exported for the iter 59 drill — not part of the public engine API.
+ */
+export function redactStackPaths(stack: string | undefined): string | undefined {
+  if (stack === undefined) return undefined;
+  return stack.split("\n").map((line) => {
+    // node:internal pseudo-URLs reveal no host info — leave alone.
+    if (line.includes("(node:") || /\bat\s+node:/.test(line)) return line;
+    // Parenthesized form: "    at fn ((file:///)?/path/to/file.ts:LINE:COL)"
+    // Capture trailing :digits:digits and replace the path inside parens.
+    let redacted = line.replace(
+      /\(((?:file:\/\/\/?)?[^()]+?)(:\d+:\d+)\)/g,
+      "([redacted]$2)",
+    );
+    // Anonymous form: "    at /path/to/file.ts:LINE:COL"  (no parens)
+    redacted = redacted.replace(
+      /(\s+at\s+)((?:file:\/\/\/?)?(?:\/|[A-Za-z]:[\\/])[^\s()]+?)(:\d+:\d+)\s*$/,
+      "$1[redacted]$3",
+    );
+    return redacted;
+  }).join("\n");
+}
+
 const DEFAULT_MAX_STEP_OUTPUT_BYTES = 64 * 1024;
 /** Iter 58: cap how many recovery_steps replan may insert per
  *  workflow. Without a cap, a recovery_step that itself fails will
@@ -36,6 +72,13 @@ export interface AgentWorkflowEngineOptions {
    *  failure occurs, the engine does NOT replan again — it marks the
    *  workflow `failed` and stops. */
   maxRecoveryDepth?: number;
+  /** Iter 59: redact host filesystem paths from lastError.stack
+   *  before persisting. Default `true` because audit rows + operator
+   *  UIs surface this field; leaking absolute paths reveals deploy
+   *  layout to anyone reading the workflow. Set `false` in dev to
+   *  preserve full debuggable stacks. Function names, line, and
+   *  column are always preserved. */
+  redactStackPaths?: boolean;
 }
 
 export class StepOutputTooLargeError extends Error {
@@ -336,13 +379,15 @@ export class AgentWorkflowEngine {
   // envelope. Non-Error throws ("string", numbers, undefined) are
   // common in JS — the catch block must NOT crash when stack/message
   // are absent.
+  // Iter 59: stack is redacted by default to hide host filesystem
+  // layout from anyone who can read the persisted envelope.
   private toErrorEnvelope(thrown: unknown, retryable: boolean): StepErrorEnvelope {
     const now = new Date().toISOString();
     if (thrown instanceof Error) {
       return {
         name: thrown.name,
         message: thrown.message,
-        stack: thrown.stack,
+        stack: this.shouldRedactStack() ? redactStackPaths(thrown.stack) : thrown.stack,
         retryable,
         timestamp: now,
       };
@@ -353,6 +398,10 @@ export class AgentWorkflowEngine {
       retryable,
       timestamp: now,
     };
+  }
+
+  private shouldRedactStack(): boolean {
+    return this.options.redactStackPaths ?? true;
   }
 
   private measureOutputBytes(output: unknown): number {
