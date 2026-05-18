@@ -23,14 +23,27 @@ import {
   GuardrailResult,
   GuardrailFinding,
 } from "./types";
+import {
+  EventSink,
+  ConsoleEventSink,
+} from "../06-observability/sinks";
 
 export class GuardrailEngine {
+  private readonly sink: EventSink;
+  // Iter 97 (2026-05-18): pluggable sink for guardrail_evaluation
+  // emissions. Default ConsoleEventSink preserves backcompat;
+  // a future guardrail-decision audit store (Postgres append-only
+  // per §38) plugs in unchanged. Reuses EventSink from M2.3 since
+  // guardrail emissions are opaque event-shaped JSON.
   constructor(
     private readonly piiDetector: PIIDetector,
     private readonly injectionDetector: PromptInjectionDetector,
     private readonly policyEngine: PolicyEngine,
-    private readonly approvalGate: ApprovalGate
-  ) {}
+    private readonly approvalGate: ApprovalGate,
+    sink?: EventSink,
+  ) {
+    this.sink = sink ?? new ConsoleEventSink();
+  }
 
   /** Backcompat alias for evaluateRequest. Pre-fix callers expect this. */
   evaluate(request: GuardrailRequest): GuardrailResult {
@@ -85,7 +98,7 @@ export class GuardrailEngine {
       this.approvalGate.createApprovalTicket(result);
     }
 
-    console.log(JSON.stringify({
+    this.sink.emit({
       type: "guardrail_evaluation",
       side,
       requestId: context.requestId,
@@ -96,7 +109,7 @@ export class GuardrailEngine {
       durationMs: Date.now() - start,
       traceId: context.traceId,
       timestamp: new Date().toISOString(),
-    }));
+    });
 
     return result;
   }
