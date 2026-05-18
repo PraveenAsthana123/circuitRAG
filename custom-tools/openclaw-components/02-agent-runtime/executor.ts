@@ -107,7 +107,7 @@ export class Executor {
     for (let i = 0; i < stepBudget; i++) {
       const step = plan.steps[i];
       try {
-        const output = await this.runStep(step, task);
+        const output = await this.runStep(step, task, results);
         results.push({
           stepId: step.stepId, success: true, output,
         });
@@ -136,10 +136,14 @@ export class Executor {
     return results;
   }
 
-  private async runStep(step: PlanStep, task: AgentTask): Promise<unknown> {
+  private async runStep(
+    step: PlanStep,
+    task: AgentTask,
+    prior: ExecutionResult[],
+  ): Promise<unknown> {
     switch (step.action) {
       case "think":
-        return this.runThink(step, task);
+        return this.runThink(step, task, prior);
       case "tool":
         return this.runTool(step, task);
       case "respond":
@@ -179,18 +183,48 @@ export class Executor {
     };
   }
 
-  private async runThink(step: PlanStep, task: AgentTask): Promise<unknown> {
+  private async runThink(
+    step: PlanStep,
+    task: AgentTask,
+    prior: ExecutionResult[] = [],
+  ): Promise<unknown> {
     if (!this.modelClient) {
       throw new Error(`Step '${step.description}' is 'think' but no modelClient wired`);
     }
     if (!task.tenantId || !task.requestId) {
       throw new Error("'think' step requires task.tenantId and task.requestId");
     }
+
+    // Iter 72 (2026-05-17): consume any prior recall step outputs as
+    // memory context. Only `found === true` entries contribute — a
+    // missed-recall doesn't pollute the prompt. When no recall ran (or
+    // all were misses), the prompt shape is byte-identical to pre-iter-72
+    // for backcompat. See memory-aware-think.test.ts for the negative
+    // assertions that lock this behavior.
+    const recalledEntries: Array<{ key: string; value: unknown }> = [];
+    for (const result of prior) {
+      if (!result.success) continue;
+      const out = result.output;
+      if (
+        out !== null && typeof out === "object" &&
+        "found" in out && (out as { found: unknown }).found === true &&
+        "key" in out && typeof (out as { key: unknown }).key === "string"
+      ) {
+        const o = out as unknown as { key: string; value?: unknown };
+        recalledEntries.push({ key: o.key, value: o.value });
+      }
+    }
+    const memoryPreamble = recalledEntries.length > 0
+      ? `Prior memory:\n${recalledEntries
+          .map((e) => `- ${e.key}: ${String(e.value)}`)
+          .join("\n")}\n\n`
+      : "";
+
     const response = await this.modelClient.complete({
       requestId: task.requestId,
       tenantId: task.tenantId,
       userId: task.userId,
-      prompt: `${step.description}\n\nUser input: ${task.userInput}`,
+      prompt: `${memoryPreamble}${step.description}\n\nUser input: ${task.userInput}`,
       traceId: task.traceId,
     });
 
