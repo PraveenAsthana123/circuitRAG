@@ -139,7 +139,7 @@ function newEngine(): GuardrailEngine {
 }
 
 const CTX: GuardrailContext = {
-  requestId: "r", sessionId: "s",
+  requestId: "r", sessionId: "s", userId: "u",
   tenantId: "t", traceId: "tr",
 };
 

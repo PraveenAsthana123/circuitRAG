@@ -18,6 +18,7 @@
 import { AgentPlan, AgentTask, ExecutionResult, PlanStep } from "./types";
 import { ModelClient } from "./model-client";
 import { ToolDispatcher } from "../03-tooling/tool-dispatcher";
+import { GuardrailEngine } from "../05-guardrails/guardrail-engine";
 
 const DEFAULT_MAX_STEPS = 20;
 
@@ -25,16 +26,27 @@ export interface ExecutorDeps {
   modelClient?: ModelClient;
   toolDispatcher?: ToolDispatcher;
   maxSteps?: number;
+  /** Iter 64 (2026-05-17): when provided, the executor enforces
+   *  Component 5 guardrails on BOTH sides of every think step:
+   *    - input: task.userInput evaluated BEFORE any step runs.
+   *             "block" → short-circuit (no steps execute).
+   *    - output: each think step's model response evaluated AFTER
+   *              completion. "block" → step fails (the catch in
+   *              executeWithTask records it). Per CLAUDE.md §48.5
+   *              RAG four-part contract: input AND output filtering. */
+  guardrails?: GuardrailEngine;
 }
 
 export class Executor {
   private readonly modelClient?: ModelClient;
   private readonly toolDispatcher?: ToolDispatcher;
+  private readonly guardrails?: GuardrailEngine;
   private readonly maxSteps: number;
 
   constructor(deps: ExecutorDeps = {}) {
     this.modelClient = deps.modelClient;
     this.toolDispatcher = deps.toolDispatcher;
+    this.guardrails = deps.guardrails;
     this.maxSteps = deps.maxSteps ?? DEFAULT_MAX_STEPS;
     if (this.maxSteps < 1) throw new Error("maxSteps must be >= 1");
   }
@@ -54,6 +66,33 @@ export class Executor {
   ): Promise<ExecutionResult[]> {
     const stepBudget = Math.min(plan.steps.length, this.maxSteps);
     const results: ExecutionResult[] = [];
+
+    // Iter 64: input-side guardrail check BEFORE any step runs.
+    // "block" → short-circuit with synthetic failed-step result.
+    // "review" → permit (the policy engine decides this is human-
+    //            reviewable, not auto-blocked).
+    if (this.guardrails && task.tenantId && task.requestId) {
+      const inputCheck = this.guardrails.evaluateRequest({
+        inputText: task.userInput,
+        context: {
+          requestId: task.requestId,
+          sessionId: task.sessionId,
+          userId: task.userId,
+          tenantId: task.tenantId,
+          traceId: task.traceId,
+        },
+      });
+      if (inputCheck.decision === "block") {
+        return [{
+          stepId: "guardrail-input-block",
+          success: false,
+          output: null,
+          error: `Guardrail blocked input: ${inputCheck.findings
+            .map((f) => f.ruleId)
+            .join(", ") || "unknown"}`,
+        }];
+      }
+    }
 
     for (let i = 0; i < stepBudget; i++) {
       const step = plan.steps[i];
@@ -114,6 +153,28 @@ export class Executor {
       prompt: `${step.description}\n\nUser input: ${task.userInput}`,
       traceId: task.traceId,
     });
+
+    // Iter 64: output-side guardrail check on the model's response.
+    // A model that hallucinates a phone number or echoes a system
+    // prompt back must be blocked. Per CLAUDE.md §48.5 RAG four-
+    // part contract — output filtering separate from input filtering.
+    if (this.guardrails) {
+      const outputCheck = this.guardrails.evaluateResponse(response.output, {
+        requestId: task.requestId,
+        sessionId: task.sessionId,
+        userId: task.userId,
+        tenantId: task.tenantId,
+        traceId: task.traceId,
+      });
+      if (outputCheck.decision === "block") {
+        throw new Error(
+          `Guardrail blocked think output: ${outputCheck.findings
+            .map((f) => f.ruleId)
+            .join(", ") || "unknown"}`,
+        );
+      }
+    }
+
     return { text: response.output, modelId: response.modelId };
   }
 
