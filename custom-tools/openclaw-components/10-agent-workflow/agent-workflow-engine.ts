@@ -118,6 +118,17 @@ const DEFAULT_MAX_RECOVERY_DEPTH = 3;
  *  enforce the cap. If you rename it in replanner.ts, update here. */
 const RECOVERY_STEP_NAME = "recovery_step";
 
+/** Iter 67 (2026-05-17): default attempt-rate-limit window settings.
+ *  60 attempts / 60s = 1 attempt per second on average. The TOTAL
+ *  count of recovery_steps is already capped (iter 58), but without
+ *  a rate limit an attacker (or a misconfigured caller in a tight
+ *  loop) can still hammer runNext() many times per second within
+ *  that cap — wasting compute and producing thrashy logs. The
+ *  window-based limit defends the workflow's near-term attempt rate
+ *  ON TOP OF the long-term depth cap. */
+const DEFAULT_MAX_ATTEMPTS_PER_WINDOW = 60;
+const DEFAULT_ATTEMPT_WINDOW_MS = 60_000;
+
 export interface AgentWorkflowEngineOptions {
   /** Iter 56: cap persisted per-step output to defend in-memory state. */
   maxStepOutputBytes?: number;
@@ -141,6 +152,19 @@ export interface AgentWorkflowEngineOptions {
    *  consumer is trusted + the redaction false-positive rate
    *  becomes a debugging burden. */
   redactMessages?: boolean;
+  /** Iter 67 (2026-05-17): sliding-window rate limit on runNext()
+   *  attempts per workflow. When this many attempts occur within
+   *  `attemptWindowMs`, the next attempt throws WorkflowRateLimitedError
+   *  rather than running the step. Default 60 attempts / 60_000 ms.
+   *  Composes with the iter 58 recovery-depth cap: depth caps the
+   *  LIFETIME number of replans; this caps the SHORT-TERM rate of
+   *  any runNext() call (retry, replan, ordinary advance) so a tight
+   *  loop cannot exhaust compute even within the lifetime budget.
+   *  Constructor rejects values < 1. */
+  maxAttemptsPerWindow?: number;
+  /** Iter 67: window length in ms for `maxAttemptsPerWindow`.
+   *  Constructor rejects values < 1. */
+  attemptWindowMs?: number;
 }
 
 export class StepOutputTooLargeError extends Error {
@@ -157,6 +181,30 @@ export class RecoveryDepthExceededError extends Error {
   constructor(depth: number, max: number) {
     super(`Recovery depth ${depth} exceeds max ${max}; workflow abandoned`);
     this.name = "RecoveryDepthExceededError";
+  }
+}
+
+/** Iter 67: raised when a workflow's runNext() rate exceeds the
+ *  configured sliding-window cap. The workflow id is in the message
+ *  so the audit log (and the caller's catch block) can pin down
+ *  WHICH workflow tripped the limit — without it, an operator
+ *  watching aggregated logs cannot localize a misbehaving caller.
+ *  This error does NOT touch the workflow state — the workflow
+ *  remains in whatever status it had; the caller must back off and
+ *  retry later (or escalate). */
+export class WorkflowRateLimitedError extends Error {
+  public readonly workflowId: string;
+  public readonly maxAttemptsPerWindow: number;
+  public readonly attemptWindowMs: number;
+  constructor(workflowId: string, max: number, windowMs: number) {
+    super(
+      `Workflow ${workflowId} exceeded rate limit ` +
+      `(${max} attempts per ${windowMs} ms)`,
+    );
+    this.name = "WorkflowRateLimitedError";
+    this.workflowId = workflowId;
+    this.maxAttemptsPerWindow = max;
+    this.attemptWindowMs = windowMs;
   }
 }
 
@@ -178,6 +226,11 @@ export interface StepOutputContext {
 
 export class AgentWorkflowEngine {
   private readonly rollbackManager: RollbackManager;
+  /** Iter 67: per-workflow sliding window of runNext() attempt
+   *  timestamps (epoch ms). Keys are workflowIds; values are
+   *  monotonically-appended timestamps trimmed each time the
+   *  window slides. Different workflows have independent windows. */
+  private readonly attemptsByWorkflow = new Map<string, number[]>();
 
   constructor(
     private readonly planner: WorkflowPlanner,
@@ -195,6 +248,19 @@ export class AgentWorkflowEngine {
     const maxDepth = this.maxRecoveryDepth();
     if (!Number.isInteger(maxDepth) || maxDepth < 0) {
       throw new Error("maxRecoveryDepth must be a non-negative integer");
+    }
+    // Iter 67: validate the rate-limit settings at construction so a
+    // misconfiguration is loud at startup, not silent until the
+    // first runNext() call. Both must be >= 1 — zero or negative
+    // would either lock the workflow out forever (max==0) or make
+    // the window meaningless (windowMs <= 0).
+    const maxAttempts = this.maxAttemptsPerWindow();
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+      throw new Error("maxAttemptsPerWindow must be a positive integer (>= 1)");
+    }
+    const windowMs = this.attemptWindowMs();
+    if (!Number.isInteger(windowMs) || windowMs < 1) {
+      throw new Error("attemptWindowMs must be a positive integer (>= 1)");
     }
   }
 
@@ -223,6 +289,29 @@ export class AgentWorkflowEngine {
     // tenantId required for §47 multi-tenant isolation; the store
     // throws WorkflowAccessDeniedError if it doesn't match.
     const state = this.store.get(workflowId, callerTenantId);
+
+    // Iter 67: sliding-window rate-limit check. The window is the
+    // most recent `attemptWindowMs` ms; if `maxAttemptsPerWindow`
+    // attempts already fell inside it, the next attempt is
+    // rejected. Append the current timestamp AFTER the check so
+    // the rejected attempt does NOT itself count toward the budget
+    // (otherwise the window would never drain on a hot loop).
+    // The check runs AFTER store.get on purpose: an unauthorized
+    // caller (wrong tenantId) gets WorkflowAccessDeniedError, NOT a
+    // rate-limit message — auth failure must remain the loudest
+    // signal a misconfigured caller sees.
+    const now = Date.now();
+    const windowMs = this.attemptWindowMs();
+    const maxAttempts = this.maxAttemptsPerWindow();
+    const cutoff = now - windowMs;
+    const recent = (this.attemptsByWorkflow.get(workflowId) ?? [])
+      .filter((t) => t >= cutoff);
+    if (recent.length >= maxAttempts) {
+      throw new WorkflowRateLimitedError(workflowId, maxAttempts, windowMs);
+    }
+    recent.push(now);
+    this.attemptsByWorkflow.set(workflowId, recent);
+
     const step = state.steps[state.currentStepIndex];
 
     if (!step) {
@@ -478,6 +567,14 @@ export class AgentWorkflowEngine {
 
   private maxRecoveryDepth(): number {
     return this.options.maxRecoveryDepth ?? DEFAULT_MAX_RECOVERY_DEPTH;
+  }
+
+  private maxAttemptsPerWindow(): number {
+    return this.options.maxAttemptsPerWindow ?? DEFAULT_MAX_ATTEMPTS_PER_WINDOW;
+  }
+
+  private attemptWindowMs(): number {
+    return this.options.attemptWindowMs ?? DEFAULT_ATTEMPT_WINDOW_MS;
   }
 
   // Iter 57: normalize anything thrown into the persisted error
