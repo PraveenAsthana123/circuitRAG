@@ -175,3 +175,56 @@ describe("Gateway — auth middleware (Iter 50, P0)", () => {
     expect(r.ok).toBe(true);
   });
 });
+
+
+describe("Gateway — payload size limit (Iter 53, P1)", () => {
+  it("BACKDOOR CHECK: oversized text returns 413, doesn't touch auth", async () => {
+    let authCalls = 0;
+    const countingAuth = {
+      async authenticate(): Promise<any> {
+        authCalls++;
+        return { userId: "u", tenantId: "t", roles: ["user"] };
+      },
+    };
+    const gw = new Gateway(
+      new SessionManager(), new RateLimiter(), countingAuth,
+      100,  // 100-byte cap
+    );
+    const huge = "x".repeat(500);  // 500 bytes
+    const r = await gw.handleMessage(newMessage({ text: huge }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.errorCode).toBe("PAYLOAD_TOO_LARGE");
+      expect(r.statusHint).toBe(413);
+    }
+    expect(authCalls).toBe(0);  // didn't reach auth
+  });
+
+  it("under cap passes through normally", async () => {
+    const gw = new Gateway(
+      new SessionManager(), new RateLimiter(),
+      new NoOpAuthMiddleware(true), 1000,
+    );
+    const r = await gw.handleMessage(newMessage({ text: "ok" }));
+    expect(r.ok).toBe(true);
+  });
+
+  it("counts BYTES not chars (UTF-8 multi-byte aware)", async () => {
+    // '🚀' is 4 bytes in UTF-8 but 2 JS chars.
+    const gw = new Gateway(
+      new SessionManager(), new RateLimiter(),
+      new NoOpAuthMiddleware(true), 6,  // 6 bytes
+    );
+    // Two rockets = 8 bytes; exceeds 6-byte cap.
+    const r = await gw.handleMessage(newMessage({ text: "🚀🚀" }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.errorCode).toBe("PAYLOAD_TOO_LARGE");
+  });
+
+  it("rejects maxTextBytes < 1 at construction", () => {
+    expect(() =>
+      new Gateway(new SessionManager(), new RateLimiter(),
+        new NoOpAuthMiddleware(true), 0),
+    ).toThrow();
+  });
+});

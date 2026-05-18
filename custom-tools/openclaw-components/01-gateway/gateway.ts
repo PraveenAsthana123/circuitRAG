@@ -29,6 +29,12 @@ export type GatewayResult =
   | { ok: true; response: AgentResponse }
   | { ok: false; error: ErrorEnvelope; statusHint: number };
 
+// Iter 53 (2026-05-17): maximum text size, in chars. Real prod
+// should also enforce header-level Content-Length checks at the
+// transport layer (NGINX client_max_body_size, etc.) — this is
+// a defense-in-depth check inside the Gateway.
+const DEFAULT_MAX_TEXT_BYTES = 64 * 1024; // 64 KiB
+
 export class Gateway {
   constructor(
     private readonly sessionManager: SessionManager,
@@ -36,12 +42,28 @@ export class Gateway {
     // Iter 50: AuthMiddleware default refuses everything; tests
     // and dev pass NoOpAuthMiddleware({ allowUnauthenticated: true }).
     private readonly auth: AuthMiddleware = new NoOpAuthMiddleware(),
-  ) {}
+    // Iter 53: per-request text-payload byte cap.
+    private readonly maxTextBytes: number = DEFAULT_MAX_TEXT_BYTES,
+  ) {
+    if (maxTextBytes < 1) throw new Error("maxTextBytes must be >= 1");
+  }
 
   async handleMessage(message: UserMessage): Promise<GatewayResult> {
     const requestId = randomUUID();
 
     try {
+      // Iter 53: size check BEFORE auth — refuse oversized payloads
+      // without consuming auth budget. Caller can't DoS the auth
+      // path with a 1GB text body.
+      const byteLen = Buffer.byteLength(message.text ?? "", "utf8");
+      if (byteLen > this.maxTextBytes) {
+        throw new GatewayError(
+          `Request body too large: ${byteLen} bytes (max ${this.maxTextBytes})`,
+          "PAYLOAD_TOO_LARGE",
+          413,
+        );
+      }
+
       // Iter 50: auth FIRST. Authenticated claims override what
       // the message body claimed about user / tenant / roles.
       const claims = await this.auth.authenticate(message);
