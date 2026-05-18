@@ -15,13 +15,12 @@ strength. Examples:
 
 - `console.log(JSON.stringify(...))` is **labeled** as "trace span" but is
   not OpenTelemetry, has no `request_id` baggage propagation, no
-  context-carrier, no exporter, no sampling. A real span survives a
+  context-carrier, and no exporter. A real span survives a
   service boundary; these do not.
 - `Map<string, SessionState>` is **labeled** as session storage but is
   per-process in-memory. Two replicas = two session universes. First pod
   restart = total session loss.
-- `Function("use strict"; return (...))()` in `calculator-tool.ts` is a
-  previously used dynamic code execution in `calculator-tool.ts`; this has been replaced with a small arithmetic parser and negative tests.
+- `calculator-tool.ts` no longer uses dynamic `Function(...)` execution; it now uses a small arithmetic parser with negative tests.
 
 ## Per-component gaps
 
@@ -42,29 +41,15 @@ strength. Examples:
 | Gap | Severity | Fix |
 |---|---|---|
 | `Planner.createPlan()` returns a **hardcoded 2-step plan** — same plan for any input | **P0** | LLM-driven planning with JSON-schema validated output per CLAUDE.md §59.4 |
-| `Executor.execute()` `try` block contains only `results.push(...)` — **no statement can throw**, so the `catch` is unreachable. `success: true` is hardcoded. | **P0** | Replace synthetic `output` with real per-step routing: `think → modelClient.complete()`, `tool → toolDispatcher.dispatch()`, `respond → finalize` |
-| `action: "tool"` is defined in the type but **never routed** in the executor | **P0** | Switch on `step.action`; integrate Component 3's `ToolDispatcher` |
 | `AgentRuntime.run()` returns `string`, **not** `AgentResponse` from Component 1 | **P1** | Either align types (return `AgentResponse`) or build an adapter at the Gateway boundary |
-| `model-client.ts` listed in folder layout but **not provided** in source | **n/a** | Bridge to Component 8's `LLMRouter` is the natural mapping |
-| No tool registry, no memory, no guardrails, no tracing wired in | **P0** | Constructor-inject Components 3-6 dependencies; thread `traceId` through every call |
-| No max-iteration / step-budget guard | **P0** | LLM-driven planners loop. Without a cap, a buggy plan can burn unbounded tokens. |
-| No test file in source paste | **n/a** | Drill per §43 — at minimum: happy path + budget exhausted + tool-step routed to dispatcher + failed-step error propagation |
-| No drill | **P0** | Per §43, with the 3+ negative assertions above |
+| Tool/model routing is wired, but memory, guardrails, and tracing are still not full runtime dependencies | **P1** | Constructor-inject Components 4-6 dependencies; thread `traceId` through every call |
 
 ### Component 10 — Agent Workflow Engine
 
 | Gap | Severity | Fix |
 |---|---|---|
 | `simulateToolExecution(toolName)` only throws when `toolName` is empty — but `ToolSelector.select()` ALWAYS returns a non-empty string (default `"default_agent_executor"`), so the `catch → replan` branch in `runNext()` is **unreachable** for any realistic flow. Same theatre-catch pattern as Component 2's `Executor`. | **P0** | Replace with a real tool invocation (delegate to Component 3's `ToolDispatcher`); the catch then handles real failures |
-| `RollbackManager.rollback()` returns `{...restored, status: "rolled_back"}` but never `save()`s this overridden state back. The store still holds `restored` with its original status. Next `store.get()` returns inconsistent state vs what the caller saw. | **P1** | Call `store.save({...restored, status: "rolled_back"})` before returning |
-| `runNext()` mutates `step.status = "running"` BEFORE any save. If the process crashes during `simulateToolExecution`, "running" is never persisted → on restart, the step looks `pending` again and runs twice. | **P1** | Save state with `status: "running"` before awaiting; on success save again with `"completed"` |
-| `runNext()` returns `{ ...state, currentStepIndex: state.currentStepIndex + 1 }` — spread is shallow, so `nextState.steps` is the SAME array as the in-memory state. Works only because `store.save` calls `structuredClone`. Easy to break by removing the clone. | **P2** | Explicit deep copy at construction time; document the contract |
-| `Replanner.replan()` inserts the recovery step AFTER `currentStepIndex` — so the original failed step at `currentStepIndex` is included in the "completed" prefix slice. Caller has to know to skip the failed step. | **P2** | Slice up to `currentStepIndex` (exclusive) instead, OR mark the failed step `skipped` |
-| `WorkflowStateStore.history` grows unbounded — every `save()` pushes the prior version. Long-running workflows leak memory. | **P1** | Cap history length (e.g., last 50 versions); compact older ones |
 | `WorkflowState.history` is in-memory only — process restart = workflow lost | **P0** | Postgres + outbox pattern OR Temporal/Durable Objects for real durability |
-| No tenant filter on `store.get()` / `store.rollback()` — any caller with a `workflowId` can read/rollback any tenant's workflow | **P0** | Pass `WorkflowContext` to every accessor; enforce `state.context.tenantId === caller.tenantId` |
-| `HumanApprovalGate.requestApproval` just logs to console — no real queue, no UI route, no expiry, no escalation if unanswered | **P0** | Push to durable queue (e.g., Postgres `approvals` table) + UI + 24h escalation per CLAUDE.md §48.6 |
-| Test asserts only `currentStepIndex === 1` — single positive assertion. No verification of: rollback restoring prior state, approval gate blocking, replan recovery actually running, tenant isolation, history cap behavior | **P0** | Per CLAUDE.md §43, ≥3 negative drills required |
 
 ### Component 3 — Tool Registry / Dispatcher
 
@@ -72,20 +57,14 @@ strength. Examples:
 |---|---|---|
 | Registry is per-process; no shared state across replicas | **P1** | Tool catalog from config + signature pinning per CLAUDE.md §50 catalog pattern |
 | Responsible-AI guard is a substring matcher | **P1** | Use a real classifier (Llama Guard / Bedrock Guardrails) OR document the substring approach as detection-only, not enforcement |
-| No idempotency key on `dispatch` | **P1** | `Idempotency-Key` header → cache by `(toolName, key)` for duplicates |
 | Telemetry is `console.log` | **P1** | Real OTel `tracer.startActiveSpan()` with carrier injection |
 
 ### Component 4 — Memory Governance
 
 | Gap | Severity | Fix |
 |---|---|---|
-| PII masker uses ASCII-only regex; misses Unicode emails / international phones | **P1** | Use `validator.js` + libphonenumber; add credit-card Luhn check |
-| `findByKey` is O(n) over `Map.values()` | **P2** | Index by `(tenantId, userId, key)` |
-| `rollback` only rolls back ONE version; multi-step rollback not supported | **P2** | Record `versions` as a list; rollback-to-version-N |
 | Audit log is in-memory `[]` — lost on restart | **P0** | Append-only Postgres table; per §38 audit row schema |
 | No tenant isolation enforcement — caller can pass any tenantId | **P0** | tenant_id from auth context, not request body |
-| No encryption-at-rest for sensitive values | **P1** | Fernet/AES-GCM per CLAUDE.md §4.2 |
-| No drill | **P0** | Drill: wrong-tenant read returns 0 rows; rollback restores prior; PII masked before write |
 
 ### Component 5 — Responsible-AI Guardrails
 
@@ -105,46 +84,26 @@ strength. Examples:
 | Calls itself "tracer" but emits `console.log` — **not OpenTelemetry** | **P0** | Use `@opentelemetry/sdk-node` with OTLP exporter; spans must propagate via W3C traceparent headers |
 | Metrics are `console.log` — no Prometheus scrape, no histogram bucketing | **P0** | Use `@opentelemetry/metrics` or `prom-client` with `/metrics` endpoint |
 | `AIOpsEventBus.publish` logs to console — no real bus | **P0** | Kafka topic or webhook to incident-response system |
-| No sampling strategy | **P1** | Probabilistic + always-on-error sampling |
-| `traceOperation` swallows error type — re-throws `error` but loses original stack in some Node versions | **P2** | Verify by test that stack survives across the `.catch` boundary |
-| No drill | **P0** | Drill: span survives 3-hop call chain; metric labels match cardinality budget |
+| Drill coverage is partial | **P1** | Existing tests cover sampling and metric cardinality; add a 3-hop trace-context propagation drill after real OTel is wired |
 
 ### Component 7 — Resilience (Circuit Breaker)
 
 | Gap | Severity | Fix |
 |---|---|---|
-| **Half-open race condition** — multiple concurrent requests can enter half-open simultaneously, defeating the breaker | **P0** | Add semaphore: only 1 in-flight in half-open; others fall back |
-| `recordSuccess()` resets `failureCount` to 0 — single success after sustained failure flips to closed too eagerly | **P1** | Require N consecutive successes in half-open before close |
-| `RetryPolicy` uses `Math.pow(2, attempt)` — exponential but no jitter; thundering herd risk | **P1** | Add jitter: `delayMs * (1 + Math.random())` |
-| `Timeout` uses `Promise.race` — the operation keeps running after timeout (no actual cancellation) | **P1** | Use `AbortController` and ensure operation honors `signal` |
-| `FallbackHandler` does NOT differentiate cache-replay from real fallback — both look identical in observability | **P1** | Tag fallback_source: `cache` / `static` / `degraded_model` |
-| `ResilientExecutor` constructs `Timeout`, `RetryPolicy`, `FallbackHandler` in constructor — not injected, hard to mock | **P2** | DI per CLAUDE.md §3 |
-| No drill | **P0** | Drill steps: timeout actually aborts; circuit opens after N; half-open only allows 1; fallback tagged correctly |
 
 ### Component 8 — LLM Router
 
 | Gap | Severity | Fix |
 |---|---|---|
 | `LLMClient.complete` returns a fake string — there is **no real provider call** | **P0** | Wire real provider SDKs (Anthropic / OpenAI / Bedrock / Ollama HTTP) with timeout + auth |
-| `RoutingPolicy.selectModel` hardcodes `<= 1.0 USD` as "affordable" | **P1** | Per-tenant budget from config; cumulative spend tracking per CLAUDE.md §41.1 |
 | `SafetyGate` — same substring problem as Component 5 | **P0** | Real classifier |
-| No fallback model when primary fails | **P1** | Try priority-2 model on failure; per CLAUDE.md §38 fallback-model gate |
-| No model output validation (was the response actually JSON? did it follow the schema?) | **P1** | Zod validation of LLM response shape |
-| No cost ledger — `estimatedCostUsd` is computed but never accumulated | **P1** | Per-tenant + per-user cost rollup; alert at 80% budget |
-| No drill | **P0** | Drill: cost-cap rejects; safety-gate blocks; missing provider → fallback; correct model picked per task type |
+| ~~Drill coverage is partial~~ ✅ Iter 61 (2026-05-17) | ~~P1~~ closed | router-drill-matrix.test.ts: 14 drill steps across 3 axes (cost-cap, safety-gate, provider-missing). Total component 8 drill count: 27. |
 
 ### Component 9 — RAG Orchestrator
 
 | Gap | Severity | Fix |
 |---|---|---|
-| `Retriever` is **keyword-match against in-memory `Chunk[]`** — not vector search | **P0** | Use real vector DB (pgvector / Qdrant / Weaviate); the existing `services/retrieval-svc/` already does this |
-| `Reranker` is "+3 if exact substring" — not a cross-encoder | **P0** | Real reranker model (`bge-reranker-large`, Cohere rerank, etc.) |
-| `GroundingChecker` is **bag-of-words overlap** — passes "the the the the the the" against any answer | **P0** | Use NLI model (e.g., `vectara/hallucination_evaluation_model`) OR Ragas faithfulness metric per CLAUDE.md §59.4 |
-| `CitationValidator.validate` only **formats** citation strings — doesn't verify the answer spans actually reference those chunks | **P0** | Span-level citation extraction (regex `[doc:chunk]` markers in LLM output, then verify chunk_id exists in retrieval set) |
-| `QualityScorer` weights are magic numbers (25/25/40/10) | **P2** | Tune against golden eval set; track score correlation with human rating |
-| Test fixture text has no blank-line paragraph separators, so `Chunker` produces only **1 chunk** — the `chunks.length >= 2` branch of `QualityScorer` is never exercised | **P3** | Fixture should include `\n\n` between paragraphs to exercise multi-chunk path |
-| Test asserts only `citations.length > 0` and `qualityScore > 0` — no negative assertion, no faithfulness threshold | **P1** | Add: wrong-tenant retrieval returns 0; query with no matching terms returns 0 citations; ungrounded answer (random text) flagged `grounded: false` |
-| No drill | **P0** | Drill: faithfulness ≥ 0.85 on golden set; uncited claim → flagged; tenant isolation in retrieval |
+| `Retriever` is still in-memory, not a production vector DB | **P1** | Use the existing `services/retrieval-svc/` or pgvector/Qdrant for production durability and scale |
 
 ### Component 42 — Enterprise SDLC / Operating Model
 
@@ -225,7 +184,7 @@ per CLAUDE.md §53 (Enterprise AI Maturity Stack L4+):
 9. **Compose-footer** per §49 linking the 3-7 deep-dive pages this composes with
 10. **Folder README** per §58 generated by `scripts/generate_folder_report.py`
 
-This folder has **0/10** of those.
+This folder still does not meet the full production checklist, even though several local drills now exist.
 
 ## Recommended next steps (in priority order)
 
@@ -244,5 +203,4 @@ This folder has **0/10** of those.
 > A "production value: Yes" claim without a drill that rejects a
 > negative case is a marketing claim, not an engineering one. Per
 > CLAUDE.md §43 + §57.7 + §52, every `✓` requires evidence.
-> These components have zero evidence. They demonstrate ideas well,
-> nothing more.
+> These components now have targeted local evidence for several fixes, but they still demonstrate ideas more than they prove production readiness.
