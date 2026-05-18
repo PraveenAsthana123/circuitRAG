@@ -4,7 +4,26 @@ import { ToolSelector } from "./tool-selector";
 import { HumanApprovalGate } from "./human-approval";
 import { WorkflowStateStore } from "./workflow-state-store";
 import { RollbackManager } from "./rollback-manager";
-import { WorkflowContext, WorkflowState, RetryableError } from "./types";
+import { WorkflowContext, WorkflowState, WorkflowStep, RetryableError } from "./types";
+
+const cloneSteps = (steps: WorkflowStep[]): WorkflowStep[] =>
+  steps.map((step) => ({ ...step }));
+
+/**
+ * Iter 55 (2026-05-17): read-only view of prior completed steps'
+ * outputs, passed into simulateToolExecution so a step can chain
+ * off upstream results (e.g. fetch-then-summarize). Stale outputs
+ * from retried/replanned steps are excluded — only `completed`
+ * steps before currentStepIndex appear.
+ */
+export interface StepOutputContext {
+  /** Output of an upstream completed step, by name. undefined if no
+   *  such step has completed yet. */
+  getByName(stepName: string): unknown;
+  /** Output of an upstream completed step, by stepId. undefined if
+   *  no such step has completed yet. */
+  getById(stepId: string): unknown;
+}
 
 export class AgentWorkflowEngine {
   private readonly rollbackManager: RollbackManager;
@@ -47,7 +66,11 @@ export class AgentWorkflowEngine {
     const step = state.steps[state.currentStepIndex];
 
     if (!step) {
-      const completed = { ...state, status: "completed" as const };
+      const completed = {
+        ...state,
+        steps: cloneSteps(state.steps),
+        status: "completed" as const,
+      };
       this.store.save(completed);
       return completed;
     }
@@ -57,6 +80,7 @@ export class AgentWorkflowEngine {
 
       const waiting = {
         ...state,
+        steps: cloneSteps(state.steps),
         status: "awaiting_approval" as const,
       };
 
@@ -65,6 +89,11 @@ export class AgentWorkflowEngine {
     }
 
     const toolName = this.toolSelector.select(step);
+
+    // Iter 55: build the read-only output context for THIS step.
+    // Only completed upstream steps contribute; retried steps with
+    // status reset to "pending" automatically vanish from the lookup.
+    const outputContext = this.buildOutputContext(state.steps, state.currentStepIndex);
 
     try {
       console.log(JSON.stringify({
@@ -84,15 +113,20 @@ export class AgentWorkflowEngine {
       step.status = "running";
       this.store.save({
         ...state,
+        steps: cloneSteps(state.steps),
         status: "executing" as const,
       });
 
-      await this.simulateToolExecution(toolName);
+      const result = await this.simulateToolExecution(toolName, outputContext, step);
 
       step.status = "completed";
+      // Iter 55: persist the tool's return value so a downstream
+      // step's outputContext.getByName(step.name) can read it.
+      step.output = result;
 
       const nextState = {
         ...state,
+        steps: cloneSteps(state.steps),
         status: "executing" as const,
         currentStepIndex: state.currentStepIndex + 1,
       };
@@ -109,8 +143,13 @@ export class AgentWorkflowEngine {
       if (isRetryable && currentRetries < maxRetries) {
         step.retryCount = currentRetries + 1;
         step.status = "pending"; // ready for the next runNext() call
+        // Iter 55: a retried step has no valid output yet — clear any
+        // stale value so the rerun's outputContext cannot read a
+        // failed-and-retried sibling's leftover data.
+        step.output = undefined;
         const retryState = {
           ...state,
+          steps: cloneSteps(state.steps),
           status: "executing" as const,
         };
         this.store.save(retryState);
@@ -131,9 +170,12 @@ export class AgentWorkflowEngine {
 
       // Non-retryable OR exhausted → replan.
       step.status = "failed";
+      // Iter 55: a failed step has no valid output.
+      step.output = undefined;
       const replanned = this.replanner.replan(
         {
           ...state,
+          steps: cloneSteps(state.steps),
           status: "failed",
         },
         error instanceof Error ? error.message : "Unknown error"
@@ -153,9 +195,43 @@ export class AgentWorkflowEngine {
   // Protected so a test subclass can override to simulate retryable
   // vs permanent failures. Real production replaces this entirely
   // with a Component 3 ToolDispatcher.dispatch() call.
-  protected async simulateToolExecution(toolName: string): Promise<void> {
+  //
+  // Iter 55: now returns the tool's result (unknown). The engine
+  // persists it on the step so downstream steps can read it via
+  // the StepOutputContext passed in `context`. The default impl
+  // returns undefined to preserve pre-iter-55 behavior.
+  protected async simulateToolExecution(
+    toolName: string,
+    _context: StepOutputContext,
+    _step: WorkflowStep,
+  ): Promise<unknown> {
     if (!toolName) {
       throw new Error("No tool selected");
     }
+    return undefined;
+  }
+
+  // Iter 55: build the read-only output view passed to a tool. Only
+  // steps strictly before `currentStepIndex` with status === "completed"
+  // contribute — pending / running / failed / skipped steps are
+  // invisible, and a step cannot see its own output (lookup is
+  // by upstream completed steps only).
+  private buildOutputContext(
+    steps: WorkflowStep[],
+    currentStepIndex: number,
+  ): StepOutputContext {
+    const upstream = steps.slice(0, currentStepIndex).filter(
+      (s) => s.status === "completed",
+    );
+    return {
+      getByName(stepName: string): unknown {
+        const hit = upstream.find((s) => s.name === stepName);
+        return hit ? hit.output : undefined;
+      },
+      getById(stepId: string): unknown {
+        const hit = upstream.find((s) => s.stepId === stepId);
+        return hit ? hit.output : undefined;
+      },
+    };
   }
 }

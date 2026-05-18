@@ -28,6 +28,12 @@ export interface WorkflowStep {
   /** Iter 44: max retries for this step before falling through to replan.
    *  Default 0 (no retry — preserves pre-fix behavior). */
   maxRetries?: number;
+  /** Iter 55 (2026-05-17): result of a successful tool execution.
+   *  Downstream steps may reference upstream outputs through the
+   *  StepOutputContext passed into simulateToolExecution. Cleared
+   *  to undefined on retry so a stale value can't be re-read by a
+   *  later attempt. Set ONLY when status === "completed". */
+  output?: unknown;
 }
 
 /**
