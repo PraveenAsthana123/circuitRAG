@@ -19,23 +19,32 @@
 //     the "events scattered, no timeline" gap.
 
 import { AIOpsEvent } from "./types";
+import { EventSink, ConsoleEventSink } from "./sinks";
 
 const DEFAULT_RETAIN_PER_REQUEST = 50;
 const DEFAULT_MAX_REQUESTS = 1_000;
 
 export class AIOpsEventBus {
   private readonly buffers = new Map<string, AIOpsEvent[]>();
+  private readonly sink: EventSink;
 
   constructor(
     private readonly retainPerRequest: number = DEFAULT_RETAIN_PER_REQUEST,
     private readonly maxRequests: number = DEFAULT_MAX_REQUESTS,
+    // Iter M2.3 (2026-05-18): pluggable sink. Default ConsoleEventSink
+    // preserves backcompat; a future KafkaEventSink / WebhookEventSink
+    // plugs in unchanged. The bus emits TWO event types via the same
+    // sink: "aiops_event" per publish, "aiops_incident_correlated"
+    // when severity === "critical" auto-correlates a timeline.
+    sink?: EventSink,
   ) {
     if (retainPerRequest < 1) throw new Error("retainPerRequest must be >= 1");
     if (maxRequests < 1) throw new Error("maxRequests must be >= 1");
+    this.sink = sink ?? new ConsoleEventSink();
   }
 
   publish(event: AIOpsEvent): void {
-    console.log(JSON.stringify({ type: "aiops_event", ...event }));
+    this.sink.emit({ type: "aiops_event", ...event });
 
     const reqId = event.context.requestId;
     if (!reqId) return;
@@ -56,7 +65,7 @@ export class AIOpsEventBus {
     // Auto-emit correlated incident on critical events.
     if (event.severity === "critical") {
       const timeline = this.timeline(reqId);
-      console.log(JSON.stringify({
+      this.sink.emit({
         type: "aiops_incident_correlated",
         requestId: reqId,
         tenantId: event.context.tenantId,
@@ -69,7 +78,7 @@ export class AIOpsEventBus {
           message: e.message,
           timestamp: e.timestamp,
         })),
-      }));
+      });
     }
   }
 
