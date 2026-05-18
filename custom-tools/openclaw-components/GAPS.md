@@ -75,7 +75,7 @@ strength. Examples:
 | Approval gate `createApprovalTicket` logs to console; no actual queue | **P0** | Push to durable queue (SQS/Kafka) + human-review UI |
 | Severity → decision mapping is hardcoded | **P2** | Policy-as-code: OPA / Cedar rules file |
 | No baseline rate of false-positives measured | **P1** | Per §48 fairness: track false-positive rate per tenant; alert on drift |
-| No drill | **P0** | Drill: known-attack corpus → expected decision; verify no false-positive on benign PII like address in support ticket |
+| ~~No drill~~ ✅ Iter 63 (2026-05-17) | ~~P0~~ closed | attack-corpus.test.ts: 14-sample attack corpus + 4-sample benign-PII corpus + 5-sample clean corpus + 1-sample documented-limitation corpus. Asserts TPR_attack === 1.0 AND FPR_clean === 0.0 AND benign-block-rate === 0. 9 drill steps. Also fixed 3 pattern variants (1-word-insertion attacks) the drill caught: "ignore all previous instructions" etc. |
 
 ### Component 6 — Observability
 
