@@ -90,6 +90,47 @@ export class RetryableError extends Error {
   }
 }
 
+/**
+ * Iter 66 (2026-05-17): workflow-level audit row appended every time
+ * the engine replans (i.e. on the non-retryable failure path AND
+ * when the recovery-depth cap is exceeded). RETRY attempts do NOT
+ * append an entry — only true replans count toward the history.
+ *
+ * Persisted ON THE WORKFLOW STATE (not on individual steps) because
+ * the question this answers is workflow-level: "how many times did
+ * this workflow replan, and why?" Operator looking at a failed
+ * workflow should be able to read the whole replan story without
+ * walking every step's lastError.
+ *
+ * Survives structuredClone (only plain JSON-serializable fields).
+ */
+export interface ReplanHistoryEntry {
+  /** ISO-8601 timestamp when the engine recorded the replan. */
+  timestamp: string;
+  /** stepId of the step whose failure caused the replan. */
+  failedStepId: string;
+  /** Human-readable step name (e.g. "execute_task" or
+   *  "recovery_step") so the operator does not have to chase
+   *  stepIds to recognize the row. */
+  failedStepName: string;
+  /** Error class name from the captured envelope (e.g.
+   *  "RetryableError", "Error", "TypeError",
+   *  "RecoveryDepthExceededError" on the abandon path). */
+  errorName: string;
+  /** Error message from the captured envelope. Sanitized by the
+   *  same redaction policy that protects lastError.message. */
+  errorMessage: string;
+  /** True iff the underlying error was a RetryableError.
+   *  Always false on the abandon path (RecoveryDepthExceededError
+   *  is non-retryable by construction). */
+  retryable: boolean;
+  /** How many recovery_steps were in the plan AT THE TIME this
+   *  entry was added. 0 on the first replan, grows as recovery_steps
+   *  accumulate. On the abandon path this is the depth that
+   *  TRIGGERED the abandon (already at the cap). */
+  recoveryDepthAtTime: number;
+}
+
 export interface WorkflowState {
   context: WorkflowContext;
   status: WorkflowStatus;
@@ -98,4 +139,8 @@ export interface WorkflowState {
   currentStepIndex: number;
   createdAt: string;
   updatedAt: string;
+  /** Iter 66 (2026-05-17): chronological list of replan events for
+   *  this workflow. Undefined / empty on freshly-planned workflows
+   *  and on workflows that completed without ever replanning. */
+  replanHistory?: ReplanHistoryEntry[];
 }

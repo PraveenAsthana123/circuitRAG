@@ -10,6 +10,7 @@ import {
   WorkflowStep,
   RetryableError,
   StepErrorEnvelope,
+  ReplanHistoryEntry,
 } from "./types";
 
 const cloneSteps = (steps: WorkflowStep[]): WorkflowStep[] =>
@@ -370,10 +371,30 @@ export class AgentWorkflowEngine {
           this.maxRecoveryDepth(),
         );
         step.lastError = this.toErrorEnvelope(giveUp, false);
+        // Iter 66: even though we are abandoning, this IS a replan
+        // event in the audit sense — the workflow tried to recover
+        // and gave up. Operator must see "we gave up at depth N"
+        // as the final entry in replanHistory, not just on the
+        // failed step's lastError. retryable: false by construction
+        // (RecoveryDepthExceededError is not retryable).
+        const abandonEntry: ReplanHistoryEntry = {
+          timestamp: new Date().toISOString(),
+          failedStepId: step.stepId,
+          failedStepName: step.name,
+          errorName: step.lastError.name,
+          errorMessage: step.lastError.message,
+          retryable: false,
+          recoveryDepthAtTime: existingRecoveryCount,
+        };
+        const abandonedHistory: ReplanHistoryEntry[] = [
+          ...(state.replanHistory ?? []),
+          abandonEntry,
+        ];
         const abandoned = {
           ...state,
           steps: cloneSteps(state.steps),
           status: "failed" as const,
+          replanHistory: abandonedHistory,
         };
         this.store.save(abandoned);
         console.warn(JSON.stringify({
@@ -389,11 +410,34 @@ export class AgentWorkflowEngine {
         return abandoned;
       }
 
+      // Iter 66: record a replan-history entry BEFORE handing state
+      // to the replanner. Replanner preserves replanHistory via
+      // `...state` spread, so the entry rides through to the final
+      // saved state. recoveryDepthAtTime captures the depth BEFORE
+      // this replan adds a new recovery_step (i.e. how many recovery
+      // attempts had ALREADY happened when this failure occurred).
+      const replanEntry: ReplanHistoryEntry = {
+        timestamp: new Date().toISOString(),
+        failedStepId: step.stepId,
+        failedStepName: step.name,
+        errorName: step.lastError ? step.lastError.name
+          : (error instanceof Error ? error.name : "NonError"),
+        errorMessage: step.lastError ? step.lastError.message
+          : (error instanceof Error ? error.message : "Unknown error"),
+        retryable: isRetryable,
+        recoveryDepthAtTime: existingRecoveryCount,
+      };
+      const enrichedHistory: ReplanHistoryEntry[] = [
+        ...(state.replanHistory ?? []),
+        replanEntry,
+      ];
+
       const replanned = this.replanner.replan(
         {
           ...state,
           steps: cloneSteps(state.steps),
           status: "failed",
+          replanHistory: enrichedHistory,
         },
         error instanceof Error ? error.message : "Unknown error"
       );
