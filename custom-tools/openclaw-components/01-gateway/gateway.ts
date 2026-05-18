@@ -24,6 +24,10 @@ import {
   ErrorEnvelope,
   GatewayError,
 } from "./types";
+import {
+  EventSink,
+  ConsoleErrorEventSink,
+} from "../06-observability/sinks";
 
 export type GatewayResult =
   | { ok: true; response: AgentResponse }
@@ -36,6 +40,7 @@ export type GatewayResult =
 const DEFAULT_MAX_TEXT_BYTES = 64 * 1024; // 64 KiB
 
 export class Gateway {
+  private readonly errorSink: EventSink;
   constructor(
     private readonly sessionManager: SessionManager,
     private readonly rateLimiter: RateLimiter = new RateLimiter(),
@@ -44,8 +49,15 @@ export class Gateway {
     private readonly auth: AuthMiddleware = new NoOpAuthMiddleware(),
     // Iter 53: per-request text-payload byte cap.
     private readonly maxTextBytes: number = DEFAULT_MAX_TEXT_BYTES,
+    // Iter 98 (2026-05-18): pluggable sink for gateway_error
+    // emissions. Default ConsoleEventSink preserves backcompat
+    // (still goes to console.error semantically — drill confirms
+    // routing). A future SentryEventSink / DatadogErrorsSink plugs
+    // in unchanged for production error tracking + alerting.
+    errorSink?: EventSink,
   ) {
     if (maxTextBytes < 1) throw new Error("maxTextBytes must be >= 1");
+    this.errorSink = errorSink ?? new ConsoleErrorEventSink();
   }
 
   async handleMessage(message: UserMessage): Promise<GatewayResult> {
@@ -107,13 +119,13 @@ export class Gateway {
       const statusHint =
         error instanceof GatewayError ? error.statusHint : 500;
 
-      console.error(JSON.stringify({
+      this.errorSink.emit({
         type: "gateway_error",
         requestId,
         errorCode: envelope.errorCode,
         detail: envelope.detail,
         timestamp: new Date().toISOString(),
-      }));
+      });
 
       return { ok: false, error: envelope, statusHint };
     }

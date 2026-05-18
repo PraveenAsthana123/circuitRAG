@@ -90,6 +90,19 @@ export class ConsoleEventSink implements EventSink {
   }
 }
 
+/**
+ * Iter 98 (2026-05-18): EventSink that routes to console.error.
+ * For emitters whose pre-sink behavior was console.error (e.g.,
+ * Gateway gateway_error) and whose existing drills spy on
+ * console.error specifically. Preserves the stream-routing
+ * contract that log shippers / SIEM rules depend on.
+ */
+export class ConsoleErrorEventSink implements EventSink {
+  emit(record: EventRecord): void {
+    console.error(JSON.stringify(record));
+  }
+}
+
 /** Iter M3.1: console LogSink. Preserves the pre-M3.1 contract
  *  that every log line lands on console.log regardless of level —
  *  existing test spy patterns and log-shipper configs assume this.
