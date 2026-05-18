@@ -16,6 +16,59 @@ const cloneSteps = (steps: WorkflowStep[]): WorkflowStep[] =>
   steps.map((step) => ({ ...step }));
 
 /**
+ * Iter 60 (2026-05-17): redact common PII / secret patterns from an
+ * error message string. Returns a NEW string with each match
+ * replaced by `[REDACTED:<type>]`. Intentionally narrow — the engine
+ * doesn't depend on the §04 SecretScanner (that would couple the
+ * workflow engine to a different component's evolution). Instead
+ * this catches the patterns most likely to appear in interpolated
+ * error messages:
+ *   - email address
+ *   - JWT (header.payload.signature)
+ *   - Bearer token (Authorization-header style)
+ *   - AWS access key id prefix
+ *   - Long contiguous digit runs (credit-card / account-number-ish)
+ *
+ * Real production should layer the §04 SecretScanner + a real
+ * scanner (TruffleHog / gitleaks) for entropy-based detection.
+ * This stub closes the obvious-pattern interpolation gap.
+ *
+ * Exported for the iter 60 drill — not part of the engine API.
+ */
+export function redactSensitiveMessage(msg: string | undefined): string | undefined {
+  if (msg === undefined) return undefined;
+  let out = msg;
+  // Order matters: longer / more-specific patterns FIRST so a
+  // JWT doesn't get partially eaten by the digit-run rule.
+  out = out.replace(
+    /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+    "[REDACTED:jwt]",
+  );
+  out = out.replace(
+    /\bBearer\s+[A-Za-z0-9._\-]+/gi,
+    "Bearer [REDACTED:bearer_token]",
+  );
+  out = out.replace(
+    /\b(AKIA|ASIA)[A-Z0-9]{16}\b/g,
+    "[REDACTED:aws_access_key]",
+  );
+  out = out.replace(
+    // RFC-5322-lite email; deliberately strict on the local part to
+    // avoid over-redacting normal words containing "@".
+    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+    "[REDACTED:email]",
+  );
+  out = out.replace(
+    // 13-19 contiguous digits (with optional spaces/dashes between
+    // groups of 4). Catches credit cards + long account numbers
+    // without catching ordinary integers like 12345.
+    /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{1,7}\b/g,
+    "[REDACTED:digits]",
+  );
+  return out;
+}
+
+/**
  * Iter 59 (2026-05-17): redact absolute filesystem paths from a JS
  * stack trace while preserving function names and `:line:col`.
  *
@@ -79,6 +132,14 @@ export interface AgentWorkflowEngineOptions {
    *  preserve full debuggable stacks. Function names, line, and
    *  column are always preserved. */
   redactStackPaths?: boolean;
+  /** Iter 60: redact common PII / secret patterns from
+   *  lastError.message before persisting (email, JWT, Bearer token,
+   *  AWS access key, credit-card-length digit runs). Default
+   *  `true` — error messages routinely embed user input via
+   *  template-literal interpolation. Set `false` only when the
+   *  consumer is trusted + the redaction false-positive rate
+   *  becomes a debugging burden. */
+  redactMessages?: boolean;
 }
 
 export class StepOutputTooLargeError extends Error {
@@ -384,17 +445,27 @@ export class AgentWorkflowEngine {
   private toErrorEnvelope(thrown: unknown, retryable: boolean): StepErrorEnvelope {
     const now = new Date().toISOString();
     if (thrown instanceof Error) {
+      const rawMessage = thrown.message;
       return {
         name: thrown.name,
-        message: thrown.message,
+        // Iter 60: sanitize before persisting. Sanitizer is pure on
+        // strings and undefined-safe — applies to both Error and
+        // NonError branches.
+        message: this.shouldRedactMessage()
+          ? (redactSensitiveMessage(rawMessage) ?? rawMessage)
+          : rawMessage,
         stack: this.shouldRedactStack() ? redactStackPaths(thrown.stack) : thrown.stack,
         retryable,
         timestamp: now,
       };
     }
+    const rawNonErrorMessage =
+      typeof thrown === "string" ? thrown : JSON.stringify(thrown ?? null);
     return {
       name: "NonError",
-      message: typeof thrown === "string" ? thrown : JSON.stringify(thrown ?? null),
+      message: this.shouldRedactMessage()
+        ? (redactSensitiveMessage(rawNonErrorMessage) ?? rawNonErrorMessage)
+        : rawNonErrorMessage,
       retryable,
       timestamp: now,
     };
@@ -402,6 +473,10 @@ export class AgentWorkflowEngine {
 
   private shouldRedactStack(): boolean {
     return this.options.redactStackPaths ?? true;
+  }
+
+  private shouldRedactMessage(): boolean {
+    return this.options.redactMessages ?? true;
   }
 
   private measureOutputBytes(output: unknown): number {
