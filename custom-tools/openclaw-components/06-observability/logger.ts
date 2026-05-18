@@ -12,9 +12,20 @@
 //
 //     CLAUDE.md §57.6 calls this the canonical-log-fields contract.
 
+import { LogSink, ConsoleLogSink } from "./sinks";
+
 const REQUIRED_REQUEST_FIELDS = ["requestId", "tenantId"] as const;
 
 export class StructuredLogger {
+  private readonly sink: LogSink;
+  // Iter M3.1 (2026-05-18): pluggable sink. Default ConsoleLogSink
+  // preserves the by-level routing console.log/warn/error contract;
+  // InMemoryLogSink lets drills capture without spy boilerplate;
+  // a future FluentdLogSink / DatadogLogSink plugs in unchanged.
+  constructor(sink?: LogSink) {
+    this.sink = sink ?? new ConsoleLogSink();
+  }
+
   log(
     level: "info" | "warn" | "error",
     message: string,
@@ -27,12 +38,12 @@ export class StructuredLogger {
         meta[`_${k}_invalid`] = true;
       }
     }
-    console.log(JSON.stringify({
+    this.sink.emit({
       level,
       message,
       timestamp: new Date().toISOString(),
       ...meta,
-    }));
+    });
   }
 }
 

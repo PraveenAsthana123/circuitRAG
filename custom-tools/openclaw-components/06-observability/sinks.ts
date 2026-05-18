@@ -53,6 +53,24 @@ export interface EventSink {
   emit(record: EventRecord): void;
 }
 
+/**
+ * Iter M3.1 (2026-05-18): generic structured log sink for emitters
+ * that don't fit the trace/metric/event taxonomy. StructuredLogger
+ * uses this; future emitters that just want "send this JSON
+ * somewhere" can target it too. Records are opaque maps — the
+ * canonical-fields contract is owned by the emitter, not the sink.
+ */
+export interface LogRecord {
+  level: "info" | "warn" | "error";
+  message: string;
+  timestamp: string;
+  [extra: string]: unknown;
+}
+
+export interface LogSink {
+  emit(record: LogRecord): void;
+}
+
 /** Default console-based sink. Single-line JSON for log-shipper safety. */
 export class ConsoleTraceSink implements TraceSink {
   emit(record: SpanRecord): void {
@@ -69,6 +87,38 @@ export class ConsoleMetricsSink implements MetricsSink {
 export class ConsoleEventSink implements EventSink {
   emit(record: EventRecord): void {
     console.log(JSON.stringify(record));
+  }
+}
+
+/** Iter M3.1: console LogSink. Preserves the pre-M3.1 contract
+ *  that every log line lands on console.log regardless of level —
+ *  existing test spy patterns and log-shipper configs assume this.
+ *  A future LevelRoutedConsoleLogSink can route info→log /
+ *  warn→warn / error→error when callers opt in; default stays
+ *  monoline for backcompat. */
+export class ConsoleLogSink implements LogSink {
+  emit(record: LogRecord): void {
+    console.log(JSON.stringify(record));
+  }
+}
+
+export class InMemoryLogSink implements LogSink {
+  private readonly records: LogRecord[] = [];
+  constructor(private readonly maxRecords: number = 10_000) {
+    if (maxRecords < 1) throw new Error("maxRecords must be >= 1");
+  }
+  emit(record: LogRecord): void {
+    this.records.push(record);
+    while (this.records.length > this.maxRecords) this.records.shift();
+  }
+  list(): LogRecord[] {
+    return this.records.map((r) => ({ ...r }));
+  }
+  size(): number {
+    return this.records.length;
+  }
+  clear(): void {
+    this.records.length = 0;
   }
 }
 
