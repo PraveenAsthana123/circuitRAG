@@ -17,14 +17,38 @@ import { RoutingPolicy } from "./routing-policy";
 import { SafetyGate } from "./safety-gate";
 import { LLMClient } from "./llm-client";
 import { LLMRequest, LLMResponse, ModelConfig } from "./types";
+import { CostLedger } from "./cost-ledger";
+import { validateLLMResponse } from "./response-validator";
+import {
+  EventSink,
+  StreamRoutedEventSink,
+} from "../06-observability/sinks";
+
+export interface LLMRouterOptions {
+  productionMode?: boolean;
+  // Iter 99 (2026-05-18): pluggable sink for the three router
+  // event streams (llm_route_success → log, llm_route_model_failed
+  // → warn, llm_route_failure → error). Default StreamRoutedEventSink
+  // preserves the multi-stream contract iter 61's drill spies on.
+  // A future PrometheusEventSink / DatadogSink plugs in unchanged.
+  sink?: EventSink;
+}
 
 export class LLMRouter {
+  private readonly sink: EventSink;
   constructor(
     private readonly registry: ModelRegistry,
     private readonly policy: RoutingPolicy,
     private readonly safetyGate: SafetyGate,
-    private readonly client: LLMClient
-  ) {}
+    private readonly client: LLMClient,
+    private readonly costLedger: CostLedger = new CostLedger(),
+    private readonly options: LLMRouterOptions = {},
+  ) {
+    if (this.options.productionMode && this.client.isProductionStub) {
+      throw new Error("Production LLMRouter cannot use a stub LLMClient");
+    }
+    this.sink = this.options.sink ?? new StreamRoutedEventSink();
+  }
 
   async route(request: LLMRequest): Promise<LLMResponse> {
     const start = Date.now();
@@ -53,6 +77,7 @@ export class LLMRouter {
 
       try {
         const response = await this.client.complete(request, selected);
+        validateLLMResponse(response);
         const isFallback = failures.length > 0;
         const enriched: LLMResponse = isFallback
           ? {
@@ -63,10 +88,23 @@ export class LLMRouter {
             }
           : response;
 
-        console.log(JSON.stringify({
+        this.costLedger.record({
+          requestId: request.requestId,
+          tenantId: request.tenantId,
+          userId: request.userId,
+          modelId: enriched.modelId,
+          provider: enriched.provider,
+          taskType: request.taskType,
+          estimatedCostUsd: enriched.estimatedCostUsd,
+          timestamp: new Date().toISOString(),
+        });
+
+        this.sink.emit({
+          _stream: "log",
           type: "llm_route_success",
           requestId: request.requestId,
           tenantId: request.tenantId,
+          userId: request.userId,
           taskType: request.taskType,
           selectedModel: selected.modelId,
           provider: selected.provider,
@@ -74,15 +112,18 @@ export class LLMRouter {
           fallbackChainLength: failures.length,
           latencyMs: response.latencyMs,
           estimatedCostUsd: response.estimatedCostUsd,
+          tenantSpendUsd: this.costLedger.getTenantSpend(request.tenantId),
+          userSpendUsd: this.costLedger.getUserSpend(request.tenantId, request.userId),
           traceId: request.traceId,
           timestamp: new Date().toISOString(),
-        }));
+        });
 
         return enriched;
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : "Unknown error";
         failures.push({ modelId: selected.modelId, error: errMsg });
-        console.warn(JSON.stringify({
+        this.sink.emit({
+          _stream: "warn",
           type: "llm_route_model_failed",
           requestId: request.requestId,
           tenantId: request.tenantId,
@@ -92,7 +133,7 @@ export class LLMRouter {
           remainingCandidates: remaining.length - 1,
           traceId: request.traceId,
           timestamp: new Date().toISOString(),
-        }));
+        });
 
         // Remove the failed model from the remaining set so the policy
         // picks something different on the next iteration.
@@ -115,7 +156,8 @@ export class LLMRouter {
     failures: { modelId: string; error: string }[],
     error: unknown,
   ): void {
-    console.error(JSON.stringify({
+    this.sink.emit({
+      _stream: "error",
       type: "llm_route_failure",
       requestId: request.requestId,
       tenantId: request.tenantId,
@@ -125,6 +167,6 @@ export class LLMRouter {
       durationMs: Date.now() - start,
       traceId: request.traceId,
       timestamp: new Date().toISOString(),
-    }));
+    });
   }
 }

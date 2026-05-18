@@ -103,6 +103,46 @@ export class ConsoleErrorEventSink implements EventSink {
   }
 }
 
+/**
+ * Iter 99 (2026-05-18): EventSink that routes to console.warn.
+ * For emitters whose pre-sink behavior was console.warn (e.g.,
+ * LLMRouter per-failure attempts during fallback). Preserves
+ * the stream-routing contract iter 61's router-drill-matrix
+ * depends on.
+ */
+export class ConsoleWarnEventSink implements EventSink {
+  emit(record: EventRecord): void {
+    console.warn(JSON.stringify(record));
+  }
+}
+
+/**
+ * Iter 99 (2026-05-18): EventSink that routes BY a `level` hint
+ * on the record (info → console.log, warn → console.warn,
+ * error → console.error). For emitters whose pre-sink behavior
+ * was multi-stream (LLMRouter: success → log, per-attempt-fail →
+ * warn, final-fail → error). The emitter sets a `_stream`
+ * field (private — strips before emission); this sink routes
+ * accordingly. When `_stream` is absent, falls back to console.log.
+ */
+export class StreamRoutedEventSink implements EventSink {
+  emit(record: EventRecord): void {
+    const stream = record._stream as ("log" | "warn" | "error" | undefined);
+    // Strip the routing hint from the persisted record so consumers
+    // don't see internal plumbing.
+    const { _stream: _unused, ...payload } = record;
+    void _unused;
+    const out = JSON.stringify(payload);
+    if (stream === "error") {
+      console.error(out);
+    } else if (stream === "warn") {
+      console.warn(out);
+    } else {
+      console.log(out);
+    }
+  }
+}
+
 /** Iter M3.1: console LogSink. Preserves the pre-M3.1 contract
  *  that every log line lands on console.log regardless of level —
  *  existing test spy patterns and log-shipper configs assume this.
