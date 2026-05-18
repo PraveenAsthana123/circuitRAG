@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { MemoryRecord } from "./types";
-import { MemoryStore } from "./memory-store";
+import { MemoryStore, MemoryAccessDeniedError } from "./memory-store";
 import { MemoryAuditLog } from "./memory-audit-log";
 import { PIIMasker } from "./pii-masker";
 import { RetentionPolicy } from "./retention-policy";
@@ -16,6 +16,18 @@ interface SaveMemoryInput {
   reason: string;
   traceId?: string;
   retentionDays?: number;
+  /**
+   * Iter 62 (2026-05-17): tenant from the auth context (e.g., JWT
+   * claim), distinct from `tenantId` in the body. When present and
+   * != `tenantId`, save() throws MemoryAccessDeniedError BEFORE any
+   * persistence — defends against an authenticated caller trying to
+   * write into another tenant's memory by submitting a forged
+   * `tenantId` in the request body.
+   *
+   * When omitted, defaults to `tenantId` (backcompat with pre-iter-62
+   * callers). New production code MUST pass this.
+   */
+  callerTenantId?: string;
 }
 
 /** Iter 45: thrown when save() rejects a value that contains
@@ -61,6 +73,21 @@ export class MemoryGovernanceService {
   }
 
   save(input: SaveMemoryInput): MemoryRecord {
+    // Iter 62 (2026-05-17): refuse cross-tenant writes BEFORE any
+    // expensive work (injection detect, encrypt, store). When
+    // `callerTenantId` is omitted, treat caller as the body-claimed
+    // tenant — preserves the pre-iter-62 trust contract. Production
+    // callers should ALWAYS pass callerTenantId from the auth context.
+    const caller = input.callerTenantId ?? input.tenantId;
+    if (caller !== input.tenantId) {
+      // No audit row is written here — the access denial is at the
+      // auth-boundary, and emitting an audit row with the rejected
+      // tenantId could itself leak the existence of that tenant.
+      // (Matches the same trust-boundary lesson as Component 1's
+      // Iter 50 auth fix.)
+      throw new MemoryAccessDeniedError("(unknown)", caller);
+    }
+
     // Iter 45: injection check happens BEFORE PII mask + encryption
     // so we see the raw text the user submitted.
     const injectionFindings = this.injectionDetector
@@ -134,7 +161,29 @@ export class MemoryGovernanceService {
     return saved;
   }
 
-  read(tenantId: string, userId: string, key: string): MemoryRecord | undefined {
+  /**
+   * Iter 62 (2026-05-17): optional `callerTenantId` is the auth-
+   * context tenant (e.g., JWT claim). When provided and != `tenantId`,
+   * throws MemoryAccessDeniedError — prevents an authenticated caller
+   * from reading another tenant's memory by passing a forged tenantId.
+   * When omitted, defaults to `tenantId` (backcompat).
+   *
+   * Choosing `throw` over `return undefined` here: returning undefined
+   * would let an attacker probe the tenant-existence boundary by
+   * comparing latency of cross-tenant reads vs no-such-key reads.
+   * Throwing is explicit and audit-loud.
+   */
+  read(
+    tenantId: string,
+    userId: string,
+    key: string,
+    callerTenantId?: string,
+  ): MemoryRecord | undefined {
+    const caller = callerTenantId ?? tenantId;
+    if (caller !== tenantId) {
+      throw new MemoryAccessDeniedError("(by-key lookup)", caller);
+    }
+
     const record = this.store.findByKey(tenantId, userId, key);
 
     if (!record) return undefined;

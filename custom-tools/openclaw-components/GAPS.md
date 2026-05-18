@@ -64,7 +64,7 @@ strength. Examples:
 | Gap | Severity | Fix |
 |---|---|---|
 | Audit log is in-memory `[]` — lost on restart | **P0** | Append-only Postgres table; per §38 audit row schema |
-| No tenant isolation enforcement — caller can pass any tenantId | **P0** | tenant_id from auth context, not request body |
+| ~~No tenant isolation enforcement — caller can pass any tenantId~~ ✅ Iter 62 (2026-05-17) | ~~P0~~ closed | service-level enforcement at save() + read() via optional `callerTenantId` (auth-context tenant); mismatch → MemoryAccessDeniedError BEFORE persistence/retrieval. Backcompat preserved: omitted → defaults to body tenantId. Drill: cross-tenant-access.test.ts (8 steps, 6 negative). |
 
 ### Component 5 — Responsible-AI Guardrails
 
