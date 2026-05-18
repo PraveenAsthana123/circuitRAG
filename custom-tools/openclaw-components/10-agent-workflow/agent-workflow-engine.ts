@@ -16,16 +16,42 @@ const cloneSteps = (steps: WorkflowStep[]): WorkflowStep[] =>
   steps.map((step) => ({ ...step }));
 
 const DEFAULT_MAX_STEP_OUTPUT_BYTES = 64 * 1024;
+/** Iter 58: cap how many recovery_steps replan may insert per
+ *  workflow. Without a cap, a recovery_step that itself fails will
+ *  trigger ANOTHER recovery_step; the step list grows unboundedly
+ *  and the workflow-state-store memory does too. Default 3 allows
+ *  modest in-flight recovery (try → recovery → recovery → recovery)
+ *  before declaring the workflow lost. */
+const DEFAULT_MAX_RECOVERY_DEPTH = 3;
+/** Iter 58: canonical name a replanned step gets. The replanner
+ *  also uses this string; the engine counts steps with this name to
+ *  enforce the cap. If you rename it in replanner.ts, update here. */
+const RECOVERY_STEP_NAME = "recovery_step";
 
 export interface AgentWorkflowEngineOptions {
   /** Iter 56: cap persisted per-step output to defend in-memory state. */
   maxStepOutputBytes?: number;
+  /** Iter 58: cap recovery-step replan depth per workflow. When the
+   *  workflow already contains this many recovery_steps and another
+   *  failure occurs, the engine does NOT replan again — it marks the
+   *  workflow `failed` and stops. */
+  maxRecoveryDepth?: number;
 }
 
 export class StepOutputTooLargeError extends Error {
   constructor(sizeBytes: number, maxBytes: number) {
     super(`Step output is ${sizeBytes} bytes; limit is ${maxBytes} bytes`);
     this.name = "StepOutputTooLargeError";
+  }
+}
+
+/** Iter 58: raised internally when the recovery cap is hit. Surfaces
+ *  on the failed step's lastError so operator can see "we gave up
+ *  retrying recovery" rather than just "workflow failed". */
+export class RecoveryDepthExceededError extends Error {
+  constructor(depth: number, max: number) {
+    super(`Recovery depth ${depth} exceeds max ${max}; workflow abandoned`);
+    this.name = "RecoveryDepthExceededError";
   }
 }
 
@@ -60,6 +86,10 @@ export class AgentWorkflowEngine {
     const maxBytes = this.maxStepOutputBytes();
     if (!Number.isFinite(maxBytes) || maxBytes < 0) {
       throw new Error("maxStepOutputBytes must be a non-negative finite number");
+    }
+    const maxDepth = this.maxRecoveryDepth();
+    if (!Number.isInteger(maxDepth) || maxDepth < 0) {
+      throw new Error("maxRecoveryDepth must be a non-negative integer");
     }
   }
 
@@ -220,6 +250,41 @@ export class AgentWorkflowEngine {
       // it through to the final state. Operator UI sees lastError
       // on the failed step even after the recovery step has run.
       step.lastError = this.toErrorEnvelope(error, isRetryable);
+
+      // Iter 58: cap recovery depth. Count recovery_steps in the
+      // CURRENT plan; if at/above cap, abandon the workflow rather
+      // than inserting yet another doomed recovery_step. The just-
+      // failed step's lastError is overwritten with a
+      // RecoveryDepthExceededError so the audit row makes the
+      // STOP-REASON visible (not just "permanent fail").
+      const existingRecoveryCount = state.steps.filter(
+        (s) => s.name === RECOVERY_STEP_NAME,
+      ).length;
+      if (existingRecoveryCount >= this.maxRecoveryDepth()) {
+        const giveUp = new RecoveryDepthExceededError(
+          existingRecoveryCount,
+          this.maxRecoveryDepth(),
+        );
+        step.lastError = this.toErrorEnvelope(giveUp, false);
+        const abandoned = {
+          ...state,
+          steps: cloneSteps(state.steps),
+          status: "failed" as const,
+        };
+        this.store.save(abandoned);
+        console.warn(JSON.stringify({
+          type: "workflow_abandoned",
+          workflowId,
+          stepId: step.stepId,
+          recoveryDepth: existingRecoveryCount,
+          maxRecoveryDepth: this.maxRecoveryDepth(),
+          reason: giveUp.message,
+          traceId: state.context.traceId,
+          timestamp: new Date().toISOString(),
+        }));
+        return abandoned;
+      }
+
       const replanned = this.replanner.replan(
         {
           ...state,
@@ -261,6 +326,10 @@ export class AgentWorkflowEngine {
 
   private maxStepOutputBytes(): number {
     return this.options.maxStepOutputBytes ?? DEFAULT_MAX_STEP_OUTPUT_BYTES;
+  }
+
+  private maxRecoveryDepth(): number {
+    return this.options.maxRecoveryDepth ?? DEFAULT_MAX_RECOVERY_DEPTH;
   }
 
   // Iter 57: normalize anything thrown into the persisted error
