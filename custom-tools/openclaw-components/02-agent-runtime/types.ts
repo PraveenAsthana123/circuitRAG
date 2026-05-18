@@ -15,10 +15,14 @@ export interface AgentTask {
 
 export interface PlanStep {
   stepId: string;
-  action: "think" | "tool" | "respond";
+  action: "think" | "tool" | "respond" | "recall";
   description: string;
   toolName?: string;
   toolInput?: Record<string, unknown>;
+  /** Iter 65 (2026-05-17): for action: "recall" — the memory key
+   *  to fetch via Component 4 MemoryGovernanceService.read().
+   *  Required when action === "recall"; ignored otherwise. */
+  memoryKey?: string;
 }
 
 export interface AgentPlan {

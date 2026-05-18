@@ -42,7 +42,7 @@ strength. Examples:
 |---|---|---|
 | `Planner.createPlan()` returns a **hardcoded 2-step plan** — same plan for any input | **P0** | LLM-driven planning with JSON-schema validated output per CLAUDE.md §59.4 |
 | `AgentRuntime.run()` returns `string`, **not** `AgentResponse` from Component 1 | **P1** | Either align types (return `AgentResponse`) or build an adapter at the Gateway boundary |
-| ⚠ Partial close (Iter 64, 2026-05-17): GUARDRAILS half closed. Executor takes optional `guardrails: GuardrailEngine`; enforces input-side BEFORE step loop ("block" → short-circuit) AND output-side on every think step's response ("block" → step fails). traceId threaded through GuardrailContext. Drill: guardrail-injection.test.ts (8 steps, 7 negative). MEMORY half deferred — no concrete use case wired, would be a half-finished impl. | **P1** (memory half open) | (memory) constructor-inject MemoryGovernanceService + concrete memory-aware step (e.g., personalize-from-memory) before think |
+| ~~Tool/model routing is wired, but memory, guardrails, and tracing are still not full runtime dependencies~~ ✅ Iter 64-65 (2026-05-17) | ~~P1~~ closed | Iter 64: `guardrails: GuardrailEngine` injected; input-side + output-side enforcement; traceId threaded (8 drill steps). Iter 65: `memory: MemoryGovernanceService` injected; new `action: "recall"` step type fetches via memory.read() preserving iter 62 cross-tenant defense; output = {key, value, found} for downstream composition (8 drill steps). Total component 2 drill count: 29. |
 
 ### Component 10 — Agent Workflow Engine
 

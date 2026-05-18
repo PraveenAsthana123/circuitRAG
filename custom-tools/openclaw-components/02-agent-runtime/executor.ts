@@ -19,6 +19,7 @@ import { AgentPlan, AgentTask, ExecutionResult, PlanStep } from "./types";
 import { ModelClient } from "./model-client";
 import { ToolDispatcher } from "../03-tooling/tool-dispatcher";
 import { GuardrailEngine } from "../05-guardrails/guardrail-engine";
+import { MemoryGovernanceService } from "../04-memory-governance/memory-governance-service";
 
 const DEFAULT_MAX_STEPS = 20;
 
@@ -35,18 +36,27 @@ export interface ExecutorDeps {
    *              executeWithTask records it). Per CLAUDE.md §48.5
    *              RAG four-part contract: input AND output filtering. */
   guardrails?: GuardrailEngine;
+  /** Iter 65 (2026-05-17): wires Component 4 MemoryGovernanceService.
+   *  Enables `action: "recall"` steps that fetch a memory record
+   *  via memory.read(task.tenantId, task.userId, step.memoryKey,
+   *  callerTenantId=task.tenantId). Closes the partial half from
+   *  iter 64. The recall step's output is { value, found } so
+   *  downstream steps (current or future) can compose on it. */
+  memory?: MemoryGovernanceService;
 }
 
 export class Executor {
   private readonly modelClient?: ModelClient;
   private readonly toolDispatcher?: ToolDispatcher;
   private readonly guardrails?: GuardrailEngine;
+  private readonly memory?: MemoryGovernanceService;
   private readonly maxSteps: number;
 
   constructor(deps: ExecutorDeps = {}) {
     this.modelClient = deps.modelClient;
     this.toolDispatcher = deps.toolDispatcher;
     this.guardrails = deps.guardrails;
+    this.memory = deps.memory;
     this.maxSteps = deps.maxSteps ?? DEFAULT_MAX_STEPS;
     if (this.maxSteps < 1) throw new Error("maxSteps must be >= 1");
   }
@@ -134,9 +144,39 @@ export class Executor {
         return this.runTool(step, task);
       case "respond":
         return this.runRespond(step, task);
+      case "recall":
+        return this.runRecall(step, task);
       default:
         throw new Error(`Unknown step action: ${(step as PlanStep).action}`);
     }
+  }
+
+  private runRecall(step: PlanStep, task: AgentTask): unknown {
+    if (!this.memory) {
+      throw new Error(`Step '${step.description}' is 'recall' but no memory wired`);
+    }
+    if (!step.memoryKey) {
+      throw new Error(`Step '${step.description}' is 'recall' but step.memoryKey missing`);
+    }
+    if (!task.tenantId) {
+      throw new Error("'recall' step requires task.tenantId");
+    }
+    // Pass callerTenantId === task.tenantId so iter 62's
+    // service-level cross-tenant defense is exercised even in the
+    // trivial same-tenant case. A future executor that received
+    // task.callerTenantId from upstream auth context will pass
+    // THAT — and a forged task.tenantId will be rejected by §04.
+    const record = this.memory.read(
+      task.tenantId,
+      task.userId,
+      step.memoryKey,
+      task.tenantId,
+    );
+    return {
+      key: step.memoryKey,
+      value: record?.value,
+      found: record !== undefined,
+    };
   }
 
   private async runThink(step: PlanStep, task: AgentTask): Promise<unknown> {
