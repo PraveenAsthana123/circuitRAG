@@ -6,6 +6,10 @@ import { WorkflowStateStore } from "./workflow-state-store";
 import { RollbackManager } from "./rollback-manager";
 import { ToolDispatcher } from "../03-tooling/tool-dispatcher";
 import { ToolRequest, ToolErrorMeta } from "../03-tooling/types";
+import {
+  EventSink,
+  StreamRoutedEventSink,
+} from "../06-observability/sinks";
 import { WorkflowMonitor } from "./workflow-monitor";
 import {
   WorkflowContext,
@@ -179,6 +183,13 @@ export interface AgentWorkflowEngineOptions {
   /** Iter 67: window length in ms for `maxAttemptsPerWindow`.
    *  Constructor rejects values < 1. */
   attemptWindowMs?: number;
+  /** Iter 100 (2026-05-18): pluggable sink for lifecycle event
+   *  emissions (workflow_started → log, workflow_step_started → log,
+   *  workflow_step_retry → warn, workflow_abandoned → warn).
+   *  Default StreamRoutedEventSink preserves console stream-routing
+   *  contract iter 54/57/58 drills depend on. A future
+   *  KafkaWorkflowSink / DatadogSink plugs in unchanged. */
+  lifecycleSink?: EventSink;
 }
 
 export class StepOutputTooLargeError extends Error {
@@ -289,6 +300,7 @@ export class AgentWorkflowEngine {
    *  monotonically-appended timestamps trimmed each time the
    *  window slides. Different workflows have independent windows. */
   private readonly attemptsByWorkflow = new Map<string, number[]>();
+  private readonly lifecycleSink: EventSink;
 
   constructor(
     private readonly planner: WorkflowPlanner,
@@ -299,6 +311,10 @@ export class AgentWorkflowEngine {
     private readonly options: AgentWorkflowEngineOptions = {},
   ) {
     this.rollbackManager = new RollbackManager(store);
+    // Iter 100: lifecycle sink — default StreamRoutedEventSink
+    // preserves the multi-stream console.log/warn contract drills
+    // iter 54 + 57 + 58 + 67 + 66 depend on.
+    this.lifecycleSink = this.options.lifecycleSink ?? new StreamRoutedEventSink();
     if (this.options.requireRealToolDispatcher && !this.options.toolDispatcher) {
       throw new Error("AgentWorkflowEngine requires a real ToolDispatcher in production mode");
     }
@@ -333,7 +349,8 @@ export class AgentWorkflowEngine {
       status: "planning",
     });
 
-    console.log(JSON.stringify({
+    this.lifecycleSink.emit({
+      _stream: "log",
       type: "workflow_started",
       workflowId: context.workflowId,
       requestId: context.requestId,
@@ -341,7 +358,7 @@ export class AgentWorkflowEngine {
       stepCount: state.steps.length,
       traceId: context.traceId,
       timestamp: new Date().toISOString(),
-    }));
+    });
     this.options.monitor?.workflowStarted(context, state.steps.length);
 
     return state;
@@ -413,7 +430,8 @@ export class AgentWorkflowEngine {
     const outputContext = this.buildOutputContext(state.steps, state.currentStepIndex);
 
     try {
-      console.log(JSON.stringify({
+      this.lifecycleSink.emit({
+        _stream: "log",
         type: "workflow_step_started",
         workflowId,
         stepId: step.stepId,
@@ -421,7 +439,7 @@ export class AgentWorkflowEngine {
         selectedTool: toolName,
         traceId: state.context.traceId,
         timestamp: new Date().toISOString(),
-      }));
+      });
 
       // ✅ P1 FIXED (2026-05-17): persist `running` BEFORE awaiting
       // the tool. Pre-fix: status was mutated but not saved; a crash
@@ -505,7 +523,8 @@ export class AgentWorkflowEngine {
         };
         this.store.save(retryState);
 
-        console.warn(JSON.stringify({
+        this.lifecycleSink.emit({
+          _stream: "warn",
           type: "workflow_step_retry",
           workflowId,
           stepId: step.stepId,
@@ -514,7 +533,7 @@ export class AgentWorkflowEngine {
           error: error.message,
           traceId: state.context.traceId,
           timestamp: new Date().toISOString(),
-        }));
+        });
 
         return retryState;
       }
@@ -580,7 +599,8 @@ export class AgentWorkflowEngine {
           replanHistory: abandonedHistory,
         };
         this.store.save(abandoned);
-        console.warn(JSON.stringify({
+        this.lifecycleSink.emit({
+          _stream: "warn",
           type: "workflow_abandoned",
           workflowId,
           stepId: step.stepId,
@@ -589,7 +609,7 @@ export class AgentWorkflowEngine {
           reason: giveUp.message,
           traceId: state.context.traceId,
           timestamp: new Date().toISOString(),
-        }));
+        });
         return abandoned;
       }
 
