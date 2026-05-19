@@ -8,9 +8,22 @@
 
 import { WorkflowStateStore } from "./workflow-state-store";
 import { WorkflowState } from "./types";
+import {
+  EventSink,
+  ConsoleWarnEventSink,
+} from "../06-observability/sinks";
 
 export class RollbackManager {
-  constructor(private readonly store: WorkflowStateStore) {}
+  private readonly sink: EventSink;
+  // Iter 103 (2026-05-18): pluggable sink for workflow_rollback
+  // emissions. Default ConsoleWarnEventSink preserves iter 95's
+  // console.warn-spy contract.
+  constructor(
+    private readonly store: WorkflowStateStore,
+    sink?: EventSink,
+  ) {
+    this.sink = sink ?? new ConsoleWarnEventSink();
+  }
 
   rollback(workflowId: string, callerTenantId: string, reason: string): WorkflowState {
     // store.rollback enforces tenant; throws on mismatch.
@@ -23,14 +36,14 @@ export class RollbackManager {
 
     this.store.save(rolledBack);
 
-    console.warn(JSON.stringify({
+    this.sink.emit({
       type: "workflow_rollback",
       workflowId,
       reason,
       restoredStatus: restored.status,
       newStatus: "rolled_back",
       timestamp: new Date().toISOString(),
-    }));
+    });
 
     return rolledBack;
   }

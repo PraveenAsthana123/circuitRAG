@@ -8,9 +8,21 @@
 
 import { WorkflowContext, WorkflowStep } from "./types";
 import { ApprovalQueue } from "./approval-queue";
+import {
+  EventSink,
+  ConsoleEventSink,
+} from "../06-observability/sinks";
 
 export class HumanApprovalGate {
-  constructor(private readonly queue: ApprovalQueue = new ApprovalQueue()) {}
+  private readonly sink: EventSink;
+  // Iter 103 (2026-05-18): pluggable sink for human_approval_required
+  // emissions. Default ConsoleEventSink preserves backcompat.
+  constructor(
+    private readonly queue: ApprovalQueue = new ApprovalQueue(),
+    sink?: EventSink,
+  ) {
+    this.sink = sink ?? new ConsoleEventSink();
+  }
 
   requestApproval(context: WorkflowContext, step: WorkflowStep): string {
     const ticket = this.queue.enqueue({
@@ -21,7 +33,7 @@ export class HumanApprovalGate {
       requestedBy: context.userId,
     });
 
-    console.log(JSON.stringify({
+    this.sink.emit({
       type: "human_approval_required",
       approvalId: ticket.approvalId,
       workflowId: context.workflowId,
@@ -32,7 +44,7 @@ export class HumanApprovalGate {
       expiresAt: ticket.expiresAt,
       traceId: context.traceId,
       timestamp: new Date().toISOString(),
-    }));
+    });
 
     return ticket.approvalId;
   }

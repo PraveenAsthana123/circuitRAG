@@ -21,7 +21,8 @@ const POLICY: ResiliencePolicy = {
 };
 
 const CTX: ResilienceContext = {
-  requestId: "r-1", component: "test", traceId: "tr",
+  requestId: "r-1", sessionId: "s-1", userId: "u-1",
+  tenantId: "t-1", component: "test", traceId: "tr",
 };
 
 describe("Iter 102 — FallbackHandler sink injection (P1)", () => {
