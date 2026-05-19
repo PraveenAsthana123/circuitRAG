@@ -1,30 +1,64 @@
 // ✅ P1 IMPROVED (2026-05-17): sessions are tenant-scoped and have
 //     TTL + LRU eviction so an idle session can't pin memory
-//     indefinitely. Real durability still needs Redis/Postgres per
-//     CLAUDE.md §47.7 and GAPS Component 1 row "process-local Map".
-//
-//     What this fix does close (for single-replica deployments):
-//       - Cross-tenant collision via colliding userId: sessionId is
-//         now keyed by tenant + channel + user
-//       - Idle memory leak: ttlMs prunes sessions whose updatedAt
-//         is older than the threshold
-//       - Unbounded growth: maxSessions caps total; LRU evicts
-//         oldest-updated when full
+//     indefinitely.
+// ✅ Iter 98 (2026-05-18): SessionManager now depends on an
+//     injectable SessionPersistenceStore. The default remains the
+//     bounded in-memory adapter for local/test, but Redis/Postgres
+//     adapters can plug in without changing gateway code.
 
 import { SessionState, UserMessage } from "./types";
 
 const DEFAULT_TTL_MS = 60 * 60 * 1000;       // 1 hour
 const DEFAULT_MAX_SESSIONS = 10_000;
 
-export class SessionManager {
+export interface SessionPersistenceStore {
+  get(sessionId: string): SessionState | undefined;
+  set(sessionId: string, session: SessionState): void;
+  delete(sessionId: string): void;
+  entries(): Iterable<[string, SessionState]>;
+  oldestKey(): string | undefined;
+  size(): number;
+}
+
+export class InMemorySessionStore implements SessionPersistenceStore {
   private readonly sessions = new Map<string, SessionState>();
+
+  get(sessionId: string): SessionState | undefined {
+    return this.sessions.get(sessionId);
+  }
+
+  set(sessionId: string, session: SessionState): void {
+    this.sessions.set(sessionId, session);
+  }
+
+  delete(sessionId: string): void {
+    this.sessions.delete(sessionId);
+  }
+
+  entries(): Iterable<[string, SessionState]> {
+    return this.sessions.entries();
+  }
+
+  oldestKey(): string | undefined {
+    return this.sessions.keys().next().value;
+  }
+
+  size(): number {
+    return this.sessions.size;
+  }
+}
+
+export class SessionManager {
+  private readonly store: SessionPersistenceStore;
 
   constructor(
     private readonly ttlMs: number = DEFAULT_TTL_MS,
     private readonly maxSessions: number = DEFAULT_MAX_SESSIONS,
+    store?: SessionPersistenceStore,
   ) {
     if (ttlMs < 1) throw new Error("ttlMs must be >= 1");
     if (maxSessions < 1) throw new Error("maxSessions must be >= 1");
+    this.store = store ?? new InMemorySessionStore();
   }
 
   private sessionKey(message: UserMessage): string {
@@ -39,13 +73,13 @@ export class SessionManager {
     const sessionId = this.sessionKey(message);
     const now = new Date().toISOString();
 
-    const existing = this.sessions.get(sessionId);
+    const existing = this.store.get(sessionId);
     if (existing) {
       existing.history.push(message);
       existing.updatedAt = now;
-      // Touch — re-insert at end so insertion-order Map approximates LRU.
-      this.sessions.delete(sessionId);
-      this.sessions.set(sessionId, existing);
+      // Touch — re-insert at end so insertion-order stores approximate LRU.
+      this.store.delete(sessionId);
+      this.store.set(sessionId, existing);
       return existing;
     }
 
@@ -59,29 +93,29 @@ export class SessionManager {
       updatedAt: now,
     };
 
-    this.sessions.set(sessionId, session);
+    this.store.set(sessionId, session);
     return session;
   }
 
   private pruneExpired(): void {
     const cutoff = Date.now() - this.ttlMs;
-    for (const [key, session] of this.sessions) {
+    for (const [key, session] of this.store.entries()) {
       if (new Date(session.updatedAt).getTime() < cutoff) {
-        this.sessions.delete(key);
+        this.store.delete(key);
       }
     }
   }
 
   private enforceCap(): void {
-    while (this.sessions.size >= this.maxSessions) {
-      const oldest = this.sessions.keys().next().value;
+    while (this.store.size() >= this.maxSessions) {
+      const oldest = this.store.oldestKey();
       if (oldest === undefined) break;
-      this.sessions.delete(oldest);
+      this.store.delete(oldest);
     }
   }
 
   /** Test helper. */
   size(): number {
-    return this.sessions.size;
+    return this.store.size();
   }
 }
