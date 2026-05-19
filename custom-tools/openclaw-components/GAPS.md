@@ -72,11 +72,11 @@ strength. Examples:
 
 | Gap | Severity | Fix |
 |---|---|---|
-| Prompt-injection detector is **6 hand-written substrings** | **P0** | Use a classifier model (Llama Guard, ProtectAI, Bedrock Guardrails). Substring lists fail to the first creative attacker. |
-| PII detector — same regex limitations as Component 4 | **P1** | Library-based detection |
-| Approval gate `createApprovalTicket` logs to console; no actual queue | **P0** | Push to durable queue (SQS/Kafka) + human-review UI |
+| ~~Prompt-injection detector was hardwired to substring rules with no classifier boundary~~ ✅ Iter 101 (2026-05-19) | ~~P0 local gap~~ closed | `PromptInjectionDetector` now depends on an injectable `PromptInjectionClassifier`; default `PatternPromptInjectionClassifier` preserves the expanded local rule set while production can inject Llama Guard, ProtectAI, or Bedrock Guardrails. Real classifier adapter wiring remains production work. |
+| ~~PII detector was hardwired to regex-only detection with no provider boundary~~ ✅ Iter 102 (2026-05-19) | ~~P1 local gap~~ closed | `PIIDetector` now depends on injectable `PIIProvider`; default `RegexPIIProvider` preserves email/phone/SSN/card/IBAN/IP heuristics and tests pin provider injection. Production still needs Presidio, validator.js/libphonenumber, or another library-backed implementation. |
+| ~~Approval gate `createApprovalTicket` only emitted an event; no queue-backed review ticket existed~~ ✅ Iter 103 (2026-05-19) | ~~P0 local gap~~ closed | `ApprovalGate` now persists canonical tickets through an injectable `HumanReviewQueue`; default `InMemoryHumanReviewQueue` preserves local behavior, supports list/get/approve/deny, and keeps the existing `approval_ticket` event schema unchanged. Production still needs SQS/Kafka/Postgres backing and a human-review UI. |
 | Severity → decision mapping is hardcoded | **P2** | Policy-as-code: OPA / Cedar rules file |
-| No baseline rate of false-positives measured | **P1** | Per §48 fairness: track false-positive rate per tenant; alert on drift |
+| ~~No runtime guardrail false-positive/drift telemetry boundary existed~~ ✅ Iter 104 (2026-05-19) | ~~P1 local gap~~ closed | GuardrailEngine now accepts an injectable GuardrailDecisionMonitor; MetricsGuardrailDecisionMonitor emits per-tenant decision/clean/flagged/finding metrics with bounded labels for false-positive and drift baselines. Production still needs dashboards, alert thresholds, and eval-set labeling/feedback loop. |
 | ~~No drill~~ ✅ Iter 63 (2026-05-17) | ~~P0~~ closed | attack-corpus.test.ts: 14-sample attack corpus + 4-sample benign-PII corpus + 5-sample clean corpus + 1-sample documented-limitation corpus. Asserts TPR_attack === 1.0 AND FPR_clean === 0.0 AND benign-block-rate === 0. 9 drill steps. Also fixed 3 pattern variants (1-word-insertion attacks) the drill caught: "ignore all previous instructions" etc. |
 
 ### Component 6 — Observability

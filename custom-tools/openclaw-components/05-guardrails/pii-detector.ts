@@ -11,8 +11,10 @@
 //     Critical findings are the policy engine's signal to BLOCK,
 //     not just review.
 //
-//     Real production needs validator.js + libphonenumber + a real
-//     PII classifier (Presidio / Lakera). This is still heuristic.
+// ✅ P1 LOCAL FIXED (2026-05-19): PIIDetector now depends on an
+//     injectable PIIProvider boundary. RegexPIIProvider preserves the
+//     local heuristic behavior; production can inject Presidio,
+//     validator.js/libphonenumber, or another library-backed provider.
 
 import { GuardrailFinding } from "./types";
 
@@ -23,6 +25,17 @@ const CARD_RE = /\b(?:\d[ -]?){12,18}\d\b/g;
 const SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/g;
 const IPV4_RE = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
 const IBAN_RE = /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g;
+
+export interface PIIDetection {
+  readonly detected: boolean;
+  readonly ruleId?: string;
+  readonly severity?: GuardrailFinding["severity"];
+  readonly message: string;
+}
+
+export interface PIIProvider {
+  detect(text: string): PIIDetection[];
+}
 
 function luhnValid(digits: string): boolean {
   let sum = 0;
@@ -49,12 +62,13 @@ function hasMatch(text: string, re: RegExp): boolean {
   return text.match(re) !== null;
 }
 
-export class PIIDetector {
-  detect(text: string): GuardrailFinding[] {
-    const findings: GuardrailFinding[] = [];
+export class RegexPIIProvider implements PIIProvider {
+  detect(text: string): PIIDetection[] {
+    const detections: PIIDetection[] = [];
 
     if (hasMatch(text, EMAIL_RE)) {
-      findings.push({
+      detections.push({
+        detected: true,
         ruleId: "PII_EMAIL",
         severity: "medium",
         message: "Input contains an email address",
@@ -62,7 +76,8 @@ export class PIIDetector {
     }
 
     if (hasMatch(text, US_PHONE_RE) || hasMatch(text, INTL_PHONE_RE)) {
-      findings.push({
+      detections.push({
+        detected: true,
         ruleId: "PII_PHONE",
         severity: "medium",
         message: "Input contains a phone number",
@@ -70,7 +85,8 @@ export class PIIDetector {
     }
 
     if (hasMatch(text, SSN_RE)) {
-      findings.push({
+      detections.push({
+        detected: true,
         ruleId: "PII_SSN",
         severity: "critical",
         message: "Input contains an SSN-like sequence",
@@ -81,7 +97,8 @@ export class PIIDetector {
     for (const match of text.matchAll(CARD_RE)) {
       const digits = match[0].replace(/[\s-]/g, "");
       if (digits.length >= 13 && digits.length <= 19 && luhnValid(digits)) {
-        findings.push({
+        detections.push({
+          detected: true,
           ruleId: "PII_CARD",
           severity: "critical",
           message: "Input contains a Luhn-valid card number",
@@ -91,7 +108,8 @@ export class PIIDetector {
     }
 
     if (hasMatch(text, IBAN_RE)) {
-      findings.push({
+      detections.push({
+        detected: true,
         ruleId: "PII_IBAN",
         severity: "critical",
         message: "Input contains an IBAN",
@@ -99,13 +117,29 @@ export class PIIDetector {
     }
 
     if (hasMatch(text, IPV4_RE)) {
-      findings.push({
+      detections.push({
+        detected: true,
         ruleId: "PII_IP",
         severity: "high",
         message: "Input contains an IPv4 address",
       });
     }
 
-    return findings;
+    return detections;
+  }
+}
+
+export class PIIDetector {
+  constructor(private readonly provider: PIIProvider = new RegexPIIProvider()) {}
+
+  detect(text: string): GuardrailFinding[] {
+    return this.provider
+      .detect(text)
+      .filter((detection) => detection.detected)
+      .map((detection) => ({
+        ruleId: detection.ruleId ?? "PII",
+        severity: detection.severity ?? "medium",
+        message: detection.message,
+      }));
   }
 }

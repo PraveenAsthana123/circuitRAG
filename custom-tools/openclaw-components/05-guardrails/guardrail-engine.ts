@@ -27,9 +27,14 @@ import {
   EventSink,
   ConsoleEventSink,
 } from "../06-observability/sinks";
+import {
+  GuardrailDecisionMonitor,
+  NoopGuardrailDecisionMonitor,
+} from "./guardrail-monitor";
 
 export class GuardrailEngine {
   private readonly sink: EventSink;
+  private readonly monitor: GuardrailDecisionMonitor;
   // Iter 97 (2026-05-18): pluggable sink for guardrail_evaluation
   // emissions. Default ConsoleEventSink preserves backcompat;
   // a future guardrail-decision audit store (Postgres append-only
@@ -41,8 +46,10 @@ export class GuardrailEngine {
     private readonly policyEngine: PolicyEngine,
     private readonly approvalGate: ApprovalGate,
     sink?: EventSink,
+    monitor?: GuardrailDecisionMonitor,
   ) {
     this.sink = sink ?? new ConsoleEventSink();
+    this.monitor = monitor ?? new NoopGuardrailDecisionMonitor();
   }
 
   /** Backcompat alias for evaluateRequest. Pre-fix callers expect this. */
@@ -97,6 +104,13 @@ export class GuardrailEngine {
     if (this.approvalGate.requiresHumanApproval(result)) {
       this.approvalGate.createApprovalTicket(result);
     }
+
+    this.monitor.record({
+      side,
+      tenantId: context.tenantId,
+      decision,
+      findings,
+    });
 
     this.sink.emit({
       type: "guardrail_evaluation",

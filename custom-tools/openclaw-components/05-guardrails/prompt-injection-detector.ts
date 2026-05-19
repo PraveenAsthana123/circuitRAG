@@ -6,18 +6,11 @@
 //     classifier (Llama Guard / ProtectAI / Bedrock Guardrails).
 //     See ../GAPS.md Component 5 row 1.
 //
-//     What this fix DOES cover:
-//       - 6 → 38 patterns (jailbreak, system-prompt extraction,
-//         role-override, tool-policy disable, sandbox escape,
-//         persona-shift, encoded-payload markers)
-//       - Unicode NFKC normalization so 'ignore' and the homoglyph
-//         'іgnore' (Cyrillic і U+0456) match the same rule
-//       - Whitespace collapse so 'i g n o r e' triggers
-//       - Case-insensitive (already was, but verified across all
-//         new patterns)
-//
-//     What it does NOT cover: paraphrased attacks, multi-turn
-//     attacks, ciphered payloads, language-switching attacks.
+// ✅ P0 LOCAL FIXED (2026-05-19): PromptInjectionDetector now depends
+//     on a PromptInjectionClassifier boundary. The default classifier
+//     preserves the local pattern matcher; production can inject a
+//     Llama Guard / Bedrock Guardrails adapter without rewriting
+//     GuardrailEngine or MemoryGovernanceService.
 
 import { GuardrailFinding } from "./types";
 
@@ -82,6 +75,17 @@ const PATTERNS: readonly string[] = [
   "do not apologize",
 ];
 
+export interface PromptInjectionClassification {
+  readonly detected: boolean;
+  readonly ruleId?: string;
+  readonly severity?: GuardrailFinding["severity"];
+  readonly message: string;
+}
+
+export interface PromptInjectionClassifier {
+  classify(text: string): PromptInjectionClassification[];
+}
+
 /**
  * Normalize input to defeat common evasion tricks:
  *   - NFKC unicode normalization (homoglyphs, compatibility forms)
@@ -100,12 +104,12 @@ function normalizeCollapsed(text: string): string {
   return normalize(text).replace(/\s+/g, "");
 }
 
-export class PromptInjectionDetector {
-  detect(text: string): GuardrailFinding[] {
+export class PatternPromptInjectionClassifier implements PromptInjectionClassifier {
+  classify(text: string): PromptInjectionClassification[] {
     const normalized = normalize(text);
     const collapsed = normalizeCollapsed(text);
 
-    const findings: GuardrailFinding[] = [];
+    const classifications: PromptInjectionClassification[] = [];
     for (const pattern of PATTERNS) {
       const patternNormalized = normalize(pattern);
       const patternCollapsed = normalizeCollapsed(pattern);
@@ -113,13 +117,31 @@ export class PromptInjectionDetector {
         normalized.includes(patternNormalized) ||
         collapsed.includes(patternCollapsed)
       ) {
-        findings.push({
+        classifications.push({
+          detected: true,
           ruleId: "PROMPT_INJECTION",
           severity: "high",
           message: `Prompt injection pattern detected: ${pattern}`,
         });
       }
     }
-    return findings;
+    return classifications;
+  }
+}
+
+export class PromptInjectionDetector {
+  constructor(
+    private readonly classifier: PromptInjectionClassifier = new PatternPromptInjectionClassifier(),
+  ) {}
+
+  detect(text: string): GuardrailFinding[] {
+    return this.classifier
+      .classify(text)
+      .filter((classification) => classification.detected)
+      .map((classification) => ({
+        ruleId: classification.ruleId ?? "PROMPT_INJECTION",
+        severity: classification.severity ?? "high",
+        message: classification.message,
+      }));
   }
 }
