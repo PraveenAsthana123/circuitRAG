@@ -5,6 +5,10 @@
 //     Now: fallback_source is logged + returned in the outcome.
 
 import { ResilienceContext } from "./types";
+import {
+  EventSink,
+  ConsoleWarnEventSink,
+} from "../06-observability/sinks";
 
 export type FallbackSource =
   | "cache"           // pre-computed response from cache
@@ -22,25 +26,33 @@ export type TaggedFallback<T> = () => Promise<FallbackResult<T>>;
 export type SimpleFallback<T> = () => Promise<T>;
 
 export class FallbackHandler {
+  private readonly sink: EventSink;
+  // Iter 102 (2026-05-18): pluggable sink. Both emissions
+  // (fallback_unavailable + fallback_triggered) went through
+  // console.warn. Reuses EventSink (warn-only via ConsoleWarnEventSink).
+  constructor(sink?: EventSink) {
+    this.sink = sink ?? new ConsoleWarnEventSink();
+  }
+
   async executeFallback<T>(
     context: ResilienceContext,
     fallback?: TaggedFallback<T> | SimpleFallback<T>,
   ): Promise<FallbackResult<T>> {
     if (!fallback) {
-      console.warn(JSON.stringify({
+      this.sink.emit({
         type: "fallback_unavailable",
         requestId: context.requestId,
         component: context.component,
         traceId: context.traceId,
         timestamp: new Date().toISOString(),
-      }));
+      });
       throw new Error("No fallback available");
     }
 
     const raw = await fallback();
     const tagged: FallbackResult<T> = this.normalize(raw);
 
-    console.warn(JSON.stringify({
+    this.sink.emit({
       type: "fallback_triggered",
       requestId: context.requestId,
       sessionId: context.sessionId,
@@ -49,7 +61,7 @@ export class FallbackHandler {
       fallbackSource: tagged.source,
       traceId: context.traceId,
       timestamp: new Date().toISOString(),
-    }));
+    });
 
     return tagged;
   }

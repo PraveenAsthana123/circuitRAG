@@ -17,6 +17,10 @@ import {
   ResilienceContext,
   ResiliencePolicy,
 } from "./types";
+import {
+  EventSink,
+  StreamRoutedEventSink,
+} from "../06-observability/sinks";
 
 /**
  * Optional dependencies for ResilientExecutor. Iter 32 (2026-05-17):
@@ -30,12 +34,19 @@ export interface ResilientExecutorDeps {
   timeout?: Timeout;
   retry?: RetryPolicy;
   fallbackHandler?: FallbackHandler;
+  /** Iter 102 (2026-05-18): pluggable sink for resilience_success
+   *  (log stream) + resilience_failure (error stream) emissions.
+   *  Default StreamRoutedEventSink preserves the multi-stream
+   *  contract iter 90's drill spies on. A future SentrySink /
+   *  DatadogSink plugs in unchanged. */
+  sink?: EventSink;
 }
 
 export class ResilientExecutor {
   private readonly timeout: Timeout;
   private readonly retry: RetryPolicy;
   private readonly fallbackHandler: FallbackHandler;
+  private readonly sink: EventSink;
 
   constructor(
     private readonly circuitBreaker: CircuitBreaker,
@@ -45,6 +56,7 @@ export class ResilientExecutor {
     this.timeout = deps.timeout ?? new Timeout();
     this.retry = deps.retry ?? new RetryPolicy();
     this.fallbackHandler = deps.fallbackHandler ?? new FallbackHandler();
+    this.sink = deps.sink ?? new StreamRoutedEventSink();
   }
 
   async execute<T>(
@@ -77,7 +89,8 @@ export class ResilientExecutor {
 
       this.circuitBreaker.recordSuccess();
 
-      console.log(JSON.stringify({
+      this.sink.emit({
+        _stream: "log",
         type: "resilience_success",
         requestId: context.requestId,
         component: context.component,
@@ -85,7 +98,7 @@ export class ResilientExecutor {
         durationMs: Date.now() - start,
         traceId: context.traceId,
         timestamp: new Date().toISOString(),
-      }));
+      });
 
       return {
         success: true,
@@ -96,7 +109,8 @@ export class ResilientExecutor {
     } catch (error) {
       this.circuitBreaker.recordFailure();
 
-      console.error(JSON.stringify({
+      this.sink.emit({
+        _stream: "error",
         type: "resilience_failure",
         requestId: context.requestId,
         component: context.component,
@@ -105,7 +119,7 @@ export class ResilientExecutor {
         durationMs: Date.now() - start,
         traceId: context.traceId,
         timestamp: new Date().toISOString(),
-      }));
+      });
 
       try {
         const fallbackResult = await this.fallbackHandler.executeFallback(
