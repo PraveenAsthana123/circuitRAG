@@ -45,7 +45,7 @@ adds the specific P0 rows that need closing before any deployment.
 
 | Gap | Severity | Fix |
 |---|---|---|
-| Every component lacks loading/error/empty states beyond a single `<p>` | **P1** | Add skeletons + ErrorBoundary per CLAUDE.md §14 |
+| Loading/error/empty states are basic `<p>` placeholders and there is no ErrorBoundary | **P2** | Add skeletons + ErrorBoundary per CLAUDE.md §14 |
 | `.jsx` not `.tsx` | **P2** | Migrate to TS for compile-time type checks |
 | No a11y review (no ARIA, no heading hierarchy check) | **P2** | WCAG 2.1 AA per CLAUDE.md §14 |
 | No tests | **P1** | Vitest + RTL per CLAUDE.md §14 |
@@ -54,7 +54,7 @@ adds the specific P0 rows that need closing before any deployment.
 
 | Gap | Severity | Fix |
 |---|---|---|
-| `startup.sh` exports `JWT_SECRET_KEY` nowhere, leaving it unset → triggers P0 #1 above | **P0** | Add hard refusal in `main.py` startup if unset |
+| `startup.sh` exports `JWT_SECRET_KEY` nowhere, so any real entrypoint will now fail closed until the secret is provided | **P1** | Document required env vars and keep hard refusal in startup |
 | Folder structure references `core/`, `agent_features/`, `llm/`, ... (≥27 folders) that are NOT in source paste | n/a | Tool Sets 1–30 are missing |
 | `pip install -r requirements.txt` will fail on `psycopg2-binary` on some macOS/ARM setups | **P2** | Recommend `psycopg[binary]` (psycopg3) instead |
 | `main:app` referenced in `startup.sh` but no `main.py` shown | **P0** | Missing entrypoint |
@@ -73,7 +73,6 @@ than replaces it.
 | Gap | Severity | Fix |
 |---|---|---|
 | `OpenAIClient.chat()` — no retry, no timeout, no circuit breaker | **P1** | Wrap with retry+timeout+CB per Component 7 pattern in `../openclaw-components/07-resilience/` |
-| `PostgresClient` — single connection, no pool, no `with` context, no transaction boundaries | **P0** | Use `psycopg_pool` or `asyncpg` pool; explicit `BEGIN`/`COMMIT` |
 | `PostgresClient.query()` `params: tuple = ()` — empty tuple as default arg is fine but the SQL-with-no-params idiom invites string concatenation | **P1** | Document that callers MUST use `%s` placeholders and never f-string |
 | `RedisClient` — `decode_responses=True` everywhere; binary values (embeddings, images) will break | **P2** | Two clients: one binary, one text |
 | `KafkaClient.consumer()` — `enable_auto_commit=True` + at-most-once-semantics with no DLQ | **P1** | Manual commit after successful handler; dead-letter topic for failures |
@@ -87,8 +86,6 @@ than replaces it.
 | Gap | Severity | Fix |
 |---|---|---|
 | HS256 symmetric algorithm — every verifier holds the signing key | **P0** | RS256/EdDSA + JWKS endpoint |
-| No `iss` / `aud` / `nbf` / `iat` validation in `verify_token()` | **P1** | Pass `audience=` and `issuer=` to `jwt.decode` |
-| No token revocation (logout / compromise → 60-min wait until expiry) | **P1** | `jti` blacklist in Redis with TTL = remaining lifetime |
 | `expire_minutes=60` is hardcoded; short-lived access + refresh token pattern absent | **P1** | 5-15 min access token + refresh token rotation |
 | `UserStore` + `TenantStore` + `RoleAssignment` all in-memory `dict` — lost on restart | **P0** | Postgres tables with UNIQUE on `user_id` + foreign keys |
 | `RoleAssignment.assign_role` allows duplicate-tolerant insert but no revocation | **P1** | Add `revoke_role`; track grant timestamp + grantor |
@@ -100,12 +97,7 @@ than replaces it.
 
 | Gap | Severity | Fix |
 |---|---|---|
-| `previous_hash` field is stored but `verify()` re-computes from scratch — informational only | **P3** | Either remove the field or document its purpose |
 | No periodic merkle-root publication to external transparency log | **P1** | Per quarter, publish root hash to a public ledger (or notarize via TSA RFC 3161) |
-| `verify()` returns at first failure — doesn't tell you how many records are affected | **P2** | Continue + collect all failures |
-| No retention policy (records grow forever) | **P1** | Per CLAUDE.md §48.4: 7 years for regulated, 1 year hot + cold archival otherwise |
-| No tenant filter on `list_records` / `search_by_trace` — cross-tenant audit reads possible | **P0** | Add `tenant_id` filter; enforce caller's tenant context |
-| No drill per §43 | **P0** | Tampering with `records[i]["payload"]` is caught; deletion is caught; reordering is caught |
 | Source's own §5 production note acknowledges Postgres is required | n/a | Already honest; preserved |
 
 ### Tool Set 37 — Release Management
@@ -125,10 +117,8 @@ than replaces it.
 | Gap | Severity | Fix |
 |---|---|---|
 | `SLOPolicyRegistry.evaluate()` takes a scalar value — but SLOs are temporal (p95 over 30d, not a single measurement) | **P0** | Real implementation must query Prometheus / a time-series store with PromQL like `histogram_quantile(0.95, ...)` |
-| No connection to Prometheus / metric source — pure evaluator on already-collected values | **P0** | Add `PrometheusClient.query_range` + window-aware computation |
-| `ErrorBudget.calculate()` uses a single 1.0% allowance without burn-rate alerts | **P1** | Multi-window multi-burn-rate alerts (e.g., 14d window / 2% burn) |
+| PromQL rendering exists, but no live Prometheus client query execution is wired into SLO evaluation | **P1** | Add a Prometheus client adapter and feed windowed query results into `SLOPolicyRegistry.evaluate()` |
 | `cost_per_request` SLO target `0.02` is hardcoded; should be per-tenant + per-model | **P2** | Config-driven per-tenant budgets |
-| `AlertRules.evaluate` returns alerts but no routing (Slack, PagerDuty, email) | **P1** | Integrate with notification service |
 
 ### Tool Set 39 — Runbooks
 
@@ -146,11 +136,11 @@ than replaces it.
 ## What "production-grade" would actually require
 
 Per CLAUDE.md §53 (Enterprise AI Maturity Stack L4+) — same 10-point
-checklist as `../openclaw-components/GAPS.md`. **This folder scores 0/10**:
+checklist as `../openclaw-components/GAPS.md`. Several local checks now exist, but the folder still fails the production-readiness bar:
 
 1. No per-tool-set ADR (§47.3)
 2. No per-tool-set 40-row brutal review (§52)
-3. No drills per §43
+3. Several local drills exist, but there is no per-tool-set drill matrix per §43
 4. No decision audit row schema beyond the trivial hash-chain (§38.3)
 5. No explainability evidence (§48)
 6. OTel SDK is wired but no collector / exporter config / propagation
@@ -161,11 +151,8 @@ checklist as `../openclaw-components/GAPS.md`. **This folder scores 0/10**:
 
 ## Recommended next steps
 
-1. **DO NOT** run `identity/auth_route_example.py` on any port. Delete
-   it or rewrite per the file header before any FastAPI router
-   includes it.
-2. **DO NOT** start `main.py` (which is not in source anyway) without
-   first refusing to boot when `JWT_SECRET_KEY` is unset.
+1. Keep `identity/auth_route_example.py` as credential-backed study code only; do not expose it as production SSO without MFA, rate limits, durable audit, and tenant-bound authorization.
+2. Keep startup refusal for missing or weak `JWT_SECRET_KEY` in place for any future `main.py` entrypoint.
 3. **If teaching:** label every "✅ done" in the source's Final Build
    Checklist as "demonstrates pattern; not production-grade". Per CLAUDE.md
    §57.7 honesty — a checkbox without a drill is a wish.
@@ -177,9 +164,6 @@ checklist as `../openclaw-components/GAPS.md`. **This folder scores 0/10**:
 ## The brutal rule (reprise)
 
 > A "Tool Set" claiming production-grade auth / audit / release / SLO
-> capabilities when the underlying code uses in-memory dicts, defaults
-> the JWT secret to "change-me", and ships a `/auth/token` endpoint
-> that grants admin to anyone — is **not interview material**, it is a
-> security incident waiting to happen. The two P0 bugs in Tool Set 35
-> must be removed (not just commented) before this folder is shared
-> with anyone who might confuse intent for implementation.
+> capabilities while major stores and control planes remain in-memory
+> is still a deployment risk. The prior Tool Set 35 auth backdoors are
+> fixed, but intent must not be confused with production readiness.

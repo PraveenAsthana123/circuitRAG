@@ -43,6 +43,31 @@ def test_hash_chain_round_trip():
     assert "trace_001" in exported
 
 
+def test_verify_integrity_reports_all_failed_records():
+    store = ImmutableAuditStore()
+    store.append(trace_id="t", actor="r", event_type="e",
+                 payload={"n": 1}, tenant_id="tenant-A")
+    store.append(trace_id="t", actor="r", event_type="e",
+                 payload={"n": 2}, tenant_id="tenant-A")
+    store.append(trace_id="t", actor="r", event_type="e",
+                 payload={"n": 3}, tenant_id="tenant-A")
+
+    store._records[0]["payload"]["payload"]["n"] = 99
+    store._records[2]["previous_hash"] = "tampered-previous"
+    store._records[2]["current_hash"] = "tampered-current"
+
+    verification = store.verify_integrity()
+
+    assert verification["valid"] is False
+    assert verification["records_checked"] == 3
+    assert verification["failed_index"] == 0
+    assert [failure["index"] for failure in verification["failures"]] == [0, 2]
+    assert verification["failures"][0]["reasons"] == ["current_hash_mismatch"]
+    assert set(verification["failures"][1]["reasons"]) == {
+        "previous_hash_mismatch", "current_hash_mismatch",
+    }
+
+
 def test_list_records_returns_defensive_copies():
     store = ImmutableAuditStore()
     record = store.append(
