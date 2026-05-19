@@ -23,6 +23,7 @@ import {
   EventSink,
   StreamRoutedEventSink,
 } from "../06-observability/sinks";
+import { ModelCardRegistry } from "../audit/model-card";
 
 export interface LLMRouterOptions {
   productionMode?: boolean;
@@ -32,6 +33,15 @@ export interface LLMRouterOptions {
   // preserves the multi-stream contract iter 61's drill spies on.
   // A future PrometheusEventSink / DatadogSink plugs in unchanged.
   sink?: EventSink;
+  // Iter 115 (2026-05-18): when set AND productionMode is true,
+  // every model selected by the router MUST have a registered
+  // ModelCard (iter 111). The router calls modelCardRegistry.
+  // require(modelId) before dispatching; a missing card throws
+  // ModelCardMissingError and the failure is recorded as a
+  // candidate failure (same shape as a model-side error).
+  // When productionMode is false, the registry is ignored — dev
+  // and local tests don't need cards for every model.
+  modelCardRegistry?: ModelCardRegistry;
 }
 
 export class LLMRouter {
@@ -76,6 +86,15 @@ export class LLMRouter {
       }
 
       try {
+        // Iter 115 (2026-05-18): production-mode ModelCard gate.
+        // Selected model MUST have a registered card BEFORE we
+        // ship traffic to it. Missing card → fail-closed; the
+        // catch block records it as a candidate failure (same
+        // shape as a runtime model error) so the router moves
+        // on to the next candidate.
+        if (this.options.productionMode && this.options.modelCardRegistry) {
+          this.options.modelCardRegistry.require(selected.modelId);
+        }
         const response = await this.client.complete(request, selected);
         validateLLMResponse(response);
         const isFallback = failures.length > 0;
