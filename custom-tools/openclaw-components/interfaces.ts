@@ -71,6 +71,29 @@ export interface SessionStoreI {
 }
 
 /**
+ * Iter 105 (2026-05-18): SessionPersistenceStoreI — the lower-level
+ * persistence adapter that SessionManager delegates to (iter 104).
+ * Distinct from SessionStoreI which is the SessionManager's PUBLIC
+ * facade; this interface is the SEAM where Redis / Postgres adapters
+ * plug in WITHOUT changing SessionManager itself.
+ *
+ * The two interfaces compose:
+ *   Gateway → SessionManager (SessionStoreI) → SessionPersistenceStore (this)
+ *
+ * In-memory adapter: InMemorySessionStore in 01-gateway/session-manager.ts.
+ * Production adapter: a future RedisSessionPersistenceStore implementing
+ * the same shape, swapped in via the SessionManager constructor's 3rd arg.
+ */
+export interface SessionPersistenceStoreI {
+  get(sessionId: string): SessionState | undefined;
+  set(sessionId: string, session: SessionState): void;
+  delete(sessionId: string): void;
+  entries(): Iterable<[string, SessionState]>;
+  oldestKey(): string | undefined;
+  size(): number;
+}
+
+/**
  * Mode marker — exported here so each adapter's startup code can
  * branch on it. `local` and `test` accept in-memory impls;
  * `production` requires real adapters (enforced by composite
@@ -82,11 +105,18 @@ export type DeploymentMode = "local" | "test" | "production";
  * StorageBundle — convenience shape for the composition root.
  * A future ProductionStorageBundle would resolve every field to
  * a Postgres/Redis adapter; in-memory bundle works in dev.
+ *
+ * Iter 105: `sessionPersistence` added — the lower-level adapter
+ * the SessionManager facade delegates to. Local mode wires both
+ * to in-memory implementations; production mode wires `session`
+ * to the SessionManager (which in turn binds to the
+ * Redis/Postgres `sessionPersistence`).
  */
 export interface StorageBundle {
   workflow: WorkflowStoreI;
   memory: MemoryStoreI;
   audit: MemoryAuditLogI;
   session: SessionStoreI;
+  sessionPersistence: SessionPersistenceStoreI;
   mode: DeploymentMode;
 }

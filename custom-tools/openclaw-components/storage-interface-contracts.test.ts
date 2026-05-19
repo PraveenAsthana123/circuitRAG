@@ -10,12 +10,16 @@ import type {
   MemoryStoreI,
   MemoryAuditLogI,
   SessionStoreI,
+  SessionPersistenceStoreI,
   StorageBundle,
 } from "./interfaces";
 import { WorkflowStateStore } from "./10-agent-workflow/workflow-state-store";
 import { MemoryStore } from "./04-memory-governance/memory-store";
 import { MemoryAuditLog } from "./04-memory-governance/memory-audit-log";
-import { SessionManager } from "./01-gateway/session-manager";
+import {
+  SessionManager,
+  InMemorySessionStore,
+} from "./01-gateway/session-manager";
 
 describe("M3.2 — storage interface contract compatibility (P1)", () => {
   it("BACKDOOR: WorkflowStateStore satisfies WorkflowStoreI", () => {
@@ -50,12 +54,24 @@ describe("M3.2 — storage interface contract compatibility (P1)", () => {
     expect(typeof session.size).toBe("function");
   });
 
+  it("BACKDOOR: InMemorySessionStore satisfies SessionPersistenceStoreI (Iter 105)", () => {
+    const store: SessionPersistenceStoreI = new InMemorySessionStore();
+    expect(typeof store.get).toBe("function");
+    expect(typeof store.set).toBe("function");
+    expect(typeof store.delete).toBe("function");
+    expect(typeof store.entries).toBe("function");
+    expect(typeof store.oldestKey).toBe("function");
+    expect(typeof store.size).toBe("function");
+  });
+
   it("BACKDOOR: in-memory StorageBundle composes (local-mode wiring regression)", () => {
+    const sessionPersistence = new InMemorySessionStore();
     const bundle: StorageBundle = {
       workflow: new WorkflowStateStore(),
       memory: new MemoryStore(),
       audit: new MemoryAuditLog(),
-      session: new SessionManager(),
+      session: new SessionManager(60_000, 10_000, sessionPersistence),
+      sessionPersistence,
       mode: "local",
     };
     expect(bundle.mode).toBe("local");
@@ -63,14 +79,17 @@ describe("M3.2 — storage interface contract compatibility (P1)", () => {
     expect(bundle.memory).toBeDefined();
     expect(bundle.audit).toBeDefined();
     expect(bundle.session).toBeDefined();
+    expect(bundle.sessionPersistence).toBeDefined();
   });
 
   it("test-mode StorageBundle (in-memory adapters) accepted", () => {
+    const sessionPersistence = new InMemorySessionStore();
     const bundle: StorageBundle = {
       workflow: new WorkflowStateStore(),
       memory: new MemoryStore(),
       audit: new MemoryAuditLog(),
-      session: new SessionManager(),
+      session: new SessionManager(60_000, 10_000, sessionPersistence),
+      sessionPersistence,
       mode: "test",
     };
     expect(bundle.mode).toBe("test");
