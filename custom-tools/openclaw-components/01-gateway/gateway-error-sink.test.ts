@@ -22,7 +22,7 @@ function newGateway(errorSink?: EventSink): Gateway {
   return new Gateway(
     new SessionManager(),
     new RateLimiter(),
-    new NoOpAuthMiddleware({ allowUnauthenticated: true }),
+    new NoOpAuthMiddleware(true),
     1024,
     errorSink,
   );
@@ -153,7 +153,7 @@ describe("Iter 98 — Gateway error sink injection (P1)", () => {
     const gw = new Gateway(
       brokenSessionManager,
       new RateLimiter(),
-      new NoOpAuthMiddleware({ allowUnauthenticated: true }),
+      new NoOpAuthMiddleware(true),
       1024,
       sink,
     );

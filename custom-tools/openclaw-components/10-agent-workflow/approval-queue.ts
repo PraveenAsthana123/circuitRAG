@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 // Added Iter 22 (2026-05-17) — durable in-memory approval queue
 // with TTL + escalation. Closes the GAPS Component 10 row
 // "HumanApprovalGate just logs to console".
@@ -72,7 +73,7 @@ export class ApprovalQueue {
   }): ApprovalTicket {
     const now = Date.now();
     const ticket: ApprovalTicket = {
-      approvalId: crypto.randomUUID(),
+      approvalId: randomUUID(),
       workflowId: input.workflowId,
       stepId: input.stepId,
       stepName: input.stepName,

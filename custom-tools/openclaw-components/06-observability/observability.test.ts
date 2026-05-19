@@ -29,4 +29,32 @@ describe("ObservabilityService", () => {
 
     expect(result).toBe("ok");
   });
+
+  it("rethrows the original error object with its stack intact", async () => {
+    const service = new ObservabilityService(
+      new StructuredLogger(),
+      new MetricsRecorder(),
+      new Tracer(),
+      new AIOpsEventBus()
+    );
+
+    const original = new TypeError("boom-stack-marker");
+
+    await expect(service.traceOperation(
+      "agent.fail",
+      {
+        requestId: "req-err",
+        sessionId: "session-err",
+        userId: "user-err",
+        tenantId: "tenant-err",
+        traceId: "trace-err",
+        component: "planner",
+      },
+      async () => {
+        throw original;
+      }
+    )).rejects.toBe(original);
+
+    expect(original.stack).toContain("boom-stack-marker");
+  });
 });

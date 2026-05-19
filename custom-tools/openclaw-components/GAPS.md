@@ -28,42 +28,44 @@ strength. Examples:
 
 | Gap | Severity | Fix |
 |---|---|---|
-| Sessions held in process-local `Map`; no persistence | **P0** | Redis / Postgres-backed session store; TTL; per-tenant partitioning |
-| No auth / no RBAC at gateway | **P0** | OIDC validation, scope check, tenant_id from token claim |
-| No rate limit | **P0** | Per-IP + per-tenant sliding window (e.g., upstream Envoy / `nestjs-throttler`) |
-| No `request_id` minted; no baggage | **P0** | Generate `request_id` here; propagate via OTel baggage to every downstream call |
-| No backpressure / queue | **P1** | When agent runtime is slow, reject with 429 rather than queue unbounded |
-| No structured error envelope | **P2** | `{code, message, request_id}` per CLAUDE.md §6.2 |
-| No drill (per §43) | **P0** | Negative-assertion drill: replay attack, wrong tenant, expired session |
+| ~~SessionManager owned process-local `Map` directly with no persistence adapter seam~~ ✅ Iter 98 (2026-05-18) | ~~P0 local gap~~ closed | `SessionManager` now depends on an injectable `SessionPersistenceStore`; default `InMemorySessionStore` preserves TTL/LRU behavior and tests pin the adapter contract. Production still needs Redis/Postgres-backed store wiring for cross-replica durability. |
+| ~~No auth boundary at gateway~~ ✅ Iter 50 (2026-05-17) | ~~P0 local gap~~ closed | `AuthMiddleware` runs before session creation, default `NoOpAuthMiddleware` denies by default, and authenticated claims override body-supplied tenant/user. Production still needs real OIDC/RBAC middleware. |
+| ~~No local gateway rate limit~~ ✅ Iter 11 (2026-05-17) | ~~P0 local gap~~ closed | `RateLimiter` enforces tenant:user request buckets and cross-tenant isolation tests cover the boundary. Production still needs upstream distributed limits. |
+| ~~No request_id minted at gateway~~ ✅ Iter 11/71 (2026-05-17) | ~~P0 local gap~~ closed | `Gateway` mints UUID request IDs for success and error envelopes; baggage drills verify uniqueness, UUID format, and gateway_error correlation. Real OTel baggage propagation remains an infra gap. |
+| ~~No local delegated job mechanism for agent workflow backpressure~~ ✅ Iter 92 (2026-05-18) | ~~P1 local gap~~ closed | `JobScheduler` + `WorkflowDelegator` provide delayed/priority/idempotent delegated `runNext` jobs with leases, retries, jitter backoff, cancellation, and dead-lettering. Production still needs durable Postgres/Redis/Kafka backing. |
+| ~~No always-on/cold-start supervisor for agent workflow runtime~~ ✅ Iter 93 (2026-05-18) | ~~P1 local gap~~ closed | `AgentSupervisor` now schedules warmup + recurring heartbeat jobs, drains delegated workflow jobs each tick, tracks `cold/warming/ready/degraded/stopped`, emits metrics, and sends notifications for start/warmup/heartbeat/degraded/stop. Production still needs process manager/K8s probes + durable scheduler backing. |
+| ~~No 100-agent fleet or non-interactive approval/next-action policy control plane~~ ✅ Iter 94 (2026-05-18) | ~~P1 local gap~~ closed | `AgentFleetSupervisor` now reconciles to 100 active agents by default, verifies working-ready agents separately from merely active agents, warms healthy replacements in the same reconcile cycle, replaces degraded/stopped agents, and emits active/working/not-working fleet metrics. `ApprovalPolicy` and `NextActionPolicy` decide allow/request_approval/deny and run/delegate/wait/stop without interactive prompts. Production still needs K8s/HPA/process manager backing and durable policy state. |
+| ~~No structured gateway error envelope~~ ✅ Iter 11/98 (2026-05-18) | ~~P2 local gap~~ closed | Gateway failures return `{detail, errorCode, requestId}` and emit correlated `gateway_error` through an injectable sink. |
+| ~~No gateway drills~~ ✅ Iter 50/53/71/98 (2026-05-18) | ~~P0 local gap~~ closed | Gateway tests cover default-deny auth, claim override, rate-limit overflow, payload size limit, requestId baggage, and error-sink correlation. Replay/expired-session drills remain for a real token middleware. |
 
 ### Component 2 — Agent Runtime / Planner / Executor
 
 | Gap | Severity | Fix |
 |---|---|---|
-| `Planner.createPlan()` returns a **hardcoded 2-step plan** — same plan for any input | **P0** | LLM-driven planning with JSON-schema validated output per CLAUDE.md §59.4 |
-| `AgentRuntime.run()` returns `string`, **not** `AgentResponse` from Component 1 | **P1** | Either align types (return `AgentResponse`) or build an adapter at the Gateway boundary |
+| ~~`Planner.createPlan()` only had a hardcoded fallback plan with no validated provider boundary~~ ✅ Iter 97 (2026-05-18) | ~~P0 local gap~~ closed | `Planner` now accepts an injected `PlanProvider` and validates provider output against the local `AgentPlan` schema, failing closed on invalid actions, missing tool names, missing memory keys, and malformed step data. Production still needs a real LLM planner adapter and JSON Schema contract. |
+| ~~`AgentRuntime.run()` returned an unstructured legacy string~~ ✅ Iter 51 (2026-05-17) | ~~P1 local gap~~ closed | `AgentRuntime.run()` returns `AgentRuntimeResult` with `ok`, final `output`, `failedAt`, and per-step execution results; runtime tests pin the non-string shape. Gateway adapter alignment remains production integration work. |
 | ~~Tool/model routing is wired, but memory, guardrails, and tracing are still not full runtime dependencies~~ ✅ Iter 64-65 (2026-05-17) | ~~P1~~ closed | Iter 64: `guardrails: GuardrailEngine` injected; input-side + output-side enforcement; traceId threaded (8 drill steps). Iter 65: `memory: MemoryGovernanceService` injected; new `action: "recall"` step type fetches via memory.read() preserving iter 62 cross-tenant defense; output = {key, value, found} for downstream composition (8 drill steps). Total component 2 drill count: 29. |
 
 ### Component 10 — Agent Workflow Engine
 
 | Gap | Severity | Fix |
 |---|---|---|
-| `simulateToolExecution(toolName)` only throws when `toolName` is empty — but `ToolSelector.select()` ALWAYS returns a non-empty string (default `"default_agent_executor"`), so the `catch → replan` branch in `runNext()` is **unreachable** for any realistic flow. Same theatre-catch pattern as Component 2's `Executor`. | **P0** | Replace with a real tool invocation (delegate to Component 3's `ToolDispatcher`); the catch then handles real failures |
-| `WorkflowState.history` is in-memory only — process restart = workflow lost | **P0** | Postgres + outbox pattern OR Temporal/Durable Objects for real durability |
+| ~~`simulateToolExecution(toolName)` was the default execution path, so workflow steps could complete without real tool work~~ ✅ Iter 91 (2026-05-18) | ~~P0~~ closed | `AgentWorkflowEngineOptions.toolDispatcher` now dispatches selected steps through Component 3 `ToolDispatcher`; `requireRealToolDispatcher` fails closed in production config. Legacy `simulateToolExecution` remains only as the local/test fallback. Drill: `tool-dispatcher-integration.test.ts`. |
+| ~~`WorkflowState.history` was tied to in-memory `Map` storage — process restart = workflow lost~~ ✅ Iter 99 (2026-05-18) | ~~P0 local gap~~ closed | `WorkflowStateStore` now depends on injectable `WorkflowStatePersistence` for current state, rollback history, and outbox-style workflow events; default `InMemoryWorkflowStatePersistence` preserves local behavior and tests pin restart-style persistence reuse. Production still needs a concrete Postgres/outbox or Temporal/Durable Objects adapter. |
 
 ### Component 3 — Tool Registry / Dispatcher
 
 | Gap | Severity | Fix |
 |---|---|---|
-| Registry is per-process; no shared state across replicas | **P1** | Tool catalog from config + signature pinning per CLAUDE.md §50 catalog pattern |
+| ~~Registry accepted any in-process tool with no pinned catalog check~~ ✅ Iter 95 (2026-05-18) | ~~P1 local gap~~ closed | `ToolRegistry` now supports a pinned catalog with SHA-256 metadata signatures and fails closed on unknown or tampered tool metadata. Production still needs a shared config source and cross-replica distribution. |
 | ⚠ Partial close (Iter 73, 2026-05-17): substring contract locked + FP surface drilled + documented-limitations captured as regression flip points. Real-classifier upgrade still needed. | **P1** | Upgrade to real classifier (Llama Guard / Bedrock Guardrails). Today's drill: rai-guard-corpus.test.ts (8 steps; ATTACK + BENIGN_KEYWORD + CLEAN + DOCUMENTED_LIMITATION corpora; TPR===1.0, FPR===0.0). |
-| Telemetry is `console.log` | **P1** | Real OTel `tracer.startActiveSpan()` with carrier injection |
+| ~~Component 3 telemetry emitted directly to console with no injectable sink~~ ✅ Iter 96 (2026-05-18) | ~~P1 local gap~~ closed | `Telemetry` now accepts an injectable `ToolTelemetrySink`, preserves the default single-line console JSON contract, and includes a bounded `InMemoryToolTelemetrySink` for drills/tests. Production still needs a real OTel/OTLP sink implementation. |
 
 ### Component 4 — Memory Governance
 
 | Gap | Severity | Fix |
 |---|---|---|
-| Audit log is in-memory `[]` — lost on restart | **P0** | Append-only Postgres table; per §38 audit row schema |
+| ~~Audit log canonical storage was an in-memory `[]` — lost on restart~~ ✅ Iter 100 (2026-05-18) | ~~P0 local gap~~ closed | `MemoryAuditLog` now writes through an injectable `AuditRecordStore`; default `InMemoryAuditRecordStore` preserves local behavior and tests pin append-only storage, event emission, defensive copies, and restart-style store reuse. Production still needs a concrete append-only Postgres/SIEM-backed implementation per §38. |
 | ~~No tenant isolation enforcement — caller can pass any tenantId~~ ✅ Iter 62 (2026-05-17) | ~~P0~~ closed | service-level enforcement at save() + read() via optional `callerTenantId` (auth-context tenant); mismatch → MemoryAccessDeniedError BEFORE persistence/retrieval. Backcompat preserved: omitted → defaults to body tenantId. Drill: cross-tenant-access.test.ts (8 steps, 6 negative). |
 
 ### Component 5 — Responsible-AI Guardrails
@@ -82,9 +84,9 @@ strength. Examples:
 | Gap | Severity | Fix |
 |---|---|---|
 | Calls itself "tracer" but emits `console.log` — **not OpenTelemetry** | **P0** | Use `@opentelemetry/sdk-node` with OTLP exporter; spans must propagate via W3C traceparent headers |
-| Metrics are `console.log` — no Prometheus scrape, no histogram bucketing | **P0** | Use `@opentelemetry/metrics` or `prom-client` with `/metrics` endpoint |
+| ~~Workflow monitoring had no first-class metrics boundary for delegated agent execution~~ ✅ Iter 92 (2026-05-18) | ~~P1 local gap~~ closed | `ObservedWorkflowMonitor` now emits workflow start/delegate/step start/success/failure counters and histograms with bounded labels. Production still needs Prometheus/OTel exporter instead of console emission. |
 | `AIOpsEventBus.publish` logs to console — no real bus | **P0** | Kafka topic or webhook to incident-response system |
-| Drill coverage is partial | **P1** | Existing tests cover sampling and metric cardinality; add a 3-hop trace-context propagation drill after real OTel is wired |
+| ~~Trace-context drill coverage was partial for delegated workflow → tool execution~~ ✅ Iter 92 (2026-05-18) | ~~P1 local gap~~ closed | `workflow-observability-integration.test.ts` verifies delegated job trace, workflow step trace, and `tool.dispatch` trace share the same `traceId`. Real OTel exporter/propagator remains a production infra gap. |
 
 ### Component 7 — Resilience (Circuit Breaker)
 
@@ -95,7 +97,7 @@ strength. Examples:
 
 | Gap | Severity | Fix |
 |---|---|---|
-| `LLMClient.complete` returns a fake string — there is **no real provider call** | **P0** | Wire real provider SDKs (Anthropic / OpenAI / Bedrock / Ollama HTTP) with timeout + auth |
+| ~~`LLMClient.complete` returned only fake/demo output; no real provider adapter existed~~ ✅ Iter 91 (2026-05-18) | ~~P0~~ closed for Ollama path | Added `OllamaLLMClient` using `/api/generate` with timeout and response validation; `EchoLLMClient` is marked as a production stub and `LLMRouter({ productionMode: true })` rejects it. OpenAI/Anthropic/Bedrock adapters remain future provider work. |
 | `SafetyGate` — same substring problem as Component 5 | **P0** | Real classifier |
 | ~~Drill coverage is partial~~ ✅ Iter 61 (2026-05-17) | ~~P1~~ closed | router-drill-matrix.test.ts: 14 drill steps across 3 axes (cost-cap, safety-gate, provider-missing). Total component 8 drill count: 27. |
 

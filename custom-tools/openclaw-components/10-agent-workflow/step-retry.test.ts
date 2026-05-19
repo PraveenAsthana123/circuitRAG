@@ -84,6 +84,21 @@ describe("AgentWorkflowEngine — step retry vs replan (P1)", () => {
     expect(attempts).toBe(1);
   });
 
+  it("non-RetryableError replans to execute the recovery step next", async () => {
+    const store = new WorkflowStateStore();
+    const engine = new ScriptedEngine(async () => {
+      throw new Error("permanent: schema mismatch");
+    }, store);
+
+    const wf = engine.start({ ...CTX, workflowId: "wf-replan-order" }, "test");
+    const after = await engine.runNext(wf.context.workflowId, "t");
+
+    expect(after.status).toBe("replanning");
+    expect(after.steps[after.currentStepIndex].name).toBe("recovery_step");
+    expect(after.steps[after.currentStepIndex].status).toBe("pending");
+    expect(after.steps[after.currentStepIndex - 1].status).toBe("failed");
+  });
+
   it("RetryableError beyond maxRetries falls through to replan", async () => {
     let attempts = 0;
     const store = new WorkflowStateStore();

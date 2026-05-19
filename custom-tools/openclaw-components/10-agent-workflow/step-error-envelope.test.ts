@@ -186,4 +186,25 @@ describe("AgentWorkflowEngine — step error envelope (P1)", () => {
     expect(after.steps[0].status).toBe("completed");
     expect(after.steps[0].lastError).toBeUndefined();
   });
+
+
+  it("persists nested Error.cause metadata on failed steps", async () => {
+    const store = new WorkflowStateStore();
+    const engine = new ScriptedEngine(async () => {
+      const cause = new Error("socket reset");
+      throw new Error("provider call failed", { cause });
+    }, store);
+
+    const wf = engine.start({ ...CTX, workflowId: "wf-err-cause" }, "test");
+    await engine.runNext(wf.context.workflowId, "t");
+    const after = store.get(wf.context.workflowId, "t");
+
+    expect(after.steps[0].lastError?.message).toBe("provider call failed");
+    expect(after.steps[0].lastError?.cause).toMatchObject({
+      name: "Error",
+      message: "socket reset",
+    });
+    expect(after.steps[0].lastError?.cause?.stack).toContain("Error: socket reset");
+  });
+
 });

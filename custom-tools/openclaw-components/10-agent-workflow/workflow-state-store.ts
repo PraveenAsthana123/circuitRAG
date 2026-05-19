@@ -16,12 +16,70 @@
 // ✅ P1 FIXED (2026-05-17, prior iteration): history is capped.
 //     See git history for details.
 //
-//     Real durability still requires Postgres + outbox per
-//     CLAUDE.md §47.7 — see GAPS.md Component 10 "in-memory only".
+// ✅ P0 LOCAL FIXED (2026-05-18): state + history persistence is now
+//     behind WorkflowStatePersistence so production can provide an
+//     atomic Postgres/outbox or durable-orchestrator adapter. The
+//     default InMemoryWorkflowStatePersistence preserves local behavior.
 
 import { WorkflowState } from "./types";
 
 const DEFAULT_MAX_HISTORY = 50;
+
+export type WorkflowPersistenceEventType =
+  | "workflow_state_saved"
+  | "workflow_state_rolled_back";
+
+export interface WorkflowPersistenceEvent {
+  readonly type: WorkflowPersistenceEventType;
+  readonly workflowId: string;
+  readonly tenantId: string;
+  readonly status: WorkflowState["status"];
+  readonly occurredAt: string;
+}
+
+export interface WorkflowStateCommit {
+  readonly workflowId: string;
+  readonly state: WorkflowState;
+  readonly history: WorkflowState[];
+  readonly event: WorkflowPersistenceEvent;
+}
+
+export interface WorkflowStatePersistence {
+  loadState(workflowId: string): WorkflowState | undefined;
+  loadHistory(workflowId: string): WorkflowState[];
+  commit(change: WorkflowStateCommit): void;
+  historyDepth(workflowId: string): number;
+}
+
+export class InMemoryWorkflowStatePersistence implements WorkflowStatePersistence {
+  private readonly states = new Map<string, WorkflowState>();
+  private readonly history = new Map<string, WorkflowState[]>();
+  private readonly events: WorkflowPersistenceEvent[] = [];
+
+  loadState(workflowId: string): WorkflowState | undefined {
+    const state = this.states.get(workflowId);
+    return state ? structuredClone(state) : undefined;
+  }
+
+  loadHistory(workflowId: string): WorkflowState[] {
+    return structuredClone(this.history.get(workflowId) ?? []);
+  }
+
+  commit(change: WorkflowStateCommit): void {
+    this.states.set(change.workflowId, structuredClone(change.state));
+    this.history.set(change.workflowId, structuredClone(change.history));
+    this.events.push(structuredClone(change.event));
+  }
+
+  historyDepth(workflowId: string): number {
+    return (this.history.get(workflowId) ?? []).length;
+  }
+
+  /** Test/helper surface for local outbox contract checks. */
+  outboxEvents(): WorkflowPersistenceEvent[] {
+    return structuredClone(this.events);
+  }
+}
 
 export class WorkflowNotFoundError extends Error {
   constructor(workflowId: string) {
@@ -41,42 +99,55 @@ export class WorkflowAccessDeniedError extends Error {
 }
 
 export class WorkflowStateStore {
-  private readonly states = new Map<string, WorkflowState>();
-  private readonly history = new Map<string, WorkflowState[]>();
+  private readonly persistence: WorkflowStatePersistence;
 
   constructor(
     private readonly maxHistoryPerWorkflow: number = DEFAULT_MAX_HISTORY,
+    persistence?: WorkflowStatePersistence,
   ) {
     if (maxHistoryPerWorkflow < 1) {
       throw new Error("maxHistoryPerWorkflow must be >= 1");
     }
+    this.persistence = persistence ?? new InMemoryWorkflowStatePersistence();
   }
 
   save(state: WorkflowState): void {
-    const old = this.states.get(state.context.workflowId);
+    const workflowId = state.context.workflowId;
+    const old = this.persistence.loadState(workflowId);
+    const history = this.persistence.loadHistory(workflowId);
 
     if (old) {
       // Sanity check: same workflowId must keep its original tenant.
       if (old.context.tenantId !== state.context.tenantId) {
         throw new WorkflowAccessDeniedError(
-          state.context.workflowId,
+          workflowId,
           state.context.tenantId,
         );
       }
-      const versions = this.history.get(state.context.workflowId) ?? [];
-      versions.push(structuredClone(old));
-      while (versions.length > this.maxHistoryPerWorkflow) {
-        versions.shift();
+      history.push(structuredClone(old));
+      while (history.length > this.maxHistoryPerWorkflow) {
+        history.shift();
       }
-      this.history.set(state.context.workflowId, versions);
     }
 
     state.updatedAt = new Date().toISOString();
-    this.states.set(state.context.workflowId, structuredClone(state));
+    const persisted = structuredClone(state);
+    this.persistence.commit({
+      workflowId,
+      state: persisted,
+      history,
+      event: {
+        type: "workflow_state_saved",
+        workflowId,
+        tenantId: persisted.context.tenantId,
+        status: persisted.status,
+        occurredAt: persisted.updatedAt,
+      },
+    });
   }
 
   get(workflowId: string, callerTenantId: string): WorkflowState {
-    const state = this.states.get(workflowId);
+    const state = this.persistence.loadState(workflowId);
     if (!state) throw new WorkflowNotFoundError(workflowId);
     if (state.context.tenantId !== callerTenantId) {
       throw new WorkflowAccessDeniedError(workflowId, callerTenantId);
@@ -86,7 +157,7 @@ export class WorkflowStateStore {
 
   rollback(workflowId: string, callerTenantId: string): WorkflowState {
     // Authorize first — tenant of the current state must match caller.
-    const current = this.states.get(workflowId);
+    const current = this.persistence.loadState(workflowId);
     if (!current) {
       throw new WorkflowNotFoundError(workflowId);
     }
@@ -94,20 +165,30 @@ export class WorkflowStateStore {
       throw new WorkflowAccessDeniedError(workflowId, callerTenantId);
     }
 
-    const versions = this.history.get(workflowId) ?? [];
+    const versions = this.persistence.loadHistory(workflowId);
     const previous = versions.pop();
     if (!previous) {
       throw new Error("No workflow history available for rollback");
     }
 
-    this.states.set(workflowId, structuredClone(previous));
-    this.history.set(workflowId, versions);
+    this.persistence.commit({
+      workflowId,
+      state: structuredClone(previous),
+      history: versions,
+      event: {
+        type: "workflow_state_rolled_back",
+        workflowId,
+        tenantId: previous.context.tenantId,
+        status: previous.status,
+        occurredAt: new Date().toISOString(),
+      },
+    });
 
     return previous;
   }
 
   /** Test helper — returns the history depth for a workflowId. */
   historyDepth(workflowId: string): number {
-    return (this.history.get(workflowId) ?? []).length;
+    return this.persistence.historyDepth(workflowId);
   }
 }

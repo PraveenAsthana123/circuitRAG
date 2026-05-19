@@ -14,6 +14,11 @@ export interface WorkflowContext {
   tenantId: string;
   userId: string;
   traceId: string;
+  /** Optional session id used when dispatching Component 3 tools.
+   *  Defaults to workflowId for backwards-compatible local workflows. */
+  sessionId?: string;
+  /** Optional caller roles used by ToolDispatcher authorization. */
+  roles?: string[];
 }
 
 export interface WorkflowStep {
@@ -69,11 +74,22 @@ export interface StepErrorEnvelope {
   message: string;
   /** JS engine stack trace if available. Optional. */
   stack?: string;
+  /** Nested Error.cause chain, persisted so tool/backend root causes
+   *  survive replanning instead of being flattened to the top-level
+   *  message only. */
+  cause?: StepErrorCauseEnvelope;
   /** True if the error was a RetryableError (transient class).
    *  False for any other thrown value. */
   retryable: boolean;
   /** ISO-8601 timestamp the engine captured the error. */
   timestamp: string;
+}
+
+export interface StepErrorCauseEnvelope {
+  name: string;
+  message: string;
+  stack?: string;
+  cause?: StepErrorCauseEnvelope;
 }
 
 /**

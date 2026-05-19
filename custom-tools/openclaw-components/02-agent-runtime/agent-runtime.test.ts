@@ -46,17 +46,17 @@ describe("AgentRuntime (Iter 51)", () => {
 
   it("happy path returns final step output", async () => {
     // Plan with only a respond step; executor doesn't need deps.
-    const planner = {
+    const planner = new Planner({
       createPlan(t: AgentTask): AgentPlan {
         return {
           taskId: "t1",
           steps: [{
             stepId: "s1", action: "respond",
-            description: `OK: ${t.userInput}`,
+            description: "OK: " + t.userInput,
           }],
         };
       },
-    } as Planner;
+    });
     const rt = new AgentRuntime(planner, new Executor());
     const r = await rt.run(TASK);
     expect(r.ok).toBe(true);
@@ -64,7 +64,7 @@ describe("AgentRuntime (Iter 51)", () => {
   });
 
   it("first failure stops + reports stepId", async () => {
-    const planner = {
+    const planner = new Planner({
       createPlan(): AgentPlan {
         return {
           taskId: "t",
@@ -74,7 +74,7 @@ describe("AgentRuntime (Iter 51)", () => {
           ],
         };
       },
-    } as Planner;
+    });
     const rt = new AgentRuntime(planner, new Executor());  // no model
     const r = await rt.run(TASK);
     expect(r.ok).toBe(false);
