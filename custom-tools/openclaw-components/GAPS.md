@@ -98,7 +98,7 @@ strength. Examples:
 | Gap | Severity | Fix |
 |---|---|---|
 | ~~`LLMClient.complete` returned only fake/demo output; no real provider adapter existed~~ ✅ Iter 91 (2026-05-18) | ~~P0~~ closed for Ollama path | Added `OllamaLLMClient` using `/api/generate` with timeout and response validation; `EchoLLMClient` is marked as a production stub and `LLMRouter({ productionMode: true })` rejects it. OpenAI/Anthropic/Bedrock adapters remain future provider work. |
-| `SafetyGate` — same substring problem as Component 5 | **P0** | Real classifier |
+| ~~`SafetyGate` was hardwired to substring checks with no classifier boundary~~ ✅ Iter 107 (2026-05-19) | ~~P0 local gap~~ closed | `SafetyGate` now depends on an injectable `SafetyGateClassifier`; default `PatternSafetyGateClassifier` preserves existing blocked-phrase behavior while production can inject Llama Guard, Bedrock Guardrails, ProtectAI, or another policy classifier. Real classifier adapter wiring remains production work. |
 | ~~Drill coverage is partial~~ ✅ Iter 61 (2026-05-17) | ~~P1~~ closed | router-drill-matrix.test.ts: 14 drill steps across 3 axes (cost-cap, safety-gate, provider-missing). Total component 8 drill count: 27. |
 
 ### Component 9 — RAG Orchestrator
