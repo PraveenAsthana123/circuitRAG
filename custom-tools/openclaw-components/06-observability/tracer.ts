@@ -8,12 +8,23 @@
 //     the original (test-friendly) behavior. Errors ALWAYS emit
 //     when alwaysSampleOnError() is true (default).
 //
-//     This is still console.log emission, not real OTel. The
-//     sampling shape mirrors OTel's TraceIdRatioBased so the swap
-//     is mechanical.
+// ✅ P0 IMPROVED (Iter 105, 2026-05-19): W3C trace context.
+//     Spans now carry traceId/spanId/parentSpanId/traceparent so an
+//     OpenTelemetryTraceSink can export real span identity and callers
+//     can propagate traceparent headers across service boundaries.
 
 import { Sampler, AlwaysOnSampler } from "./sampler";
 import { TraceSink, ConsoleTraceSink } from "./sinks";
+import { createTraceContext, formatTraceparent } from "./trace-context";
+
+export interface StartSpanOptions {
+  readonly parentTraceparent?: string;
+}
+
+export interface SpanHandle {
+  readonly traceparent: string;
+  end(status: "ok" | "error", extra?: Record<string, unknown>): void;
+}
 
 export class Tracer {
   private readonly sink: TraceSink;
@@ -24,17 +35,27 @@ export class Tracer {
     // and any real OTel/Prometheus exporter integration.
     // Default ConsoleTraceSink preserves backcompat behavior;
     // InMemoryTraceSink lets drills capture without spy boilerplate;
-    // a future OTelSpanSink plugs in here unchanged.
+    // OpenTelemetryTraceSink plugs in here for exporter wiring.
     sink?: TraceSink,
   ) {
     this.sink = sink ?? new ConsoleTraceSink();
   }
 
-  startSpan(name: string, attributes: Record<string, unknown>) {
+  startSpan(
+    name: string,
+    attributes: Record<string, unknown>,
+    options: StartSpanOptions = {},
+  ): SpanHandle {
     const startedAt = Date.now();
     const sampledAtStart = this.sampler.shouldSample(name, attributes);
+    const context = createTraceContext({
+      sampled: sampledAtStart,
+      parentTraceparent: options.parentTraceparent,
+    });
+    const traceparent = formatTraceparent(context);
 
     return {
+      traceparent,
       end: (status: "ok" | "error", extra: Record<string, unknown> = {}) => {
         const shouldEmit =
           sampledAtStart ||
@@ -45,6 +66,10 @@ export class Tracer {
           type: "trace",
           spanName: name,
           status,
+          traceId: context.traceId,
+          spanId: context.spanId,
+          parentSpanId: context.parentSpanId,
+          traceparent,
           durationMs: Date.now() - startedAt,
           attributes,
           extra,

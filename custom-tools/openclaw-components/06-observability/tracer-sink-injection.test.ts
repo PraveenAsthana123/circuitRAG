@@ -121,6 +121,9 @@ describe("M2.1 — Tracer sink injection (P1)", () => {
     try {
       new ConsoleTraceSink().emit({
         type: "trace", spanName: "x", status: "ok",
+        traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+        spanId: "00f067aa0ba902b7",
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
         durationMs: 1, attributes: {}, extra: {},
         sampled: true, sampledOnError: false,
         timestamp: new Date().toISOString(),

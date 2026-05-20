@@ -8,43 +8,54 @@
 //       - publish() retains a per-request_id buffer of recent
 //         events (in-memory, cap-bounded).
 //       - timeline(requestId) returns the ordered list of events
-//         that share that request_id — the on-call's first
+//         that share the request_id — the on-call's first
 //         debug query.
 //       - On a "critical" event, auto-emits an incident_correlated
 //         entry containing the timeline so downstream systems
 //         can route the whole story, not just the last event.
 //
-//     Real production should ship correlation to an AIOps platform
-//     (Datadog Incident Mgmt, PagerDuty AIOps). This stub closes
-//     the "events scattered, no timeline" gap.
+// ✅ P0 IMPROVED (Iter 106, 2026-05-19): event-bus dispatcher
+//     boundary. AIOps events are now dispatched as topic/key
+//     envelopes; Kafka/webhook/outbox implementations plug into
+//     AIOpsEventDispatcher while the default sink dispatcher
+//     preserves console JSON backcompat.
 
 import { AIOpsEvent } from "./types";
-import { EventSink, ConsoleEventSink } from "./sinks";
+import { EventSink, ConsoleEventSink, EventRecord } from "./sinks";
+import {
+  AIOpsDispatchEnvelope,
+  AIOpsEventDispatcher,
+  AIOpsTopic,
+  SinkAIOpsEventDispatcher,
+} from "./aiops-dispatcher";
 
 const DEFAULT_RETAIN_PER_REQUEST = 50;
 const DEFAULT_MAX_REQUESTS = 1_000;
 
 export class AIOpsEventBus {
   private readonly buffers = new Map<string, AIOpsEvent[]>();
-  private readonly sink: EventSink;
+  private readonly dispatcher: AIOpsEventDispatcher;
 
   constructor(
     private readonly retainPerRequest: number = DEFAULT_RETAIN_PER_REQUEST,
     private readonly maxRequests: number = DEFAULT_MAX_REQUESTS,
     // Iter M2.3 (2026-05-18): pluggable sink. Default ConsoleEventSink
-    // preserves backcompat; a future KafkaEventSink / WebhookEventSink
-    // plugs in unchanged. The bus emits TWO event types via the same
-    // sink: "aiops_event" per publish, "aiops_incident_correlated"
-    // when severity === "critical" auto-correlates a timeline.
+    // preserves backcompat. Iter 106 adds dispatcher envelopes on top:
+    // callers can keep using sink injection, or pass a dispatcher for
+    // Kafka/webhook/outbox style delivery.
     sink?: EventSink,
+    dispatcher?: AIOpsEventDispatcher,
   ) {
     if (retainPerRequest < 1) throw new Error("retainPerRequest must be >= 1");
     if (maxRequests < 1) throw new Error("maxRequests must be >= 1");
-    this.sink = sink ?? new ConsoleEventSink();
+    this.dispatcher = dispatcher ?? new SinkAIOpsEventDispatcher(sink ?? new ConsoleEventSink());
   }
 
   publish(event: AIOpsEvent): void {
-    this.sink.emit({ type: "aiops_event", ...event });
+    this.dispatch("aiops.events", event.context.requestId || event.eventId, {
+      type: "aiops_event",
+      ...event,
+    });
 
     const reqId = event.context.requestId;
     if (!reqId) return;
@@ -52,7 +63,7 @@ export class AIOpsEventBus {
     const buf = this.buffers.get(reqId) ?? [];
     buf.push(event);
     if (buf.length > this.retainPerRequest) {
-      buf.shift();  // FIFO; keep most recent
+      buf.shift();
     }
     this.buffers.set(reqId, buf);
 
@@ -65,7 +76,7 @@ export class AIOpsEventBus {
     // Auto-emit correlated incident on critical events.
     if (event.severity === "critical") {
       const timeline = this.timeline(reqId);
-      this.sink.emit({
+      this.dispatch("aiops.incidents", reqId, {
         type: "aiops_incident_correlated",
         requestId: reqId,
         tenantId: event.context.tenantId,
@@ -90,5 +101,15 @@ export class AIOpsEventBus {
   /** Test helper. */
   trackedRequestCount(): number {
     return this.buffers.size;
+  }
+
+  private dispatch(topic: AIOpsTopic, key: string, record: EventRecord): void {
+    const envelope: AIOpsDispatchEnvelope = {
+      topic,
+      key,
+      record,
+      timestamp: new Date().toISOString(),
+    };
+    this.dispatcher.dispatch(envelope);
   }
 }

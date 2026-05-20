@@ -83,9 +83,9 @@ strength. Examples:
 
 | Gap | Severity | Fix |
 |---|---|---|
-| Calls itself "tracer" but emits `console.log` — **not OpenTelemetry** | **P0** | Use `@opentelemetry/sdk-node` with OTLP exporter; spans must propagate via W3C traceparent headers |
+| ~~Tracer emitted console-shaped spans without W3C trace identity or an OTel exporter boundary~~ ✅ Iter 105 (2026-05-19) | ~~P0 local gap~~ closed | `Tracer` now creates W3C `traceId`, `spanId`, `parentSpanId`, and `traceparent`, can continue an incoming traceparent, and can route spans through `OpenTelemetryTraceSink` to an OTel-shaped exporter interface. Production still needs OpenTelemetry SDK Node plus OTLP exporter package wiring. |
 | ~~Workflow monitoring had no first-class metrics boundary for delegated agent execution~~ ✅ Iter 92 (2026-05-18) | ~~P1 local gap~~ closed | `ObservedWorkflowMonitor` now emits workflow start/delegate/step start/success/failure counters and histograms with bounded labels. Production still needs Prometheus/OTel exporter instead of console emission. |
-| `AIOpsEventBus.publish` logs to console — no real bus | **P0** | Kafka topic or webhook to incident-response system |
+| ~~`AIOpsEventBus.publish` only had console/sink emission with no event-bus dispatch contract~~ ✅ Iter 106 (2026-05-19) | ~~P0 local gap~~ closed | `AIOpsEventBus` now dispatches topic/key envelopes through an injectable `AIOpsEventDispatcher`; default `SinkAIOpsEventDispatcher` preserves console/sink behavior, with in-memory, Kafka-shaped, and webhook-shaped dispatcher adapters covered by tests. Production still needs real Kafka/webhook credentials and outbox-backed delivery. |
 | ~~Trace-context drill coverage was partial for delegated workflow → tool execution~~ ✅ Iter 92 (2026-05-18) | ~~P1 local gap~~ closed | `workflow-observability-integration.test.ts` verifies delegated job trace, workflow step trace, and `tool.dispatch` trace share the same `traceId`. Real OTel exporter/propagator remains a production infra gap. |
 
 ### Component 7 — Resilience (Circuit Breaker)

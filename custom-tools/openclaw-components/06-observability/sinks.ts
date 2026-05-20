@@ -17,6 +17,10 @@ export interface SpanRecord {
   type: "trace";
   spanName: string;
   status: "ok" | "error";
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  traceparent: string;
   durationMs: number;
   attributes: Record<string, unknown>;
   extra: Record<string, unknown>;

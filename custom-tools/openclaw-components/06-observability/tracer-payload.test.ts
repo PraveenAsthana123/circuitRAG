@@ -34,6 +34,9 @@ describe("Iter 80 — Tracer payload contract (P1)", () => {
     expect(p.type).toBe("trace");
     expect(p.spanName).toBe("op.test");
     expect(p.status).toBe("ok");
+    expect(p.traceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(p.spanId).toMatch(/^[0-9a-f]{16}$/);
+    expect(p.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
     expect(typeof p.durationMs).toBe("number");
     expect(p.attributes).toEqual({ tenantId: "t-1", requestId: "r-1" });
     expect(p.extra).toEqual({});
@@ -42,24 +45,23 @@ describe("Iter 80 — Tracer payload contract (P1)", () => {
     expect(typeof p.timestamp).toBe("string");
   });
 
-  it("BACKDOOR: payload field set EXACTLY these 9 keys + nothing more (schema fingerprint)", () => {
+  it("BACKDOOR: payload field set EXACTLY these 12 keys + nothing more (schema fingerprint)", () => {
     const p = captureSpan("op.fingerprint", { a: 1 });
     const keys = Object.keys(p).sort();
     expect(keys).toEqual(
       ["attributes", "durationMs", "extra", "sampled", "sampledOnError",
-       "spanName", "status", "timestamp", "type"].sort(),
+       "spanId", "spanName", "status", "timestamp", "traceId", "traceparent", "type"].sort(),
     );
   });
 
   it("error span has status='error' and sampledOnError=false when already sampled", () => {
     const p = captureSpan("op.fail", { x: 1 }, "error");
     expect(p.status).toBe("error");
-    expect(p.sampled).toBe(true);  // AlwaysOnSampler
-    expect(p.sampledOnError).toBe(false);  // didn't NEED the error fallback
+    expect(p.sampled).toBe(true);
+    expect(p.sampledOnError).toBe(false);
   });
 
   it("error span sampled BECAUSE of error (alwaysSampleOnError) has sampledOnError=true", () => {
-    // Use a sampler that returns false at start, true alwaysSampleOnError.
     class NeverOnButErrorSampler {
       shouldSample(): boolean { return false; }
       alwaysSampleOnError(): boolean { return true; }
@@ -71,8 +73,9 @@ describe("Iter 80 — Tracer payload contract (P1)", () => {
       span.end("error");
       expect(log.mock.calls.length).toBe(1);
       const p = JSON.parse(log.mock.calls[0][0] as string);
-      expect(p.sampled).toBe(false);          // start-of-span sampling missed
-      expect(p.sampledOnError).toBe(true);    // error fallback fired
+      expect(p.sampled).toBe(false);
+      expect(p.sampledOnError).toBe(true);
+      expect(p.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-00$/);
     } finally {
       log.mockRestore();
     }
@@ -88,7 +91,7 @@ describe("Iter 80 — Tracer payload contract (P1)", () => {
       const tracer = new Tracer(new NeverSampler());
       const span = tracer.startSpan("op.dropped", {});
       span.end("ok");
-      expect(log.mock.calls.length).toBe(0);  // nothing emitted
+      expect(log.mock.calls.length).toBe(0);
     } finally {
       log.mockRestore();
     }
@@ -97,7 +100,7 @@ describe("Iter 80 — Tracer payload contract (P1)", () => {
   it("extra fields per-call appear under `extra`, not flattened into top level", () => {
     const p = captureSpan("op.extra", {}, "ok", { customField: 42 });
     expect(p.extra).toEqual({ customField: 42 });
-    expect(p.customField).toBeUndefined();  // not flattened
+    expect(p.customField).toBeUndefined();
   });
 
   it("durationMs is non-negative", () => {
