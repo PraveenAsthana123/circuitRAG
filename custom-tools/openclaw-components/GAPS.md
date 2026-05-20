@@ -105,7 +105,7 @@ strength. Examples:
 
 | Gap | Severity | Fix |
 |---|---|---|
-| `Retriever` is still in-memory, not a production vector DB | **P1** | Use the existing `services/retrieval-svc/` or pgvector/Qdrant for production durability and scale |
+| ~~`RAGOrchestrator` was hard-typed to the in-memory `Retriever`, blocking production retrieval adapters~~ ✅ Iter 108 (2026-05-19) | ~~P1 local gap~~ closed | `RAGOrchestrator` now depends on a `RetrievalSource` port that accepts sync or async adapters; tests cover custom vector-DB-style retrieval, tenant-scoped adapter behavior, and telemetry counts. Production still needs a concrete pgvector/Qdrant/retrieval-svc adapter and durable index operations. |
 
 ### Component 42 — Enterprise SDLC / Operating Model
 

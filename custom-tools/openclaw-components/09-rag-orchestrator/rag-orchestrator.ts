@@ -1,20 +1,27 @@
-import { Retriever } from "./retriever";
 import { Reranker } from "./reranker";
 import { GroundingChecker } from "./grounding-checker";
 import { CitationValidator } from "./citation-validator";
 import { QualityScorer } from "./quality-scorer";
-import { RAGRequest, RAGResponse } from "./types";
+import { RAGRequest, RAGResponse, RetrievedChunk } from "./types";
 import {
   EventSink,
   ConsoleEventSink,
 } from "../06-observability/sinks";
+
+export interface RetrievalSource {
+  retrieve(
+    query: string,
+    tenantId: string,
+    topK?: number,
+  ): RetrievedChunk[] | Promise<RetrievedChunk[]>;
+}
 
 export class RAGOrchestrator {
   private readonly sink: EventSink;
   // Iter 103 (2026-05-18): pluggable sink for rag_orchestration
   // emissions. Default ConsoleEventSink preserves backcompat.
   constructor(
-    private readonly retriever: Retriever,
+    private readonly retriever: RetrievalSource,
     private readonly reranker: Reranker,
     private readonly groundingChecker: GroundingChecker,
     private readonly citationValidator: CitationValidator,
@@ -27,9 +34,9 @@ export class RAGOrchestrator {
   async answer(request: RAGRequest): Promise<RAGResponse> {
     const start = Date.now();
 
-    const retrieved = this.retriever.retrieve(
+    const retrieved = await this.retriever.retrieve(
       request.query,
-      request.tenantId
+      request.tenantId,
     );
 
     const reranked = this.reranker.rerank(request.query, retrieved);
@@ -44,7 +51,7 @@ export class RAGOrchestrator {
     const qualityScore = this.qualityScorer.score(
       answer,
       reranked,
-      grounded
+      grounded,
     );
 
     this.sink.emit({
